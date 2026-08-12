@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Кабинет — Чекер</title>
+  <link rel="stylesheet" href="/cabinet/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <nav class="sidebar">
+      <a class="sidebar-brand" href="/">Чекер <span>Кабинет</span></a>
+      <button class="nav-item" type="button" data-view="receipts" aria-current="true">Чеки</button>
+      <button class="nav-item" type="button" data-view="items">Товары</button>
+      <div class="sidebar-foot">
+        <div id="data-period">загрузка данных…</div>
+        <div id="last-import"></div>
+      </div>
+    </nav>
+
+    <main class="content">
+      <header class="content-head">
+        <h1 id="page-title">Чеки</h1>
+        <div class="content-head-actions">
+          <input id="f-q" type="search" placeholder="Поиск: товар, продавец, точка" autocomplete="off" />
+          <button class="btn" id="export-btn" type="button">Экспорт CSV</button>
+        </div>
+      </header>
+
+      <div class="filters" aria-label="Фильтры">
+        <div class="field">
+          <label for="f-from">Период с</label>
+          <input id="f-from" type="date" />
+        </div>
+        <div class="field">
+          <label for="f-to">по</label>
+          <input id="f-to" type="date" />
+        </div>
+        <div class="field">
+          <label for="f-seller">Продавец</label>
+          <select id="f-seller"><option value="">Все продавцы</option></select>
+        </div>
+        <div class="field">
+          <label for="f-operation">Операция</label>
+          <select id="f-operation">
+            <option value="">Все</option>
+            <option value="1">Приход</option>
+            <option value="2">Возврат прихода</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-min">Сумма от, ₽</label>
+          <input id="f-min" type="number" min="0" step="1" placeholder="0" />
+        </div>
+        <div class="field">
+          <label for="f-max">до, ₽</label>
+          <input id="f-max" type="number" min="0" step="1" placeholder="∞" />
+        </div>
+        <div class="field">
+          <label for="f-per">Показывать</label>
+          <select id="f-per">
+            <option value="25">25 строк</option>
+            <option value="50" selected>50 строк</option>
+            <option value="100">100 строк</option>
+            <option value="200">200 строк</option>
+          </select>
+        </div>
+        <div>
+          <button class="btn" id="reset-btn" type="button">Сбросить</button>
+        </div>
+      </div>
+
+      <div class="layout">
+        <section class="list-pane">
+          <div class="totals" aria-live="polite">
+            <span id="totals-left">—</span>
+            <span id="totals-right"></span>
+          </div>
+
+          <div class="table-card">
+            <div class="table-scroll">
+              <table id="table">
+                <thead id="thead"></thead>
+                <tbody id="tbody"></tbody>
+              </table>
+            </div>
+            <div class="state" id="state" hidden></div>
+            <div class="table-foot">
+              <span id="range-info">—</span>
+              <div class="pager">
+                <button class="btn" id="prev-btn" type="button">←</button>
+                <span id="page-info">стр. 1</span>
+                <button class="btn" id="next-btn" type="button">→</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="detail-pane" id="detail" aria-live="polite"></aside>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="/cabinet/app.js"></script>
+</body>
+</html>

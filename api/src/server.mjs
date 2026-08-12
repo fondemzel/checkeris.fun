@@ -1,0 +1,202 @@
+// HTTP-сервер кабинета: JSON API поверх SQLite + отдача статики из site/.
+//
+//   node api/src/server.mjs            → http://localhost:8787/cabinet
+//   PORT=3000 node api/src/server.mjs
+//
+// Зависимостей нет: только встроенные модули Node.
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { extname, join, normalize, resolve, sep } from 'node:path';
+import { openDb, migrate, PROJECT_ROOT, DB_PATH } from './db.mjs';
+import { listReceipts, listItems, getReceipt, getItem, getMeta } from './queries.mjs';
+
+const PORT = Number(process.env.PORT ?? 8787);
+const HOST = process.env.HOST ?? '127.0.0.1';
+const SITE_ROOT = resolve(process.env.CHECKER_SITE ?? join(PROJECT_ROOT, 'site'));
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+};
+
+const db = openDb();
+migrate(db);
+
+function sendJson(res, status, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'content-length': Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+function csvCell(value) {
+  const s = value == null ? '' : String(value);
+  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** CSV для Excel: разделитель «;», десятичная запятая, BOM. */
+function sendCsv(res, filename, header, rows) {
+  const lines = [header.join(';'), ...rows.map((r) => r.map(csvCell).join(';'))];
+  const body = Buffer.concat([Buffer.from('﻿', 'utf8'), Buffer.from(lines.join('\r\n'), 'utf8')]);
+  res.writeHead(200, {
+    'content-type': 'text/csv; charset=utf-8',
+    'content-disposition': `attachment; filename="${filename}"`,
+    'content-length': body.length,
+  });
+  res.end(body);
+}
+
+const money = (kopecks) => (Number(kopecks ?? 0) / 100).toFixed(2).replace('.', ',');
+
+// коды ставок НДС из ФФД
+const NDS_LABELS = { 1: '20%', 2: '10%', 3: '20/120', 4: '10/110', 5: '0%', 6: 'без НДС' };
+const ndsLabel = (code) => NDS_LABELS[code] ?? (code == null ? '' : String(code));
+
+async function serveStatic(req, res, pathname) {
+  // /cabinet и /cabinet/ → site/cabinet/index.html
+  let rel = decodeURIComponent(pathname);
+  if (rel === '/') rel = '/index.html';
+  let filePath = resolve(join(SITE_ROOT, normalize(rel).replace(/^(\.\.[/\\])+/, '')));
+  if (!filePath.startsWith(SITE_ROOT + sep) && filePath !== SITE_ROOT) {
+    return sendJson(res, 403, { error: 'forbidden' });
+  }
+
+  try {
+    const info = await stat(filePath).catch(() => null);
+    if (info?.isDirectory()) filePath = join(filePath, 'index.html');
+    else if (!info && existsSync(`${filePath}.html`)) filePath = `${filePath}.html`;
+
+    const body = await readFile(filePath);
+    res.writeHead(200, {
+      'content-type': MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream',
+      'cache-control': 'no-cache',
+      'content-length': body.length,
+    });
+    res.end(body);
+  } catch {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('404 — страница не найдена');
+  }
+}
+
+function handleApi(req, res, url) {
+  const { pathname, searchParams } = url;
+
+  if (pathname === '/api/meta') return sendJson(res, 200, getMeta(db));
+
+  if (pathname === '/api/receipts') return sendJson(res, 200, listReceipts(db, searchParams));
+
+  const receiptMatch = pathname.match(/^\/api\/receipts\/(\d+)$/);
+  if (receiptMatch) {
+    const receipt = getReceipt(db, Number(receiptMatch[1]));
+    return receipt ? sendJson(res, 200, receipt) : sendJson(res, 404, { error: 'receipt not found' });
+  }
+
+  if (pathname === '/api/items') return sendJson(res, 200, listItems(db, searchParams));
+
+  const itemMatch = pathname.match(/^\/api\/items\/(\d+)$/);
+  if (itemMatch) {
+    const item = getItem(db, Number(itemMatch[1]));
+    return item ? sendJson(res, 200, item) : sendJson(res, 404, { error: 'item not found' });
+  }
+
+  if (pathname === '/api/export.csv') {
+    const type = searchParams.get('type') === 'receipts' ? 'receipts' : 'items';
+    const params = new URLSearchParams(searchParams);
+    params.set('per', '500');
+    if (type === 'receipts') {
+      const rows = [];
+      for (let page = 1; ; page += 1) {
+        params.set('page', String(page));
+        const chunk = listReceipts(db, params).rows;
+        rows.push(...chunk);
+        if (chunk.length < 500 || rows.length >= 50000) break;
+      }
+      return sendCsv(
+        res,
+        'receipts.csv',
+        ['Дата', 'Время', 'Продавец', 'ИНН', 'Точка', 'Позиций', 'Сумма, ₽', 'Наличными, ₽', 'Картой, ₽', 'Операция'],
+        rows.map((r) => [
+          r.purchased_date,
+          r.purchased_at.slice(11, 16),
+          r.seller,
+          r.seller_inn,
+          r.retail_place,
+          r.item_count,
+          money(r.total_sum),
+          money(r.cash_sum),
+          money(r.ecash_sum),
+          r.operation_type === 2 ? 'возврат' : 'приход',
+        ]),
+      );
+    }
+    const rows = [];
+    for (let page = 1; ; page += 1) {
+      params.set('page', String(page));
+      const chunk = listItems(db, params).rows;
+      rows.push(...chunk);
+      if (chunk.length < 500 || rows.length >= 50000) break;
+    }
+    return sendCsv(
+      res,
+      'items.csv',
+      ['Дата', 'Время', 'Товар', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'НДС', 'GTIN', 'Продавец', 'ИНН', 'Точка', 'Чек'],
+      rows.map((r) => [
+        r.purchased_date,
+        r.purchased_at.slice(11, 16),
+        r.name,
+        String(r.quantity).replace('.', ','),
+        money(r.price),
+        money(r.sum),
+        ndsLabel(r.nds),
+        r.gtin ?? '',
+        r.seller,
+        r.seller_inn,
+        r.retail_place,
+        r.receipt_id,
+      ]),
+    );
+  }
+
+  return sendJson(res, 404, { error: 'unknown endpoint' });
+}
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
+
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return sendJson(res, 405, { error: 'method not allowed' });
+  }
+
+  try {
+    if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
+    return await serveStatic(req, res, url.pathname);
+  } catch (err) {
+    console.error(`${req.method} ${req.url} →`, err);
+    if (!res.headersSent) sendJson(res, 500, { error: 'internal error' });
+    else res.end();
+  }
+});
+
+server.listen(PORT, HOST, () => {
+  const { stats } = getMeta(db);
+  console.log(`Кабинет:  http://${HOST}:${PORT}/cabinet`);
+  console.log(`API:      http://${HOST}:${PORT}/api/meta`);
+  console.log(`База:     ${DB_PATH}`);
+  console.log(`Статика:  ${SITE_ROOT}`);
+  console.log(`Данные:   чеков ${stats.receipts}, позиций ${stats.items}, период ${stats.date_from ?? '—'} — ${stats.date_to ?? '—'}`);
+  if (!stats.receipts) console.log('\nБаза пустая — запустите: node api/src/import.mjs');
+});

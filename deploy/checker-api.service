@@ -1,0 +1,27 @@
+[Unit]
+Description=Checker cabinet API (checkeris.fun)
+After=network.target
+
+[Service]
+Type=simple
+User=checker
+Group=checker
+WorkingDirectory=/opt/checker
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8788
+Environment=CHECKER_DB=/opt/checker/api/data/checker.db
+Environment=CHECKER_SITE=/opt/checker/site
+ExecStart=/usr/bin/node /opt/checker/api/src/server.mjs
+Restart=on-failure
+RestartSec=3
+
+# База и выгрузки — единственное, что сервису можно писать
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/checker/api/data
+
+[Install]
+WantedBy=multi-user.target

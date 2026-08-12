@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Чекер — учет расходов без лишнего шума</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-soft: #11172b;
+      --card: rgba(255,255,255,0.06);
+      --card-border: rgba(255,255,255,0.10);
+      --text: #eef2ff;
+      --muted: #a9b3d1;
+      --accent: #7c8cff;
+      --accent-2: #54d2c6;
+      --shadow: 0 20px 60px rgba(0,0,0,0.35);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 16px;
+      --max: 1180px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 20%, rgba(124,140,255,0.22), transparent 28%),
+        radial-gradient(circle at 85% 10%, rgba(84,210,198,0.18), transparent 24%),
+        radial-gradient(circle at 50% 80%, rgba(124,140,255,0.12), transparent 32%),
+        linear-gradient(180deg, #0a1020 0%, #0d1324 50%, #0a1020 100%);
+      min-height: 100vh;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      width: min(var(--max), calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(14px);
+      background: rgba(11, 16, 32, 0.55);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 18px 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 12px 30px rgba(124, 140, 255, 0.35);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      background: rgba(255,255,255,0.85);
+      border-radius: 999px;
+    }
+
+    .brand-mark::before {
+      width: 18px;
+      height: 18px;
+      left: 10px;
+      top: 7px;
+      opacity: 0.95;
+    }
+
+    .brand-mark::after {
+      width: 22px;
+      height: 4px;
+      left: 8px;
+      bottom: 9px;
+      opacity: 0.85;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .nav a:hover { color: var(--text); }
+
+    .hero {
+      padding: 72px 0 42px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 36px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      color: #d8def6;
+      font-size: 14px;
+      margin-bottom: 22px;
+    }
+
+    .eyebrow-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 20px rgba(84,210,198,0.6);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(40px, 6vw, 72px);
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+      max-width: 760px;
+    }
+
+    .hero p {
+      margin: 22px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.7;
+      max-width: 620px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 52px;
+      padding: 0 22px;
+      border-radius: 14px;
+      font-weight: 600;
+      transition: transform 0.2s ease, opacity 0.2s ease, border-color 0.2s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: white;
+      box-shadow: 0 16px 36px rgba(89, 114, 255, 0.32);
+    }
+
+    .btn-secondary {
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+    }
+
+    .mockup-wrap {
+      position: relative;
+      min-height: 560px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .glow {
+      position: absolute;
+      width: 420px;
+      height: 420px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(124,140,255,0.28) 0%, rgba(124,140,255,0.06) 42%, transparent 68%);
+      filter: blur(14px);
+    }
+
+    .phone {
+      position: relative;
+      width: 330px;
+      background: linear-gradient(180deg, #12192f 0%, #0f1629 100%);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 34px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 34%;
+      height: 26px;
+      border-radius: 999px;
+      background: #09101f;
+    }
+
+    .screen {
+      border-radius: 24px;
+      overflow: hidden;
+      background: linear-gradient(180deg, #f8faff 0%, #f0f5ff 100%);
+      min-height: 640px;
+      color: #101728;
+      padding: 22px 18px 18px;
+    }
+
+    .status {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #4b5568;
+      margin-bottom: 18px;
+      padding: 0 4px;
+    }
+
+    .app-card {
+      background: white;
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: 0 18px 36px rgba(29, 42, 68, 0.10);
+      border: 1px solid rgba(9, 17, 34, 0.05);
+    }
+
+    .balance-card {
+      background: linear-gradient(135deg, #6c7cff, #5fd4c2);
+      color: white;
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 18px 40px rgba(100, 120, 255, 0.28);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .balance-label {
+      font-size: 13px;
+      opacity: 0.9;
+      margin-bottom: 10px;
+      align-self: flex-start;
+      text-align: left;
+    }
+
+    .balance-value {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      align-self: flex-start;
+      text-align: left;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+      justify-items: stretch;
+      max-width: 260px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .stat-box {
+      background: rgba(255,255,255,0.16);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 16px;
+      padding: 12px;
+      min-height: 72px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      text-align: center;
+      width: 100%;
+    }
+
+    .stat-box small {
+      display: block;
+      font-size: 10px;
+      line-height: 1.2;
+      opacity: 0.9;
+      margin-bottom: 6px;
+    }
+
+    .stat-box strong {
+      font-size: 15px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+
+    .section {
+      padding: 72px 0;
+    }
+
+    .section-head {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 36px;
+    }
+
+    .section h2 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }
+
+    .section-head p {
+      margin: 0;
+      max-width: 640px;
+      color: rgba(169, 179, 209, 0.7);
+      line-height: 1.65;
+      font-size: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .feature {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .feature-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(124,140,255,0.18), rgba(84,210,198,0.18));
+      border: 1px solid rgba(255,255,255,0.12);
+      margin-bottom: 18px;
+      font-size: 22px;
+    }
+
+    .feature h3 {
+      margin: 0 0 10px;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .feature-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+
+    .store-section {
+      padding: 40px 0 60px;
+    }
+
+    .store-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 40px 30px;
+      border-radius: 28px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .store-box h3 {
+      margin: 0 0 10px;
+      font-size: 26px;
+      letter-spacing: -0.03em;
+    }
+
+    .store-box p {
+      margin: 0;
+      max-width: 560px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .store-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .store-badge {
+      min-width: 170px;
+      min-height: 60px;
+      padding: 12px 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+    }
+
+    .store-badge small {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .store-badge strong {
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .showcase {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-xl);
+      padding: 28px;
+      box-shadow: var(--shadow);
+      min-height: 320px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel::after {
+      content: "";
+      position: absolute;
+      inset: auto -40px -60px auto;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(124,140,255,0.22), transparent 70%);
+      filter: blur(6px);
+    }
+
+    .panel h3 {
+      margin: 0 0 14px;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .panel p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.75;
+      max-width: 470px;
+    }
+
+    .mini-list {
+      margin-top: auto;
+      padding-top: 22px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .mini-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+        .mini-item span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .mini-item strong {
+      font-size: 15px;
+    }
+
+    .cta {
+      padding: 80px 0 120px;
+    }
+
+    .cta-box {
+      position: relative;
+      overflow: hidden;
+      border-radius: 32px;
+      padding: 40px;
+      background: linear-gradient(135deg, rgba(124,140,255,0.18), rgba(84,210,198,0.12));
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: var(--shadow);
+    }
+
+    .cta-box::before {
+      content: "";
+      position: absolute;
+      right: -80px;
+      top: -80px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,255,255,0.18), transparent 65%);
+    }
+
+    .cta-box h2 {
+      margin: 0 0 12px;
+      font-size: clamp(28px, 4vw, 48px);
+      letter-spacing: -0.03em;
+      max-width: 760px;
+    }
+
+    .cta-box p {
+      margin: 0;
+      max-width: 620px;
+      color: #d6defa;
+      line-height: 1.75;
+      font-size: 17px;
+    }
+
+    .footer {
+      padding: 0 0 36px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(36px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+      transition-delay: var(--reveal-delay, 0s);
+      will-change: opacity, transform;
+    }
+
+    .reveal.is-visible,
+    .reveal-item.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-item {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+      transition-delay: var(--item-delay, 0s);
+      will-change: opacity, transform;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal,
+      .reveal-item {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+    }
+
+    @media (max-width: 1024px) {
+      .hero-grid,
+      .showcase,
+      .grid-3,
+      .feature-grid-4 {
+        grid-template-columns: 1fr;
+      }
+
+      .store-box {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .store-badges {
+        justify-content: flex-start;
+      }
+
+      .hero-grid,
+      .showcase,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .mockup-wrap {
+        min-height: auto;
+      }
+
+      .section-head,
+      .footer-inner,
+      .header-inner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    @media (max-width: 680px) {
+      /* store badges: single column, centered */
+      .store-badges {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .store-badge {
+        width: 100%;
+        max-width: 260px;
+      }
+
+      /* mini items: right-align value */
+      .mini-item {
+        width: 100%;
+      }
+
+      .mini-item span {
+        flex: 1;
+      }
+
+      .mini-item strong {
+        text-align: right;
+      }
+      /* feature cards: icon + title in one row */
+      .feature {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        grid-template-areas:
+          "icon title"
+          "text text";
+        align-items: center;
+        column-gap: 12px;
+        row-gap: 10px;
+        text-align: left;
+      }
+
+      .feature-icon {
+        grid-area: icon;
+        margin-bottom: 0;
+        width: 44px;
+        height: 44px;
+        font-size: 18px;
+      }
+
+      .feature h3 {
+        grid-area: title;
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .feature p {
+        grid-area: text;
+      }
+      .container {
+        width: min(var(--max), calc(100% - 24px));
+      }
+
+      .header-inner,
+      .footer-inner,
+      .section-head {
+        gap: 12px;
+      }
+
+      .hero {
+        padding: 36px 0 20px;
+      }
+
+      .hero-grid {
+        gap: 24px;
+      }
+
+      .nav {
+        display: none;
+      }
+
+      .eyebrow {
+        font-size: 12px;
+        padding: 8px 12px;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        font-size: clamp(30px, 10vw, 42px);
+        line-height: 1.02;
+      }
+
+      .hero p {
+        font-size: 16px;
+        line-height: 1.6;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .btn {
+        width: 100%;
+      }
+
+      .mockup-wrap {
+        min-height: auto;
+      }
+
+      .glow {
+        width: 280px;
+        height: 280px;
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 320px;
+        margin: 0 auto;
+        padding: 12px;
+        border-radius: 28px;
+      }
+
+      .phone::before {
+        top: 8px;
+        height: 22px;
+      }
+
+      .screen {
+        min-height: auto;
+        padding: 18px 14px 14px;
+        border-radius: 20px;
+      }
+
+      .balance-card,
+      .app-card,
+      .cta-box,
+      .panel,
+      .feature,
+      .store-box {
+        padding: 20px;
+      }
+
+      .balance-label {
+        font-size: 12px;
+      }
+
+      .balance-value {
+        font-size: 30px;
+      }
+
+      .stats {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        max-width: 100%;
+        width: 100%;
+      }
+
+      .stat-box {
+        min-height: 64px;
+        padding: 10px 8px;
+        border-radius: 14px;
+      }
+
+      .stat-box small {
+        font-size: 9px;
+      }
+
+      .stat-box strong {
+        font-size: 13px;
+      }
+
+      .section {
+        padding: 52px 0;
+      }
+
+      .section h2,
+      .cta-box h2 {
+        font-size: clamp(24px, 8vw, 32px);
+        line-height: 1.08;
+      }
+
+      .section-head {
+        margin-bottom: 24px;
+      }
+
+      .section-head p,
+      .store-box p,
+      .cta-box p,
+      .panel p,
+      .feature p {
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .store-badges {
+        width: 100%;
+        justify-content: center;
+        max-width: 320px;
+        margin: 0 auto;
+      }
+
+      .store-badge {
+        min-width: 0;
+        width: calc(50% - 8px);
+        max-width: 150px;
+      }
+
+      .mini-item {
+        flex-direction: row;
+        align-items: center;
+      }
+
+      .footer {
+        padding-bottom: 24px;
+      }
+    }
+
+      .footer {
+        padding-bottom: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="container header-inner">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>Чекер</div>
+      </div>
+      <nav class="nav">
+        <a href="#features">Возможности</a>
+        <a href="#about">О приложении</a>
+        <a href="#start">Запуск</a>
+        <a href="/cabinet">Кабинет</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <div class="eyebrow">
+            <span class="eyebrow-dot"></span>
+            Учет расходов, который не раздражает
+          </div>
+          <h1>Ваши деньги — в полном порядке. Без таблиц, хаоса и лишних действий.</h1>
+          <p>
+            Чекер помогает быстро фиксировать траты, видеть реальную картину по категориям
+            и держать личные финансы под контролем. Спокойный современный интерфейс,
+            понятная структура и фокус только на том, что действительно важно.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#start">Смотреть приложение</a>
+            <a class="btn btn-secondary" href="#features">Что внутри</a>
+          </div>
+        </div>
+
+        <div class="mockup-wrap">
+          <div class="glow"></div>
+          <div class="phone">
+            <div class="screen">
+              <div class="status">
+                <strong>9:41</strong>
+                <span>◉ ◉ ◉</span>
+              </div>
+
+              <div class="balance-card">
+                <div class="balance-label">Всего расходов за март</div>
+                <div class="balance-value">48 320 ₽</div>
+                <div class="stats">
+                  <div class="stat-box">
+                    <small>Продукты</small>
+                    <strong>14 800 ₽</strong>
+                  </div>
+                  <div class="stat-box">
+                    <small>Транспорт</small>
+                    <strong>6 120 ₽</strong>
+                  </div>
+                  <div class="stat-box">
+                    <small>Дом</small>
+                    <strong>9 400 ₽</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style="height: 14px"></div>
+
+              <div class="app-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                  <strong style="font-size:18px;">Последние операции</strong>
+                  <span style="font-size:13px; color:#6a748a;">Сегодня</span>
+                </div>
+
+                <div style="display:grid; gap:12px;">
+                  <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid rgba(16,23,40,0.08);">
+                    <div>
+                      <div style="font-weight:700;">Супермаркет</div>
+                      <div style="font-size:13px; color:#6a748a;">Продукты</div>
+                    </div>
+                    <strong>-2 460 ₽</strong>
+                  </div>
+
+                  <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid rgba(16,23,40,0.08);">
+                    <div>
+                      <div style="font-weight:700;">Такси</div>
+                      <div style="font-size:13px; color:#6a748a;">Транспорт</div>
+                    </div>
+                    <strong>-690 ₽</strong>
+                  </div>
+
+                  <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; padding:12px 0;">
+                    <div>
+                      <div style="font-weight:700;">Кофейня</div>
+                      <div style="font-size:13px; color:#6a748a;">Еда вне дома</div>
+                    </div>
+                    <strong>-340 ₽</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section reveal" id="features" style="--reveal-delay: 0.05s;">
+      <div class="container">
+        <div class="section-head">
+          <h2>Все главное — на одном экране</h2>
+          <p>
+            Без перегруженных графиков и сложных сценариев. Только понятные цифры,
+            категории, история операций и ощущение контроля.
+          </p>
+        </div>
+
+        <div class="grid-3">
+          <article class="feature reveal-item">
+            <div class="feature-icon">◔</div>
+            <h3>Быстрая фиксация трат</h3>
+            <p>Добавляйте расходы легко и без лишних шагов. Приложение не отвлекает и не перегружает процесс.</p>
+          </article>
+
+          <article class="feature reveal-item">
+            <div class="feature-icon">◎</div>
+            <h3>Понятные категории</h3>
+            <p>Сразу видно, куда уходят деньги: продукты, транспорт, дом, подписки, кафе и другие привычные статьи.</p>
+          </article>
+
+          <article class="feature reveal-item">
+            <div class="feature-icon">↗</div>
+            <h3>Чистая аналитика</h3>
+            <p>Общая картина по периоду помогает замечать привычки, лишние траты и точки для оптимизации бюджета.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section reveal" style="--reveal-delay: 0.12s;">
+      <div class="container">
+        <div class="section-head">
+          <h2>Возможности приложения</h2>
+          <p>
+            Чекер задуман как не просто трекер трат, а как полноценный инструмент для семейного
+            и личного финансового учета с автоматизацией рутинных задач.
+          </p>
+        </div>
+
+        <div class="feature-grid-4">
+          <article class="feature reveal-item">
+            <div class="feature-icon">◫</div>
+            <h3>Скан чеков</h3>
+            <p>Быстрое распознавание покупок по фото чека, чтобы не заносить позиции и суммы вручную.</p>
+          </article>
+
+          <article class="feature reveal-item">
+            <div class="feature-icon">◉</div>
+            <h3>Семейные аккаунты</h3>
+            <p>Общий бюджет для нескольких участников: удобно для семьи, пары или совместного ведения расходов.</p>
+          </article>
+
+          <article class="feature reveal-item">
+            <div class="feature-icon">⇄</div>
+            <h3>Привязка банков</h3>
+            <p>Автоматическая загрузка операций, чтобы расходы появлялись в приложении почти без ручного ввода.</p>
+          </article>
+
+          <article class="feature reveal-item">
+            <div class="feature-icon">⌁</div>
+            <h3>Умная категоризация</h3>
+            <p>Приложение само предлагает категории и помогает быстрее разбирать поток ежедневных транзакций.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section reveal" id="about" style="--reveal-delay: 0.18s;">
+      <div class="container showcase">
+        <div class="panel reveal-item">
+          <h3>Спроектировано для обычной жизни</h3>
+          <p>
+            Чекер не требует привыкания. Он выглядит легко, работает спокойно и помогает заниматься финансами
+            без ощущения, что вы открыли бухгалтерскую систему.
+          </p>
+          <div class="mini-list">
+            <div class="mini-item reveal-item">
+              <span>Минималистичный интерфейс</span>
+              <strong>Ничего лишнего</strong>
+            </div>
+            <div class="mini-item reveal-item">
+              <span>Привычная структура</span>
+              <strong>Сразу понятно</strong>
+            </div>
+            <div class="mini-item reveal-item">
+              <span>Фокус на ежедневном использовании</span>
+              <strong>Без перегруза</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel reveal-item">
+          <h3>Современный подход к личным финансам</h3>
+          <p>
+            Один экран для обзора, простая история операций, аккуратная визуальная иерархия и удобная подача цифр.
+            Приложение должно помогать принимать решения, а не создавать дополнительную работу.
+          </p>
+          <div class="mini-list">
+            <div class="mini-item reveal-item">
+              <span>Ежемесячный обзор</span>
+              <strong>Контроль бюджета</strong>
+            </div>
+            <div class="mini-item reveal-item">
+              <span>Последние траты</span>
+              <strong>Всегда под рукой</strong>
+            </div>
+            <div class="mini-item reveal-item">
+              <span>Единый визуальный стиль</span>
+              <strong>Чисто и спокойно</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="store-section reveal" id="start" style="--reveal-delay: 0.24s;">
+      <div class="container">
+        <div class="store-box">
+          <div>
+            <h3>Скоро запуск приложения</h3>
+            <p>
+              Чекер готовится к релизу. Мы завершаем последние детали, чтобы приложение было
+              удобным, быстрым и действительно полезным в повседневной жизни.
+              Следите за обновлениями — скоро появится возможность скачать.
+            </p>
+          </div>
+          <div class="store-badges">
+            <div class="store-badge reveal-item">
+              <small>Скоро в</small>
+              <strong>App Store</strong>
+            </div>
+            <div class="store-badge reveal-item">
+              <small>Скоро в</small>
+              <strong>Google Play</strong>
+            </div>
+            <div class="store-badge reveal-item">
+              <small>Скоро в</small>
+              <strong>RuStore</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta reveal" style="--reveal-delay: 0.3s;">
+      <div class="container">
+        <div class="cta-box">
+          <h2>Красивый финансовый трекер для тех, кто хочет видеть деньги ясно.</h2>
+          <p>
+            Чекер помогает держать расходы под контролем каждый день: быстро добавляйте траты, отслеживайте категории и принимайте решения на основе понятной и наглядной картины ваших финансов.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#start">Магазины приложений</a>
+            <a class="btn btn-secondary" href="#features">Изучить возможности</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>© 2026 Чекер</div>
+      <div>Личный учет расходов — спокойно, наглядно, современно.</div>
+    </div>
+  </footer>
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.12,
+      rootMargin: '0px 0px -40px 0px'
+    });
+
+    document.querySelectorAll('.reveal').forEach((el) => {
+      observer.observe(el);
+    });
+
+    document.querySelectorAll('.grid-3, .feature-grid-4, .showcase, .mini-list, .store-badges').forEach((group) => {
+      const items = group.querySelectorAll(':scope > .reveal-item');
+      items.forEach((item, index) => {
+        item.style.setProperty('--item-delay', `${index * 0.15}s`);
+        observer.observe(item);
+      });
+    });
+  </script>
+</body>
+</html>

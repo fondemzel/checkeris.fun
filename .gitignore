@@ -1,0 +1,15 @@
+node_modules/
+
+# Выгрузки ФНС — это личные чеки: адреса, покупки, фискальные признаки.
+# В публичный репозиторий они не едут, на сервер попадают через scripts/deploy.sh --data
+api/data/fns_out/
+api/data/*.db
+api/data/*.db-shm
+api/data/*.db-wal
+
+# Пароли, ключи, локальные переменные окружения
+.env
+*.htpasswd
+
+# локальные настройки Claude Code
+.claude/
