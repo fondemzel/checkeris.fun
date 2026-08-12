@@ -10,8 +10,9 @@
 | `api/` | Импорт выгрузок ФНС в SQLite и HTTP API кабинета (без внешних зависимостей, Node 22.5+) |
 | `site/` | Лендинг и кабинет `/cabinet` — статика, без сборщика |
 | `deploy/` | systemd-юнит и конфиг nginx для VPS |
-| `scripts/` | Выкладка на сервер |
+| `scripts/` | `deploy_site.sh` — версия, changelog, push и выкладка на сервер одной командой |
 | `docs/` | [Кабинет](docs/cabinet.md), [Деплой](docs/deploy.md) |
+| [`CHANGELOG_SITE.md`](CHANGELOG_SITE.md) | История версий сайта и кабинета |
 | `client/` | Задел под мобильный клиент и ботов |
 
 ## Запуск локально

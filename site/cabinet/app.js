@@ -367,7 +367,12 @@ async function loadMeta() {
     ? `${int.format(stats.receipts)} чеков · ${dateRu(stats.date_from)} — ${dateRu(stats.date_to)}`
     : 'база пуста — запустите импорт';
 
-  $('last-import').textContent = lastImport ? `импорт: ${dateRu(lastImport.imported_at)}` : '';
+  $('last-import').textContent = [
+    lastImport ? `импорт: ${dateRu(lastImport.imported_at)}` : '',
+    meta.version ? `v${meta.version}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const select = $('f-seller');
   select.innerHTML =

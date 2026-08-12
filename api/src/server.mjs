@@ -6,9 +6,9 @@
 // Зависимостей нет: только встроенные модули Node.
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { openDb, migrate, PROJECT_ROOT, DB_PATH } from './db.mjs';
+import { openDb, migrate, PROJECT_ROOT, API_ROOT, DB_PATH } from './db.mjs';
 import { listReceipts, listItems, getReceipt, getItem, getMeta } from './queries.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -28,6 +28,9 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
 };
+
+// Версия из package.json — по ней после выкладки видно, что на сервере свежий код
+const VERSION = JSON.parse(readFileSync(join(API_ROOT, 'package.json'), 'utf8')).version;
 
 const db = openDb();
 migrate(db);
@@ -95,7 +98,7 @@ async function serveStatic(req, res, pathname) {
 function handleApi(req, res, url) {
   const { pathname, searchParams } = url;
 
-  if (pathname === '/api/meta') return sendJson(res, 200, getMeta(db));
+  if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db) });
 
   if (pathname === '/api/receipts') return sendJson(res, 200, listReceipts(db, searchParams));
 
