@@ -167,6 +167,8 @@ input::placeholder { color: #9aa1aa; }
 
 /* ── строка итогов ─────────────────────────────────────── */
 
+/* Строка над таблицей — цвета строк, подвал — серый: так видно, где данные,
+   а где сводка по ним. */
 .totals {
   display: flex;
   align-items: center;
@@ -175,7 +177,7 @@ input::placeholder { color: #9aa1aa; }
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-bottom: none;
-  background: var(--head-bg);
+  background: var(--surface);
   color: var(--muted);
   flex-wrap: wrap;
 }
@@ -314,6 +316,7 @@ tbody tr.selected { background: #e8eefb; }
   gap: 12px;
   padding: 6px 10px;
   border-top: 1px solid var(--border);
+  background: var(--head-bg);
   color: var(--muted);
   flex-wrap: wrap;
 }
