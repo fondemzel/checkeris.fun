@@ -404,6 +404,17 @@ tbody tr.selected { background: #e8eefb; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
 
+.cat-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+}
+
+.cat-edit select { width: 100%; }
+.cat-note { font-size: 12px; line-height: 1.35; }
+.cat-note.error { color: var(--danger); }
+
 .card-section {
   flex: none;
   padding: 5px 10px;

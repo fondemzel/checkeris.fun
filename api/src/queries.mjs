@@ -205,13 +205,70 @@ export function getItem(db, id) {
   return (
     db
       .prepare(
-        `SELECT v.*, i.nds_sum, i.provider_inn
+        `SELECT v.*, i.nds_sum, i.provider_inn,
+                (SELECT COUNT(*) FROM items x WHERE x.name_norm = v.name_norm) AS same_name_count
            FROM v_items v
            JOIN items i ON i.id = v.id
           WHERE v.id = ?`,
       )
       .get(id) ?? null
   );
+}
+
+/**
+ * Ручное назначение категории из карточки товара.
+ *
+ * Правка делается не по одной позиции, а по нормализованному названию: пользователь
+ * решает, что значит «Сыр Российский 45%», а не что значит эта конкретная строка чека.
+ * Поэтому запись идёт в общий словарь с source='manual' — это верхняя ступень лестницы
+ * в classify.mjs, выше GTIN и правил продавца, и её не перетирает ни LLM (--fill
+ * пропускает manual), ни пересчёт разметки (--apply берёт manual первым). Метки всех
+ * позиций с этим названием обновляются здесь же, чтобы кабинет не ждал прогона скрипта.
+ *
+ * Пустой slug снимает ручное решение: словарная запись удаляется, метки очищаются,
+ * и следующий `classify.mjs --apply` заново проводит название по лестнице.
+ */
+export function setItemCategory(db, id, slug) {
+  const item = db.prepare('SELECT id, name, name_norm FROM items WHERE id = ?').get(id);
+  if (!item) return { error: 'item not found', status: 404 };
+
+  const category = slug
+    ? db.prepare('SELECT slug, name, group_slug, group_name FROM categories WHERE slug = ?').get(slug)
+    : null;
+  if (slug && !category) return { error: 'unknown category', status: 400 };
+
+  const now = new Date().toISOString();
+  db.exec('BEGIN');
+  try {
+    if (category) {
+      db.prepare(
+        `INSERT INTO dictionary (name_norm, category_slug, source, confidence, votes, updated_at)
+         VALUES (:name_norm, :slug, 'manual', 1, 1, :now)
+         ON CONFLICT (name_norm) DO UPDATE SET
+           category_slug = :slug, source = 'manual', confidence = 1,
+           votes = dictionary.votes + 1, updated_at = :now`,
+      ).run({ name_norm: item.name_norm, slug: category.slug, now });
+
+      db.prepare(
+        `INSERT INTO item_labels (item_id, category_slug, source, confidence, updated_at)
+         SELECT id, :slug, 'manual', 1, :now FROM items WHERE name_norm = :name_norm
+         ON CONFLICT (item_id) DO UPDATE SET
+           category_slug = :slug, source = 'manual', confidence = 1, updated_at = :now`,
+      ).run({ name_norm: item.name_norm, slug: category.slug, now });
+    } else {
+      db.prepare('DELETE FROM dictionary WHERE name_norm = ?').run(item.name_norm);
+      db.prepare(
+        `DELETE FROM item_labels WHERE item_id IN (SELECT id FROM items WHERE name_norm = ?)`,
+      ).run(item.name_norm);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  const affected = db.prepare('SELECT COUNT(*) c FROM items WHERE name_norm = ?').get(item.name_norm).c;
+  return { item_id: item.id, name: item.name, name_norm: item.name_norm, category, affected };
 }
 
 /** Справочные данные для фильтров и шапки кабинета. */

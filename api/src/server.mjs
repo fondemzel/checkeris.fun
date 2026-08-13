@@ -9,7 +9,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { openDb, migrate, PROJECT_ROOT, API_ROOT, DB_PATH } from './db.mjs';
-import { listReceipts, listItems, getReceipt, getItem, getMeta } from './queries.mjs';
+import { listReceipts, listItems, getReceipt, getItem, getMeta, setItemCategory } from './queries.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -64,6 +64,19 @@ function sendCsv(res, filename, header, rows) {
 
 const money = (kopecks) => (Number(kopecks ?? 0) / 100).toFixed(2).replace('.', ',');
 
+/** Тело запроса как JSON; лимит защищает от бесконечного потока. */
+async function readJson(req, limit = 64 * 1024) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) throw new Error('body too large');
+    chunks.push(chunk);
+  }
+  if (!size) return {};
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
 // коды ставок НДС из ФФД
 const NDS_LABELS = { 1: '20%', 2: '10%', 3: '20/120', 4: '10/110', 5: '0%', 6: 'без НДС' };
 const ndsLabel = (code) => NDS_LABELS[code] ?? (code == null ? '' : String(code));
@@ -95,8 +108,24 @@ async function serveStatic(req, res, pathname) {
   }
 }
 
-function handleApi(req, res, url) {
+async function handleApi(req, res, url) {
   const { pathname, searchParams } = url;
+
+  // Единственный пишущий запрос: категория товара из карточки
+  const categoryMatch = pathname.match(/^\/api\/items\/(\d+)\/category$/);
+  if (categoryMatch) {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = setItemCategory(db, Number(categoryMatch[1]), String(body.category ?? '').trim());
+    return result.error
+      ? sendJson(res, result.status ?? 400, { error: result.error })
+      : sendJson(res, 200, result);
+  }
 
   if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db) });
 
@@ -180,12 +209,13 @@ function handleApi(req, res, url) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
 
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
+  // Статика только на чтение; POST разбирается внутри handleApi
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !url.pathname.startsWith('/api/')) {
     return sendJson(res, 405, { error: 'method not allowed' });
   }
 
   try {
-    if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
+    if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     return await serveStatic(req, res, url.pathname);
   } catch (err) {
     console.error(`${req.method} ${req.url} →`, err);

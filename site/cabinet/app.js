@@ -51,7 +51,8 @@ const DEFAULTS = {
   from: '',
   to: '',
   sum: '', // порог из чипса, рубли
-  dir: 'less', // в какую сторону действует порог: less — не больше него, more — не меньше
+  sum_dir: 'less', // в какую сторону действует порог: less — не больше него, more — не меньше
+  // NB: имя не `dir` — так называется направление сортировки ниже
   min_sum: '', // рубли, если диапазон задан полями вручную
   max_sum: '',
   group: '', // группа категорий — первый ряд чипсов
@@ -110,7 +111,7 @@ function periodRange() {
  */
 function sumBounds() {
   if (!state.sum) return { min: state.min_sum, max: state.max_sum };
-  return state.dir === 'more' ? { min: state.sum, max: '' } : { min: '', max: state.sum };
+  return state.sum_dir === 'more' ? { min: state.sum, max: '' } : { min: '', max: state.sum };
 }
 
 /** Стрелки: сдвиг диапазона на его собственную длину назад или вперёд. */
@@ -344,6 +345,85 @@ function receiptCard(r) {
     </div>`;
 }
 
+// Откуда взялась текущая метка — чтобы было видно, чему пользователь возражает
+const CATEGORY_SOURCES = {
+  manual: 'проставлена вручную',
+  gtin: 'определена по штрихкоду',
+  rule: 'определена по правилу продавца',
+  'rule-fallback': 'определена по правилу продавца',
+  dictionary: 'взята из словаря',
+  ngram: 'подобрана по похожему названию',
+  llm: 'предложена моделью',
+};
+
+const catOption = (slug, name, selected) =>
+  `<option value="${esc(slug)}"${slug === selected ? ' selected' : ''}>${esc(name)}</option>`;
+
+const catOptions = (list, selected, empty) =>
+  catOption('', empty, selected) + list.map((o) => catOption(o.slug, o.name, selected)).join('');
+
+/**
+ * Выбор категории в карточке: группа, затем подкатегория внутри неё.
+ * Пользователь решает не про строку чека, а про товар, поэтому выбор уходит на все
+ * позиции с таким же названием — сколько их, написано под списками до сохранения.
+ */
+function categorySection(it) {
+  const groups = meta?.categories ?? [];
+  const groupSlug = it.group_slug ?? '';
+  const subs = groups.find((g) => g.slug === groupSlug)?.subcategories ?? [];
+  const n = it.same_name_count ?? 1;
+
+  const label = it.category_slug
+    ? `«${esc(it.category_name)}» ${CATEGORY_SOURCES[it.category_source] ?? esc(it.category_source ?? '')}.`
+    : 'Категория не определена.';
+  const scope =
+    n > 1
+      ? ` Выбор применится к ${int.format(n)} ${plural(n, 'позиции', 'позициям', 'позициям')} с таким же названием.`
+      : ' Это название встречается только здесь.';
+
+  return `
+    <div class="card-section">Категория</div>
+    <div class="cat-edit" data-item="${it.id}">
+      <select id="cat-group" aria-label="Группа">${catOptions(groups, groupSlug, '— не выбрана —')}</select>
+      <select id="cat-slug" aria-label="Категория"${groupSlug ? '' : ' disabled'}>
+        ${catOptions(subs, it.category_slug ?? '', '— не выбрана —')}</select>
+      <div class="cat-note dim" id="cat-note">${label}${scope}</div>
+    </div>`;
+}
+
+/** Сохранение выбора: словарь + метки всех одноимённых позиций, затем обновление списка. */
+async function applyCategory(itemId, slug, box) {
+  const note = $('cat-note');
+  const selects = [...box.querySelectorAll('select')];
+  note.classList.remove('error');
+  note.textContent = 'Сохранение…';
+  selects.forEach((s) => (s.disabled = true));
+
+  try {
+    const res = await fetch(`/api/items/${itemId}/category`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ category: slug }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const n = data.affected;
+    const positions = `${int.format(n)} ${plural(n, 'позиция', 'позиции', 'позиций')}`;
+    note.textContent = data.category
+      ? `«${data.category.name}» — обновлено ${positions} с названием «${data.name}».`
+      : `Категория снята, затронуто ${positions}.`;
+
+    await loadMeta(); // счётчики в чипсах категорий изменились, чипсы перерисует она сама
+    await reload();
+  } catch (err) {
+    note.textContent = `Не удалось сохранить: ${err.message}`;
+    note.classList.add('error');
+  } finally {
+    selects.forEach((s) => (s.disabled = false));
+    $('cat-slug').disabled = !$('cat-group').value;
+  }
+}
+
 function itemCard(it) {
   return `
     <div class="card-head">
@@ -355,6 +435,7 @@ function itemCard(it) {
     </div>
     <div class="card-top">
     <p class="card-name">${esc(it.name)}</p>
+    ${categorySection(it)}
     ${kv([
       ['Количество', `${qty(it.quantity)}${it.unit ? ` ${esc(it.unit)}` : ''}`],
       ['Цена', money(it.price)],
@@ -514,8 +595,8 @@ function syncControls() {
   const bounds = sumBounds();
   $('f-min').value = bounds.min;
   $('f-max').value = bounds.max;
-  $('f-less').checked = state.dir !== 'more';
-  $('f-more').checked = state.dir === 'more';
+  $('f-less').checked = state.sum_dir !== 'more';
+  $('f-more').checked = state.sum_dir === 'more';
 
   // сдвигать нечего, пока диапазон не задан
   $('period-prev').disabled = !from || !to;
@@ -581,7 +662,7 @@ function bind() {
 
   // Переключатель направления: выбор одного снимает другой, состояние всегда однозначно
   document.querySelectorAll('input[name="sum-dir"]').forEach((radio) => {
-    radio.addEventListener('change', (e) => update({ dir: e.target.value }));
+    radio.addEventListener('change', (e) => update({ sum_dir: e.target.value }));
   });
 
   // Правка полей вручную отменяет чипс: границы дальше живут сами по себе
@@ -630,6 +711,24 @@ function bind() {
     if (itemRow) return selectCard(`i${itemRow.dataset.item}`);
   });
 
+  // выбор категории: смена группы только перезаполняет второй список, сохраняет — второй
+  $('detail').addEventListener('change', (e) => {
+    const box = e.target.closest('.cat-edit');
+    if (!box) return;
+
+    if (e.target.id === 'cat-group') {
+      const group = (meta?.categories ?? []).find((g) => g.slug === e.target.value);
+      const select = $('cat-slug');
+      select.innerHTML = catOptions(group?.subcategories ?? [], '', '— не выбрана —');
+      select.disabled = !group;
+      $('cat-note').classList.remove('error');
+      $('cat-note').textContent = group ? 'Выберите категорию в группе.' : 'Выберите группу.';
+      return;
+    }
+
+    if (e.target.id === 'cat-slug') applyCategory(box.dataset.item, e.target.value, box);
+  });
+
   document.querySelector('.table-scroll').addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', () => fillViewport(loadSeq));
 
@@ -645,6 +744,6 @@ function bind() {
 readUrl();
 syncControls();
 bind();
-loadMeta();
+await loadMeta(); // справочник категорий нужен карточке для выпадающих списков
 renderCard();
 reload();
