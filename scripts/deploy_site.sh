@@ -6,6 +6,7 @@
 #   scripts/deploy_site.sh --minor "Раздел категорий"          # 0.5.1 → 0.6.0
 #   scripts/deploy_site.sh --major "Личные кабинеты"           # 0.6.0 → 1.0.0
 #   scripts/deploy_site.sh --data "Выгрузка за январь"         # ещё и выгрузки ФНС + импорт
+#   scripts/deploy_site.sh --db "Словарь категорий"            # ещё и снимок локальной базы
 #   scripts/deploy_site.sh --no-version                        # выложить как есть, без релиза
 #   scripts/deploy_site.sh --no-deploy "Только в репозиторий"
 #   scripts/deploy_site.sh --dry-run "Проверка"                # показать план, ничего не делать
@@ -51,6 +52,7 @@ VERSIONED=1
 DEPLOY=1
 PUSH=1
 DATA=0
+DB=0
 DRY=0
 MESSAGE=""
 
@@ -60,6 +62,7 @@ while [[ $# -gt 0 ]]; do
     --minor)      LEVEL=minor ;;
     --patch)      LEVEL=patch ;;
     --data)       DATA=1 ;;
+    --db)         DB=1 ;;
     --no-version) VERSIONED=0 ;;
     --no-deploy)  DEPLOY=0 ;;
     --no-push)    PUSH=0 ;;
@@ -145,6 +148,33 @@ if [[ $DATA -eq 1 ]]; then
     ssh "$HOST" "tar -xzf - -C $TARGET && chown -R checker:checker $TARGET/api/data"
   echo "→ импорт"
   ssh "$HOST" "sudo -u checker /usr/bin/node $TARGET/api/src/import.mjs 2>&1 | grep -v Experimental | grep -v trace-warnings"
+fi
+
+# ── снимок базы: словарь категорий и разметка живут только в ней ──────────
+# ВНИМАНИЕ: перезаписывает базу на сервере целиком. Пока источник данных один
+# (ваши выгрузки), это безопасно; когда чеки начнут добавляться на сервере,
+# заливать словарь нужно будет отдельно, а не всей базой.
+if [[ $DB -eq 1 ]]; then
+  echo "→ снимок базы"
+  SNAPSHOT=api/data/.deploy-snapshot.db
+  rm -f "$SNAPSHOT"
+  # VACUUM INTO даёт согласованный снимок даже при активной записи
+  node -e "
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync('api/data/checker.db', { readOnly: true });
+    db.exec(\"VACUUM INTO '$SNAPSHOT'\");
+    const n = db.prepare('SELECT COUNT(*) c FROM dictionary').get().c;
+    console.error('  словарь: ' + n + ' названий');
+  " 2>&1 | grep -v Experimental | grep -v trace-warnings
+
+  echo "→ база на сервер ($(du -h "$SNAPSHOT" | cut -f1))"
+  gzip -c "$SNAPSHOT" | ssh "$HOST" "
+    gunzip > $TARGET/api/data/checker.db.new &&
+    systemctl stop checker-api &&
+    mv $TARGET/api/data/checker.db.new $TARGET/api/data/checker.db &&
+    rm -f $TARGET/api/data/checker.db-wal $TARGET/api/data/checker.db-shm &&
+    chown checker:checker $TARGET/api/data/checker.db"
+  rm -f "$SNAPSHOT"
 fi
 
 echo "→ перезапуск"

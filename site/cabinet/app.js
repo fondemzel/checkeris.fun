@@ -55,6 +55,9 @@ const DEFAULTS = {
   less: '1', // '1' — от порога и меньше
   min_sum: '', // рубли, если диапазон задан полями вручную
   max_sum: '',
+  group: '', // группа категорий — первый ряд чипсов
+  category: '', // подкатегория — второй ряд, зависит от выбранной группы
+  uncategorized: '', // '1' — только неразмеченные позиции
   sort: 'date',
   dir: 'desc',
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция
@@ -136,6 +139,12 @@ function apiParams(page) {
   const { min, max } = sumBounds();
   if (min) params.set('min_sum', min);
   if (max) params.set('max_sum', max);
+  // Категории есть только у позиций — в разделе «Чеки» эти фильтры не применяются
+  if (state.view === 'items') {
+    if (state.uncategorized) params.set('uncategorized', '1');
+    else if (state.category) params.set('category', state.category);
+    else if (state.group) params.set('group', state.group);
+  }
   params.set('sort', state.sort);
   params.set('dir', state.dir);
   params.set('page', String(page));
@@ -159,6 +168,11 @@ const COLUMNS = {
     { key: 'date', title: 'Дата', sort: 'date', render: (r) =>
       `<span class="nowrap">${dateRu(r.purchased_at)}</span> <span class="dim small">${timeRu(r.purchased_at)}</span>` },
     { key: 'name', title: 'Товар', sort: 'name', cls: 'ellipsis', render: (r) => esc(r.name) },
+    { key: 'group', title: 'Группа', cls: 'group-cell dim', render: (r) => esc(r.group_name ?? '—') },
+    { key: 'category', title: 'Категория', cls: 'cat-cell', render: (r) =>
+      r.category_name
+        ? `${esc(r.category_name)}${r.category_source === 'rule-fallback' ? ' <span class="badge">по продавцу</span>' : ''}`
+        : '<span class="dim">не определена</span>' },
     { key: 'quantity', title: 'Кол-во', sort: 'quantity', cls: 'num dim', render: (r) => qty(r.quantity) },
     { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) => `<b>${money(r.sum)}</b>` },
   ],
@@ -191,6 +205,38 @@ function rowsHtml(rows, startIndex) {
         <td class="idx">${int.format(startIndex + i)}</td>${cells}</tr>`;
     })
     .join('');
+}
+
+/**
+ * Два ряда чипсов по категориям. Второй ряд появляется только когда выбрана
+ * группа, и показывает её подкатегории: 39 подкатегорий одним рядом нечитаемы.
+ */
+function renderCategoryChips() {
+  const groupRow = $('chips-group');
+  const categoryRow = $('chips-category');
+  const groups = meta?.categories ?? [];
+  const visible = state.view === 'items' && groups.length > 0;
+
+  groupRow.hidden = !visible;
+  categoryRow.hidden = !visible || !state.group;
+  if (!visible) return;
+
+  const chip = (attr, value, label, active, count) =>
+    `<button class="chip" type="button" data-${attr}="${esc(value)}" aria-pressed="${active}">` +
+    `${esc(label)}${count ? ` <span class="chip-count">${int.format(count)}</span>` : ''}</button>`;
+
+  groupRow.innerHTML =
+    chip('group', '', 'Все', !state.group && !state.uncategorized) +
+    groups.map((g) => chip('group', g.slug, g.name, state.group === g.slug && !state.uncategorized, g.items)).join('') +
+    (meta.uncategorized ? chip('uncat', '1', 'Без категории', state.uncategorized === '1', meta.uncategorized) : '');
+
+  if (!categoryRow.hidden) {
+    const group = groups.find((g) => g.slug === state.group);
+    categoryRow.innerHTML = group
+      ? chip('category', '', `Вся группа`, !state.category) +
+        group.subcategories.map((s) => chip('category', s.slug, s.name, state.category === s.slug, s.items)).join('')
+      : '';
+  }
 }
 
 function renderSummary(totals) {
@@ -458,6 +504,8 @@ async function loadMeta() {
   ]
     .filter(Boolean)
     .join(' · ');
+
+  renderCategoryChips(); // справочник приезжает позже разметки — перерисовываем
 }
 
 // ── события ──────────────────────────────────────────────
@@ -488,6 +536,8 @@ function syncControls() {
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.setAttribute('aria-current', String(item.dataset.view === state.view));
   });
+
+  renderCategoryChips();
 }
 
 function update(patch) {
@@ -515,6 +565,18 @@ function bind() {
 
   $('period-prev').addEventListener('click', () => shiftPeriod(-1));
   $('period-next').addEventListener('click', () => shiftPeriod(1));
+
+  $('chips-group').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    if (chip.dataset.uncat !== undefined) return update({ uncategorized: '1', group: '', category: '' });
+    update({ group: chip.dataset.group, category: '', uncategorized: '' });
+  });
+
+  $('chips-category').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (chip) update({ category: chip.dataset.category });
+  });
 
   $('chips-sum').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');

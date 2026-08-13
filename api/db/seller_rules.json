@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "comment": "Правила по ИНН продавца. mode=always — продавец торгует одной категорией, правило перекрывает всё остальное. mode=fallback — смешанная корзина, применяется только если позицию не удалось определить по названию, GTIN и модели. Маркетплейсы (Ozon, Wildberries) правил не имеют намеренно: там продаётся что угодно.",
+  "rules": [
+    { "inn": "2309051942", "category": "transport.fuel", "mode": "always", "note": "ЛУКОЙЛ, АЗС" },
+    { "inn": "9201007370", "category": "transport.fuel", "mode": "always", "note": "Крым-Ойл, АЗС" },
+    { "inn": "7722582752", "category": "transport.fuel", "mode": "always", "note": "Нефтьмагистраль, АЗС" },
+    { "inn": "5009053687", "category": "transport.fuel", "mode": "always", "note": "Татнефть, АЗС" },
+    { "inn": "7710965662", "category": "transport.parking", "mode": "always", "note": "Парковочное пространство, пополнение счёта" },
+
+    { "inn": "7704340310", "category": "transport.public", "mode": "always", "note": "Яндекс.Такси" },
+    { "inn": "7806453827", "category": "transport.public", "mode": "always", "note": "Купибилет" },
+    { "inn": "7733277126", "category": "transport.public", "mode": "always", "note": "Тройка, проездные" },
+    { "inn": "7702038150", "category": "transport.public", "mode": "always", "note": "Московский метрополитен" },
+
+    { "inn": "7714700709", "category": "transport.service", "mode": "always", "note": "Борисхоф, автозапчасти" },
+    { "inn": "773101094854", "category": "transport.service", "mode": "always", "note": "Магазин автозапчастей" },
+
+    { "inn": "7728339546", "category": "health.pharmacy", "mode": "always", "note": "Аптеки Столички" },
+    { "inn": "7705947629", "category": "health.pharmacy", "mode": "always", "note": "Аптека А.В.Е" },
+    { "inn": "7751344022", "category": "health.pharmacy", "mode": "always", "note": "Азбука Здоровья" },
+
+    { "inn": "7734418612", "category": "health.fitness", "mode": "always", "note": "DDX Fitness" },
+    { "inn": "9204017560", "category": "health.fitness", "mode": "always", "note": "Планета Спорт" },
+    { "inn": "5003006930", "category": "health.fitness", "mode": "always", "note": "ОК Десна, абонементы и посещения" },
+
+    { "inn": "7740000076", "category": "housing.telecom", "mode": "always", "note": "МТС" },
+    { "inn": "6312068502", "category": "housing.telecom", "mode": "always", "note": "REG.RU, домены и хостинг" },
+    { "inn": "7736520080", "category": "housing.utilities", "mode": "always", "note": "Мосэнергосбыт" },
+    { "inn": "5029069967", "category": "housing.repair", "mode": "always", "note": "Леруа Мерлен" },
+    { "inn": "9204000277", "category": "housing.repair", "mode": "always", "note": "Добрострой" },
+
+    { "inn": "7726464100", "category": "education.courses", "mode": "always", "note": "Фоксфорд" },
+
+    { "inn": "7704082517", "category": "finance.investments", "mode": "always", "note": "Т-Страхование" },
+    { "inn": "7706810747", "category": "finance.investments", "mode": "always", "note": "Сбербанк Страхование" },
+    { "inn": "7713056834", "category": "finance.investments", "mode": "always", "note": "АльфаСтрахование" },
+
+    { "inn": "9705121040", "category": "leisure.events", "mode": "always", "note": "Яндекс Афиша" },
+    { "inn": "7711065368", "category": "leisure.events", "mode": "always", "note": "Аквапарк и термы" },
+    { "inn": "7813635673", "category": "leisure.media", "mode": "always", "note": "Sponsr, подписки на авторов" },
+
+    { "inn": "7716918034", "category": "clothing.accessories", "mode": "always", "note": "SOKOLOV, ювелирные изделия" },
+    { "inn": "7706783684", "category": "clothing.shoes", "mode": "always", "note": "ZENDEN" },
+    { "inn": "7702764909", "category": "clothing.shoes", "mode": "always", "note": "KARI" },
+    { "inn": "6166019871", "category": "clothing.apparel", "mode": "always", "note": "Глория Джинс" },
+    { "inn": "7728551510", "category": "clothing.apparel", "mode": "always", "note": "O'STIN" },
+    { "inn": "7839326623", "category": "clothing.apparel", "mode": "always", "note": "befree" },
+
+    { "inn": "462502894700", "category": "other.smoking", "mode": "always", "note": "МСК Табак" },
+    { "inn": "490902653609", "category": "other.smoking", "mode": "always", "note": "Магазин Втабачке" },
+
+    { "inn": "7715905723", "category": "food.delivery", "mode": "always", "note": "Шеф Маркет" },
+    { "inn": "9721101322", "category": "food.delivery", "mode": "always", "note": "Ужин Дома" },
+    { "inn": "7719723690", "category": "food.dining", "mode": "always", "note": "Бургер Кинг" },
+
+    { "inn": "7743931676", "category": "food.alcohol", "mode": "fallback", "note": "Красное & Белое" },
+    { "inn": "5257056036", "category": "food.alcohol", "mode": "fallback", "note": "Бристоль" },
+    { "inn": "3906262459", "category": "food.alcohol", "mode": "always", "note": "Джек Бир, разливное пиво" },
+
+    { "inn": "2310031475", "category": "food.groceries", "mode": "fallback", "note": "Магнит" },
+    { "inn": "7743543232", "category": "food.groceries", "mode": "fallback", "note": "АТАК" },
+    { "inn": "7703270067", "category": "food.groceries", "mode": "fallback", "note": "Ашан" },
+    { "inn": "7825706086", "category": "food.groceries", "mode": "fallback", "note": "Пятёрочка (Агроторг)" },
+    { "inn": "7715277300", "category": "food.groceries", "mode": "fallback", "note": "Пятёрочка (Агроаспект)" },
+    { "inn": "5036045205", "category": "food.groceries", "mode": "fallback", "note": "Дикси" },
+    { "inn": "4345164751", "category": "food.groceries", "mode": "fallback", "note": "Продторг" },
+    { "inn": "7734443270", "category": "food.groceries", "mode": "fallback", "note": "ВкусВилл" },
+    { "inn": "7728029110", "category": "food.groceries", "mode": "fallback", "note": "Перекрёсток" },
+    { "inn": "7743543761", "category": "food.groceries", "mode": "fallback", "note": "Глобус" },
+    { "inn": "9202001211", "category": "food.groceries", "mode": "fallback", "note": "Самшит" },
+    { "inn": "5009033419", "category": "food.groceries", "mode": "fallback", "note": "Торговый объект №1" },
+    { "inn": "5009074197", "category": "food.groceries", "mode": "fallback", "note": "ПродМир" },
+    { "inn": "9200003904", "category": "food.groceries", "mode": "fallback", "note": "ЕдаВода" },
+    { "inn": "772850825726", "category": "food.groceries", "mode": "fallback", "note": "Магазин у дома" },
+    { "inn": "775101713392", "category": "food.groceries", "mode": "fallback", "note": "Магазин у дома" },
+    { "inn": "7715867370", "category": "food.groceries", "mode": "fallback", "note": "Тема Ритейл" },
+    { "inn": "9204568535", "category": "food.groceries", "mode": "fallback", "note": "Ренет" },
+    { "inn": "9102188171", "category": "food.groceries", "mode": "fallback", "note": "ПУД" },
+
+    { "inn": "5047085094", "category": "home.household", "mode": "fallback", "note": "Fix Price (Бэст Прайс)" }
+  ]
+}

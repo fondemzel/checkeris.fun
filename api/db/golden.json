@@ -1,0 +1,1747 @@
+{
+  "version": 1,
+  "seed": 42,
+  "comment": "Эталонная разметка для замера точности. Выборка стратифицирована по деньгам: 5 полос, каждая = 20% оборота. Поле category заполняется человеком и является истиной для замера.",
+  "items": [
+    {
+      "name": "ПИВО ЖИГУЛЕВСКОЕ СВЕТЛОЕ АЛК.4% Ж/Б 0,45Л",
+      "name_norm": "пиво жигулевское светлое алк.4% ж/б 0,45л",
+      "seller": "АО \"Дикси ЮГ\"        Дикси-50793",
+      "gtin": "4600682430452",
+      "count": 464,
+      "money": 2551284,
+      "band": 1,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "газ",
+      "name_norm": "газ",
+      "seller": "ЗАО ТОРГОВЫЙ ОБЪЕКТ N1",
+      "gtin": null,
+      "count": 22,
+      "money": 3533343,
+      "band": 1,
+      "category": "transport.fuel"
+    },
+    {
+      "name": "140012-2: Серьги из желтого золота с алмазной гранью",
+      "name_norm": "140012-2: серьги из желтого золота с алмазной гранью",
+      "seller": "\"СВ РИТЕЙЛ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 2407600,
+      "band": 1,
+      "category": "clothing.accessories"
+    },
+    {
+      "name": "Премия по договору страхования №8806626746",
+      "name_norm": "премия по договору страхования №8806626746",
+      "seller": "\"Т-СТРАХОВАНИЕ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 2534000,
+      "band": 1,
+      "category": "finance.investments"
+    },
+    {
+      "name": "ЖИГУЛЕВСКОЕ Пиво свет фильт паст4%0,45л ж/б с",
+      "name_norm": "жигулевское пиво свет фильт паст4%0,45л ж/б с",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 565,
+      "money": 14465607,
+      "band": 1,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Обучение в ЭДШ. Оплата по договору №ЭДШ/ОП-000425358-ЭФ/25-26",
+      "name_norm": "обучение в эдш. оплата по договору №эдш/оп-000425358-эф/25-26",
+      "seller": "\"ФОКСФОРД\"",
+      "gtin": null,
+      "count": 3,
+      "money": 3210600,
+      "band": 1,
+      "category": "education.courses"
+    },
+    {
+      "name": "Poco Смартфон M6 Pro 8/256 ГБ, фиолетовый",
+      "name_norm": "poco смартфон m6 pro 8/256 гб, фиолетовый",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 3660800,
+      "band": 1,
+      "category": "home.electronics"
+    },
+    {
+      "name": "БАЛТИКА №7 Пиво Мягкое свет фильтр 4,7%0",
+      "name_norm": "балтика №7 пиво мягкое свет фильтр 4,7%0",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4600682024217",
+      "count": 380,
+      "money": 2519060,
+      "band": 1,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "724585-3: Серьги из белого золота с топазами (Золото 585)",
+      "name_norm": "724585-3: серьги из белого золота с топазами (золото 585)",
+      "seller": "\"СВ РИТЕЙЛ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 2339000,
+      "band": 1,
+      "category": "clothing.accessories"
+    },
+    {
+      "name": "Вино АВТОРСКОЕ Каберне Совиньон роз п/сух 0,7",
+      "name_norm": "вино авторское каберне совиньон роз п/сух 0,7",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 71,
+      "money": 3535929,
+      "band": 1,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "ЖИГУЛЕВСКОЕ Пиво свет фильт паст4%0,45л",
+      "name_norm": "жигулевское пиво свет фильт паст4%0,45л",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4600682430452",
+      "count": 5115,
+      "money": 24890824,
+      "band": 1,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Сухой корм PERFECT FIT для стерилизованных кошек, с курицей, 10кг",
+      "name_norm": "сухой корм perfect fit для стерилизованных кошек, с курицей, 10кг",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 6,
+      "money": 2452000,
+      "band": 1,
+      "category": "pets.food"
+    },
+    {
+      "name": "110031: Обручальное кольцо из золота, 3 мм",
+      "name_norm": "110031: обручальное кольцо из золота, 3 мм",
+      "seller": "\"СВ РИТЕЙЛ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 2687600,
+      "band": 1,
+      "category": "clothing.accessories"
+    },
+    {
+      "name": "ХИТС Фиолетовый DM Стик (ФМ):10/500",
+      "name_norm": "хитс фиолетовый dm стик (фм):10/500",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "7623900407606",
+      "count": 643,
+      "money": 12208000,
+      "band": 1,
+      "category": "other.smoking"
+    },
+    {
+      "name": "Договор страхования № ХХХ-0398053108",
+      "name_norm": "договор страхования № ххх-0398053108",
+      "seller": "СТРАХОВАЯ КОМПАНИЯ \"СБЕРБАНК СТРАХОВАНИЕ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 1388519,
+      "band": 2,
+      "category": "finance.investments"
+    },
+    {
+      "name": "Белосалик лосьон (Спрей) с насадкой-распылит. р-р д/нар. прим. фл. 50мл",
+      "name_norm": "белосалик лосьон (спрей) с насадкой-распылит. р-р д/нар. прим. фл. 50мл",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": "3850343032315",
+      "count": 10,
+      "money": 716200,
+      "band": 2,
+      "category": "health.pharmacy"
+    },
+    {
+      "name": "БЕРИ И ПЕЙ Нектар мультифруктовый 1л т/пак:12",
+      "name_norm": "бери и пей нектар мультифруктовый 1л т/пак:12",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 83,
+      "money": 612512,
+      "band": 2,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ZATECKY GUS Пиво свет фильтр паст 4,6% 0,45л",
+      "name_norm": "zatecky gus пиво свет фильтр паст 4,6% 0,45л",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 52,
+      "money": 656304,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "AMSTEL Premium Pilsener Пиво свет филтр4,8%0,",
+      "name_norm": "amstel premium pilsener пиво свет филтр4,8%0,",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 134,
+      "money": 2157585,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "БОЧКАРЕВ Пивн/нап Белый Колос Н/ф паст 4",
+      "name_norm": "бочкарев пивн/нап белый колос н/ф паст 4",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4601501403909",
+      "count": 151,
+      "money": 796769,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Бандаж грыжевой пупочный на брюшную стенку (M-обхват живота 83-100 см) Экотен ГП-25 (высота 25 см), противогрыжевой бандаж для п",
+      "name_norm": "бандаж грыжевой пупочный на брюшную стенку (m-обхват живота 83-100 см) экотен гп-25 (высота 25 см), противогрыжевой бандаж для п",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 564400,
+      "band": 2,
+      "category": "health.pharmacy"
+    },
+    {
+      "name": "БАНАНЫ 1кг",
+      "name_norm": "бананы 1кг",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 133,
+      "money": 1863102,
+      "band": 2,
+      "category": "food.groceries"
+    },
+    {
+      "name": "СТИКИ HEETS FR.PAR.PURP.W.ПАЧКА",
+      "name_norm": "стики heets fr.par.purp.w.пачка",
+      "seller": "ООО \"Агроаспект\"",
+      "gtin": "4620081141094",
+      "count": 33,
+      "money": 669000,
+      "band": 2,
+      "category": "other.smoking"
+    },
+    {
+      "name": "СТАРЫЙ МЕЛЬНИК Из боч Пиво свет мяг паст4,3%",
+      "name_norm": "старый мельник из боч пиво свет мяг паст4,3%",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 184,
+      "money": 2042548,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "ВИНО ИНКЕР ШАТО БЛАН",
+      "name_norm": "вино инкер шато блан",
+      "seller": "ООО \"АТАК\"",
+      "gtin": null,
+      "count": 26,
+      "money": 976272,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Вино РОЗЕ роз.сух.0.75л",
+      "name_norm": "вино розе роз.сух.0.75л",
+      "seller": "\"АГРОТОРГ\"",
+      "gtin": null,
+      "count": 46,
+      "money": 1806454,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Оплата электроэнергии по лицевому счету №59246 199 23",
+      "name_norm": "оплата электроэнергии по лицевому счету №59246 199 23",
+      "seller": "АО \"МОСЭНЕРГОСБЫТ\"",
+      "gtin": null,
+      "count": 4,
+      "money": 1291026,
+      "band": 2,
+      "category": "housing.utilities"
+    },
+    {
+      "name": "КД/ЯЙЦО КУРИНОЕ СО",
+      "name_norm": "кд/яйцо куриное со",
+      "seller": "ООО \"АТАК\"",
+      "gtin": null,
+      "count": 21,
+      "money": 582961,
+      "band": 2,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Фитнес браслет Smart Band 9 Pro Xiaomi",
+      "name_norm": "фитнес браслет smart band 9 pro xiaomi",
+      "seller": "ООО \"РВБ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 697200,
+      "band": 2,
+      "category": "home.electronics"
+    },
+    {
+      "name": "ТО-20.000",
+      "name_norm": "то-20.000",
+      "seller": "\"БОРИСХОФ ХОЛДИНГ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 1920000,
+      "band": 2,
+      "category": "transport.service"
+    },
+    {
+      "name": "Аб-мент д/взрослых(1ребенок до 7 лет бесплатно) месяц",
+      "name_norm": "аб-мент д/взрослых(1ребенок до 7 лет бесплатно) месяц",
+      "seller": "ФГАУ \"ОК \"Десна\"",
+      "gtin": null,
+      "count": 1,
+      "money": 1300000,
+      "band": 2,
+      "category": "health.fitness"
+    },
+    {
+      "name": "ЯБЛОКИ ГОЛДЕН ВЕС",
+      "name_norm": "яблоки голден вес",
+      "seller": "ООО \"АТАК\"",
+      "gtin": null,
+      "count": 30,
+      "money": 562552,
+      "band": 2,
+      "category": "food.groceries"
+    },
+    {
+      "name": "185581 С3 Компакт GRANTA 031,3/6 с кр.дюропласт.,Lifting,бел шт",
+      "name_norm": "185581 с3 компакт granta 031,3/6 с кр.дюропласт.,lifting,бел шт",
+      "seller": "\"СТК \"ДОБРОСТРОЙ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 739900,
+      "band": 2,
+      "category": "housing.repair"
+    },
+    {
+      "name": "Тариф по билету KUP7XEZL6K-1",
+      "name_norm": "тариф по билету kup7xezl6k-1",
+      "seller": "\"ИНТЕРНЕТ-БИЛЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 582000,
+      "band": 2,
+      "category": "transport.public"
+    },
+    {
+      "name": "КП/КОНС Д/СОБ ИНД850",
+      "name_norm": "кп/конс д/соб инд850",
+      "seller": "ООО \"АТАК\"",
+      "gtin": null,
+      "count": 55,
+      "money": 873665,
+      "band": 2,
+      "category": "pets.food"
+    },
+    {
+      "name": "*СТИКИ HEETS FR.PAR.PURP.W.ПАЧКА",
+      "name_norm": "*стики heets fr.par.purp.w.пачка",
+      "seller": "Агроторг ООО",
+      "gtin": "7623900407606",
+      "count": 41,
+      "money": 799000,
+      "band": 2,
+      "category": "other.smoking"
+    },
+    {
+      "name": "Оплата электроэнергии по лицевому счету №5924619923",
+      "name_norm": "оплата электроэнергии по лицевому счету №5924619923",
+      "seller": "\"МОСЭНЕРГОСБЫТ\"",
+      "gtin": null,
+      "count": 7,
+      "money": 1813864,
+      "band": 2,
+      "category": "housing.utilities"
+    },
+    {
+      "name": "БАЛТИКА №7 Пиво Мягкое свет фильтр 4,7%0,45л",
+      "name_norm": "балтика №7 пиво мягкое свет фильтр 4,7%0,45л",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 94,
+      "money": 1752753,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Web-хостинг (тариф Reg.Host-A) u2701243",
+      "name_norm": "web-хостинг (тариф reg.host-a) u2701243",
+      "seller": "\"РЕГ.РУ ДОМЕНЫ ХОСТИНГ\"",
+      "gtin": null,
+      "count": 20,
+      "money": 633282,
+      "band": 2,
+      "category": "housing.telecom"
+    },
+    {
+      "name": "33607 Калинов родник газ1,5",
+      "name_norm": "33607 калинов родник газ1,5",
+      "seller": "\"АЛЬФА-М\"",
+      "gtin": "4607050692535",
+      "count": 180,
+      "money": 628620,
+      "band": 2,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Подписка на \"Школа капитализма\"",
+      "name_norm": "подписка на \"школа капитализма\"",
+      "seller": "\"СПОНСР КОМ\"",
+      "gtin": null,
+      "count": 16,
+      "money": 960000,
+      "band": 2,
+      "category": "leisure.media"
+    },
+    {
+      "name": "BRAHMA Пиво светл фильтр паст 4,3% 0,45л ст/б",
+      "name_norm": "brahma пиво светл фильтр паст 4,3% 0,45л ст/б",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 47,
+      "money": 606385,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "БОЧКАРЕВ Пиво светл паст Живой Розлив 4,",
+      "name_norm": "бочкарев пиво светл паст живой розлив 4,",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4601501203974",
+      "count": 212,
+      "money": 1138448,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Сигареты(ФМ)Heets Purple Wave (стики)",
+      "name_norm": "сигареты(фм)heets purple wave (стики)",
+      "seller": "\"САМШИТ\"",
+      "gtin": "7623900407606",
+      "count": 47,
+      "money": 860100,
+      "band": 2,
+      "category": "other.smoking"
+    },
+    {
+      "name": "Чистка суппортов одна ось",
+      "name_norm": "чистка суппортов одна ось",
+      "seller": "\"БОРИСХОФ ХОЛДИНГ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 600000,
+      "band": 2,
+      "category": "transport.service"
+    },
+    {
+      "name": "Ореховая смесь Семушка с клюквой, 500 г",
+      "name_norm": "ореховая смесь семушка с клюквой, 500 г",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 7,
+      "money": 549900,
+      "band": 2,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Вино INKERMAN Мускатное белое полусладкое 0,7",
+      "name_norm": "вино inkerman мускатное белое полусладкое 0,7",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 22,
+      "money": 699978,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "ФИЛЬТР САЛОНА N95 T15/T18/T19/T1A/T1E/T1",
+      "name_norm": "фильтр салона n95 t15/t18/t19/t1a/t1e/t1",
+      "seller": "\"БОРИСХОФ ХОЛДИНГ\"",
+      "gtin": null,
+      "count": 4,
+      "money": 1224362,
+      "band": 2,
+      "category": "transport.service"
+    },
+    {
+      "name": "Умные часы Xiaomi Китайская версия Xiaomi Band 8 Pro Support GPS Blood Oxygen 150+ sports, 46mm, Черный",
+      "name_norm": "умные часы xiaomi китайская версия xiaomi band 8 pro support gps blood oxygen 150+ sports, 46mm, черный",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 933800,
+      "band": 2,
+      "category": "home.electronics"
+    },
+    {
+      "name": "Батон Нарезной из пш в/с 400г не упак(КБК Чер",
+      "name_norm": "батон нарезной из пш в/с 400г не упак(кбк чер",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 214,
+      "money": 925939,
+      "band": 2,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ЯБЛОКИ Голден 1кг",
+      "name_norm": "яблоки голден 1кг",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 94,
+      "money": 1637913,
+      "band": 2,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ТРК №2 Бензин автомобильный ЭКТО Plus (АИ-95-К5)",
+      "name_norm": "трк №2 бензин автомобильный экто plus (аи-95-к5)",
+      "seller": "ООО \"ЛУКОЙЛ-Югнефтепродукт\",  АЗС-23131",
+      "gtin": null,
+      "count": 2,
+      "money": 603354,
+      "band": 2,
+      "category": "transport.fuel"
+    },
+    {
+      "name": "Вино 5 ELEMENTS Алиг-Шард-Совин бел сух 0,75л",
+      "name_norm": "вино 5 elements алиг-шард-совин бел сух 0,75л",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 14,
+      "money": 600986,
+      "band": 2,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "ТРК-2 Аи-95-К5",
+      "name_norm": "трк-2 аи-95-к5",
+      "seller": "\"ТАТНЕФТЬ-АЗС-ЗАПАД\"",
+      "gtin": null,
+      "count": 3,
+      "money": 600073,
+      "band": 2,
+      "category": "transport.fuel"
+    },
+    {
+      "name": "funday / FWNR00008A 99 L Платье для женщин, черный р. L 50",
+      "name_norm": "funday / fwnr00008a 99 l платье для женщин, черный р. l 50",
+      "seller": "\"ОСТИН\"",
+      "gtin": "4660416568448",
+      "count": 1,
+      "money": 149900,
+      "band": 3,
+      "category": "clothing.apparel"
+    },
+    {
+      "name": "Порошок для посудомоечных машин KIX, 3 кг",
+      "name_norm": "порошок для посудомоечных машин kix, 3 кг",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 6,
+      "money": 375395,
+      "band": 3,
+      "category": "home.household"
+    },
+    {
+      "name": "Футболка I love my Bro КОМБО",
+      "name_norm": "футболка i love my bro комбо",
+      "seller": "ООО \"Вайлдберриз\"",
+      "gtin": null,
+      "count": 2,
+      "money": 149000,
+      "band": 3,
+      "category": "clothing.apparel"
+    },
+    {
+      "name": "Лежанка для собак средних и мелких пород и кошек Fluffy's Tail Лондон с бортиками, двусторонней подушкой, от производителя",
+      "name_norm": "лежанка для собак средних и мелких пород и кошек fluffy's tail лондон с бортиками, двусторонней подушкой, от производителя",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 230200,
+      "band": 3,
+      "category": "pets.supplies"
+    },
+    {
+      "name": "ВИСКИ ОЛД СМАГГЛЕР",
+      "name_norm": "виски олд смагглер",
+      "seller": "ООО \"Гиперглобус\"",
+      "gtin": null,
+      "count": 1,
+      "money": 149212,
+      "band": 3,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "1/1 Колхицин лирка таб. 1мг №30",
+      "name_norm": "1/1 колхицин лирка таб. 1мг №30",
+      "seller": "\"АЗБУКА ЗДОРОВЬЯ\"",
+      "gtin": "4601429006411",
+      "count": 1,
+      "money": 349800,
+      "band": 3,
+      "category": "health.pharmacy"
+    },
+    {
+      "name": "Премия по договору страхования №MRG-0000398121",
+      "name_norm": "премия по договору страхования №mrg-0000398121",
+      "seller": "\"Т-СТРАХОВАНИЕ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 366400,
+      "band": 3,
+      "category": "finance.investments"
+    },
+    {
+      "name": "Вино INKERMAN WMS Рислинг белое полусухое 0,7",
+      "name_norm": "вино inkerman wms рислинг белое полусухое 0,7",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 10,
+      "money": 475990,
+      "band": 3,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "ПАПА МОЖЕТ Колбаса Чесночная п/к 0,42кг мяс/п",
+      "name_norm": "папа может колбаса чесночная п/к 0,42кг мяс/п",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 11,
+      "money": 241189,
+      "band": 3,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ВИНОГРАД Кишмиш белый 1кг",
+      "name_norm": "виноград кишмиш белый 1кг",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 13,
+      "money": 221235,
+      "band": 3,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Табачные стики Heets Purple Wave МТ",
+      "name_norm": "табачные стики heets purple wave мт",
+      "seller": "\"ПУД\"",
+      "gtin": "7623900407606",
+      "count": 11,
+      "money": 198000,
+      "band": 3,
+      "category": "other.smoking"
+    },
+    {
+      "name": "Подмосковная 255, джинсовый 0,1 мот",
+      "name_norm": "подмосковная 255, джинсовый 0,1 мот",
+      "seller": "\"ПРЯЖА ИЗ ТРОИЦКА\"",
+      "gtin": null,
+      "count": 2,
+      "money": 154000,
+      "band": 3,
+      "category": "home.hobby"
+    },
+    {
+      "name": "ПИВО СТАРЫЙ МЕЛЬНИК ИЗ БОЧ.МЯГК.СВЕТ.4,3%С/Б 0,45Л",
+      "name_norm": "пиво старый мельник из боч.мягк.свет.4,3%с/б 0,45л",
+      "seller": "АО \"Дикси ЮГ\" Дикси-78726",
+      "gtin": "4605622010237",
+      "count": 49,
+      "money": 384543,
+      "band": 3,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Электрическая зубная щетка Xiaomi",
+      "name_norm": "электрическая зубная щетка xiaomi",
+      "seller": "ООО \"Вайлдберриз\"",
+      "gtin": null,
+      "count": 1,
+      "money": 181500,
+      "band": 3,
+      "category": "health.beauty"
+    },
+    {
+      "name": "Думай медленно... решай быстро",
+      "name_norm": "думай медленно... решай быстро",
+      "seller": "ПОПАНДОПУЛО ХАРЛАМПИЙ АНАСТАСОВИЧ",
+      "gtin": null,
+      "count": 1,
+      "money": 149900,
+      "band": 3,
+      "category": "leisure.media"
+    },
+    {
+      "name": "Батон Нарезной нарез в/с 400г п/уп(Дедовский",
+      "name_norm": "батон нарезной нарез в/с 400г п/уп(дедовский",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 52,
+      "money": 266290,
+      "band": 3,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Перец желтый, 450 г",
+      "name_norm": "перец желтый, 450 г",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 11,
+      "money": 182900,
+      "band": 3,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Насос- помпа для фонтана ARS-2000 25W/ насос- помпа для аквариума полива погружной",
+      "name_norm": "насос- помпа для фонтана ars-2000 25w/ насос- помпа для аквариума полива погружной",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 320000,
+      "band": 3,
+      "category": "home.goods"
+    },
+    {
+      "name": "Бекон сырокопчёный полоски 100 гр, Лук репчатый (90-150 г) 1 шт, Масло подсолнечное нерафинированное 30 гр, Лук репчатый (90...",
+      "name_norm": "бекон сырокопченый полоски 100 гр, лук репчатый (90-150 г) 1 шт, масло подсолнечное нерафинированное 30 гр, лук репчатый (90...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 212292,
+      "band": 3,
+      "category": "food.delivery"
+    },
+    {
+      "name": "Услуга, перевозка пассажиров и багажа",
+      "name_norm": "услуга, перевозка пассажиров и багажа",
+      "seller": "ГУП \"Московский метрополитен\"",
+      "gtin": null,
+      "count": 7,
+      "money": 167500,
+      "band": 3,
+      "category": "transport.public"
+    },
+    {
+      "name": "Термометр инфракрасный бесконтактный МС-302 x1 серый Медикеа",
+      "name_norm": "термометр инфракрасный бесконтактный мс-302 x1 серый медикеа",
+      "seller": "Общество с ограниченной ответственностью \"Интернет Решения\"",
+      "gtin": null,
+      "count": 2,
+      "money": 361600,
+      "band": 3,
+      "category": "health.pharmacy"
+    },
+    {
+      "name": "COOL COLA Напиток безалк сильног 1,5л пл",
+      "name_norm": "cool cola напиток безалк сильног 1,5л пл",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4600068052933",
+      "count": 13,
+      "money": 143487,
+      "band": 3,
+      "category": "food.groceries"
+    },
+    {
+      "name": "SUNREME Мороженое рож Банан Малина 78г(Ф",
+      "name_norm": "sunreme мороженое рож банан малина 78г(ф",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4620021193824",
+      "count": 29,
+      "money": 204771,
+      "band": 3,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Подписка на \"Алексей Антонов\"",
+      "name_norm": "подписка на \"алексей антонов\"",
+      "seller": "\"СПОНСР КОМ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 150000,
+      "band": 3,
+      "category": "leisure.media"
+    },
+    {
+      "name": "HLN2N0M6RR funday / VPW469 D4 W29 Брюки (джинсы) Женск., светло-синий,р.W29 46",
+      "name_norm": "hln2n0m6rr funday / vpw469 d4 w29 брюки (джинсы) женск., светло-синий,р.w29 46",
+      "seller": "\"ОСТИН\"",
+      "gtin": null,
+      "count": 1,
+      "money": 229900,
+      "band": 3,
+      "category": "clothing.apparel"
+    },
+    {
+      "name": "Аванс за услуги по регистрации доменных имен и услуг хостинга",
+      "name_norm": "аванс за услуги по регистрации доменных имен и услуг хостинга",
+      "seller": "\"РЕГ.РУ ДОМЕНЫ ХОСТИНГ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 200000,
+      "band": 3,
+      "category": "housing.telecom"
+    },
+    {
+      "name": "Блузка GWT003564 тканая белый XXS/158",
+      "name_norm": "блузка gwt003564 тканая белый xxs/158",
+      "seller": "\"ГЛОРИЯ ДЖИНС\"",
+      "gtin": "4680622146919",
+      "count": 1,
+      "money": 249900,
+      "band": 3,
+      "category": "clothing.apparel"
+    },
+    {
+      "name": "36FI4LKEUV O`Stin / MP4782 G9 XS Брюки для мужчин, чёрно-зелёный р. XS 42-44",
+      "name_norm": "36fi4lkeuv o`stin / mp4782 g9 xs брюки для мужчин, черно-зеленый р. xs 42-44",
+      "seller": "\"ОСТИН\"",
+      "gtin": "4660306511660",
+      "count": 1,
+      "money": 199900,
+      "band": 3,
+      "category": "clothing.apparel"
+    },
+    {
+      "name": "1: M5259786 Полуботинки мужские для активного отдыха K1939-12A Размер 43",
+      "name_norm": "1: m5259786 полуботинки мужские для активного отдыха k1939-12a размер 43",
+      "seller": "\"КАРИ\"",
+      "gtin": "4610331843519",
+      "count": 1,
+      "money": 255200,
+      "band": 3,
+      "category": "clothing.shoes"
+    },
+    {
+      "name": "Вино ИСТОРИЧЕСКИЙ КРЫМ Бианка/Шардоне бел сух",
+      "name_norm": "вино исторический крым бианка/шардоне бел сух",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 6,
+      "money": 179994,
+      "band": 3,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "АИ-95-К5 Pulsar-95 N 4:07568",
+      "name_norm": "аи-95-к5 pulsar-95 n 4:07568",
+      "seller": "\"НК \"РОСНЕФТЬ\" - КУБАНЬНЕФТЕПРОДУКТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 262398,
+      "band": 3,
+      "category": "transport.fuel"
+    },
+    {
+      "name": "ВиноРоссии Инкерман Алиготе бел.сух.0,7",
+      "name_norm": "винороссии инкерман алиготе бел.сух.0,7",
+      "seller": "ООО \"Винлаб-Запад\"",
+      "gtin": null,
+      "count": 6,
+      "money": 227994,
+      "band": 3,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Рис длиннозёрный пропаренный 200 гр, Чеснок свежий (2-4 г) 1 шт, Лук репчатый (90-150 г) 1 шт, Говядина мякоть брусок марино...",
+      "name_norm": "рис длиннозерный пропаренный 200 гр, чеснок свежий (2-4 г) 1 шт, лук репчатый (90-150 г) 1 шт, говядина мякоть брусок марино...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 164960,
+      "band": 3,
+      "category": "food.delivery"
+    },
+    {
+      "name": "76-02WA-506SW Ботинки для активного отды|Зима|37",
+      "name_norm": "76-02wa-506sw ботинки для активного отды|зима|37",
+      "seller": "\"СЕЗОННАЯ КОЛЛЕКЦИЯ\"",
+      "gtin": "4660156150774",
+      "count": 1,
+      "money": 184600,
+      "band": 3,
+      "category": "clothing.shoes"
+    },
+    {
+      "name": "189-21MV-574TT Туфли летние мужские текс|лето|41",
+      "name_norm": "189-21mv-574tt туфли летние мужские текс|лето|41",
+      "seller": "\"СЕЗОННАЯ КОЛЛЕКЦИЯ\"",
+      "gtin": "4660156234894",
+      "count": 1,
+      "money": 143900,
+      "band": 3,
+      "category": "clothing.shoes"
+    },
+    {
+      "name": "SUNREME Мороженое рожок Черн смородина М",
+      "name_norm": "sunreme мороженое рожок черн смородина м",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4620021194272",
+      "count": 12,
+      "money": 156788,
+      "band": 3,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Электрическая зубная щетка Xiaomi MiJia T200 pink",
+      "name_norm": "электрическая зубная щетка xiaomi mijia t200 pink",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 232200,
+      "band": 3,
+      "category": "health.beauty"
+    },
+    {
+      "name": "КОРОВКА ИЗ КОРЕНОВКИ морож пломб в в/ста",
+      "name_norm": "коровка из кореновки морож пломб в в/ста",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4602358003670",
+      "count": 28,
+      "money": 209972,
+      "band": 3,
+      "category": "food.groceries"
+    },
+    {
+      "name": "112830-Бюстгальтер (80-C-0, чёрный)",
+      "name_norm": "112830-бюстгальтер (80-c-0, черный)",
+      "seller": "ЗАКРЫТОЕ  \"СИЛЬВАНО ФЕШН\"",
+      "gtin": "4811207556407",
+      "count": 1,
+      "money": 265900,
+      "band": 3,
+      "category": "clothing.apparel"
+    },
+    {
+      "name": "Тариф по билету CD2MT8-0",
+      "name_norm": "тариф по билету cd2mt8-0",
+      "seller": "\"ИНТЕРНЕТ-БИЛЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 369900,
+      "band": 3,
+      "category": "transport.public"
+    },
+    {
+      "name": "Вино Curvos Ros роз.п/сух 12-12,5% 0.75л Португалия Виньо Верде-СИ",
+      "name_norm": "вино curvos ros роз.п/сух 12-12,5% 0.75л португалия виньо верде-си",
+      "seller": "ООО \"Продмир\"",
+      "gtin": null,
+      "count": 1,
+      "money": 67990,
+      "band": 4,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "ЦИЛИНДР ПЕРЕД. ТОРМ. 2108-09 ПРАВЫЙ \"FEN",
+      "name_norm": "цилиндр перед. торм. 2108-09 правый \"fen",
+      "seller": "ИП Устинов Александр Владимирович",
+      "gtin": null,
+      "count": 1,
+      "money": 92500,
+      "band": 4,
+      "category": "transport.service"
+    },
+    {
+      "name": "ЛЮБИМЫЙ Напиток сок/содерж Земляничное лето 1",
+      "name_norm": "любимый напиток сок/содерж земляничное лето 1",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 5,
+      "money": 62995,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Дождевик комплект 2 шт ARDECO",
+      "name_norm": "дождевик комплект 2 шт ardeco",
+      "seller": "ООО \"Вайлдберриз\"",
+      "gtin": null,
+      "count": 1,
+      "money": 57300,
+      "band": 4,
+      "category": "clothing.apparel"
+    },
+    {
+      "name": "Яйца куриные (пищевые) 1 шт, Соус сливочный из белых грибов от шефа 150 гр, Куриные бёдра маринованные в паприке 360 гр, Мак...",
+      "name_norm": "яйца куриные (пищевые) 1 шт, соус сливочный из белых грибов от шефа 150 гр, куриные бедра маринованные в паприке 360 гр, мак...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 121367,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "LANDKAAS Сыр Тильзитер 45% (ф):1,5",
+      "name_norm": "landkaas сыр тильзитер 45% (ф):1,5",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4680328016523",
+      "count": 3,
+      "money": 80069,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Корм Китекат Говяд. желе",
+      "name_norm": "корм китекат говяд. желе",
+      "seller": "\"ПОСЕЙДОН\"",
+      "gtin": null,
+      "count": 6,
+      "money": 60768,
+      "band": 4,
+      "category": "pets.food"
+    },
+    {
+      "name": "САЛАТ В ГОРШОЧКЕ 1УПАКОВКА",
+      "name_norm": "салат в горшочке 1упаковка",
+      "seller": "АО \"Дикси ЮГ\"        Дикси-50793",
+      "gtin": null,
+      "count": 15,
+      "money": 117285,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Чеснок молотый 2 гр, Соус коул-слоу от шефа 80 гр, Пергаментный лист 1 шт, Кориандр молотый 1 гр, Паприка с ароматом копчени...",
+      "name_norm": "чеснок молотый 2 гр, соус коул-слоу от шефа 80 гр, пергаментный лист 1 шт, кориандр молотый 1 гр, паприка с ароматом копчени...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 54347,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "Товар 488",
+      "name_norm": "товар 488",
+      "seller": "ТРЕМАСКИН АНДРЕЙ ВЛАДИМИРОВИЧ",
+      "gtin": null,
+      "count": 1,
+      "money": 108900,
+      "band": 4,
+      "category": "other.other"
+    },
+    {
+      "name": "Коктейль Мохито Большой",
+      "name_norm": "коктейль мохито большой",
+      "seller": "ПОЛЯНСКАЯ МАРИЯ ИГОРЕВНА",
+      "gtin": null,
+      "count": 2,
+      "money": 67000,
+      "band": 4,
+      "category": "food.dining"
+    },
+    {
+      "name": "Картофель свежий 100 гр, Лук репчатый (90-150 г) 1 шт, Рис круглозёрный \"Кубань\" 50 гр, Кускус 25 гр, Яйца куриные (пищевые)...",
+      "name_norm": "картофель свежий 100 гр, лук репчатый (90-150 г) 1 шт, рис круглозерный \"кубань\" 50 гр, кускус 25 гр, яйца куриные (пищевые)...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 67628,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "Сухари панировочные 30 гр, Мука пшеничная 24 гр, Курица маринованная по классическому рецепту    360 гр, Макароны спагетти 2...",
+      "name_norm": "сухари панировочные 30 гр, мука пшеничная 24 гр, курица маринованная по классическому рецепту 360 гр, макароны спагетти 2...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 104090,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "PUFFMI 3500 зат. в ас-те",
+      "name_norm": "puffmi 3500 зат. в ас-те",
+      "seller": "ДУНАМАЛЯН ДЖАНИБЕК КАРЕНОВИЧ",
+      "gtin": null,
+      "count": 1,
+      "money": 84900,
+      "band": 4,
+      "category": "other.smoking"
+    },
+    {
+      "name": "Подарочный набор ежедневник недатированный А5 REALGIFT",
+      "name_norm": "подарочный набор ежедневник недатированный а5 realgift",
+      "seller": "ООО \"РВБ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 113100,
+      "band": 4,
+      "category": "gifts.gifts"
+    },
+    {
+      "name": "ГРУШИ Вильямс/Пакхамс 1кг",
+      "name_norm": "груши вильямс/пакхамс 1кг",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 6,
+      "money": 70028,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Котлеты \"Теремок\", тушенные в сметанном соусе, с картофельным пюре",
+      "name_norm": "котлеты \"теремок\", тушенные в сметанном соусе, с картофельным пюре",
+      "seller": "\"МИЛ-КИТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 90400,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "Ризотто с тигровыми креветками, тыквой и Пармезаном",
+      "name_norm": "ризотто с тигровыми креветками, тыквой и пармезаном",
+      "seller": "\"МИЛ-КИТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 105600,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "Лук репчатый (90-150 г) 1 шт, Свинина фарш 400 гр, Сухари панировочные 60 гр, Яйца куриные (пищевые) 1 шт, Мука пшеничная 48...",
+      "name_norm": "лук репчатый (90-150 г) 1 шт, свинина фарш 400 гр, сухари панировочные 60 гр, яйца куриные (пищевые) 1 шт, мука пшеничная 48...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 71442,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "СЫР ЛАМБЕР 50% 230Г",
+      "name_norm": "сыр ламбер 50% 230г",
+      "seller": "ООО \"АТАК\"",
+      "gtin": "4690228015441",
+      "count": 2,
+      "money": 58245,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ЯБЛОКИ ГРЕННИ СМИТ ВЕС",
+      "name_norm": "яблоки гренни смит вес",
+      "seller": "АО \"Дикси Юг\"     Дикси-77264",
+      "gtin": null,
+      "count": 5,
+      "money": 91244,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Набор чая подарочный листовой черный зеленый Isfahan Tea",
+      "name_norm": "набор чая подарочный листовой черный зеленый isfahan tea",
+      "seller": "ООО \"РВБ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 62400,
+      "band": 4,
+      "category": "gifts.gifts"
+    },
+    {
+      "name": "Пиво Трехсосенское Жигулевское ж/б 0,45 л 4,5 %",
+      "name_norm": "пиво трехсосенское жигулевское ж/б 0,45 л 4,5 %",
+      "seller": "\"ПЛАНЕТА \"СПОРТ\"",
+      "gtin": "4607056587026",
+      "count": 11,
+      "money": 86900,
+      "band": 4,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Хлеб Паляница 700г не упак(Черемушки)",
+      "name_norm": "хлеб паляница 700г не упак(черемушки)",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 15,
+      "money": 117455,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Оливки Federici с лимоном, 300 г",
+      "name_norm": "оливки federici с лимоном, 300 г",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 4,
+      "money": 59800,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "*Дск Огурцы корнишоны прем.300г",
+      "name_norm": "*дск огурцы корнишоны прем.300г",
+      "seller": "ООО \"Агроаспект\"",
+      "gtin": null,
+      "count": 5,
+      "money": 88995,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Простынь для бани и сауны в парилку Банькин",
+      "name_norm": "простынь для бани и сауны в парилку банькин",
+      "seller": "ООО \"Вайлдберриз\"",
+      "gtin": null,
+      "count": 1,
+      "money": 140800,
+      "band": 4,
+      "category": "home.goods"
+    },
+    {
+      "name": "Сыр Dorblu, с голубой плесенью, 50%, треугольник, 100 г",
+      "name_norm": "сыр dorblu, с голубой плесенью, 50%, треугольник, 100 г",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": "4607108095929",
+      "count": 2,
+      "money": 65200,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Йогурт греческий 140 г 1 шт, Рис длиннозёрный пропаренный 100 гр, Грибы шампиньоны 75 гр, Колбаски из кролика 300 гр, Соус с...",
+      "name_norm": "йогурт греческий 140 г 1 шт, рис длиннозерный пропаренный 100 гр, грибы шампиньоны 75 гр, колбаски из кролика 300 гр, соус с...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 71142,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "БАТОН НАРЕЗНОЙ В/С НАР.400Г КОЛОМЕНСКОЕ",
+      "name_norm": "батон нарезной в/с нар.400г коломенское",
+      "seller": "АО \"ДИКСИ ЮГ\"     ДИКСИ-77335",
+      "gtin": null,
+      "count": 9,
+      "money": 59091,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Колбаски из мяса птицы для гриля Шашлычные 400г МИРАТОРГ РОССИЯ",
+      "name_norm": "колбаски из мяса птицы для гриля шашлычные 400г мираторг россия",
+      "seller": "ООО \"Продмир\"",
+      "gtin": null,
+      "count": 3,
+      "money": 57158,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Спагетти \"Милано\" с цыпленком и вялеными томатами",
+      "name_norm": "спагетти \"милано\" с цыпленком и вялеными томатами",
+      "seller": "\"МИЛ-КИТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 105600,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "КП/КОСА КОПЧЕНАЯ 110",
+      "name_norm": "кп/коса копченая 110",
+      "seller": "ООО \"АТАК\"",
+      "gtin": "4690363079018",
+      "count": 5,
+      "money": 73625,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "KRONENBOURG 1664 BLANC Пив/нап паст4,5%0,45л",
+      "name_norm": "kronenbourg 1664 blanc пив/нап паст4,5%0,45л",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 5,
+      "money": 79990,
+      "band": 4,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Колбаса сыровяленая Сальчичон Монтанья Экстра Casademont, 250 г",
+      "name_norm": "колбаса сыровяленая сальчичон монтанья экстра casademont, 250 г",
+      "seller": "\"ИНТЕРНЕТ РЕШЕНИЯ\"",
+      "gtin": null,
+      "count": 2,
+      "money": 108000,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Наушники беспроводные Xiaomi Airdots 2 модель 23J07LS",
+      "name_norm": "наушники беспроводные xiaomi airdots 2 модель 23j07ls",
+      "seller": "Общество с ограниченной ответственностью \"Интернет Решения\"",
+      "gtin": null,
+      "count": 1,
+      "money": 130400,
+      "band": 4,
+      "category": "home.electronics"
+    },
+    {
+      "name": "Соус песто веганский от шефа 30 гр, Макароны фарфалле 150 гр, Соус томатный от шефа 150 гр, Сахар белый 2 гр, Морковь свежая...",
+      "name_norm": "соус песто веганский от шефа 30 гр, макароны фарфалле 150 гр, соус томатный от шефа 150 гр, сахар белый 2 гр, морковь свежая...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 67344,
+      "band": 4,
+      "category": "food.delivery"
+    },
+    {
+      "name": "Хлеб Дарницкий 700г не упак(КБК Черемушки)",
+      "name_norm": "хлеб дарницкий 700г не упак(кбк черемушки)",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 11,
+      "money": 67137,
+      "band": 4,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Пиво ЖИГУЛЕВ.ОСОБ.св.ж/б 0.45л",
+      "name_norm": "пиво жигулев.особ.св.ж/б 0.45л",
+      "seller": "ООО \"Агроаспект\"",
+      "gtin": "4600682019688",
+      "count": 19,
+      "money": 96780,
+      "band": 4,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "Подарочный ежедневник блокнот в подарок Alistar",
+      "name_norm": "подарочный ежедневник блокнот в подарок alistar",
+      "seller": "ООО \"Вайлдберриз\"",
+      "gtin": null,
+      "count": 1,
+      "money": 98000,
+      "band": 4,
+      "category": "gifts.gifts"
+    },
+    {
+      "name": "СМЕСЬ ОРЕХИ СУХОФ ВЕ",
+      "name_norm": "смесь орехи сухоф ве",
+      "seller": "ООО \"АШАН\"",
+      "gtin": null,
+      "count": 1,
+      "money": 19160,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Ф-КА Ж ЗЕЛЁН XS-3XL",
+      "name_norm": "ф-ка ж зелен xs-3xl",
+      "seller": "ООО \"АШАН\"",
+      "gtin": null,
+      "count": 1,
+      "money": 47636,
+      "band": 5,
+      "category": "clothing.apparel"
+    },
+    {
+      "name": "ВОСТОЧНЫЙ ГОСТЬ Чак-чак 250г ( Вкуснотеевъ):1",
+      "name_norm": "восточный гость чак-чак 250г ( вкуснотеевъ):1",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 2,
+      "money": 25598,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "*Изд.РОКУБСЫ декоративн.2222251",
+      "name_norm": "*изд.рокубсы декоративн.2222251",
+      "seller": "ООО \"Агроторг\"",
+      "gtin": null,
+      "count": 8,
+      "money": 0,
+      "band": 5,
+      "category": "home.goods"
+    },
+    {
+      "name": "ДОМШИМ Соус соевый 1л",
+      "name_norm": "домшим соус соевый 1л",
+      "seller": "ООО \"Агроаспект\"",
+      "gtin": null,
+      "count": 1,
+      "money": 10999,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Пакет пластик",
+      "name_norm": "пакет пластик",
+      "seller": "РОСТОВЦЕВА СВЕТЛАНА ГЕОРГИЕВНА",
+      "gtin": null,
+      "count": 2,
+      "money": 400,
+      "band": 5,
+      "category": "other.other"
+    },
+    {
+      "name": "RAFFAELLO Конфеты 150г(Ферреро)15Т:6",
+      "name_norm": "raffaello конфеты 150г(ферреро)15т:6",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 1,
+      "money": 29999,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ГельД/душа Nivea Крем кокос 250мл",
+      "name_norm": "гельд/душа nivea крем кокос 250мл",
+      "seller": "\"ПЛАНЕТА \"СПОРТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 29900,
+      "band": 5,
+      "category": "health.beauty"
+    },
+    {
+      "name": "БЗМЖ ТВОРОГ ХУТОРОК 9% ПАКЕТ 300Г",
+      "name_norm": "бзмж творог хуторок 9% пакет 300г",
+      "seller": "Дикси-77432",
+      "gtin": "4680320015463",
+      "count": 1,
+      "money": 11490,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "СМЕТАНА С ОСТРЫМ ПЕРЦЕМ",
+      "name_norm": "сметана с острым перцем",
+      "seller": "КАРАПЕТЯН ЭРМИНЕ КАМОЕВНА",
+      "gtin": null,
+      "count": 2,
+      "money": 20700,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "*Дск Яблоки Гала 1кг",
+      "name_norm": "*дск яблоки гала 1кг",
+      "seller": "ООО \"Агроаспект\"",
+      "gtin": null,
+      "count": 1,
+      "money": 16775,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Мороженое(ЛегендыКрыма)Пломбир Алуштинский лесные ягоды 80г ваф",
+      "name_norm": "мороженое(легендыкрыма)пломбир алуштинский лесные ягоды 80г ваф",
+      "seller": "\"САМШИТ\"",
+      "gtin": "4603726279086",
+      "count": 2,
+      "money": 15000,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "МОР ПЛОМБ МАНГО/ЯГ.",
+      "name_norm": "мор пломб манго/яг.",
+      "seller": "ООО \"АТАК\"",
+      "gtin": "4605922024286",
+      "count": 2,
+      "money": 15980,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Крекер Белогорье Кристо-Твисто с сыром 205г",
+      "name_norm": "крекер белогорье кристо-твисто с сыром 205г",
+      "seller": "\"ПЛАНЕТА \"СПОРТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 8500,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Морс вишневый",
+      "name_norm": "морс вишневый",
+      "seller": "\"ВКУСВИЛЛ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 16500,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "COOL COLA Напиток б/а сил/газ 1л пл/бут (Очак",
+      "name_norm": "cool cola напиток б/а сил/газ 1л пл/бут (очак",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 2,
+      "money": 19198,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "28296 Пив.нап.Эсса дыня/клуб.",
+      "name_norm": "28296 пив.нап.эсса дыня/клуб.",
+      "seller": "\"АЛЬФА-М\"",
+      "gtin": null,
+      "count": 1,
+      "money": 4499,
+      "band": 5,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "БЗМЖ ТВОР. ПР. ПРОСТОКВАШИНО 3,6% МАЛИНА 130Г",
+      "name_norm": "бзмж твор. пр. простоквашино 3,6% малина 130г",
+      "seller": "АО \"Дикси ЮГ\"        Дикси-50471",
+      "gtin": "4600605032503",
+      "count": 4,
+      "money": 19696,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Соус сливочный демиглас от шефа 150 гр, Сыр твёрдый \"Пармезан\" крошка 15 гр, Паста трюфельная 5 гр, (Набор свежих овощей:) Т...",
+      "name_norm": "соус сливочный демиглас от шефа 150 гр, сыр твердый \"пармезан\" крошка 15 гр, паста трюфельная 5 гр, (набор свежих овощей:) т...",
+      "seller": "\"ШЕФ МАРКЕТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 13191,
+      "band": 5,
+      "category": "food.delivery"
+    },
+    {
+      "name": "ЛАПША ДОШИРАК CHEESE РАМЕН СЫР 110Г",
+      "name_norm": "лапша доширак cheese рамен сыр 110г",
+      "seller": "АО \"Дикси ЮГ\"   Дикси-77852",
+      "gtin": null,
+      "count": 1,
+      "money": 9999,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Картофель целый отварной",
+      "name_norm": "картофель целый отварной",
+      "seller": "ООО \"Супер Еда\"",
+      "gtin": null,
+      "count": 1,
+      "money": 11900,
+      "band": 5,
+      "category": "food.dining"
+    },
+    {
+      "name": "Вода пит. Bona Aqua н/газ. 0,5 л пэт",
+      "name_norm": "вода пит. bona aqua н/газ. 0,5 л пэт",
+      "seller": "\"НК \"РОСНЕФТЬ\" - КУБАНЬНЕФТЕПРОДУКТ\"",
+      "gtin": "4610011500015",
+      "count": 1,
+      "money": 10500,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ДОМИК В ДЕРЕВНЕ Молоко паст отборное 1,4",
+      "name_norm": "домик в деревне молоко паст отборное 1,4",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4690228027130",
+      "count": 2,
+      "money": 24698,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ГОЛЕН С КОЖ ЦБ.ОХ.КД",
+      "name_norm": "голен с кож цб.ох.кд",
+      "seller": "ООО \"АТАК\"",
+      "gtin": null,
+      "count": 1,
+      "money": 19788,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Виноград Томпсон без косточки",
+      "name_norm": "виноград томпсон без косточки",
+      "seller": "\"ВКУСВИЛЛ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 20150,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Чипсы Lays Соль 140 гр",
+      "name_norm": "чипсы lays соль 140 гр",
+      "seller": "\"ПЛАНЕТА \"СПОРТ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 19900,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Й-Т ПЕР-МАР 4,8%130Г",
+      "name_norm": "й-т пер-мар 4,8%130г",
+      "seller": "ООО \"Гиперглобус\"",
+      "gtin": "4606779763106",
+      "count": 2,
+      "money": 8998,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "MAKFA Макароны ВИТОК    450г",
+      "name_norm": "makfa макароны виток 450г",
+      "seller": "ООО \"Агроаспект\"",
+      "gtin": null,
+      "count": 3,
+      "money": 25728,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "СТАНКИ GILLETTE BLUE SIMPLE 3 ОДНОРАЗОВЫЕ 4ШТ",
+      "name_norm": "станки gillette blue simple 3 одноразовые 4шт",
+      "seller": "АО \"Дикси ЮГ\"      Дикси-50626",
+      "gtin": null,
+      "count": 1,
+      "money": 29990,
+      "band": 5,
+      "category": "health.beauty"
+    },
+    {
+      "name": "МАГНИТ Майонез Провансаль классический 67% 38",
+      "name_norm": "магнит майонез провансаль классический 67% 38",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": null,
+      "count": 1,
+      "money": 8399,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "КОЛБАСА БАЛЫКОВАЯ К/В В/У 300Г МЯСОЕДОВ",
+      "name_norm": "колбаса балыковая к/в в/у 300г мясоедов",
+      "seller": "АО \"Дикси ЮГ\"   Дикси-77852",
+      "gtin": null,
+      "count": 1,
+      "money": 19990,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "КП/МАСЛО СЛИВ 82,5",
+      "name_norm": "кп/масло слив 82,5",
+      "seller": "ООО \"АШАН\"",
+      "gtin": "4690363190232",
+      "count": 2,
+      "money": 34060,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "МУКА ПШЕНИЧНАЯ 2КГ",
+      "name_norm": "мука пшеничная 2кг",
+      "seller": "ООО \"АТАК\"",
+      "gtin": null,
+      "count": 4,
+      "money": 19996,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "Вино сухое розовое 0.75л",
+      "name_norm": "вино сухое розовое 0.75л",
+      "seller": "ООО \"Агроаспект\"",
+      "gtin": null,
+      "count": 1,
+      "money": 44999,
+      "band": 5,
+      "category": "food.alcohol"
+    },
+    {
+      "name": "ГОРОШЕК ЗЕЛЕНЫЙ 6 СОТОК Ж/Б 425МЛ",
+      "name_norm": "горошек зеленый 6 соток ж/б 425мл",
+      "seller": "АО \"Дикси Юг\"     Дикси-77264",
+      "gtin": null,
+      "count": 1,
+      "money": 10990,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "AQUA MINERALE Питьевая вода газ 2л пл/бу",
+      "name_norm": "aqua minerale питьевая вода газ 2л пл/бу",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4600494000188",
+      "count": 3,
+      "money": 26797,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "КОНТИ Конф.ЖИВИН.вк.арбуз 1кг",
+      "name_norm": "конти конф.живин.вк.арбуз 1кг",
+      "seller": "ООО \"АГРОТОРГ\"",
+      "gtin": null,
+      "count": 1,
+      "money": 13860,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "ХОЛОДЕЦ СВИН.ГОВ 400",
+      "name_norm": "холодец свин.гов 400",
+      "seller": "ООО \"АШАН\"",
+      "gtin": null,
+      "count": 1,
+      "money": 17285,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "СЛАВЯНСКИЕ КРУЖЕВА Сметана 15% 300г пл/с",
+      "name_norm": "славянские кружева сметана 15% 300г пл/с",
+      "seller": "\"ТАНДЕР\"",
+      "gtin": "4610030032955",
+      "count": 1,
+      "money": 7999,
+      "band": 5,
+      "category": "food.groceries"
+    },
+    {
+      "name": "MIXB.Марм.COLA жев.фигур.70г .",
+      "name_norm": "mixb.марм.cola жев.фигур.70г .",
+      "seller": "ООО \"Агроторг\"",
+      "gtin": null,
+      "count": 1,
+      "money": 3999,
+      "band": 5,
+      "category": "food.groceries"
+    }
+  ]
+}

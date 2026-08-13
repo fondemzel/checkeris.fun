@@ -80,6 +80,22 @@ export function buildFilters(params, { prefix = '', searchItems = false } = {}) 
     args.max_sum = Math.round(maxSum * 100);
   }
 
+  // Категории есть только у позиций: у чека их столько же, сколько строк.
+  if (searchItems) {
+    const group = (params.get('group') ?? '').trim();
+    if (group) {
+      where.push(`${prefix}group_slug = :group`);
+      args.group = group;
+    }
+    const category = (params.get('category') ?? '').trim();
+    if (category) {
+      where.push(`${prefix}category_slug = :category`);
+      args.category = category;
+    }
+    // Отдельный фильтр на неразмеченное: это рабочий режим, а не край выборки
+    if (params.get('uncategorized') === '1') where.push(`${prefix}category_slug IS NULL`);
+  }
+
   const q = (params.get('q') ?? '').trim().toLowerCase().replace(/ё/g, 'е');
   if (q) {
     args.q = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
@@ -142,7 +158,8 @@ export function listItems(db, params) {
   const rows = db
     .prepare(
       `SELECT id, receipt_id, pos, name, quantity, unit, price, sum, nds, product_type, gtin,
-              purchased_at, purchased_date, seller, seller_inn, retail_place, operation_type
+              purchased_at, purchased_date, seller, seller_inn, retail_place, operation_type,
+              category_slug, category_name, category_source, group_slug, group_name
          FROM v_items
          ${whereSql}
         ORDER BY ${column} ${dir}, id ${dir}
@@ -188,10 +205,9 @@ export function getItem(db, id) {
   return (
     db
       .prepare(
-        `SELECT v.*, i.nds_sum, i.provider_inn, r.retail_address, r.total_sum AS receipt_total
+        `SELECT v.*, i.nds_sum, i.provider_inn
            FROM v_items v
            JOIN items i ON i.id = v.id
-           JOIN receipts r ON r.id = v.receipt_id
           WHERE v.id = ?`,
       )
       .get(id) ?? null
@@ -232,5 +248,24 @@ export function getMeta(db) {
 
   const lastImport = db.prepare('SELECT file, imported_at FROM imports ORDER BY id DESC LIMIT 1').get() ?? null;
 
-  return { stats, sellers, months, lastImport };
+  // Справочник для чипсов: группы и вложенные подкатегории, с числом размеченных позиций
+  const rows = db
+    .prepare(
+      `SELECT c.slug, c.name, c.group_slug, c.group_name, c.sort,
+              (SELECT COUNT(*) FROM item_labels l WHERE l.category_slug = c.slug) AS items
+         FROM categories c ORDER BY c.sort`,
+    )
+    .all();
+
+  const groups = [];
+  for (const row of rows) {
+    let group = groups.find((g) => g.slug === row.group_slug);
+    if (!group) groups.push((group = { slug: row.group_slug, name: row.group_name, items: 0, subcategories: [] }));
+    group.subcategories.push({ slug: row.slug, name: row.name, items: row.items });
+    group.items += row.items;
+  }
+
+  const uncategorized = db.prepare(`SELECT COUNT(*) c FROM v_items WHERE category_slug IS NULL`).get().c;
+
+  return { stats, sellers, months, lastImport, categories: groups, uncategorized };
 }

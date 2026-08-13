@@ -57,7 +57,9 @@ function importFile(db, file, stmts) {
   db.exec('BEGIN');
   try {
     for (const row of rows) {
-      const receipt = row?.ticket?.document?.receipt ?? row?.document?.receipt ?? row?.receipt;
+      // БСО (бланк строгой отчётности, code 4) лежит под ключом bso — структура та же, что у чека
+      const doc = row?.ticket?.document ?? row?.document ?? row;
+      const receipt = doc?.receipt ?? doc?.bso ?? row?.receipt;
       const fiscalDrive = str(receipt?.fiscalDriveNumber);
       const purchasedAt = toIsoLocal(receipt?.dateTime);
       if (!receipt || !fiscalDrive || !purchasedAt) {

@@ -192,6 +192,14 @@ input::placeholder { color: #9aa1aa; }
   color: #fff;
 }
 
+/* Счётчик в чипсе: сколько позиций в категории по всей базе */
+.chip-count { color: #9aa1aa; font-size: 11px; }
+.chip:hover .chip-count { color: var(--muted); }
+.chip[aria-pressed="true"] .chip-count { color: rgba(255, 255, 255, 0.75); }
+
+/* Второй ряд — подкатегории выбранной группы, визуально подчинён первому */
+#chips-category { padding-left: 14px; border-left: 2px solid var(--border); }
+
 /* Диапазоны прижаты к правому краю своего ряда */
 .chips-range {
   margin-left: auto;
@@ -336,6 +344,17 @@ tbody tr.selected { background: #e8eefb; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Колонкам категорий нужна своя ширина: иначе они делят место с названием
+   товара по правилу width:100% и схлопываются в пару букв. */
+.group-cell, .cat-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-cell { width: 132px; max-width: 132px; }
+.cat-cell { width: 184px; max-width: 184px; }
 
 .badge {
   font-size: 11px;
