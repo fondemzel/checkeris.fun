@@ -160,17 +160,17 @@ input::placeholder { color: #9aa1aa; }
 
 .chip {
   height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--border-strong);
+  padding: 0 11px;
+  border: 1px solid #e6e9ee;
   border-radius: 999px;
-  background: var(--surface);
-  color: var(--text);
+  background: #fbfcfd;
+  color: #545b66;
   font: inherit;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.chip:hover { background: var(--hover); }
+.chip:hover { background: var(--hover); border-color: #dbe0e8; color: var(--text); }
 
 .chip[aria-pressed="true"] {
   background: var(--accent);
@@ -178,9 +178,39 @@ input::placeholder { color: #9aa1aa; }
   color: #fff;
 }
 
-.chips input[type="date"] { height: 24px; }
+/* Диапазоны прижаты к правому краю своего ряда */
+.chips-range {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chips-range input {
+  height: 24px;
+  border-color: #e6e9ee;
+}
+
+.chips-range input[type="number"] { width: 82px; }
+.chips-range .btn { height: 24px; border-color: #e6e9ee; }
 .chips-dash { color: var(--muted); }
-.chips-reset { height: 24px; margin-left: auto; }
+
+/* Стрелки сдвигают выбранный период на его же длину */
+.arrow-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #e6e9ee;
+  border-radius: 999px;
+  background: #fbfcfd;
+  color: #545b66;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.arrow-btn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.arrow-btn:disabled { color: #c2c7cf; cursor: default; }
 
 #f-q { width: 240px; }
 
@@ -349,5 +379,5 @@ tbody tr.selected { background: #e8eefb; }
   .layout { grid-template-columns: minmax(0, 1fr); }
   .detail-pane { position: static; min-height: 0; max-height: none; }
   #f-q { width: 100%; }
-  .chips-reset { margin-left: 0; }
+  .chips-range { margin-left: 0; }
 }

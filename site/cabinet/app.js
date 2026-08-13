@@ -50,7 +50,8 @@ const DEFAULTS = {
   period: '', // '' | day | week | month | year — пресет; пустой = даты ниже
   from: '',
   to: '',
-  max_sum: '', // рубли, из чипсов «до N ₽»
+  min_sum: '', // рубли
+  max_sum: '', // рубли, из чипсов «до N ₽» или из поля диапазона
   sort: 'date',
   dir: 'desc',
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция
@@ -96,12 +97,25 @@ function periodRange() {
   return { from: isoDate(from), to: isoDate(to) };
 }
 
+/** Стрелки: сдвиг диапазона на его собственную длину назад или вперёд. */
+function shiftPeriod(direction) {
+  const { from, to } = periodRange();
+  if (!from || !to) return;
+  const start = new Date(from);
+  const end = new Date(to);
+  const span = Math.round((end - start) / 86400000) + 1;
+  start.setDate(start.getDate() + direction * span);
+  end.setDate(end.getDate() + direction * span);
+  update({ period: '', from: isoDate(start), to: isoDate(end) });
+}
+
 function apiParams(page) {
   const params = new URLSearchParams();
   if (state.q) params.set('q', state.q);
   const { from, to } = periodRange();
   if (from) params.set('from', from);
   if (to) params.set('to', to);
+  if (state.min_sum) params.set('min_sum', state.min_sum);
   if (state.max_sum) params.set('max_sum', state.max_sum);
   params.set('sort', state.sort);
   params.set('dir', state.dir);
@@ -425,12 +439,19 @@ function syncControls() {
   const { from, to } = periodRange();
   $('f-from').value = from;
   $('f-to').value = to;
+  $('f-min').value = state.min_sum;
+  $('f-max').value = state.max_sum;
+
+  // сдвигать нечего, пока диапазон не задан
+  $('period-prev').disabled = !from || !to;
+  $('period-next').disabled = !from || !to;
 
   document.querySelectorAll('#chips-period .chip').forEach((chip) => {
     chip.setAttribute('aria-pressed', String(chip.dataset.period === state.period));
   });
+  // чипс суммы горит, только если он в точности задаёт весь диапазон
   document.querySelectorAll('#chips-sum .chip').forEach((chip) => {
-    chip.setAttribute('aria-pressed', String(chip.dataset.max === state.max_sum));
+    chip.setAttribute('aria-pressed', String(!state.min_sum && chip.dataset.max === state.max_sum));
   });
 
   $('page-title').textContent = state.view === 'items' ? 'Товары' : 'Чеки';
@@ -462,10 +483,16 @@ function bind() {
     if (chip) update({ period: chip.dataset.period, from: '', to: '' });
   });
 
+  $('period-prev').addEventListener('click', () => shiftPeriod(-1));
+  $('period-next').addEventListener('click', () => shiftPeriod(1));
+
   $('chips-sum').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
-    if (chip) update({ max_sum: chip.dataset.max });
+    if (chip) update({ min_sum: '', max_sum: chip.dataset.max });
   });
+
+  $('f-min').addEventListener('change', (e) => update({ min_sum: e.target.value }));
+  $('f-max').addEventListener('change', (e) => update({ max_sum: e.target.value }));
 
   $('reset-btn').addEventListener('click', () => {
     const view = state.view;
