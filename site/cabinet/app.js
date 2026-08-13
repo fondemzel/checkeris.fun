@@ -105,8 +105,9 @@ function periodRange() {
 
 /**
  * Границы суммы. Чипс задаёт порог, галочки — в какую сторону он действует:
- * «и меньше» → не больше порога, «и больше» → не меньше. Если не отмечено ничего
- * или отмечено и то и другое, обе границы сходятся в точную сумму.
+ * «и меньше» → не больше порога, «и больше» → не меньше. Если не отмечено ничего,
+ * ищется точно эта сумма. Обе галочки одновременно интерфейс не допускает —
+ * это означало бы отсутствие ограничения, поэтому фильтр сбрасывается на «Все».
  * Поля «от — до» задают диапазон напрямую и отменяют чипс.
  */
 function sumBounds() {
@@ -584,8 +585,15 @@ function bind() {
     if (chip) update({ sum: chip.dataset.sum, min_sum: '', max_sum: '' });
   });
 
-  $('f-more').addEventListener('change', (e) => update({ more: e.target.checked ? '1' : '' }));
-  $('f-less').addEventListener('change', (e) => update({ less: e.target.checked ? '1' : '' }));
+  // «и меньше» вместе с «и больше» — это отсутствие ограничения. Вместо
+  // бессмысленного состояния возвращаемся к исходному: чипс «Все» и порог сверху.
+  const resetSum = () => update({ sum: '', more: '', less: '1', min_sum: '', max_sum: '' });
+
+  $('f-less').addEventListener('change', (e) =>
+    e.target.checked && state.more === '1' ? resetSum() : update({ less: e.target.checked ? '1' : '' }));
+
+  $('f-more').addEventListener('change', (e) =>
+    e.target.checked && state.less === '1' ? resetSum() : update({ more: e.target.checked ? '1' : '' }));
 
   // Правка полей вручную отменяет чипс: границы дальше живут сами по себе
   $('f-min').addEventListener('change', (e) =>

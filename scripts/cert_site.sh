@@ -9,6 +9,7 @@
 # локальный кэш), затем просит certbot выпустить сертификат и добавить редирект на HTTPS.
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOST="${CHECKER_HOST:-vps}"
 DOMAIN=checkeris.fun
 WAIT_MINUTES="${WAIT_MINUTES:-40}"
@@ -53,8 +54,19 @@ WWW_ARG=""
 [[ "$(resolve "www.$DOMAIN")" == *"$IP"* ]] && WWW_ARG="-d www.$DOMAIN" || echo "www ещё не переехал — сертификат только на $DOMAIN"
 
 # ── сертификат ───────────────────────────────────────────
-# Аккаунт Let's Encrypt на сервере уже зарегистрирован (andersen.moscow), почта не спрашивается.
-ssh -T "$HOST" "certbot --nginx -n --agree-tos --redirect -d $DOMAIN $WWW_ARG" 2>&1 | tail -12
+# На чистом сервере аккаунта Let's Encrypt нет, и certbot требует почту для
+# писем об истечении. Адрес берём из api/.env (CERT_EMAIL) — в репозиторий он
+# не попадает. Без адреса регистрируемся молча, но тогда и предупреждений не будет.
+CERT_EMAIL="${CERT_EMAIL:-$(grep -s '^CERT_EMAIL=' "$ROOT/api/.env" | cut -d= -f2- | tr -d ' ')}"
+if [[ -n "$CERT_EMAIL" ]]; then
+  REGISTRATION="--email $CERT_EMAIL"
+  echo "почта для уведомлений: $CERT_EMAIL"
+else
+  REGISTRATION="--register-unsafely-without-email"
+  echo "почта не задана — писем об истечении сертификата не будет (CERT_EMAIL в api/.env)"
+fi
+
+ssh -T "$HOST" "certbot --nginx -n --agree-tos $REGISTRATION --redirect -d $DOMAIN $WWW_ARG" 2>&1 | tail -12
 ssh -T "$HOST" "nginx -t && systemctl reload nginx" 2>&1 | tail -2
 
 # ── проверка ─────────────────────────────────────────────

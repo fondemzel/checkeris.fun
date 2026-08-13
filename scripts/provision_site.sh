@@ -106,6 +106,8 @@ set -e
 cp $TARGET/deploy/checker-api.service /etc/systemd/system/
 cp $TARGET/deploy/nginx-checkeris.fun.conf /etc/nginx/sites-available/checkeris.fun
 ln -sf /etc/nginx/sites-available/checkeris.fun /etc/nginx/sites-enabled/checkeris.fun
+# наш конфиг объявлен default_server — стандартный сайт nginx уступает место
+rm -f /etc/nginx/sites-enabled/default
 systemctl daemon-reload
 systemctl enable --now checker-api >/dev/null 2>&1
 systemctl restart checker-api
