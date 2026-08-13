@@ -50,8 +50,11 @@ const DEFAULTS = {
   period: '', // '' | day | week | month | year — пресет; пустой = даты ниже
   from: '',
   to: '',
-  min_sum: '', // рубли
-  max_sum: '', // рубли, из чипсов «до N ₽» или из поля диапазона
+  sum: '', // порог из чипса, рубли
+  more: '', // '1' — от порога и больше
+  less: '1', // '1' — от порога и меньше
+  min_sum: '', // рубли, если диапазон задан полями вручную
+  max_sum: '',
   sort: 'date',
   dir: 'desc',
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция
@@ -97,6 +100,21 @@ function periodRange() {
   return { from: isoDate(from), to: isoDate(to) };
 }
 
+/**
+ * Границы суммы. Чипс задаёт порог, галочки — в какую сторону он действует:
+ * «и меньше» → не больше порога, «и больше» → не меньше. Если не отмечено ничего
+ * или отмечено и то и другое, обе границы сходятся в точную сумму.
+ * Поля «от — до» задают диапазон напрямую и отменяют чипс.
+ */
+function sumBounds() {
+  if (!state.sum) return { min: state.min_sum, max: state.max_sum };
+  const more = state.more === '1';
+  const less = state.less === '1';
+  if (more && !less) return { min: state.sum, max: '' };
+  if (less && !more) return { min: '', max: state.sum };
+  return { min: state.sum, max: state.sum };
+}
+
 /** Стрелки: сдвиг диапазона на его собственную длину назад или вперёд. */
 function shiftPeriod(direction) {
   const { from, to } = periodRange();
@@ -115,8 +133,9 @@ function apiParams(page) {
   const { from, to } = periodRange();
   if (from) params.set('from', from);
   if (to) params.set('to', to);
-  if (state.min_sum) params.set('min_sum', state.min_sum);
-  if (state.max_sum) params.set('max_sum', state.max_sum);
+  const { min, max } = sumBounds();
+  if (min) params.set('min_sum', min);
+  if (max) params.set('max_sum', max);
   params.set('sort', state.sort);
   params.set('dir', state.dir);
   params.set('page', String(page));
@@ -439,8 +458,11 @@ function syncControls() {
   const { from, to } = periodRange();
   $('f-from').value = from;
   $('f-to').value = to;
-  $('f-min').value = state.min_sum;
-  $('f-max').value = state.max_sum;
+  const bounds = sumBounds();
+  $('f-min').value = bounds.min;
+  $('f-max').value = bounds.max;
+  $('f-more').checked = state.more === '1';
+  $('f-less').checked = state.less === '1';
 
   // сдвигать нечего, пока диапазон не задан
   $('period-prev').disabled = !from || !to;
@@ -449,9 +471,8 @@ function syncControls() {
   document.querySelectorAll('#chips-period .chip').forEach((chip) => {
     chip.setAttribute('aria-pressed', String(chip.dataset.period === state.period));
   });
-  // чипс суммы горит, только если он в точности задаёт весь диапазон
   document.querySelectorAll('#chips-sum .chip').forEach((chip) => {
-    chip.setAttribute('aria-pressed', String(!state.min_sum && chip.dataset.max === state.max_sum));
+    chip.setAttribute('aria-pressed', String(chip.dataset.sum === state.sum));
   });
 
   $('page-title').textContent = state.view === 'items' ? 'Товары' : 'Чеки';
@@ -488,11 +509,17 @@ function bind() {
 
   $('chips-sum').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
-    if (chip) update({ min_sum: '', max_sum: chip.dataset.max });
+    if (chip) update({ sum: chip.dataset.sum, min_sum: '', max_sum: '' });
   });
 
-  $('f-min').addEventListener('change', (e) => update({ min_sum: e.target.value }));
-  $('f-max').addEventListener('change', (e) => update({ max_sum: e.target.value }));
+  $('f-more').addEventListener('change', (e) => update({ more: e.target.checked ? '1' : '' }));
+  $('f-less').addEventListener('change', (e) => update({ less: e.target.checked ? '1' : '' }));
+
+  // Правка полей вручную отменяет чипс: границы дальше живут сами по себе
+  $('f-min').addEventListener('change', (e) =>
+    update({ sum: '', min_sum: e.target.value, max_sum: $('f-max').value }));
+  $('f-max').addEventListener('change', (e) =>
+    update({ sum: '', min_sum: $('f-min').value, max_sum: e.target.value }));
 
   $('reset-btn').addEventListener('click', () => {
     const view = state.view;
