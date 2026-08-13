@@ -193,6 +193,7 @@ input::placeholder { color: #9aa1aa; }
 
 .chips-range input {
   height: 24px;
+  border-radius: 8px;
   border-color: #e6e9ee;
 }
 
@@ -227,6 +228,8 @@ input::placeholder { color: #9aa1aa; }
 
 .arrow-btn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .arrow-btn:disabled { color: #c2c7cf; cursor: default; }
+
+#reset-btn { font-size: 10px; }
 
 #f-q { width: 240px; }
 
@@ -302,6 +305,14 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr.clickable { cursor: pointer; }
 tbody tr.clickable:hover { background: var(--hover); }
 tbody tr.selected { background: #e8eefb; }
+
+/* Сквозной номер строки: нумерация идёт по текущей выборке, а не по id в базе */
+.idx {
+  width: 48px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--muted);
+}
 
 .num { text-align: right; white-space: nowrap; }
 .nowrap { white-space: nowrap; }

@@ -168,7 +168,7 @@ const COLUMNS = {
 
 function renderHead() {
   const columns = COLUMNS[state.view];
-  $('thead').innerHTML = `<tr>${columns
+  $('thead').innerHTML = `<tr><th class="idx">#</th>${columns
     .map((col) => {
       if (!col.sort) return `<th class="${col.cls ?? ''}">${col.title}</th>`;
       const active = state.sort === col.sort;
@@ -179,14 +179,16 @@ function renderHead() {
     .join('')}</tr>`;
 }
 
-function rowsHtml(rows) {
+/** startIndex — сквозной номер первой строки порции, нумерация не сбивается при подгрузке. */
+function rowsHtml(rows, startIndex) {
   const columns = COLUMNS[state.view];
   const prefix = state.view === 'receipts' ? 'r' : 'i';
   return rows
-    .map((row) => {
+    .map((row, i) => {
       const card = prefix + row.id;
       const cells = columns.map((col) => `<td class="${col.cls ?? ''}">${col.render(row)}</td>`).join('');
-      return `<tr class="clickable${card === state.card ? ' selected' : ''}" data-card="${card}">${cells}</tr>`;
+      return `<tr class="clickable${card === state.card ? ' selected' : ''}" data-card="${card}">
+        <td class="idx">${int.format(startIndex + i)}</td>${cells}</tr>`;
     })
     .join('');
 }
@@ -391,11 +393,12 @@ async function fetchPage(seq = loadSeq) {
     if (seq !== loadSeq) return; // фильтры успели смениться
 
     total = data.totals.count ?? 0;
+    const startIndex = loaded + 1;
     loaded += data.rows.length;
     nextPage += 1;
 
     if (data.rows.length) {
-      $('tbody').insertAdjacentHTML('beforeend', rowsHtml(data.rows));
+      $('tbody').insertAdjacentHTML('beforeend', rowsHtml(data.rows, startIndex));
       hideState();
     } else if (loaded === 0) {
       showState('Ничего не найдено. Смягчите фильтры или очистите поиск.');
