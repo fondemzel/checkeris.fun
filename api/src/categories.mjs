@@ -1,11 +1,21 @@
 // Загрузка канонического справочника категорий в базу.
 //
-//   node api/src/categories.mjs        — залить/обновить справочник из api/db/categories.json
-//   node api/src/categories.mjs --show — показать, что сейчас в базе
+//   node api/src/categories.mjs         — залить справочник из api/db/categories.json
+//   node api/src/categories.mjs --check — только проверить файл, ничего не менять
+//   node api/src/categories.mjs --show  — показать, что сейчас в базе
 //
-// Справочник версионируется файлом: правим categories.json, прогоняем скрипт.
-// Категории, исчезнувшие из файла, не удаляются молча — на них могут ссылаться
-// словарь и разметка; скрипт сообщает о них и оставляет решение человеку.
+// ПРАВИЛА ПРАВКИ categories.json (файл правится руками):
+//
+//   name  — можно менять свободно. Это только подпись в интерфейсе, разметка
+//           не пострадает: она ссылается на slug.
+//   hint  — можно и нужно менять. Это подсказка модели, из неё собирается
+//           промпт. Уточнили формулировку — следующая разметка станет точнее.
+//   slug  — ключ. На него ссылаются словарь, правила по продавцам и разметка
+//           позиций. Переименование slug'а = потеря связи со всем этим, поэтому
+//           скрипт о таком предупреждает и показывает, сколько записей осиротеет.
+//
+// Добавить категорию: новый блок с новым slug'ом, прогнать скрипт.
+// Удалить: убрать из файла, прогнать — скрипт покажет, что на неё ссылается.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -71,7 +81,67 @@ export function flatten(catalog) {
   return rows;
 }
 
+/**
+ * Проверка файла до записи в базу. Опечатка в справочнике тише всего ломает
+ * именно разметку: категория «есть», но не та, и заметить это можно через месяц.
+ */
+export function validate(catalog) {
+  const problems = [];
+  if (!Array.isArray(catalog.groups) || !catalog.groups.length) {
+    problems.push('в файле нет групп (ожидается массив groups)');
+    return problems;
+  }
+
+  const slugs = new Set();
+  const groupSlugs = new Set();
+
+  for (const group of catalog.groups) {
+    const where = `группа «${group.name ?? group.slug ?? '?'}»`;
+    if (!group.slug) problems.push(`${where}: нет slug`);
+    if (!group.name) problems.push(`${where}: нет name`);
+    if (group.slug && groupSlugs.has(group.slug)) problems.push(`${where}: slug «${group.slug}» повторяется`);
+    if (group.slug) groupSlugs.add(group.slug);
+    if (group.slug && !/^[a-z][a-z0-9_]*$/.test(group.slug)) {
+      problems.push(`${where}: slug «${group.slug}» — только латиница в нижнем регистре`);
+    }
+    if (!Array.isArray(group.subcategories) || !group.subcategories.length) {
+      problems.push(`${where}: нет подкатегорий`);
+      continue;
+    }
+
+    for (const sub of group.subcategories) {
+      const what = `${where}, подкатегория «${sub.name ?? sub.slug ?? '?'}»`;
+      if (!sub.slug) problems.push(`${what}: нет slug`);
+      if (!sub.name) problems.push(`${what}: нет name`);
+      if (!sub.hint) problems.push(`${what}: нет hint — модель будет угадывать по одному названию`);
+      if (sub.slug && slugs.has(sub.slug)) problems.push(`${what}: slug «${sub.slug}» повторяется`);
+      if (sub.slug) slugs.add(sub.slug);
+      if (sub.slug && group.slug && !sub.slug.startsWith(`${group.slug}.`)) {
+        problems.push(`${what}: slug должен начинаться с «${group.slug}.», иначе связь с группой теряется`);
+      }
+    }
+  }
+
+  return problems;
+}
+
+/** Что осиротеет, если категорию убрать из файла. */
+export function orphanUsage(db, slug) {
+  const count = (sql) => db.prepare(sql).get(slug).c;
+  return {
+    dictionary: count('SELECT COUNT(*) c FROM dictionary WHERE category_slug = ?'),
+    items: count('SELECT COUNT(*) c FROM item_labels WHERE category_slug = ?'),
+    sellers: count('SELECT COUNT(*) c FROM seller_rules WHERE category_slug = ?'),
+    gtin: count('SELECT COUNT(*) c FROM gtin_map WHERE category_slug = ?'),
+  };
+}
+
 export function syncCategories(db, catalog) {
+  const problems = validate(catalog);
+  if (problems.length) {
+    throw new Error(`справочник не прошёл проверку:\n  ${problems.join('\n  ')}`);
+  }
+
   const rows = flatten(catalog);
   const upsert = db.prepare(`
     INSERT INTO categories (slug, group_slug, group_name, name, hint, color, sort)
@@ -125,7 +195,36 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const db = openDb();
   migrate(db);
 
-  if (process.argv.includes('--show')) {
+  if (process.argv.includes('--check')) {
+    const catalog = loadCategories();
+    const problems = validate(catalog);
+    if (problems.length) {
+      console.log('в categories.json есть ошибки:');
+      problems.forEach((p) => console.log('  ' + p));
+      process.exitCode = 1;
+    } else {
+      const rows = flatten(catalog);
+      console.log(`файл в порядке: ${catalog.groups.length} групп, ${rows.length} подкатегорий`);
+
+      // Что в базе есть, а в файле уже нет — покажем цену удаления
+      const known = new Set(rows.map((r) => r.slug));
+      const orphans = db
+        .prepare('SELECT slug, name FROM categories')
+        .all()
+        .filter((r) => !known.has(r.slug));
+      if (orphans.length) {
+        console.log('\nв файле больше нет, но в базе используется:');
+        for (const o of orphans) {
+          const use = orphanUsage(db, o.slug);
+          console.log(
+            `  ${o.slug} («${o.name}»): словарь ${use.dictionary}, позиций ${use.items},` +
+              ` правил ${use.sellers}, штрихкодов ${use.gtin}`,
+          );
+        }
+        console.log('  прогон скрипта их не удалит — разберите вручную');
+      }
+    }
+  } else if (process.argv.includes('--show')) {
     show(db);
   } else {
     const { total, groups, orphans } = syncCategories(db, loadCategories());
