@@ -43,13 +43,13 @@ nginx -t && systemctl reload nginx
 
 ```bash
 scripts/deploy_site.sh "Что изменилось"          # версия, changelog, коммит, тег, push, выкладка
-scripts/deploy_site.sh --patch "Опечатка в подписи"
+scripts/deploy_site.sh --minor "Раздел категорий"
 scripts/deploy_site.sh --data "Выгрузка за январь"   # ещё и выгрузки ФНС + импорт
 scripts/deploy_site.sh --no-version                  # выложить как есть, без нового номера
 scripts/deploy_site.sh --dry-run "Проверка"          # показать план, ничего не делать
 ```
 
-Каждая выкладка поднимает версию в `api/package.json` (по умолчанию minor) и добавляет строку
+Каждая выкладка поднимает версию в `api/package.json` (по умолчанию patch) и добавляет строку
 в `CHANGELOG_SITE.md`; тег `vX.Y.Z` уходит на GitHub вместе с коммитом.
 `scripts/deploy_site.sh --help` печатает правила, что писать в описание.
 
