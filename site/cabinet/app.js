@@ -219,6 +219,7 @@ function renderCategoryChips() {
 
   groupRow.hidden = !visible;
   categoryRow.hidden = !visible || !state.group;
+  if (categoryRow.hidden) categoryRow.innerHTML = ''; // группа не выбрана — ряд пуст
   if (!visible) return;
 
   const chip = (attr, value, label, active, count) =>
@@ -233,7 +234,7 @@ function renderCategoryChips() {
   if (!categoryRow.hidden) {
     const group = groups.find((g) => g.slug === state.group);
     categoryRow.innerHTML = group
-      ? chip('category', '', `Вся группа`, !state.category) +
+      ? chip('category', '', 'Все', !state.category) +
         group.subcategories.map((s) => chip('category', s.slug, s.name, state.category === s.slug, s.items)).join('')
       : '';
   }

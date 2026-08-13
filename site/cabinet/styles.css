@@ -172,6 +172,9 @@ input::placeholder { color: #9aa1aa; }
   gap: 6px;
 }
 
+/* Без этого ряд остаётся видимым: display из класса перебивает [hidden] */
+.chips[hidden] { display: none; }
+
 .chip {
   height: 24px;
   padding: 0 11px;
@@ -196,9 +199,6 @@ input::placeholder { color: #9aa1aa; }
 .chip-count { color: #9aa1aa; font-size: 11px; }
 .chip:hover .chip-count { color: var(--muted); }
 .chip[aria-pressed="true"] .chip-count { color: rgba(255, 255, 255, 0.75); }
-
-/* Второй ряд — подкатегории выбранной группы, визуально подчинён первому */
-#chips-category { padding-left: 14px; border-left: 2px solid var(--border); }
 
 /* Диапазоны прижаты к правому краю своего ряда */
 .chips-range {

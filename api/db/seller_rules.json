@@ -21,7 +21,6 @@
     { "inn": "7751344022", "category": "health.pharmacy", "mode": "always", "note": "Азбука Здоровья" },
 
     { "inn": "7734418612", "category": "health.fitness", "mode": "always", "note": "DDX Fitness" },
-    { "inn": "9204017560", "category": "health.fitness", "mode": "always", "note": "Планета Спорт" },
     { "inn": "5003006930", "category": "health.fitness", "mode": "always", "note": "ОК Десна, абонементы и посещения" },
 
     { "inn": "7740000076", "category": "housing.telecom", "mode": "always", "note": "МТС" },
@@ -69,7 +68,8 @@
     { "inn": "7728029110", "category": "food.groceries", "mode": "fallback", "note": "Перекрёсток" },
     { "inn": "7743543761", "category": "food.groceries", "mode": "fallback", "note": "Глобус" },
     { "inn": "9202001211", "category": "food.groceries", "mode": "fallback", "note": "Самшит" },
-    { "inn": "5009033419", "category": "food.groceries", "mode": "fallback", "note": "Торговый объект №1" },
+    { "inn": "9204017560", "category": "food.groceries", "mode": "fallback", "note": "Планета Спорт — вопреки названию магазин у дома: пиво, стики, снеки" },
+    { "inn": "5009033419", "category": "transport.fuel", "mode": "always", "note": "Торговый объект №1 — АГЗС, продаёт только газ" },
     { "inn": "5009074197", "category": "food.groceries", "mode": "fallback", "note": "ПродМир" },
     { "inn": "9200003904", "category": "food.groceries", "mode": "fallback", "note": "ЕдаВода" },
     { "inn": "772850825726", "category": "food.groceries", "mode": "fallback", "note": "Магазин у дома" },
