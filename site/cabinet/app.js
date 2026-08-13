@@ -1,4 +1,4 @@
-// Кабинет: слева список чеков или товаров, справа карточка выбранной строки.
+// Кабинет: слева список с подгрузкой по скроллу, справа карточка выбранной строки.
 const $ = (id) => document.getElementById(id);
 
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 });
@@ -42,35 +42,36 @@ function esc(value) {
 
 // ── состояние ────────────────────────────────────────────
 
+const PER = 100; // размер порции при подгрузке
+
 const DEFAULTS = {
   view: 'receipts',
   q: '',
+  period: '', // '' | day | week | month | year — пресет; пустой = даты ниже
   from: '',
   to: '',
-  seller_inn: '',
-  operation: '',
-  min_sum: '',
-  max_sum: '',
+  max_sum: '', // рубли, из чипсов «до N ₽»
   sort: 'date',
   dir: 'desc',
-  page: 1,
-  per: 50,
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция
 };
 
 const state = { ...DEFAULTS };
 let meta = null;
-let requestSeq = 0;
+let loadSeq = 0;
 let cardSeq = 0;
+let loaded = 0; // сколько строк уже в таблице
+let total = 0;
+let nextPage = 1;
+let loading = false;
 
 function readUrl() {
   const params = new URLSearchParams(location.search);
   for (const key of Object.keys(DEFAULTS)) {
-    if (!params.has(key)) continue;
-    const value = params.get(key);
-    state[key] = key === 'page' || key === 'per' ? Number(value) || DEFAULTS[key] : value;
+    if (params.has(key)) state[key] = params.get(key);
   }
   if (state.view !== 'items') state.view = 'receipts';
+  if (!['', 'day', 'week', 'month', 'year'].includes(state.period)) state.period = '';
   if (!/^[ri]\d+$/.test(state.card)) state.card = '';
 }
 
@@ -83,15 +84,29 @@ function writeUrl() {
   history.replaceState(null, '', qs ? `?${qs}` : location.pathname);
 }
 
-function apiParams() {
+const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Пресет периода → диапазон дат, отсчёт от сегодня. */
+function periodRange() {
+  if (!state.period) return { from: state.from, to: state.to };
+  const days = { day: 0, week: 6, month: 29, year: 364 }[state.period];
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - days);
+  return { from: isoDate(from), to: isoDate(to) };
+}
+
+function apiParams(page) {
   const params = new URLSearchParams();
-  for (const key of ['q', 'from', 'to', 'seller_inn', 'operation', 'min_sum', 'max_sum']) {
-    if (state[key] !== '') params.set(key, state[key]);
-  }
+  if (state.q) params.set('q', state.q);
+  const { from, to } = periodRange();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (state.max_sum) params.set('max_sum', state.max_sum);
   params.set('sort', state.sort);
   params.set('dir', state.dir);
-  params.set('page', String(state.page));
-  params.set('per', String(state.per));
+  params.set('page', String(page));
+  params.set('per', String(PER));
   return params;
 }
 
@@ -131,19 +146,10 @@ function renderHead() {
     .join('')}</tr>`;
 }
 
-function renderRows(rows) {
+function rowsHtml(rows) {
   const columns = COLUMNS[state.view];
   const prefix = state.view === 'receipts' ? 'r' : 'i';
-  const body = $('tbody');
-
-  if (!rows.length) {
-    body.innerHTML = '';
-    showState('Ничего не найдено. Смягчите фильтры или очистите поиск.');
-    return;
-  }
-
-  hideState();
-  body.innerHTML = rows
+  return rows
     .map((row) => {
       const card = prefix + row.id;
       const cells = columns.map((col) => `<td class="${col.cls ?? ''}">${col.render(row)}</td>`).join('');
@@ -165,21 +171,15 @@ function renderSummary(totals) {
   $('totals-right').innerHTML = `Итого: <b>${money(totals.sum)}</b>`;
 }
 
-function renderFooter(data) {
-  const total = data.totals.count ?? 0;
-  const first = total ? (data.page - 1) * data.per + 1 : 0;
-  const last = Math.min(data.page * data.per, total);
-  const pages = Math.max(1, Math.ceil(total / data.per));
+function renderFooter() {
   const noun =
     state.view === 'items'
       ? plural(total, 'позиции', 'позиций', 'позиций')
       : plural(total, 'чека', 'чеков', 'чеков');
   $('range-info').textContent = total
-    ? `${int.format(first)}–${int.format(last)} из ${int.format(total)} ${noun}`
+    ? `показано ${int.format(loaded)} из ${int.format(total)} ${noun}`
     : 'ничего не найдено';
-  $('page-info').textContent = `стр. ${data.page} из ${int.format(pages)}`;
-  $('prev-btn').disabled = data.page <= 1;
-  $('next-btn').disabled = data.page >= pages;
+  $('load-info').textContent = loading ? 'загрузка…' : loaded < total ? 'прокрутите вниз' : '';
 }
 
 function showState(message, isError = false) {
@@ -326,32 +326,75 @@ function selectCard(card) {
   renderCard();
 }
 
-// ── загрузка ─────────────────────────────────────────────
+// ── загрузка списка ──────────────────────────────────────
 
-async function load() {
-  const seq = ++requestSeq;
-  const pane = document.querySelector('.list-pane');
-  pane.classList.add('is-loading');
+/** Первая страница: фильтры или сортировка изменились. */
+async function reload() {
+  const seq = ++loadSeq;
+  loaded = 0;
+  total = 0;
+  nextPage = 1;
+  loading = false;
+  $('tbody').innerHTML = '';
+  renderHead();
   writeUrl();
+  await fetchPage(seq);
+}
+
+/** Следующая порция строк, дописывается к таблице. */
+async function fetchPage(seq = loadSeq) {
+  if (loading || seq !== loadSeq) return;
+  if (nextPage > 1 && loaded >= total) return;
+
+  loading = true;
+  renderFooter();
+  const pane = document.querySelector('.list-pane');
+  if (nextPage === 1) pane.classList.add('is-loading');
 
   try {
-    const res = await fetch(`/api/${state.view}?${apiParams()}`);
+    const res = await fetch(`/api/${state.view}?${apiParams(nextPage)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (seq !== requestSeq) return; // ответ устарел, пришёл более свежий запрос
+    if (seq !== loadSeq) return; // фильтры успели смениться
 
-    state.page = data.page;
-    renderHead();
-    renderRows(data.rows);
+    total = data.totals.count ?? 0;
+    loaded += data.rows.length;
+    nextPage += 1;
+
+    if (data.rows.length) {
+      $('tbody').insertAdjacentHTML('beforeend', rowsHtml(data.rows));
+      hideState();
+    } else if (loaded === 0) {
+      showState('Ничего не найдено. Смягчите фильтры или очистите поиск.');
+    } else {
+      total = loaded; // страница пустая, дальше тянуть нечего — страховка от зацикливания
+    }
+
     renderSummary(data.totals);
-    renderFooter(data);
+    renderFooter();
   } catch (err) {
-    if (seq !== requestSeq) return;
-    $('tbody').innerHTML = '';
+    if (seq !== loadSeq) return;
     showState(`Ошибка загрузки данных: ${err.message}. Проверьте, что запущен api/src/server.mjs.`, true);
   } finally {
-    if (seq === requestSeq) pane.classList.remove('is-loading');
+    if (seq === loadSeq) {
+      loading = false;
+      document.querySelector('.list-pane').classList.remove('is-loading');
+      renderFooter();
+      fillViewport(seq);
+    }
   }
+}
+
+/** Если первая порция не заполнила панель, скролла не будет — дотягиваем сами. */
+function fillViewport(seq) {
+  const box = document.querySelector('.table-scroll');
+  if (seq !== loadSeq || loading || loaded >= total) return;
+  if (box.scrollHeight <= box.clientHeight + 40) fetchPage(seq);
+}
+
+function onScroll() {
+  const box = document.querySelector('.table-scroll');
+  if (box.scrollTop + box.clientHeight >= box.scrollHeight - 300) fetchPage();
 }
 
 async function loadMeta() {
@@ -362,7 +405,7 @@ async function loadMeta() {
     return;
   }
 
-  const { stats, sellers, lastImport } = meta;
+  const { stats, lastImport } = meta;
   $('data-period').textContent = stats.receipts
     ? `${int.format(stats.receipts)} чеков · ${dateRu(stats.date_from)} — ${dateRu(stats.date_to)}`
     : 'база пуста — запустите импорт';
@@ -373,44 +416,33 @@ async function loadMeta() {
   ]
     .filter(Boolean)
     .join(' · ');
-
-  const select = $('f-seller');
-  select.innerHTML =
-    '<option value="">Все продавцы</option>' +
-    sellers
-      .map((s) => `<option value="${esc(s.seller_inn)}">${esc(s.seller)} — ${int.format(s.receipts)} чек.</option>`)
-      .join('');
-  select.value = state.seller_inn;
-
-  if (stats.date_from) {
-    $('f-from').min = stats.date_from;
-    $('f-to').min = stats.date_from;
-    $('f-from').max = stats.date_to;
-    $('f-to').max = stats.date_to;
-  }
 }
 
 // ── события ──────────────────────────────────────────────
 
 function syncControls() {
   $('f-q').value = state.q;
-  $('f-from').value = state.from;
-  $('f-to').value = state.to;
-  $('f-operation').value = state.operation;
-  $('f-min').value = state.min_sum;
-  $('f-max').value = state.max_sum;
-  $('f-per').value = String(state.per);
-  $('f-seller').value = state.seller_inn;
+  const { from, to } = periodRange();
+  $('f-from').value = from;
+  $('f-to').value = to;
+
+  document.querySelectorAll('#chips-period .chip').forEach((chip) => {
+    chip.setAttribute('aria-pressed', String(chip.dataset.period === state.period));
+  });
+  document.querySelectorAll('#chips-sum .chip').forEach((chip) => {
+    chip.setAttribute('aria-pressed', String(chip.dataset.max === state.max_sum));
+  });
+
   $('page-title').textContent = state.view === 'items' ? 'Товары' : 'Чеки';
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.setAttribute('aria-current', String(item.dataset.view === state.view));
   });
 }
 
-function update(patch, { resetPage = true } = {}) {
+function update(patch) {
   Object.assign(state, patch);
-  if (resetPage && !('page' in patch)) state.page = 1;
-  load();
+  syncControls();
+  reload();
 }
 
 function bind() {
@@ -421,18 +453,23 @@ function bind() {
     searchTimer = setTimeout(() => update({ q: value }), 300);
   });
 
-  $('f-from').addEventListener('change', (e) => update({ from: e.target.value }));
-  $('f-to').addEventListener('change', (e) => update({ to: e.target.value }));
-  $('f-seller').addEventListener('change', (e) => update({ seller_inn: e.target.value }));
-  $('f-operation').addEventListener('change', (e) => update({ operation: e.target.value }));
-  $('f-min').addEventListener('change', (e) => update({ min_sum: e.target.value }));
-  $('f-max').addEventListener('change', (e) => update({ max_sum: e.target.value }));
-  $('f-per').addEventListener('change', (e) => update({ per: Number(e.target.value) }));
+  // Правка дат вручную выключает пресет периода
+  $('f-from').addEventListener('change', (e) => update({ period: '', from: e.target.value, to: $('f-to').value }));
+  $('f-to').addEventListener('change', (e) => update({ period: '', from: $('f-from').value, to: e.target.value }));
+
+  $('chips-period').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (chip) update({ period: chip.dataset.period, from: '', to: '' });
+  });
+
+  $('chips-sum').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (chip) update({ max_sum: chip.dataset.max });
+  });
 
   $('reset-btn').addEventListener('click', () => {
     const view = state.view;
     Object.assign(state, DEFAULTS, { view });
-    syncControls();
     renderCard();
     update({});
   });
@@ -444,7 +481,6 @@ function bind() {
       // сортировка «по дате» есть в обоих разделах, остальные ключи не пересекаются
       const sort = COLUMNS[view].some((c) => c.sort === state.sort) ? state.sort : 'date';
       state.view = view;
-      syncControls();
       if (!state.card) renderCard(); // текст заглушки зависит от раздела
       update({ sort });
     });
@@ -454,8 +490,7 @@ function bind() {
     const th = e.target.closest('th[data-sort]');
     if (!th) return;
     const sort = th.dataset.sort;
-    const dir = state.sort === sort && state.dir === 'desc' ? 'asc' : 'desc';
-    update({ sort, dir });
+    update({ sort, dir: state.sort === sort && state.dir === 'desc' ? 'asc' : 'desc' });
   });
 
   $('tbody').addEventListener('click', (e) => {
@@ -472,11 +507,13 @@ function bind() {
     if (itemRow) return selectCard(`i${itemRow.dataset.item}`);
   });
 
-  $('prev-btn').addEventListener('click', () => update({ page: Math.max(1, state.page - 1) }, { resetPage: false }));
-  $('next-btn').addEventListener('click', () => update({ page: state.page + 1 }, { resetPage: false }));
+  document.querySelector('.table-scroll').addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', () => fillViewport(loadSeq));
 
   $('export-btn').addEventListener('click', () => {
-    const params = apiParams();
+    const params = apiParams(1);
+    params.delete('page');
+    params.delete('per');
     params.set('type', state.view);
     location.href = `/api/export.csv?${params}`;
   });
@@ -487,4 +524,4 @@ syncControls();
 bind();
 loadMeta();
 renderCard();
-load();
+reload();
