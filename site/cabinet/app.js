@@ -277,6 +277,7 @@ function receiptCard(r) {
       </div>
       <button class="btn" type="button" data-close>✕</button>
     </div>
+    <div class="card-top">
     ${kv([
       ['Продавец', esc(r.seller ?? '—')],
       ['ИНН', esc(r.seller_inn ?? '—')],
@@ -290,12 +291,15 @@ function receiptCard(r) {
       ['Смена', r.shift_number],
       ['ККТ', esc(r.kkt_reg_id ?? '')],
     ])}
+    </div>
     <div class="card-section">Позиции · ${int.format(r.item_count)}</div>
-    <table class="card-table">
-      <thead><tr><th class="num">№</th><th>Название</th><th class="num">Кол-во</th><th class="num">Сумма</th></tr></thead>
-      <tbody>${items}</tbody>
-    </table>
-    ${mismatch}`;
+    <div class="card-items">
+      <table class="card-table">
+        <thead><tr><th class="num">№</th><th>Название</th><th class="num">Кол-во</th><th class="num">Сумма</th></tr></thead>
+        <tbody>${items}</tbody>
+      </table>
+      ${mismatch}
+    </div>`;
 }
 
 function itemCard(it) {
@@ -307,6 +311,7 @@ function itemCard(it) {
       </div>
       <button class="btn" type="button" data-close>✕</button>
     </div>
+    <div class="card-top">
     <p class="card-name">${esc(it.name)}</p>
     ${kv([
       ['Количество', `${qty(it.quantity)}${it.unit ? ` ${esc(it.unit)}` : ''}`],
@@ -322,7 +327,8 @@ function itemCard(it) {
       ['Адрес', esc(it.retail_address ?? '')],
     ])}
     <div class="card-section">Чек</div>
-    <p><button class="btn" type="button" data-receipt="${it.receipt_id}">Открыть чек на ${money(it.receipt_total)}</button></p>`;
+    <p><button class="btn" type="button" data-receipt="${it.receipt_id}">Открыть чек на ${money(it.receipt_total)}</button></p>
+    </div>`;
 }
 
 async function renderCard() {
