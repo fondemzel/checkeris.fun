@@ -194,4 +194,4 @@ if [[ "$LIVE_VERSION" != "$NEXT" ]]; then
 fi
 
 echo "на сервере v$LIVE_VERSION, чеков в базе: $LIVE_RECEIPTS"
-echo "готово: http://95.163.220.218/cabinet/"
+echo "готово: https://checkeris.fun/cabinet/  ($HOST, $(ssh -G "$HOST" | awk '/^hostname /{print $2}'))"

@@ -51,8 +51,7 @@ const DEFAULTS = {
   from: '',
   to: '',
   sum: '', // порог из чипса, рубли
-  more: '', // '1' — от порога и больше
-  less: '1', // '1' — от порога и меньше
+  dir: 'less', // в какую сторону действует порог: less — не больше него, more — не меньше
   min_sum: '', // рубли, если диапазон задан полями вручную
   max_sum: '',
   group: '', // группа категорий — первый ряд чипсов
@@ -104,19 +103,14 @@ function periodRange() {
 }
 
 /**
- * Границы суммы. Чипс задаёт порог, галочки — в какую сторону он действует:
- * «и меньше» → не больше порога, «и больше» → не меньше. Если не отмечено ничего,
- * ищется точно эта сумма. Обе галочки одновременно интерфейс не допускает —
- * это означало бы отсутствие ограничения, поэтому фильтр сбрасывается на «Все».
+ * Границы суммы. Чипс задаёт порог, переключатель — в какую сторону он действует:
+ * «и меньше» → не больше порога, «и больше» → не меньше. Состояния взаимоисключающие,
+ * поэтому это радиокнопки: обе отмеченными означали бы отсутствие ограничения.
  * Поля «от — до» задают диапазон напрямую и отменяют чипс.
  */
 function sumBounds() {
   if (!state.sum) return { min: state.min_sum, max: state.max_sum };
-  const more = state.more === '1';
-  const less = state.less === '1';
-  if (more && !less) return { min: state.sum, max: '' };
-  if (less && !more) return { min: '', max: state.sum };
-  return { min: state.sum, max: state.sum };
+  return state.dir === 'more' ? { min: state.sum, max: '' } : { min: '', max: state.sum };
 }
 
 /** Стрелки: сдвиг диапазона на его собственную длину назад или вперёд. */
@@ -520,8 +514,8 @@ function syncControls() {
   const bounds = sumBounds();
   $('f-min').value = bounds.min;
   $('f-max').value = bounds.max;
-  $('f-more').checked = state.more === '1';
-  $('f-less').checked = state.less === '1';
+  $('f-less').checked = state.dir !== 'more';
+  $('f-more').checked = state.dir === 'more';
 
   // сдвигать нечего, пока диапазон не задан
   $('period-prev').disabled = !from || !to;
@@ -582,18 +576,13 @@ function bind() {
 
   $('chips-sum').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
-    if (chip) update({ sum: chip.dataset.sum, min_sum: '', max_sum: '' });
+    if (chip) update({ sum: chip.dataset.sum ?? '', min_sum: '', max_sum: '' });
   });
 
-  // «и меньше» вместе с «и больше» — это отсутствие ограничения. Вместо
-  // бессмысленного состояния возвращаемся к исходному: чипс «Все» и порог сверху.
-  const resetSum = () => update({ sum: '', more: '', less: '1', min_sum: '', max_sum: '' });
-
-  $('f-less').addEventListener('change', (e) =>
-    e.target.checked && state.more === '1' ? resetSum() : update({ less: e.target.checked ? '1' : '' }));
-
-  $('f-more').addEventListener('change', (e) =>
-    e.target.checked && state.less === '1' ? resetSum() : update({ more: e.target.checked ? '1' : '' }));
+  // Переключатель направления: выбор одного снимает другой, состояние всегда однозначно
+  document.querySelectorAll('input[name="sum-dir"]').forEach((radio) => {
+    radio.addEventListener('change', (e) => update({ dir: e.target.value }));
+  });
 
   // Правка полей вручную отменяет чипс: границы дальше живут сами по себе
   $('f-min').addEventListener('change', (e) =>
