@@ -10,6 +10,7 @@
 | `api/db/schema.sql` | Схема SQLite: `receipts`, `items`, представление `v_items`, журнал `imports` |
 | `api/src/import.mjs` | Импорт выгрузок ФНС из `api/data/fns_out/*.json` в базу |
 | `api/src/queries.mjs` | SQL-запросы кабинета: фильтры, сортировка, пагинация |
+| `site/cabinet/icons.js` | Иконки групп категорий: контурный SVG, имя фигуры задаётся в `categories.json` |
 | `api/src/server.mjs` | HTTP: JSON API + отдача статики из `site/` |
 | `site/cabinet/` | Интерфейс кабинета (`index.html`, `app.js`, `styles.css`) |
 

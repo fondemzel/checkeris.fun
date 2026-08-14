@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS categories (
   name        TEXT NOT NULL,             -- Еда
   hint        TEXT,                      -- подсказка для промпта и подсказок в интерфейсе
   color       TEXT,
+  icon        TEXT,                      -- имя фигуры из site/cabinet/icons.js
   sort        INTEGER NOT NULL DEFAULT 0
 );
 

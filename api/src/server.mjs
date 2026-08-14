@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { openDb, migrate, PROJECT_ROOT, API_ROOT, DB_PATH } from './db.mjs';
 import { listReceipts, listItems, getReceipt, getItem, getMeta, setItemCategory } from './queries.mjs';
+import { loadCategories, syncCategories } from './categories.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -34,6 +35,15 @@ const VERSION = JSON.parse(readFileSync(join(API_ROOT, 'package.json'), 'utf8'))
 
 const db = openDb();
 migrate(db);
+
+// Справочник категорий правится руками в api/db/categories.json, поэтому подтягиваем его
+// на старте: перезапуск сервиса = применить правку. Битый файл не должен ронять кабинет —
+// в этом случае остаётся справочник, уже лежащий в базе.
+try {
+  syncCategories(db, loadCategories());
+} catch (err) {
+  console.error('справочник категорий не применён, работаем со старым:', err.message);
+}
 
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);

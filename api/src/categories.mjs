@@ -74,6 +74,7 @@ export function flatten(catalog) {
         name: sub.name,
         hint: sub.hint ?? null,
         color: group.color ?? null,
+        icon: group.icon ?? null,
         sort: gi * 100 + si,
       });
     });
@@ -144,11 +145,11 @@ export function syncCategories(db, catalog) {
 
   const rows = flatten(catalog);
   const upsert = db.prepare(`
-    INSERT INTO categories (slug, group_slug, group_name, name, hint, color, sort)
-    VALUES (:slug, :group_slug, :group_name, :name, :hint, :color, :sort)
+    INSERT INTO categories (slug, group_slug, group_name, name, hint, color, icon, sort)
+    VALUES (:slug, :group_slug, :group_name, :name, :hint, :color, :icon, :sort)
     ON CONFLICT (slug) DO UPDATE SET
       group_slug = :group_slug, group_name = :group_name, name = :name,
-      hint = :hint, color = :color, sort = :sort`);
+      hint = :hint, color = :color, icon = :icon, sort = :sort`);
 
   db.exec('BEGIN');
   try {

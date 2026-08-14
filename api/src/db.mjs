@@ -21,4 +21,11 @@ export function openDb({ readonly = false } = {}) {
 /** Создаёт таблицы, если их ещё нет. Идемпотентно. */
 export function migrate(db) {
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
+  addColumn(db, 'categories', 'icon', 'TEXT');
+}
+
+/** CREATE TABLE IF NOT EXISTS не добавит колонку в уже существующую таблицу — дописываем вручную. */
+function addColumn(db, table, column, type) {
+  const exists = db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }

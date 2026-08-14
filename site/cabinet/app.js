@@ -1,4 +1,6 @@
 // Кабинет: слева список с подгрузкой по скроллу, справа карточка выбранной строки.
+import { groupIcon } from '/cabinet/icons.js';
+
 const $ = (id) => document.getElementById(id);
 
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 });
@@ -222,10 +224,30 @@ function renderCategoryChips() {
     `<button class="chip" type="button" data-${attr}="${esc(value)}" aria-pressed="${active}">` +
     `${esc(label)}${count ? ` <span class="chip-count">${int.format(count)}</span>` : ''}</button>`;
 
+  /**
+   * Названия групп длинные и в один ряд не помещаются, поэтому в чипсе иконка,
+   * а название — в подсказке. У выбранной группы название остаётся на виду:
+   * иначе по одним иконкам не понять, какой фильтр сейчас включён.
+   */
+  const iconChip = (attr, value, iconName, label, active, count) => {
+    const icon = groupIcon(iconName);
+    if (!icon) return chip(attr, value, label, active, count); // нет фигуры — обычный чипс с названием
+    return (
+      `<button class="chip chip-icon-only" type="button" data-${attr}="${esc(value)}"` +
+      ` aria-pressed="${active}" title="${esc(label)}" aria-label="${esc(label)}">` +
+      `${icon}${active ? `<span>${esc(label)}</span>` : ''}` +
+      `<span class="chip-count">${int.format(count)}</span></button>`
+    );
+  };
+
   groupRow.innerHTML =
     chip('group', '', 'Все', !state.group && !state.uncategorized) +
-    groups.map((g) => chip('group', g.slug, g.name, state.group === g.slug && !state.uncategorized, g.items)).join('') +
-    (meta.uncategorized ? chip('uncat', '1', 'Без категории', state.uncategorized === '1', meta.uncategorized) : '');
+    groups
+      .map((g) => iconChip('group', g.slug, g.icon, g.name, state.group === g.slug && !state.uncategorized, g.items))
+      .join('') +
+    (meta.uncategorized
+      ? iconChip('uncat', '1', 'none', 'Без категории', state.uncategorized === '1', meta.uncategorized)
+      : '');
 
   if (!categoryRow.hidden) {
     const group = groups.find((g) => g.slug === state.group);
