@@ -391,7 +391,10 @@ tbody tr.selected { background: #e8eefb; }
 
 .card-title { font-size: 16px; font-weight: 600; }
 
-.card-name { flex: none; margin: 8px 10px; font-weight: 600; }
+.card-name { margin: 8px 10px; font-weight: 600; }
+
+/* Кнопка секции «Чек» — своя строка внизу карточки, сжиматься ей нечем */
+.card-actions { flex: none; padding: 8px 10px; }
 
 .kv {
   display: grid;

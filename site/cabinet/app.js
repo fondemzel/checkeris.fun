@@ -445,9 +445,9 @@ function itemCard(it) {
       </div>
       <button class="btn" type="button" data-close>✕</button>
     </div>
-    <p class="card-name">${esc(it.name)}</p>
-    ${categorySection(it)}
+    <div class="card-section">Товар</div>
     <div class="card-top">
+    <p class="card-name">${esc(it.name)}</p>
     ${kv([
       ['Количество', `${qty(it.quantity)}${it.unit ? ` ${esc(it.unit)}` : ''}`],
       ['Цена', money(it.price)],
@@ -461,8 +461,11 @@ function itemCard(it) {
       ['Точка', esc(it.retail_place ?? '—')],
       ['Адрес', esc(it.retail_address ?? '')],
     ])}
+    </div>
+    ${categorySection(it)}
     <div class="card-section">Чек</div>
-    <p><button class="btn" type="button" data-receipt="${it.receipt_id}">Открыть чек на ${money(it.receipt_total)}</button></p>
+    <div class="card-actions">
+      <button class="btn" type="button" data-receipt="${it.receipt_id}">Открыть чек на ${money(it.receipt_total)}</button>
     </div>`;
 }
 
