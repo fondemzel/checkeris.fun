@@ -120,6 +120,13 @@ export function buildFilters(params, { prefix = '', searchItems = false } = {}) 
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', args };
 }
 
+/**
+ * Чек считается тратой, если это не возврат и он не закрыт зачётом аванса.
+ * Предоплаченная покупка выдаёт два чека — платёж и отгрузку, — и деньги ушли только
+ * по первому; второй повторил бы сумму. То же выражение зашито в v_items как counted.
+ */
+const COUNTED = '(r.operation_type <> 2 AND r.prepaid_sum = 0)';
+
 export function listReceipts(db, params) {
   const { sql: whereSql, args } = buildFilters(params, { prefix: 'r.' });
   const { sort, dir, column } = parseSort(params, RECEIPT_SORTS, 'date');
@@ -129,7 +136,8 @@ export function listReceipts(db, params) {
     .prepare(
       `SELECT r.id, r.purchased_at, r.purchased_date, r.seller, r.seller_inn, r.retail_place,
               r.retail_address, r.operation_type, r.total_sum, r.cash_sum, r.ecash_sum,
-              r.item_count, r.items_sum, r.internet_sign
+              r.prepaid_sum, r.item_count, r.items_sum, r.internet_sign,
+              ${COUNTED} AS counted
          FROM receipts r
          ${whereSql}
         ORDER BY ${column} ${dir}, r.id ${dir}
@@ -140,7 +148,9 @@ export function listReceipts(db, params) {
   const totals = db
     .prepare(
       `SELECT COUNT(*) AS count,
-              COALESCE(SUM(r.total_sum), 0) AS sum,
+              COALESCE(SUM(CASE WHEN ${COUNTED} THEN r.total_sum ELSE 0 END), 0) AS sum,
+              COALESCE(SUM(CASE WHEN ${COUNTED} THEN 0 ELSE r.total_sum END), 0) AS excluded_sum,
+              COALESCE(SUM(CASE WHEN ${COUNTED} THEN 0 ELSE 1 END), 0) AS excluded_count,
               COALESCE(SUM(r.item_count), 0) AS items
          FROM receipts r
          ${whereSql}`,
@@ -159,6 +169,7 @@ export function listItems(db, params) {
     .prepare(
       `SELECT id, receipt_id, pos, name, name_norm, quantity, unit, price, sum, nds, product_type, gtin,
               purchased_at, purchased_date, seller, seller_inn, retail_place, operation_type,
+              prepaid_sum, counted,
               category_slug, category_name, category_source, group_slug, group_name
          FROM v_items
          ${whereSql}
@@ -170,7 +181,9 @@ export function listItems(db, params) {
   const totals = db
     .prepare(
       `SELECT COUNT(*) AS count,
-              COALESCE(SUM(sum), 0) AS sum,
+              COALESCE(SUM(CASE WHEN counted = 1 THEN sum ELSE 0 END), 0) AS sum,
+              COALESCE(SUM(CASE WHEN counted = 1 THEN 0 ELSE sum END), 0) AS excluded_sum,
+              COALESCE(SUM(CASE WHEN counted = 1 THEN 0 ELSE 1 END), 0) AS excluded_count,
               COUNT(DISTINCT receipt_id) AS receipts
          FROM v_items
          ${whereSql}`,
@@ -276,11 +289,11 @@ export function getMeta(db) {
   const stats = db
     .prepare(
       `SELECT COUNT(*) AS receipts,
-              COALESCE(SUM(total_sum), 0) AS sum,
-              COALESCE(SUM(item_count), 0) AS items,
-              MIN(purchased_date) AS date_from,
-              MAX(purchased_date) AS date_to
-         FROM receipts`,
+              COALESCE(SUM(CASE WHEN ${COUNTED} THEN r.total_sum ELSE 0 END), 0) AS sum,
+              COALESCE(SUM(r.item_count), 0) AS items,
+              MIN(r.purchased_date) AS date_from,
+              MAX(r.purchased_date) AS date_to
+         FROM receipts r`,
     )
     .get();
 

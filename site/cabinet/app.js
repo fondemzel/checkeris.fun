@@ -153,26 +153,43 @@ function apiParams(page) {
 // ── колонки списка ───────────────────────────────────────
 // В списке только то, по чему выбирают строку. Реквизиты — в карточке справа.
 
+/**
+ * Пометка строк, которые не идут в сумму. Возврат — не трата; чек, закрытый зачётом
+ * аванса, повторяет более раннюю предоплату, по которой деньги уже ушли. Строки остаются
+ * на месте: иначе две одинаковые покупки в списке выглядят необъяснимо.
+ */
+function moneyBadge(r) {
+  if (r.operation_type === 2) return ' <span class="badge refund">возврат</span>';
+  if (r.prepaid_sum > 0) return ' <span class="badge">зачёт аванса</span>';
+  return '';
+}
+
+/** Ячейка с многоточием: пометка выносится наружу, чтобы её не съело обрезание текста. */
+const ellipsisCell = (text, badge) =>
+  badge ? `<div class="cell-flex"><span class="ellipsis-text">${text}</span>${badge}</div>` : text;
+
 const COLUMNS = {
   receipts: [
     { key: 'date', title: 'Дата', sort: 'date', render: (r) =>
       `<span class="nowrap">${dateRu(r.purchased_at)}</span> <span class="dim small">${timeRu(r.purchased_at)}</span>` },
     { key: 'seller', title: 'Продавец', sort: 'seller', cls: 'ellipsis', render: (r) =>
-      `${esc(r.seller ?? '—')}${r.operation_type === 2 ? ' <span class="badge refund">возврат</span>' : ''}` },
+      ellipsisCell(esc(r.seller ?? '—'), moneyBadge(r)) },
     { key: 'items', title: 'Поз.', sort: 'items', cls: 'num dim', render: (r) => int.format(r.item_count) },
-    { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) => `<b>${money(r.total_sum)}</b>` },
+    { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) =>
+      r.counted ? `<b>${money(r.total_sum)}</b>` : `<span class="dim">${money(r.total_sum)}</span>` },
   ],
   items: [
     { key: 'date', title: 'Дата', sort: 'date', render: (r) =>
       `<span class="nowrap">${dateRu(r.purchased_at)}</span> <span class="dim small">${timeRu(r.purchased_at)}</span>` },
-    { key: 'name', title: 'Товар', sort: 'name', cls: 'ellipsis', render: (r) => esc(r.name) },
+    { key: 'name', title: 'Товар', sort: 'name', cls: 'ellipsis', render: (r) => ellipsisCell(esc(r.name), moneyBadge(r)) },
     { key: 'group', title: 'Группа', cls: 'group-cell dim', render: (r) => esc(r.group_name ?? '—') },
     { key: 'category', title: 'Категория', cls: 'cat-cell', render: (r) =>
       r.category_name
         ? `${esc(r.category_name)}${r.category_source === 'rule-fallback' ? ' <span class="badge">по продавцу</span>' : ''}`
         : '<span class="dim">не определена</span>' },
     { key: 'quantity', title: 'Кол-во', sort: 'quantity', cls: 'num dim', render: (r) => qty(r.quantity) },
-    { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) => `<b>${money(r.sum)}</b>` },
+    { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) =>
+      r.counted ? `<b>${money(r.sum)}</b>` : `<span class="dim">${money(r.sum)}</span>` },
   ],
 };
 
@@ -265,12 +282,19 @@ function renderSummary(totals) {
   const count = totals.count ?? 0;
   const receipts = isItems ? totals.receipts ?? 0 : count;
   const items = isItems ? count : totals.items ?? 0;
-  const avg = count ? money((totals.sum ?? 0) / count, true) : '—';
+  // Средний считаем по тому же множеству, что и сумму: без возвратов и зачётов аванса
+  const counted = count - (totals.excluded_count ?? 0);
+  const avg = counted ? money((totals.sum ?? 0) / counted, true) : '—';
   $('totals-left').textContent =
     `${int.format(receipts)} ${plural(receipts, 'чек', 'чека', 'чеков')} · ` +
     `${int.format(items)} ${plural(items, 'позиция', 'позиции', 'позиций')} · ` +
     `${isItems ? 'средняя позиция' : 'средний чек'} ${avg}`;
-  $('totals-right').innerHTML = `Итого: <b>${money(totals.sum)}</b>`;
+
+  const skipped = totals.excluded_sum
+    ? ` <span class="dim" title="Возвраты и чеки, закрытые зачётом аванса: деньги по ним уже посчитаны">` +
+      `вне суммы ${money(totals.excluded_sum, true)}</span> · `
+    : '';
+  $('totals-right').innerHTML = `${skipped}Итого: <b>${money(totals.sum)}</b>`;
 }
 
 function renderFooter() {
@@ -340,7 +364,7 @@ function receiptCard(r) {
     <div class="card-head">
       <div>
         <div class="card-title">${money(r.total_sum)}</div>
-        <div class="dim">${dateRu(r.purchased_at)} ${timeRu(r.purchased_at)}${r.operation_type === 2 ? ' · <span class="badge refund">возврат</span>' : ''}</div>
+        <div class="dim">${dateRu(r.purchased_at)} ${timeRu(r.purchased_at)}${moneyBadge(r) ? ' ·' + moneyBadge(r) : ''}</div>
       </div>
       <button class="btn" type="button" data-close>✕</button>
     </div>
@@ -481,7 +505,7 @@ function itemCard(it) {
     <div class="card-head">
       <div>
         <div class="card-title">${money(it.sum)}</div>
-        <div class="dim">${dateRu(it.purchased_at)} ${timeRu(it.purchased_at)}${it.operation_type === 2 ? ' · <span class="badge refund">возврат</span>' : ''}</div>
+        <div class="dim">${dateRu(it.purchased_at)} ${timeRu(it.purchased_at)}${moneyBadge(it) ? ' ·' + moneyBadge(it) : ''}</div>
       </div>
       <button class="btn" type="button" data-close>✕</button>
     </div>

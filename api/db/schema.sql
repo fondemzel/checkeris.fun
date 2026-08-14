@@ -95,7 +95,11 @@ SELECT
   r.retail_place,
   r.retail_address,
   r.operation_type,
+  r.prepaid_sum,
   r.total_sum AS receipt_total,
+  -- Деньги считаем один раз: возврат — не трата, а чек, закрытый зачётом аванса,
+  -- повторяет более ранний чек предоплаты, по которому деньги уже ушли.
+  CASE WHEN r.operation_type = 2 OR r.prepaid_sum > 0 THEN 0 ELSE 1 END AS counted,
   l.category_slug,
   l.source AS category_source,
   l.confidence AS category_confidence,

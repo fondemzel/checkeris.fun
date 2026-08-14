@@ -355,6 +355,12 @@ tbody tr.selected { background: #e8eefb; }
   white-space: nowrap;
 }
 
+/* Пометка справа от длинного названия: многоточие съедает конец текста, а не значок.
+   Флекс живёт внутри ячейки: на самой td он развалил бы табличную раскладку. */
+.cell-flex { display: flex; align-items: baseline; gap: 6px; }
+.cell-flex > .ellipsis-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-flex > .badge { flex: none; }
+
 /* Колонкам категорий нужна своя ширина: иначе они делят место с названием
    товара по правилу width:100% и схлопываются в пару букв. */
 .group-cell, .cat-cell {
