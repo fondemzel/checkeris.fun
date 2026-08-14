@@ -22,6 +22,13 @@ export function openDb({ readonly = false } = {}) {
 export function migrate(db) {
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
   extractGroups(db);
+  addColumn(db, 'groups', 'shade_from', 'INTEGER NOT NULL DEFAULT 25');
+  addColumn(db, 'groups', 'shade_to', 'INTEGER NOT NULL DEFAULT 85');
+}
+
+/** CREATE TABLE IF NOT EXISTS не добавит колонку в уже существующую таблицу. */
+function addColumn(db, table, column, definition) {
+  if (!hasColumn(db, table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 const hasColumn = (db, table, column) =>

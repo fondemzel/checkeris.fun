@@ -39,9 +39,17 @@ const fail = (status, error) => ({ error, status });
 
 const trim = (v) => String(v ?? '').trim();
 
+const clamp = (v, min, max) => Math.min(max, Math.max(min, Math.round(Number(v) || 0)));
+
+/** Цвет принимаем только как #rrggbb: он уходит прямо в стиль чипса. */
+function hexColor(value) {
+  const hex = trim(value).toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(hex) ? hex : null;
+}
+
 /** Справочник целиком: группы, их категории и на что каждая категория завязана. */
 export function getTaxonomy(db) {
-  const groups = db.prepare('SELECT slug, name, icon, color, sort FROM groups ORDER BY sort, slug').all();
+  const groups = db.prepare('SELECT slug, name, icon, color, shade_from, shade_to, sort FROM groups ORDER BY sort, slug').all();
   const cats = db
     .prepare(
       `SELECT c.slug, c.group_slug, c.name, c.hint, c.sort,
@@ -72,26 +80,42 @@ export function createGroup(db, body) {
   if (!name) return fail(400, 'нужно название группы');
 
   const slug = freeSlug(db, 'groups', translit(name) || 'group');
-  db.prepare('INSERT INTO groups (slug, name, icon, color, sort) VALUES (?, ?, ?, NULL, ?)').run(
+  db.prepare('INSERT INTO groups (slug, name, icon, color, sort) VALUES (?, ?, ?, ?, ?)').run(
     slug,
     name,
     trim(body.icon) || null,
+    hexColor(body.color),
     nextSort(db, 'groups'),
   );
-  return { group: db.prepare('SELECT slug, name, icon, sort FROM groups WHERE slug = ?').get(slug) };
+  return { group: db.prepare('SELECT slug, name, icon, color, shade_from, shade_to, sort FROM groups WHERE slug = ?').get(slug) };
 }
 
 export function updateGroup(db, slug, body) {
-  const group = db.prepare('SELECT slug, name, icon, sort FROM groups WHERE slug = ?').get(slug);
+  const group = db.prepare('SELECT slug, name, icon, color, shade_from, shade_to, sort FROM groups WHERE slug = ?').get(slug);
   if (!group) return fail(404, 'группа не найдена');
 
   const name = body.name === undefined ? group.name : trim(body.name);
   if (!name) return fail(400, 'название не может быть пустым');
   const icon = body.icon === undefined ? group.icon : trim(body.icon) || null;
   const sort = body.sort === undefined ? group.sort : Number(body.sort);
+  const color = body.color === undefined ? group.color : hexColor(body.color);
 
-  db.prepare('UPDATE groups SET name = ?, icon = ?, sort = ? WHERE slug = ?').run(name, icon, sort, slug);
-  return { group: db.prepare('SELECT slug, name, icon, sort FROM groups WHERE slug = ?').get(slug) };
+  // Диапазон оттенков: между ними раскладываются категории группы. Держим from < to
+  // и не даём подойти вплотную к белому — иначе первая категория станет неразличимой.
+  let from = body.shade_from === undefined ? group.shade_from : clamp(body.shade_from, 5, 100);
+  let to = body.shade_to === undefined ? group.shade_to : clamp(body.shade_to, 5, 100);
+  if (from > to) [from, to] = [to, from];
+
+  db.prepare('UPDATE groups SET name = ?, icon = ?, color = ?, shade_from = ?, shade_to = ?, sort = ? WHERE slug = ?').run(
+    name,
+    icon,
+    color,
+    from,
+    to,
+    sort,
+    slug,
+  );
+  return { group: db.prepare('SELECT slug, name, icon, color, shade_from, shade_to, sort FROM groups WHERE slug = ?').get(slug) };
 }
 
 /** Группу удаляем только пустой: иначе её категории остались бы без родителя. */

@@ -1,5 +1,8 @@
 // Кабинет: слева список с подгрузкой по скроллу, справа карточка выбранной строки.
 import { groupIcon, searchIcons, GROUP_ICONS } from '/cabinet/icons.js';
+import { hexToHsl, hslToHex, tint, shades, readableText, edge, hexToRgb } from '/cabinet/colors.js';
+
+const DEFAULT_GROUP_COLOR = '#7c9cd6'; // чем красить группу, которой цвет ещё не задали
 
 const $ = (id) => document.getElementById(id);
 
@@ -314,8 +317,8 @@ function renderCategoryChips() {
   if (categoryRow.hidden) categoryRow.innerHTML = ''; // группа не выбрана — ряд пуст
   if (!visible) return;
 
-  const chip = (attr, value, label, active, count) =>
-    `<button class="chip" type="button" data-${attr}="${esc(value)}" aria-pressed="${active}">` +
+  const chip = (attr, value, label, active, count, color) =>
+    `<button class="chip" type="button" data-${attr}="${esc(value)}" aria-pressed="${active}"${chipStyle(color, active)}>` +
     `${esc(label)}${count ? ` <span class="chip-count">${int.format(count)}</span>` : ''}</button>`;
 
   /**
@@ -323,12 +326,12 @@ function renderCategoryChips() {
    * а название — в подсказке. У выбранной группы название остаётся на виду:
    * иначе по одним иконкам не понять, какой фильтр сейчас включён.
    */
-  const iconChip = (attr, value, iconName, label, active, count) => {
+  const iconChip = (attr, value, iconName, label, active, count, color) => {
     const icon = groupIcon(iconName);
-    if (!icon) return chip(attr, value, label, active, count); // нет фигуры — обычный чипс с названием
+    if (!icon) return chip(attr, value, label, active, count, color); // нет фигуры — обычный чипс
     return (
       `<button class="chip chip-icon-only" type="button" data-${attr}="${esc(value)}"` +
-      ` aria-pressed="${active}" title="${esc(label)}" aria-label="${esc(label)}">` +
+      ` aria-pressed="${active}" title="${esc(label)}" aria-label="${esc(label)}"${chipStyle(color, active)}>` +
       `${icon}${active ? `<span>${esc(label)}</span>` : ''}` +
       `<span class="chip-count">${int.format(count)}</span></button>`
     );
@@ -337,7 +340,9 @@ function renderCategoryChips() {
   groupRow.innerHTML =
     chip('group', '', 'Все', !state.group && !state.uncategorized) +
     groups
-      .map((g) => iconChip('group', g.slug, g.icon, g.name, state.group === g.slug && !state.uncategorized, g.items))
+      .map((g) =>
+        iconChip('group', g.slug, g.icon, g.name, state.group === g.slug && !state.uncategorized, g.items, g.color),
+      )
       .join('') +
     (meta.uncategorized
       ? iconChip('uncat', '1', 'none', 'Без категории', state.uncategorized === '1', meta.uncategorized)
@@ -345,11 +350,30 @@ function renderCategoryChips() {
 
   if (!categoryRow.hidden) {
     const group = groups.find((g) => g.slug === state.group);
+    const tones = group ? categoryShades(group) : [];
     categoryRow.innerHTML = group
       ? chip('category', '', 'Все', !state.category) +
-        group.subcategories.map((s) => chip('category', s.slug, s.name, state.category === s.slug, s.items)).join('')
+        group.subcategories
+          .map((s, i) => chip('category', s.slug, s.name, state.category === s.slug, s.items, tones[i]))
+          .join('')
       : '';
   }
+}
+
+/** Оттенки категорий группы в порядке их следования. */
+const categoryShades = (group) =>
+  shades(group.color ?? '', (group.subcategories ?? group.categories ?? []).length, group.shade_from, group.shade_to);
+
+/**
+ * Раскраска чипса. Невыбранный показан бледнее выбранного, но тем же цветом:
+ * так видно и принадлежность к группе, и текущий фильтр.
+ */
+function chipStyle(color, active) {
+  if (!color || !hexToRgb(color)) return '';
+  const background = active ? color : tint(color, 45);
+  return (
+    ` style="background:${background};border-color:${edge(background)};color:${readableText(background)}"`
+  );
 }
 
 // ── раздел «Категории» ───────────────────────────────────
@@ -381,19 +405,23 @@ function renderTree() {
   $('tree').innerHTML = taxonomy.groups
     .map((g) => {
       const active = state.node === `g:${g.slug}`;
+      const tones = categoryShades(g);
+      const swatch = (color) =>
+        color ? `<span class="tree-swatch" style="background:${color};border-color:${edge(color)}"></span>` : '';
       const rows = g.categories
-        .map((c) => {
+        .map((c, i) => {
           const on = state.node === `c:${c.slug}`;
           return (
             `<button class="tree-row tree-cat${on ? ' selected' : ''}" type="button" data-node="c:${esc(c.slug)}">` +
-            `<span class="ellipsis-text">${esc(c.name)}</span>` +
+            `${swatch(tones[i])}<span class="ellipsis-text">${esc(c.name)}</span>` +
             `<span class="dim tree-count">${c.items ? int.format(c.items) : ''}</span></button>`
           );
         })
         .join('');
       return (
         `<div class="tree-group">` +
-        `<button class="tree-row tree-head-row${active ? ' selected' : ''}" type="button" data-node="g:${esc(g.slug)}">` +
+        `<button class="tree-row tree-head-row${active ? ' selected' : ''}" type="button" data-node="g:${esc(g.slug)}"` +
+        `${g.color ? ` style="background:${tint(g.color, 30)}"` : ''}>` +
         `${groupIcon(g.icon) || '<span class="chip-icon"></span>'}` +
         `<span class="ellipsis-text">${esc(g.name)}</span>` +
         `<span class="dim tree-count">${g.items ? int.format(g.items) : ''}</span></button>` +
@@ -426,6 +454,71 @@ const iconPicker = (current) =>
   `<div class="icon-picker" id="icon-grid" data-current="${esc(current ?? '')}">${iconGrid(searchIcons(''), current)}</div>` +
   `<p class="dim" id="icon-empty" hidden>Ничего не нашлось. Попробуйте другое слово.</p>`;
 
+/**
+ * Выбор цвета группы. Квадрат: по горизонтали тон, по вертикали светлота от чистого
+ * цвета к белому. Ниже — полоса «белый → выбранный цвет» с двумя ползунками: между ними
+ * раскладываются оттенки категорий, поэтому видно сразу, какой будет вся группа.
+ */
+function colorPicker(g) {
+  const color = g.color ?? DEFAULT_GROUP_COLOR;
+  return `
+    <div class="color-picker" data-color="${esc(color)}" data-from="${g.shade_from}" data-to="${g.shade_to}">
+      <div class="color-field" id="color-field"><span class="color-dot" id="color-dot"></span></div>
+      <div class="color-row">
+        <span class="color-swatch" id="color-swatch"></span>
+        <input id="color-hex" type="text" spellcheck="false" maxlength="7" />
+      </div>
+      <div class="shade-bar" id="shade-bar">
+        <span class="shade-handle" data-edge="from"></span>
+        <span class="shade-handle" data-edge="to"></span>
+      </div>
+      <div class="shade-preview" id="shade-preview"></div>
+    </div>`;
+}
+
+/** Перерисовка виджета под текущее состояние: поле, полоса, ползунки, образцы категорий. */
+function paintPicker(categories) {
+  const box = $('detail').querySelector('.color-picker');
+  if (!box) return;
+  const { color, from, to } = pickerState(box);
+
+  const hsl = hexToHsl(color) ?? { h: 0, s: 0, l: 50 };
+  $('color-field').style.setProperty('--hue', String(Math.round(hsl.h)));
+  const dot = $('color-dot');
+  dot.style.left = `${(hsl.h / 360) * 100}%`;
+  // Вертикаль — светлота от 50% (чистый тон) до 100% (белый)
+  dot.style.top = `${clampPct(((hsl.l - 50) / 50) * 100)}%`;
+  dot.style.background = color;
+
+  $('color-swatch').style.background = color;
+  if (document.activeElement !== $('color-hex')) $('color-hex').value = color;
+
+  $('shade-bar').style.setProperty('--to-color', color);
+  for (const handle of $('shade-bar').querySelectorAll('.shade-handle')) {
+    const value = handle.dataset.edge === 'from' ? from : to;
+    handle.style.left = `${value}%`;
+    handle.style.background = tint(color, value);
+  }
+
+  const n = Math.max(categories?.length ?? 0, 1);
+  $('shade-preview').innerHTML = shades(color, n, from, to)
+    .map((shade, i) => {
+      const label = categories?.[i]?.name ?? 'категория';
+      return `<span class="shade-chip" style="background:${shade};border-color:${edge(shade)};color:${readableText(shade)}">${esc(label)}</span>`;
+    })
+    .join('');
+}
+
+const clampPct = (v) => Math.min(100, Math.max(0, v));
+
+function pickerState(box) {
+  return {
+    color: box.dataset.color,
+    from: Number(box.dataset.from),
+    to: Number(box.dataset.to),
+  };
+}
+
 function groupEditor(g) {
   return `
     <div class="card-head">
@@ -438,6 +531,11 @@ function groupEditor(g) {
     </div>
     <div class="card-section">Иконка</div>
     <div class="editor">${iconPicker(g.icon)}</div>
+    <div class="card-section">Цвет</div>
+    <div class="editor">
+      ${colorPicker(g)}
+      <p class="dim">Категории получают этот же цвет разной насыщенности — между ползунками.</p>
+    </div>
     <div class="card-section">Что внутри</div>
     <div class="editor">
       <p class="dim">${int.format(g.categories.length)} ${plural(g.categories.length, 'категория', 'категории', 'категорий')},
@@ -507,6 +605,7 @@ function renderNode() {
     return renderNode();
   }
   pane.innerHTML = kind === 'g' ? groupEditor(node) : categoryEditor(node);
+  if (kind === 'g') paintPicker(node.categories);
 }
 
 /** Любая правка справочника → перечитать его, дерево, чипсы и карточку. */
@@ -544,6 +643,90 @@ function treeNote(message, isError = false) {
   info.classList.toggle('error', isError);
 }
 
+/** Захват указателя: на синтетических событиях id может быть неизвестен, это не повод падать. */
+const capture = (el, e) => { try { el.setPointerCapture(e.pointerId); } catch { /* не критично */ } };
+
+/**
+ * Перетаскивание в пикере. Обработчики висят на карточке, а не на самих элементах:
+ * редактор перерисовывается целиком после каждого сохранения, и подписки бы терялись.
+ */
+function bindColorPicker() {
+  const pane = $('detail');
+  let drag = null; // { kind: 'field' | 'shade', edge }
+
+  const categoriesOfOpenGroup = () => {
+    const box = pane.querySelector('[data-group]');
+    return box ? findGroup(box.dataset.group)?.categories ?? [] : [];
+  };
+
+  const applyField = (event) => {
+    const box = pane.querySelector('.color-picker');
+    const rect = $('color-field').getBoundingClientRect();
+    const x = clampPct(((event.clientX - rect.left) / rect.width) * 100);
+    const y = clampPct(((event.clientY - rect.top) / rect.height) * 100);
+    // низ квадрата — белый, верх — чистый тон: светлота идёт от 50% к 100%
+    box.dataset.color = hslToHex((x / 100) * 360, 85, 50 + (y / 100) * 50);
+    paintPicker(categoriesOfOpenGroup());
+  };
+
+  const applyShade = (event, which) => {
+    const box = pane.querySelector('.color-picker');
+    const rect = $('shade-bar').getBoundingClientRect();
+    const value = Math.round(clampPct(((event.clientX - rect.left) / rect.width) * 100));
+    box.dataset[which] = String(Math.max(5, value));
+    // Ползунки не должны меняться местами — тянем ближний край за собой
+    if (Number(box.dataset.from) > Number(box.dataset.to)) {
+      box.dataset[which === 'from' ? 'to' : 'from'] = box.dataset[which];
+    }
+    paintPicker(categoriesOfOpenGroup());
+  };
+
+  pane.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('.shade-handle');
+    if (handle) {
+      drag = { kind: 'shade', edge: handle.dataset.edge };
+      capture(pane, e);
+      return;
+    }
+    if (e.target.closest('#shade-bar')) {
+      // клик по полосе двигает ближний ползунок
+      const box = pane.querySelector('.color-picker');
+      const rect = $('shade-bar').getBoundingClientRect();
+      const value = clampPct(((e.clientX - rect.left) / rect.width) * 100);
+      const near = Math.abs(value - Number(box.dataset.from)) < Math.abs(value - Number(box.dataset.to)) ? 'from' : 'to';
+      drag = { kind: 'shade', edge: near };
+      applyShade(e, near);
+      capture(pane, e);
+      return;
+    }
+    if (e.target.closest('#color-field')) {
+      drag = { kind: 'field' };
+      applyField(e);
+      capture(pane, e);
+    }
+  });
+
+  pane.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    e.preventDefault();
+    if (drag.kind === 'field') applyField(e);
+    else applyShade(e, drag.edge);
+  });
+
+  const stop = () => { drag = null; };
+  pane.addEventListener('pointerup', stop);
+  pane.addEventListener('pointercancel', stop);
+
+  // Цвет можно и вписать: удобно, когда он известен точно
+  pane.addEventListener('input', (e) => {
+    if (e.target.id !== 'color-hex') return;
+    const value = e.target.value.trim();
+    if (!hexToRgb(value)) return;
+    pane.querySelector('.color-picker').dataset.color = value.toLowerCase();
+    paintPicker(categoriesOfOpenGroup());
+  });
+}
+
 /** Новая запись создаётся сразу и открывается на правку: пустая форма-заготовка тут лишняя. */
 async function addGroup() {
   try {
@@ -575,7 +758,10 @@ async function saveNode() {
   const isGroup = Boolean(box.dataset.group);
   const slug = box.dataset.group ?? box.dataset.category;
   const body = isGroup
-    ? { name: $('node-name').value, icon: $('icon-grid').dataset.current }
+    ? (() => {
+        const { color, from, to } = pickerState($('detail').querySelector('.color-picker'));
+        return { name: $('node-name').value, icon: $('icon-grid').dataset.current, color, shade_from: from, shade_to: to };
+      })()
     : { name: $('node-name').value, group_slug: $('node-group').value, hint: $('node-hint').value };
 
   try {
@@ -1160,6 +1346,8 @@ function bind() {
   $('detail').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.id === 'node-name') saveNode();
   });
+
+  bindColorPicker();
 
   // Поиск иконки перерисовывает сетку, сохраняя уже выбранную
   $('detail').addEventListener('input', (e) => {

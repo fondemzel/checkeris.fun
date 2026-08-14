@@ -119,12 +119,17 @@ LEFT JOIN groups g ON g.slug = c.group_slug;
 
 -- Группа — самостоятельная запись, а не колонка в категории: иначе её нельзя
 -- переименовать одним действием и нельзя завести пустой, чтобы потом наполнить.
+-- Цвет группы задаётся один, а её категории получают оттенки этого же цвета:
+-- shade_from и shade_to — доли (0–100) на переходе от белого к color, между которыми
+-- раскладываются категории. Так группа читается пятном, а категории внутри различимы.
 CREATE TABLE IF NOT EXISTS groups (
-  slug  TEXT PRIMARY KEY,                -- food
-  name  TEXT NOT NULL,                   -- Питание
-  icon  TEXT,                            -- имя фигуры из site/cabinet/icons.js
-  color TEXT,
-  sort  INTEGER NOT NULL DEFAULT 0
+  slug       TEXT PRIMARY KEY,           -- food
+  name       TEXT NOT NULL,              -- Питание
+  icon       TEXT,                       -- имя фигуры из site/cabinet/icons.js
+  color      TEXT,                       -- #rrggbb
+  shade_from INTEGER NOT NULL DEFAULT 25,
+  shade_to   INTEGER NOT NULL DEFAULT 85,
+  sort       INTEGER NOT NULL DEFAULT 0
 );
 
 -- slug категории — идентификатор, а не адрес: на него ссылаются словарь, правила

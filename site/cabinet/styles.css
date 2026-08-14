@@ -208,10 +208,10 @@ input::placeholder { color: #9aa1aa; }
 
 .chip-icon { width: 15px; height: 15px; flex: none; }
 
-/* Счётчик в чипсе: сколько позиций в категории по всей базе */
-.chip-count { color: #9aa1aa; font-size: 11px; }
-.chip:hover .chip-count { color: var(--muted); }
-.chip[aria-pressed="true"] .chip-count { color: rgba(255, 255, 255, 0.75); }
+/* Счётчик в чипсе: сколько позиций в категории по всей базе.
+   Цвет наследуется — фон у чипса свой у каждой группы, фиксированный серый на нём тонет. */
+.chip-count { color: inherit; opacity: 0.55; font-size: 11px; }
+.chip:hover .chip-count { opacity: 0.75; }
 
 /* Диапазоны прижаты к правому краю своего ряда */
 .chips-range {
@@ -518,6 +518,81 @@ tbody tr.child-more td { padding-left: 24px; }
 }
 
 .icon-option .chip-icon { width: 18px; height: 18px; }
+
+/* ── выбор цвета группы ────────────────────────────────── */
+
+.color-picker { display: flex; flex-direction: column; gap: 8px; }
+
+/* Квадрат: по горизонтали тон, сверху вниз цвет выцветает в белый.
+   Радуга — фон, белизна — накладка, так обходимся без canvas. */
+.color-field {
+  position: relative;
+  height: 120px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: crosshair;
+  touch-action: none;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff),
+    linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+
+.color-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.color-row { display: flex; align-items: center; gap: 8px; }
+.color-swatch { flex: none; width: 26px; height: 26px; border: 1px solid var(--border-strong); border-radius: 4px; }
+#color-hex { flex: 1; font-family: ui-monospace, Consolas, monospace; }
+
+/* Полоса «белый → цвет группы»: между ползунками раскладываются категории */
+.shade-bar {
+  position: relative;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  touch-action: none;
+  background: linear-gradient(to right, #fff, var(--to-color, #7c9cd6));
+}
+
+.shade-handle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 26px;
+  margin: -13px 0 0 -7px;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+}
+
+.shade-preview { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.shade-chip {
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Кружок цвета категории в дереве */
+.tree-swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+}
 
 /* ── карточка в правой панели ──────────────────────────── */
 

@@ -404,7 +404,7 @@ export function getMeta(db) {
   // Справочник для чипсов: группы и вложенные подкатегории, с числом размеченных позиций
   const rows = db
     .prepare(
-      `SELECT c.slug, c.name, c.group_slug, g.name AS group_name, g.icon,
+      `SELECT c.slug, c.name, c.group_slug, g.name AS group_name, g.icon, g.color, g.shade_from, g.shade_to,
               (SELECT COUNT(*) FROM item_labels l WHERE l.category_slug = c.slug) AS items
          FROM categories c JOIN groups g ON g.slug = c.group_slug
         ORDER BY g.sort, g.slug, c.sort`,
@@ -415,7 +415,18 @@ export function getMeta(db) {
   for (const row of rows) {
     let group = groups.find((g) => g.slug === row.group_slug);
     if (!group) {
-      groups.push((group = { slug: row.group_slug, name: row.group_name, icon: row.icon, items: 0, subcategories: [] }));
+      groups.push(
+        (group = {
+          slug: row.group_slug,
+          name: row.group_name,
+          icon: row.icon,
+          color: row.color,
+          shade_from: row.shade_from,
+          shade_to: row.shade_to,
+          items: 0,
+          subcategories: [],
+        }),
+      );
     }
     group.subcategories.push({ slug: row.slug, name: row.name, items: row.items });
     group.items += row.items;
