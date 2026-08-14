@@ -15,7 +15,7 @@
       "slug": "food",
       "name": "Питание",
       "icon": "utensils",
-      "color": "#d9ead3",
+      "color": "#39d039",
       "subcategories": [
         {
           "slug": "food.groceries",
@@ -43,7 +43,7 @@
       "slug": "housing",
       "name": "Жильё",
       "icon": "house",
-      "color": "#f4cccc",
+      "color": "#d03e39",
       "subcategories": [
         {
           "slug": "housing.rent",
@@ -66,7 +66,7 @@
       "slug": "transport",
       "name": "Транспорт",
       "icon": "car",
-      "color": "#d9d9d9",
+      "color": "#3985d0",
       "subcategories": [
         {
           "slug": "transport.fuel",
@@ -94,7 +94,7 @@
       "slug": "clothing",
       "name": "Одежда и аксессуары",
       "icon": "shirt",
-      "color": "#f9cb9c",
+      "color": "#d08a39",
       "subcategories": [
         {
           "slug": "clothing.apparel",
@@ -117,7 +117,7 @@
       "slug": "health",
       "name": "Здоровье и уход",
       "icon": "heart",
-      "color": "#c9daf8",
+      "color": "#29ae93",
       "subcategories": [
         {
           "slug": "health.services",
@@ -145,7 +145,7 @@
       "slug": "leisure",
       "name": "Досуг и медиа",
       "icon": "play",
-      "color": "#93c47d",
+      "color": "#ae51d6",
       "subcategories": [
         {
           "slug": "leisure.events",
@@ -163,7 +163,7 @@
       "slug": "home",
       "name": "Дом и техника",
       "icon": "sofa",
-      "color": "#d9d2e9",
+      "color": "#6b5ad8",
       "subcategories": [
         {
           "slug": "housing.repair",
@@ -206,7 +206,7 @@
       "slug": "education",
       "name": "Образование",
       "icon": "cap",
-      "color": "#6d9eeb",
+      "color": "#2c94ba",
       "subcategories": [
         {
           "slug": "education.courses",
@@ -224,7 +224,7 @@
       "slug": "finance",
       "name": "Финансы",
       "icon": "card",
-      "color": "#ea9999",
+      "color": "#ba9d2c",
       "subcategories": [
         {
           "slug": "finance.credit",
@@ -252,7 +252,7 @@
       "slug": "gifts",
       "name": "Подарки",
       "icon": "gift",
-      "color": "#ead1dc",
+      "color": "#d65194",
       "subcategories": [
         {
           "slug": "gifts.gifts",
@@ -265,7 +265,7 @@
       "slug": "pets",
       "name": "Питомцы",
       "icon": "paw",
-      "color": "#a2c4c9",
+      "color": "#83a630",
       "subcategories": [
         {
           "slug": "pets.food",
@@ -288,7 +288,7 @@
       "slug": "other",
       "name": "Прочее",
       "icon": "dots",
-      "color": "#d9d9d9",
+      "color": "#7e8a9a",
       "subcategories": [
         {
           "slug": "other.smoking",
