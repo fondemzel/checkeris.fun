@@ -359,8 +359,21 @@ const CATEGORY_SOURCES = {
 const catOption = (slug, name, selected) =>
   `<option value="${esc(slug)}"${slug === selected ? ' selected' : ''}>${esc(name)}</option>`;
 
-const catOptions = (list, selected, empty) =>
-  catOption('', empty, selected) + list.map((o) => catOption(o.slug, o.name, selected)).join('');
+/**
+ * Второй список: подкатегории выбранной группы либо, если группа не выбрана,
+ * все категории сразу — с заголовками групп, иначе 39 пунктов подряд не читаются.
+ */
+function categoryOptions(groups, groupSlug, selected) {
+  const empty = catOption('', '— не выбрана —', selected);
+  const items = (list) => list.map((s) => catOption(s.slug, s.name, selected)).join('');
+
+  if (groupSlug) return empty + items(groups.find((g) => g.slug === groupSlug)?.subcategories ?? []);
+
+  return (
+    empty +
+    groups.map((g) => `<optgroup label="${esc(g.name)}">${items(g.subcategories)}</optgroup>`).join('')
+  );
+}
 
 /**
  * Выбор категории в карточке: группа, затем подкатегория внутри неё.
@@ -370,7 +383,6 @@ const catOptions = (list, selected, empty) =>
 function categorySection(it) {
   const groups = meta?.categories ?? [];
   const groupSlug = it.group_slug ?? '';
-  const subs = groups.find((g) => g.slug === groupSlug)?.subcategories ?? [];
   const n = it.same_name_count ?? 1;
 
   const label = it.category_slug
@@ -384,9 +396,10 @@ function categorySection(it) {
   return `
     <div class="card-section">Категория</div>
     <div class="cat-edit" data-item="${it.id}">
-      <select id="cat-group" aria-label="Группа">${catOptions(groups, groupSlug, '— не выбрана —')}</select>
-      <select id="cat-slug" aria-label="Категория"${groupSlug ? '' : ' disabled'}>
-        ${catOptions(subs, it.category_slug ?? '', '— не выбрана —')}</select>
+      <select id="cat-group" aria-label="Группа">
+        ${catOption('', '— не выбрана —', groupSlug)}${groups.map((g) => catOption(g.slug, g.name, groupSlug)).join('')}</select>
+      <select id="cat-slug" aria-label="Категория">
+        ${categoryOptions(groups, groupSlug, it.category_slug ?? '')}</select>
       <div class="cat-note dim" id="cat-note">${label}${scope}</div>
     </div>`;
 }
@@ -420,7 +433,6 @@ async function applyCategory(itemId, slug, box) {
     note.classList.add('error');
   } finally {
     selects.forEach((s) => (s.disabled = false));
-    $('cat-slug').disabled = !$('cat-group').value;
   }
 }
 
@@ -716,17 +728,23 @@ function bind() {
     const box = e.target.closest('.cat-edit');
     if (!box) return;
 
+    const groups = meta?.categories ?? [];
+
     if (e.target.id === 'cat-group') {
-      const group = (meta?.categories ?? []).find((g) => g.slug === e.target.value);
-      const select = $('cat-slug');
-      select.innerHTML = catOptions(group?.subcategories ?? [], '', '— не выбрана —');
-      select.disabled = !group;
+      $('cat-slug').innerHTML = categoryOptions(groups, e.target.value, '');
       $('cat-note').classList.remove('error');
-      $('cat-note').textContent = group ? 'Выберите категорию в группе.' : 'Выберите группу.';
+      $('cat-note').textContent = e.target.value
+        ? 'Выберите категорию в группе.'
+        : 'Выберите категорию — в списке все, с разбивкой по группам.';
       return;
     }
 
-    if (e.target.id === 'cat-slug') applyCategory(box.dataset.item, e.target.value, box);
+    if (e.target.id === 'cat-slug') {
+      // выбор из полного списка подставляет свою группу в первый список
+      const group = groups.find((g) => g.subcategories.some((s) => s.slug === e.target.value));
+      $('cat-group').value = group?.slug ?? '';
+      applyCategory(box.dataset.item, e.target.value, box);
+    }
   });
 
   document.querySelector('.table-scroll').addEventListener('scroll', onScroll, { passive: true });
