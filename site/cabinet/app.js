@@ -445,9 +445,9 @@ function itemCard(it) {
       </div>
       <button class="btn" type="button" data-close>✕</button>
     </div>
-    <div class="card-top">
     <p class="card-name">${esc(it.name)}</p>
     ${categorySection(it)}
+    <div class="card-top">
     ${kv([
       ['Количество', `${qty(it.quantity)}${it.unit ? ` ${esc(it.unit)}` : ''}`],
       ['Цена', money(it.price)],

@@ -391,7 +391,7 @@ tbody tr.selected { background: #e8eefb; }
 
 .card-title { font-size: 16px; font-weight: 600; }
 
-.card-name { margin: 8px 10px; font-weight: 600; }
+.card-name { flex: none; margin: 8px 10px; font-weight: 600; }
 
 .kv {
   display: grid;
@@ -404,7 +404,9 @@ tbody tr.selected { background: #e8eefb; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
 
+/* Своя секция карточки: не уезжает вместе с реквизитами, поэтому flex: none */
 .cat-edit {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -412,6 +414,16 @@ tbody tr.selected { background: #e8eefb; }
 }
 
 .cat-edit select { width: 100%; }
+
+/* Браузер печатает заголовки optgroup жирным курсивом — слишком тяжело для списка */
+.cat-edit optgroup {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.cat-edit option { color: var(--text); }
+
 .cat-note { font-size: 12px; line-height: 1.35; }
 .cat-note.error { color: var(--danger); }
 
