@@ -1,5 +1,5 @@
 // Кабинет: слева список с подгрузкой по скроллу, справа карточка выбранной строки.
-import { groupIcon, GROUP_ICONS } from '/cabinet/icons.js';
+import { groupIcon, searchIcons, GROUP_ICONS } from '/cabinet/icons.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -405,16 +405,26 @@ function renderTree() {
     .join('');
 }
 
-/** Сетка иконок: набор задаётся icons.js, поэтому выбирать можно только существующее. */
-const iconPicker = (current) =>
-  `<div class="icon-picker">${Object.keys(GROUP_ICONS)
+/**
+ * Сетка иконок: набор задаётся icons.js, поэтому выбирать можно только существующее.
+ * Иконок больше сотни, глазами их не перебрать — сверху поиск по русским тегам.
+ */
+const iconGrid = (names, current) =>
+  names
     .filter((name) => name !== 'none')
     .map(
       (name) =>
         `<button class="icon-option${name === current ? ' selected' : ''}" type="button"` +
-        ` data-icon="${name}" title="${name}">${groupIcon(name)}</button>`,
+        ` data-icon="${name}" title="${esc(GROUP_ICONS[name].tags)}">${groupIcon(name)}</button>`,
     )
-    .join('')}</div>`;
+    .join('');
+
+// Выбранная иконка хранится на сетке, а не ищется в DOM: поиск может её отфильтровать,
+// и тогда выбор бы потерялся при следующем нажатии клавиши.
+const iconPicker = (current) =>
+  `<input id="icon-search" type="search" placeholder="Поиск иконки: еда, ремонт, налог…" autocomplete="off" />` +
+  `<div class="icon-picker" id="icon-grid" data-current="${esc(current ?? '')}">${iconGrid(searchIcons(''), current)}</div>` +
+  `<p class="dim" id="icon-empty" hidden>Ничего не нашлось. Попробуйте другое слово.</p>`;
 
 function groupEditor(g) {
   return `
@@ -565,7 +575,7 @@ async function saveNode() {
   const isGroup = Boolean(box.dataset.group);
   const slug = box.dataset.group ?? box.dataset.category;
   const body = isGroup
-    ? { name: $('node-name').value, icon: $('detail').querySelector('.icon-option.selected')?.dataset.icon ?? '' }
+    ? { name: $('node-name').value, icon: $('icon-grid').dataset.current }
     : { name: $('node-name').value, group_slug: $('node-group').value, hint: $('node-hint').value };
 
   try {
@@ -1140,6 +1150,7 @@ function bind() {
     if (icon) {
       $('detail').querySelectorAll('.icon-option').forEach((b) => b.classList.remove('selected'));
       icon.classList.add('selected');
+      $('icon-grid').dataset.current = icon.dataset.icon;
       return;
     }
     if (e.target.closest('#node-save')) return saveNode();
@@ -1148,6 +1159,15 @@ function bind() {
 
   $('detail').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.id === 'node-name') saveNode();
+  });
+
+  // Поиск иконки перерисовывает сетку, сохраняя уже выбранную
+  $('detail').addEventListener('input', (e) => {
+    if (e.target.id !== 'icon-search') return;
+    const current = $('icon-grid').dataset.current;
+    const found = searchIcons(e.target.value);
+    $('icon-grid').innerHTML = iconGrid(found, current);
+    $('icon-empty').hidden = found.length > 0;
   });
 
   $('thead').addEventListener('click', (e) => {
