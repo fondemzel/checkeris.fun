@@ -344,7 +344,7 @@ tbody tr.selected { background: #e8eefb; }
 .num { text-align: right; white-space: nowrap; }
 
 /* Дата занимает две строки, поэтому короткие ячейки выравниваются по её середине */
-tbody td.num, tbody td.group-cell, tbody td.cat-cell { vertical-align: middle; }
+tbody td.num, tbody td.group-cell, tbody td.cat-cell, tbody td.idx { vertical-align: middle; }
 
 /* ── схлопнутые по названию строки ─────────────────────── */
 
