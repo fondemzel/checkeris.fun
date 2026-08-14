@@ -142,6 +142,7 @@ function apiParams(page) {
     if (state.uncategorized) params.set('uncategorized', '1');
     else if (state.category) params.set('category', state.category);
     else if (state.group) params.set('group', state.group);
+    params.set('collapse', '1'); // одна строка на название; раскрытие снимает этот параметр
   }
   params.set('sort', state.sort);
   params.set('dir', state.dir);
@@ -159,10 +160,14 @@ function apiParams(page) {
  * на месте: иначе две одинаковые покупки в списке выглядят необъяснимо.
  */
 function moneyBadge(r) {
+  // Схлопнутая строка: у группы нет одной операции, важно лишь, что внутри есть несчитаемое
+  if (isGroup(r)) return r.excluded_count ? ` <span class="badge">вне суммы: ${r.excluded_count}</span>` : '';
   if (r.operation_type === 2) return ' <span class="badge refund">возврат</span>';
   if (r.prepaid_sum > 0) return ' <span class="badge">зачёт аванса</span>';
   return '';
 }
+
+const isGroup = (r) => r.positions !== undefined;
 
 /** Ячейка с многоточием: пометка выносится наружу, чтобы её не съело обрезание текста. */
 const ellipsisCell = (text, badge) =>
@@ -189,15 +194,19 @@ const COLUMNS = {
         : '<span class="dim">не определена</span>' },
     { key: 'quantity', title: 'Кол-во', sort: 'quantity', cls: 'num dim', render: (r) => qty(r.quantity) },
     { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) =>
-      r.counted ? `<b>${money(r.sum)}</b>` : `<span class="dim">${money(r.sum)}</span>` },
+      isGroup(r) || r.counted ? `<b>${money(r.sum)}</b>` : `<span class="dim">${money(r.sum)}</span>` },
   ],
 };
 
 // ── список ───────────────────────────────────────────────
 
+// Список товаров всегда схлопнут по названию: одна строка на товар, а не на каждую покупку
+const collapsed = () => state.view === 'items';
+
 function renderHead() {
   const columns = COLUMNS[state.view];
-  $('thead').innerHTML = `<tr><th class="idx">#</th>${columns
+  const expander = collapsed() ? '<th class="expander-cell"></th>' : '';
+  $('thead').innerHTML = `<tr><th class="idx">#</th>${expander}${columns
     .map((col) => {
       if (!col.sort) return `<th class="${col.cls ?? ''}">${col.title}</th>`;
       const active = state.sort === col.sort;
@@ -214,14 +223,78 @@ function rowsHtml(rows, startIndex) {
   const prefix = state.view === 'receipts' ? 'r' : 'i';
   return rows
     .map((row, i) => {
-      const card = prefix + row.id;
+      // У схлопнутой строки своей карточки нет — открывается верхняя позиция группы
+      const card = prefix + (isGroup(row) ? row.first_id : row.id);
       const cells = columns.map((col) => `<td class="${col.cls ?? ''}">${col.render(row)}</td>`).join('');
       // name_norm — ключ ручной правки категории: по нему строки чинятся на месте, без перезагрузки
       const norm = row.name_norm ? ` data-norm="${esc(row.name_norm)}"` : '';
       return `<tr class="clickable${card === state.card ? ' selected' : ''}" data-card="${card}"${norm}>
-        <td class="idx">${int.format(startIndex + i)}</td>${cells}</tr>`;
+        <td class="idx">${int.format(startIndex + i)}</td>${expanderCell(row)}${cells}</tr>`;
     })
     .join('');
+}
+
+/** Стрелка раскрытия: только там, где под названием больше одной покупки. */
+function expanderCell(row) {
+  if (!collapsed()) return '';
+  if (!isGroup(row) || row.positions < 2) return '<td class="expander-cell"></td>';
+  return (
+    `<td class="expander-cell"><button class="expander" type="button" aria-expanded="false"` +
+    ` title="Показать ${int.format(row.positions)} ${plural(row.positions, 'покупку', 'покупки', 'покупок')}">` +
+    `<span class="expander-sign">+</span><span class="expander-count">${int.format(row.positions)}</span></button></td>`
+  );
+}
+
+const MAX_CHILDREN = 200; // группа бывает и на 5000 позиций — столько строк в таблице ни к чему
+
+/** Раскрытие: покупки одного названия строками под схлопнутой. */
+async function toggleGroup(button) {
+  const row = button.closest('tr');
+  const open = button.getAttribute('aria-expanded') === 'true';
+  const kids = [...document.querySelectorAll(`#tbody tr.child[data-parent="${CSS.escape(row.dataset.norm)}"]`)];
+
+  if (open) {
+    kids.forEach((tr) => tr.remove());
+    button.setAttribute('aria-expanded', 'false');
+    button.querySelector('.expander-sign').textContent = '+';
+    return;
+  }
+
+  button.setAttribute('aria-expanded', 'true');
+  button.querySelector('.expander-sign').textContent = '−';
+  if (kids.length) return; // уже загружены, просто были скрыты — но мы их удаляем, так что сюда не попадём
+
+  const params = apiParams(1);
+  params.set('per', String(MAX_CHILDREN));
+  params.delete('collapse');
+  params.set('name_norm', row.dataset.norm);
+  try {
+    const data = await fetch(`/api/items?${params}`).then((r) => r.json());
+    row.insertAdjacentHTML('afterend', childRowsHtml(data.rows, row.dataset.norm, data.totals.count));
+  } catch (err) {
+    button.setAttribute('aria-expanded', 'false');
+    button.querySelector('.expander-sign').textContent = '+';
+    showState(`Не удалось раскрыть строку: ${err.message}`, true);
+  }
+}
+
+function childRowsHtml(rows, norm, total) {
+  const columns = COLUMNS.items;
+  const parent = ` data-parent="${esc(norm)}"`;
+  const body = rows
+    .map((row) => {
+      const card = `i${row.id}`;
+      const cells = columns.map((col) => `<td class="${col.cls ?? ''}">${col.render(row)}</td>`).join('');
+      return `<tr class="clickable child${card === state.card ? ' selected' : ''}" data-card="${card}"` +
+        ` data-norm="${esc(row.name_norm)}"${parent}><td class="idx"></td><td class="expander-cell"></td>${cells}</tr>`;
+    })
+    .join('');
+  if (rows.length >= total) return body;
+  return (
+    body +
+    `<tr class="child child-more"${parent}><td class="idx"></td><td class="expander-cell"></td>` +
+    `<td colspan="${columns.length}" class="dim">показаны первые ${int.format(rows.length)} из ${int.format(total)}</td></tr>`
+  );
 }
 
 /**
@@ -281,13 +354,20 @@ function renderSummary(totals) {
   const isItems = state.view === 'items';
   const count = totals.count ?? 0;
   const receipts = isItems ? totals.receipts ?? 0 : count;
-  const items = isItems ? count : totals.items ?? 0;
-  // Средний считаем по тому же множеству, что и сумму: без возвратов и зачётов аванса
-  const counted = count - (totals.excluded_count ?? 0);
+  // В схлопнутом списке count — это названия, позиций за ними больше
+  const items = isItems ? totals.positions ?? count : totals.items ?? 0;
+  // Средний считаем по тому же множеству, что и сумму: без возвратов и зачётов аванса.
+  // Знаменатель — всегда позиции (или чеки), а не схлопнутые названия.
+  const counted = (isItems ? items : count) - (totals.excluded_count ?? 0);
   const avg = counted ? money((totals.sum ?? 0) / counted, true) : '—';
+  const names =
+    isItems && totals.names !== undefined
+      ? `${int.format(totals.names)} ${plural(totals.names, 'название', 'названия', 'названий')} · `
+      : '';
   $('totals-left').textContent =
     `${int.format(receipts)} ${plural(receipts, 'чек', 'чека', 'чеков')} · ` +
     `${int.format(items)} ${plural(items, 'позиция', 'позиции', 'позиций')} · ` +
+    names +
     `${isItems ? 'средняя позиция' : 'средний чек'} ${avg}`;
 
   const skipped = totals.excluded_sum
@@ -298,8 +378,10 @@ function renderSummary(totals) {
 }
 
 function renderFooter() {
-  const noun =
-    state.view === 'items'
+  // В схлопнутом списке строки — это названия, а не отдельные покупки
+  const noun = collapsed()
+    ? plural(total, 'названия', 'названий', 'названий')
+    : state.view === 'items'
       ? plural(total, 'позиции', 'позиций', 'позиций')
       : plural(total, 'чека', 'чеков', 'чеков');
   $('range-info').textContent = total
@@ -777,6 +859,12 @@ function bind() {
   });
 
   $('tbody').addEventListener('click', (e) => {
+    // стрелка раскрывает группу и не должна попутно открывать карточку
+    const expander = e.target.closest('.expander');
+    if (expander) {
+      e.stopPropagation();
+      return toggleGroup(expander);
+    }
     const tr = e.target.closest('tr.clickable');
     if (tr) selectCard(tr.dataset.card);
   });

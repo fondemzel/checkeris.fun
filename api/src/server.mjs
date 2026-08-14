@@ -9,7 +9,15 @@ import { readFile, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { openDb, migrate, PROJECT_ROOT, API_ROOT, DB_PATH } from './db.mjs';
-import { listReceipts, listItems, getReceipt, getItem, getMeta, setItemCategory } from './queries.mjs';
+import {
+  listReceipts,
+  listItems,
+  listItemGroups,
+  getReceipt,
+  getItem,
+  getMeta,
+  setItemCategory,
+} from './queries.mjs';
 import { loadCategories, syncCategories } from './categories.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -147,7 +155,11 @@ async function handleApi(req, res, url) {
     return receipt ? sendJson(res, 200, receipt) : sendJson(res, 404, { error: 'receipt not found' });
   }
 
-  if (pathname === '/api/items') return sendJson(res, 200, listItems(db, searchParams));
+  // collapse=1 — одна строка на название; раскрытие группы идёт обычным списком с name_norm
+  if (pathname === '/api/items') {
+    const collapse = searchParams.get('collapse') === '1' && !searchParams.get('name_norm');
+    return sendJson(res, 200, (collapse ? listItemGroups : listItems)(db, searchParams));
+  }
 
   const itemMatch = pathname.match(/^\/api\/items\/(\d+)$/);
   if (itemMatch) {

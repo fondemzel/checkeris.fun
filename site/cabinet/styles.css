@@ -342,14 +342,47 @@ tbody tr.selected { background: #e8eefb; }
 }
 
 .num { text-align: right; white-space: nowrap; }
+
+/* Дата занимает две строки, поэтому короткие ячейки выравниваются по её середине */
+tbody td.num, tbody td.group-cell, tbody td.cat-cell { vertical-align: middle; }
+
+/* ── схлопнутые по названию строки ─────────────────────── */
+
+.expander-cell { width: 44px; padding-right: 0 !important; vertical-align: middle; }
+
+.expander {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid #e6e9ee;
+  border-radius: 999px;
+  background: #fbfcfd;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.expander:hover { background: var(--hover); border-color: #dbe0e8; color: var(--text); }
+.expander-sign { width: 7px; text-align: center; font-weight: 600; }
+.expander-count { font-size: 11px; }
+
+/* Раскрытые покупки: подчинены своей строке и не спорят с ней за внимание */
+tbody tr.child > td { background: #fafbfc; }
+tbody tr.child td.ellipsis { padding-left: 24px; } /* отступ задаёт ячейка, иначе он удвоится внутри .cell-flex */
+tbody tr.child-more td { padding-left: 24px; }
 .nowrap { white-space: nowrap; }
 .dim { color: var(--muted); }
 .small { font-size: 11px; }
 
 /* Длинные названия обрезаются: полный текст — в карточке справа. */
+/* Главная колонка: тянется на весь остаток, но не ужимается соседями с длинными числами */
 .ellipsis {
   max-width: 0;
   width: 100%;
+  min-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

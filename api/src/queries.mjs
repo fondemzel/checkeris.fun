@@ -94,6 +94,13 @@ export function buildFilters(params, { prefix = '', searchItems = false } = {}) 
     }
     // Отдельный фильтр на неразмеченное: это рабочий режим, а не край выборки
     if (params.get('uncategorized') === '1') where.push(`${prefix}category_slug IS NULL`);
+
+    // Раскрытие схлопнутой строки: позиции одного названия
+    const nameNorm = params.get('name_norm');
+    if (nameNorm) {
+      where.push(`${prefix}name_norm = :name_norm`);
+      args.name_norm = nameNorm;
+    }
   }
 
   const q = (params.get('q') ?? '').trim().toLowerCase().replace(/ё/g, 'е');
@@ -191,6 +198,76 @@ export function listItems(db, params) {
     .get(args);
 
   return { rows, totals, page, per, sort, dir: dir.toLowerCase() };
+}
+
+// Сортировка схлопнутого списка: у группы нет одной даты и одной суммы, поэтому
+// каждая колонка сортируется по своему агрегату — дата по последней покупке, сумма по итогу.
+const GROUP_SORTS = {
+  date: 'MAX(purchased_at)',
+  name: 'name_norm',
+  sum: 'SUM(sum)',
+  price: 'AVG(price)',
+  quantity: 'SUM(quantity)',
+  seller: 'MIN(seller)',
+};
+
+/**
+ * Список позиций, схлопнутый по названию: одна строка на название, количество и сумма
+ * сложены. Схлопывать на клиенте нельзя — одинаковые названия разбросаны по всей выборке,
+ * а список тянется порциями, так что часть строк ещё не загружена.
+ *
+ * `first_id` — позиция, чью карточку открывает клик по строке. SQLite при MAX() отдаёт
+ * значения остальных колонок из той же строки, поэтому это ровно верхняя позиция группы.
+ */
+export function listItemGroups(db, params) {
+  const { sql: whereSql, args } = buildFilters(params, { searchItems: true });
+  const { sort, dir } = parseSort(params, GROUP_SORTS, 'date');
+  const { page, per, offset } = parsePaging(params);
+
+  const rows = db
+    .prepare(
+      `SELECT name_norm,
+              name,
+              id AS first_id,
+              COUNT(*) AS positions,
+              COALESCE(SUM(quantity), 0) AS quantity,
+              COALESCE(SUM(CASE WHEN counted = 1 THEN sum ELSE 0 END), 0) AS sum,
+              COALESCE(SUM(CASE WHEN counted = 1 THEN 0 ELSE 1 END), 0) AS excluded_count,
+              MAX(purchased_at) AS purchased_at,
+              MIN(purchased_at) AS first_at,
+              unit,
+              category_slug, category_name, category_source, group_slug, group_name
+         FROM v_items
+         ${whereSql}
+        GROUP BY name_norm
+        ORDER BY ${GROUP_SORTS[sort]} ${dir}, name_norm ${dir}
+        LIMIT :limit OFFSET :offset`,
+    )
+    .all({ ...args, limit: per, offset });
+
+  const totals = db
+    .prepare(
+      `SELECT COUNT(*) AS count,
+              COUNT(DISTINCT name_norm) AS names,
+              COALESCE(SUM(CASE WHEN counted = 1 THEN sum ELSE 0 END), 0) AS sum,
+              COALESCE(SUM(CASE WHEN counted = 1 THEN 0 ELSE sum END), 0) AS excluded_sum,
+              COALESCE(SUM(CASE WHEN counted = 1 THEN 0 ELSE 1 END), 0) AS excluded_count,
+              COUNT(DISTINCT receipt_id) AS receipts
+         FROM v_items
+         ${whereSql}`,
+    )
+    .get(args);
+
+  // Пагинация идёт по названиям, а не по позициям: иначе подгрузка по скроллу собьётся.
+  // Сколько всего позиций за ними стоит, сводка берёт из positions.
+  return {
+    rows,
+    totals: { ...totals, positions: totals.count, count: totals.names },
+    page,
+    per,
+    sort,
+    dir: dir.toLowerCase(),
+  };
 }
 
 export function getReceipt(db, id) {
