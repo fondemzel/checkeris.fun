@@ -13,6 +13,7 @@
       <a class="sidebar-brand" href="/">Чекер <span>Кабинет</span></a>
       <button class="nav-item" type="button" data-view="receipts" aria-current="true">Чеки</button>
       <button class="nav-item" type="button" data-view="items">Товары</button>
+      <button class="nav-item" type="button" data-view="taxonomy">Категории</button>
       <div class="sidebar-foot">
         <div id="data-period">загрузка данных…</div>
         <div id="last-import"></div>
@@ -85,6 +86,16 @@
               <span id="range-info">—</span>
               <span id="load-info" class="dim"></span>
             </div>
+          </div>
+        </section>
+
+        <section class="tree-pane" id="tree-pane" hidden>
+          <div class="tree-head">
+            <span class="dim" id="tree-info">загрузка справочника…</span>
+            <button class="btn" id="add-group" type="button">+ Группа</button>
+          </div>
+          <div class="table-card">
+            <div class="tree-scroll" id="tree"></div>
           </div>
         </section>
 

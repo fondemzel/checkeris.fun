@@ -1,5 +1,5 @@
 // Кабинет: слева список с подгрузкой по скроллу, справа карточка выбранной строки.
-import { groupIcon } from '/cabinet/icons.js';
+import { groupIcon, GROUP_ICONS } from '/cabinet/icons.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -63,6 +63,7 @@ const DEFAULTS = {
   sort: 'date',
   dir: 'desc',
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция
+  node: '', // выбранное в разделе «Категории»: g:<slug> — группа, c:<slug> — категория
 };
 
 const state = { ...DEFAULTS };
@@ -79,9 +80,10 @@ function readUrl() {
   for (const key of Object.keys(DEFAULTS)) {
     if (params.has(key)) state[key] = params.get(key);
   }
-  if (state.view !== 'items') state.view = 'receipts';
+  if (!['items', 'taxonomy'].includes(state.view)) state.view = 'receipts';
   if (!['', 'day', 'week', 'month', 'year'].includes(state.period)) state.period = '';
   if (!/^[ri]\d+$/.test(state.card)) state.card = '';
+  if (!/^[gc]:.+$/.test(state.node)) state.node = '';
 }
 
 function writeUrl() {
@@ -347,6 +349,255 @@ function renderCategoryChips() {
       ? chip('category', '', 'Все', !state.category) +
         group.subcategories.map((s) => chip('category', s.slug, s.name, state.category === s.slug, s.items)).join('')
       : '';
+  }
+}
+
+// ── раздел «Категории» ───────────────────────────────────
+// Справочник живёт в базе и правится здесь. slug не показываем и не даём менять:
+// на него ссылаются словарь и разметка, поэтому он идентификатор, а не подпись.
+
+let taxonomy = { groups: [] };
+
+const findGroup = (slug) => taxonomy.groups.find((g) => g.slug === slug) ?? null;
+const findCategory = (slug) =>
+  taxonomy.groups.flatMap((g) => g.categories).find((c) => c.slug === slug) ?? null;
+
+async function loadTaxonomy() {
+  try {
+    taxonomy = await fetch('/api/taxonomy').then((r) => r.json());
+  } catch (err) {
+    $('tree').innerHTML = `<div class="card-empty error">Не удалось загрузить справочник: ${esc(err.message)}</div>`;
+    return;
+  }
+  renderTree();
+}
+
+function renderTree() {
+  const cats = taxonomy.groups.reduce((n, g) => n + g.categories.length, 0);
+  $('tree-info').textContent =
+    `${int.format(taxonomy.groups.length)} ${plural(taxonomy.groups.length, 'группа', 'группы', 'групп')} · ` +
+    `${int.format(cats)} ${plural(cats, 'категория', 'категории', 'категорий')}`;
+
+  $('tree').innerHTML = taxonomy.groups
+    .map((g) => {
+      const active = state.node === `g:${g.slug}`;
+      const rows = g.categories
+        .map((c) => {
+          const on = state.node === `c:${c.slug}`;
+          return (
+            `<button class="tree-row tree-cat${on ? ' selected' : ''}" type="button" data-node="c:${esc(c.slug)}">` +
+            `<span class="ellipsis-text">${esc(c.name)}</span>` +
+            `<span class="dim tree-count">${c.items ? int.format(c.items) : ''}</span></button>`
+          );
+        })
+        .join('');
+      return (
+        `<div class="tree-group">` +
+        `<button class="tree-row tree-head-row${active ? ' selected' : ''}" type="button" data-node="g:${esc(g.slug)}">` +
+        `${groupIcon(g.icon) || '<span class="chip-icon"></span>'}` +
+        `<span class="ellipsis-text">${esc(g.name)}</span>` +
+        `<span class="dim tree-count">${g.items ? int.format(g.items) : ''}</span></button>` +
+        rows +
+        `<button class="tree-row tree-add" type="button" data-add="${esc(g.slug)}">+ категория</button>` +
+        `</div>`
+      );
+    })
+    .join('');
+}
+
+/** Сетка иконок: набор задаётся icons.js, поэтому выбирать можно только существующее. */
+const iconPicker = (current) =>
+  `<div class="icon-picker">${Object.keys(GROUP_ICONS)
+    .filter((name) => name !== 'none')
+    .map(
+      (name) =>
+        `<button class="icon-option${name === current ? ' selected' : ''}" type="button"` +
+        ` data-icon="${name}" title="${name}">${groupIcon(name)}</button>`,
+    )
+    .join('')}</div>`;
+
+function groupEditor(g) {
+  return `
+    <div class="card-head">
+      <div><div class="card-title">Группа</div><div class="dim">${esc(g.slug)}</div></div>
+      <button class="btn" type="button" data-close>✕</button>
+    </div>
+    <div class="card-section">Название</div>
+    <div class="editor" data-group="${esc(g.slug)}">
+      <input id="node-name" type="text" value="${esc(g.name)}" />
+    </div>
+    <div class="card-section">Иконка</div>
+    <div class="editor">${iconPicker(g.icon)}</div>
+    <div class="card-section">Что внутри</div>
+    <div class="editor">
+      <p class="dim">${int.format(g.categories.length)} ${plural(g.categories.length, 'категория', 'категории', 'категорий')},
+        ${int.format(g.items)} ${plural(g.items, 'позиция', 'позиции', 'позиций')} размечено.</p>
+      <div class="editor-actions">
+        <button class="btn" id="node-save" type="button">Сохранить</button>
+        <button class="btn danger" id="node-delete" type="button"${g.categories.length ? ' disabled' : ''}>Удалить группу</button>
+      </div>
+      <p class="dim" id="node-note">${g.categories.length ? 'Удалить можно только пустую группу.' : ''}</p>
+    </div>`;
+}
+
+function categoryEditor(c) {
+  const used = c.items + c.dictionary + c.sellers + c.gtin;
+  const others = taxonomy.groups
+    .flatMap((g) => g.categories.map((x) => ({ ...x, group: g.name })))
+    .filter((x) => x.slug !== c.slug);
+
+  const usage = used
+    ? `Завязано: ${int.format(c.items)} ${plural(c.items, 'позиция', 'позиции', 'позиций')}, ` +
+      `${int.format(c.dictionary)} в словаре, ${int.format(c.sellers)} ${plural(c.sellers, 'правило', 'правила', 'правил')} по продавцам.`
+    : 'На эту категорию пока ничего не ссылается.';
+
+  return `
+    <div class="card-head">
+      <div><div class="card-title">Категория</div><div class="dim">${esc(c.slug)}</div></div>
+      <button class="btn" type="button" data-close>✕</button>
+    </div>
+    <div class="card-section">Название и группа</div>
+    <div class="editor" data-category="${esc(c.slug)}">
+      <input id="node-name" type="text" value="${esc(c.name)}" />
+      <select id="node-group">${taxonomy.groups
+        .map((g) => `<option value="${esc(g.slug)}"${g.slug === c.group_slug ? ' selected' : ''}>${esc(g.name)}</option>`)
+        .join('')}</select>
+    </div>
+    <div class="card-section">Подсказка модели</div>
+    <div class="editor">
+      <textarea id="node-hint" rows="3" placeholder="что относится к категории, а что нет">${esc(c.hint ?? '')}</textarea>
+      <p class="dim">Из подсказок собирается промпт классификации. Уточнили формулировку — следующая разметка станет точнее.</p>
+    </div>
+    <div class="card-section">Удаление</div>
+    <div class="editor">
+      <p class="dim">${usage}</p>
+      ${used
+        ? `<select id="node-move"><option value="">— куда перенести —</option>${others
+            .map((x) => `<option value="${esc(x.slug)}">${esc(x.group)} · ${esc(x.name)}</option>`)
+            .join('')}</select>`
+        : ''}
+      <div class="editor-actions">
+        <button class="btn" id="node-save" type="button">Сохранить</button>
+        <button class="btn danger" id="node-delete" type="button">${used ? 'Перенести и удалить' : 'Удалить'}</button>
+      </div>
+      <p class="dim" id="node-note"></p>
+    </div>`;
+}
+
+function renderNode() {
+  const pane = $('detail');
+  if (!state.node) {
+    pane.innerHTML = '<div class="card-empty">Выберите группу или категорию</div>';
+    return;
+  }
+  const [kind, slug] = [state.node.slice(0, 1), state.node.slice(2)];
+  const node = kind === 'g' ? findGroup(slug) : findCategory(slug);
+  if (!node) {
+    state.node = '';
+    return renderNode();
+  }
+  pane.innerHTML = kind === 'g' ? groupEditor(node) : categoryEditor(node);
+}
+
+/** Любая правка справочника → перечитать его, дерево, чипсы и карточку. */
+async function afterTaxonomyChange(select) {
+  if (select !== undefined) state.node = select;
+  await loadTaxonomy();
+  await loadMeta();
+  writeUrl();
+  renderNode();
+}
+
+async function taxonomyCall(method, path, body, params = '') {
+  const res = await fetch(`/api/taxonomy${path}${params}`, {
+    method,
+    headers: body ? { 'content-type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  return data;
+}
+
+const noteError = (message) => {
+  const note = $('node-note');
+  if (note) {
+    note.textContent = message;
+    note.classList.add('error');
+  }
+};
+
+/** Сообщение над деревом: #state живёт в панели списка, а она в этом разделе скрыта. */
+function treeNote(message, isError = false) {
+  const info = $('tree-info');
+  info.textContent = message;
+  info.classList.toggle('error', isError);
+}
+
+/** Новая запись создаётся сразу и открывается на правку: пустая форма-заготовка тут лишняя. */
+async function addGroup() {
+  try {
+    const { group } = await taxonomyCall('POST', '/groups', { name: 'Новая группа', icon: 'dots' });
+    await afterTaxonomyChange(`g:${group.slug}`);
+    renderTree();
+    $('node-name').select();
+  } catch (err) {
+    treeNote(`Не удалось создать группу: ${err.message}`, true);
+  }
+}
+
+async function addCategory(groupSlug) {
+  try {
+    const { category } = await taxonomyCall('POST', '/categories', {
+      group_slug: groupSlug,
+      name: 'Новая категория',
+    });
+    await afterTaxonomyChange(`c:${category.slug}`);
+    renderTree();
+    $('node-name').select();
+  } catch (err) {
+    treeNote(`Не удалось создать категорию: ${err.message}`, true);
+  }
+}
+
+async function saveNode() {
+  const box = $('detail').querySelector('[data-group], [data-category]');
+  const isGroup = Boolean(box.dataset.group);
+  const slug = box.dataset.group ?? box.dataset.category;
+  const body = isGroup
+    ? { name: $('node-name').value, icon: $('detail').querySelector('.icon-option.selected')?.dataset.icon ?? '' }
+    : { name: $('node-name').value, group_slug: $('node-group').value, hint: $('node-hint').value };
+
+  try {
+    await taxonomyCall('PATCH', `/${isGroup ? 'groups' : 'categories'}/${encodeURIComponent(slug)}`, body);
+    await afterTaxonomyChange();
+    $('node-note').textContent = 'Сохранено.';
+  } catch (err) {
+    noteError(`Не удалось сохранить: ${err.message}`);
+  }
+}
+
+async function deleteNode() {
+  const box = $('detail').querySelector('[data-group], [data-category]');
+  const isGroup = Boolean(box.dataset.group);
+  const slug = box.dataset.group ?? box.dataset.category;
+  const moveTo = $('node-move')?.value ?? '';
+
+  if (!isGroup && $('node-move') && !moveTo) {
+    return noteError('Выберите категорию, куда перенести товары и словарные записи.');
+  }
+
+  try {
+    const data = await taxonomyCall(
+      'DELETE',
+      `/${isGroup ? 'groups' : 'categories'}/${encodeURIComponent(slug)}`,
+      null,
+      moveTo ? `?move_to=${encodeURIComponent(moveTo)}` : '',
+    );
+    await afterTaxonomyChange('');
+    if (data.moved) treeNote(`Перенесено записей: ${int.format(data.moved)}`);
+  } catch (err) {
+    noteError(`Не удалось удалить: ${err.message}`);
   }
 }
 
@@ -770,10 +1021,17 @@ function syncControls() {
     chip.setAttribute('aria-pressed', String(chip.dataset.sum === state.sum));
   });
 
-  $('page-title').textContent = state.view === 'items' ? 'Товары' : 'Чеки';
+  $('page-title').textContent = { items: 'Товары', taxonomy: 'Категории' }[state.view] ?? 'Чеки';
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.setAttribute('aria-current', String(item.dataset.view === state.view));
   });
+
+  // Справочник — не список чеков: ни фильтров, ни поиска, ни выгрузки к нему не относится
+  const isTaxonomy = state.view === 'taxonomy';
+  document.querySelector('.list-pane').hidden = isTaxonomy;
+  $('tree-pane').hidden = !isTaxonomy;
+  $('f-q').hidden = isTaxonomy;
+  $('export-btn').hidden = isTaxonomy;
 
   renderCategoryChips();
 }
@@ -840,15 +1098,52 @@ function bind() {
   });
 
   document.querySelectorAll('.nav-item').forEach((item) => {
-    item.addEventListener('click', () => {
+    item.addEventListener('click', async () => {
       const view = item.dataset.view;
       if (state.view === view) return;
-      // сортировка «по дате» есть в обоих разделах, остальные ключи не пересекаются
-      const sort = COLUMNS[view].some((c) => c.sort === state.sort) ? state.sort : 'date';
       state.view = view;
-      if (!state.card) renderCard(); // текст заглушки зависит от раздела
+
+      if (view === 'taxonomy') {
+        syncControls();
+        writeUrl();
+        await loadTaxonomy();
+        return renderNode();
+      }
+
+      // сортировка «по дате» есть в обоих списках, остальные ключи не пересекаются
+      const sort = COLUMNS[view].some((c) => c.sort === state.sort) ? state.sort : 'date';
+      renderCard();
       update({ sort });
     });
+  });
+
+  // ── правка справочника ──
+  $('tree').addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add]');
+    if (add) return addCategory(add.dataset.add);
+    const row = e.target.closest('[data-node]');
+    if (!row) return;
+    state.node = state.node === row.dataset.node ? '' : row.dataset.node;
+    renderTree();
+    writeUrl();
+    renderNode();
+  });
+
+  $('add-group').addEventListener('click', addGroup);
+
+  $('detail').addEventListener('click', (e) => {
+    const icon = e.target.closest('.icon-option');
+    if (icon) {
+      $('detail').querySelectorAll('.icon-option').forEach((b) => b.classList.remove('selected'));
+      icon.classList.add('selected');
+      return;
+    }
+    if (e.target.closest('#node-save')) return saveNode();
+    if (e.target.closest('#node-delete')) return deleteNode();
+  });
+
+  $('detail').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.id === 'node-name') saveNode();
   });
 
   $('thead').addEventListener('click', (e) => {
@@ -918,5 +1213,11 @@ readUrl();
 syncControls();
 bind();
 await loadMeta(); // справочник категорий нужен карточке для выпадающих списков
-renderCard();
-reload();
+
+if (state.view === 'taxonomy') {
+  await loadTaxonomy();
+  renderNode();
+} else {
+  renderCard();
+  reload();
+}
