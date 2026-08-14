@@ -107,11 +107,22 @@ export function resolve(item, tables, nearest) {
   return { category: null, source: 'unknown', confidence: 0 };
 }
 
-/** Пересчёт разметки всех позиций. Таблица item_labels производная, её не жалко. */
+/**
+ * Пересчёт разметки всех позиций. Таблица item_labels производная, её не жалко —
+ * кроме закреплённых меток: у ручных трат категория пришла из данных, а не выведена
+ * из названия, и восстановить её пересчётом невозможно.
+ */
 function apply(db) {
   const tables = loadTables(db);
   const nearest = buildNeighbourIndex(db);
-  const items = db.prepare('SELECT id, name_norm, gtin, seller_inn FROM v_item_categories').all();
+  const items = db
+    .prepare(
+      `SELECT v.id, v.name_norm, v.gtin, v.seller_inn
+         FROM v_item_categories v
+         LEFT JOIN item_labels l ON l.item_id = v.id
+        WHERE l.source IS NULL OR l.source <> 'pinned'`,
+    )
+    .all();
 
   const upsert = db.prepare(`
     INSERT INTO item_labels (item_id, category_slug, source, confidence, updated_at)
@@ -133,6 +144,9 @@ function apply(db) {
     db.exec('ROLLBACK');
     throw err;
   }
+  // Закреплённые в пересчёте не участвовали, но в сводке их видеть надо
+  const pinned = db.prepare("SELECT COUNT(*) c FROM item_labels WHERE source = 'pinned'").get().c;
+  if (pinned) counts.pinned = pinned;
   return counts;
 }
 
@@ -249,6 +263,7 @@ function stats(db) {
   console.log('чем определились позиции:');
   const titles = {
     manual: 'ручная правка',
+    pinned: 'из ручных трат',
     gtin: 'штрихкод',
     rule: 'жёсткое правило',
     dictionary: 'словарь',

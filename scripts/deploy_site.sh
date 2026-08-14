@@ -148,6 +148,12 @@ if [[ $DATA -eq 1 ]]; then
     ssh "$HOST" "tar -xzf - -C $TARGET && chown -R checker:checker $TARGET/api/data"
   echo "→ импорт"
   ssh "$HOST" "sudo -u checker /usr/bin/node $TARGET/api/src/import.mjs 2>&1 | grep -v Experimental | grep -v trace-warnings"
+
+  # Ручные траты лежат в том же каталоге, но это CSV со своей структурой
+  if [[ -f api/data/fns_out/manual_data.csv ]]; then
+    echo "→ ручные траты"
+    ssh "$HOST" "sudo -u checker /usr/bin/node $TARGET/api/src/import_manual.mjs 2>&1 | grep -v Experimental | grep -v trace-warnings"
+  fi
 fi
 
 # ── снимок базы: словарь категорий и разметка живут только в ней ──────────
