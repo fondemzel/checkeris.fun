@@ -323,7 +323,13 @@ export function setItemCategory(db, id, slug) {
   if (!item) return { error: 'item not found', status: 404 };
 
   const category = slug
-    ? db.prepare('SELECT slug, name, group_slug, group_name FROM categories WHERE slug = ?').get(slug)
+    ? db
+        .prepare(
+          `SELECT c.slug, c.name, c.group_slug, g.name AS group_name
+             FROM categories c JOIN groups g ON g.slug = c.group_slug
+            WHERE c.slug = ?`,
+        )
+        .get(slug)
     : null;
   if (slug && !category) return { error: 'unknown category', status: 400 };
 
