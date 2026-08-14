@@ -157,7 +157,7 @@ export function listItems(db, params) {
 
   const rows = db
     .prepare(
-      `SELECT id, receipt_id, pos, name, quantity, unit, price, sum, nds, product_type, gtin,
+      `SELECT id, receipt_id, pos, name, name_norm, quantity, unit, price, sum, nds, product_type, gtin,
               purchased_at, purchased_date, seller, seller_inn, retail_place, operation_type,
               category_slug, category_name, category_source, group_slug, group_name
          FROM v_items

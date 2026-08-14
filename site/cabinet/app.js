@@ -199,7 +199,9 @@ function rowsHtml(rows, startIndex) {
     .map((row, i) => {
       const card = prefix + row.id;
       const cells = columns.map((col) => `<td class="${col.cls ?? ''}">${col.render(row)}</td>`).join('');
-      return `<tr class="clickable${card === state.card ? ' selected' : ''}" data-card="${card}">
+      // name_norm — ключ ручной правки категории: по нему строки чинятся на месте, без перезагрузки
+      const norm = row.name_norm ? ` data-norm="${esc(row.name_norm)}"` : '';
+      return `<tr class="clickable${card === state.card ? ' selected' : ''}" data-card="${card}"${norm}>
         <td class="idx">${int.format(startIndex + i)}</td>${cells}</tr>`;
     })
     .join('');
@@ -426,7 +428,22 @@ function categorySection(it) {
     </div>`;
 }
 
-/** Сохранение выбора: словарь + метки всех одноимённых позиций, затем обновление списка. */
+/**
+ * Правка категории в уже показанных строках. Перезагружать список нельзя: он тянется
+ * порциями по скроллу, и перезагрузка вернула бы пользователя в начало таблицы, тогда как
+ * правка обычно случается далеко от неё. Строки с этим названием чиним на месте.
+ */
+function patchRows(nameNorm, category) {
+  const rows = document.querySelectorAll(`#tbody tr[data-norm="${CSS.escape(nameNorm)}"]`);
+  for (const row of rows) {
+    row.querySelector('.group-cell').textContent = category ? category.group_name : '—';
+    const cell = row.querySelector('.cat-cell');
+    cell.innerHTML = category ? esc(category.name) : '<span class="dim">не определена</span>';
+  }
+  return rows.length;
+}
+
+/** Сохранение выбора: словарь + метки всех одноимённых позиций, затем правка строк на месте. */
 async function applyCategory(itemId, slug, box) {
   const note = $('cat-note');
   const selects = [...box.querySelectorAll('select')];
@@ -442,14 +459,15 @@ async function applyCategory(itemId, slug, box) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    const shown = patchRows(data.name_norm, data.category);
     const n = data.affected;
     const positions = `${int.format(n)} ${plural(n, 'позиция', 'позиции', 'позиций')}`;
+    const inList = shown > 0 && shown < n ? `, из них в списке ${int.format(shown)}` : '';
     note.textContent = data.category
-      ? `«${data.category.name}» — обновлено ${positions} с названием «${data.name}».`
-      : `Категория снята, затронуто ${positions}.`;
+      ? `«${data.category.name}» — обновлено ${positions}${inList}.`
+      : `Категория снята, затронуто ${positions}${inList}.`;
 
     await loadMeta(); // счётчики в чипсах категорий изменились, чипсы перерисует она сама
-    await reload();
   } catch (err) {
     note.textContent = `Не удалось сохранить: ${err.message}`;
     note.classList.add('error');
