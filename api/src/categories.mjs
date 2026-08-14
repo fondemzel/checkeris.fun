@@ -1,22 +1,22 @@
-// Загрузка канонического справочника категорий в базу.
+// Справочник категорий: файл ↔ база.
 //
-//   node api/src/categories.mjs         — залить справочник из api/db/categories.json
-//   node api/src/categories.mjs --check — только проверить файл, ничего не менять
-//   node api/src/categories.mjs --show  — показать, что сейчас в базе
+// ИСТОЧНИК ПРАВДЫ — БАЗА. Справочник правится в кабинете, разделе «Категории».
+// categories.json — начальное наполнение для пустой базы и способ держать справочник
+// в истории git. Сервер при старте заливает файл, только если таблица пуста, — иначе
+// перезапуск затирал бы правки из интерфейса.
 //
-// ПРАВИЛА ПРАВКИ categories.json (файл правится руками):
+//   node api/src/categories.mjs --show    — что сейчас в базе
+//   node api/src/categories.mjs --check   — проверить файл, ничего не меняя
+//   node api/src/categories.mjs --export  — база → файл, чтобы закоммитить правки
+//   node api/src/categories.mjs --sync    — файл → база, ПЕРЕЗАПИШЕТ правки из кабинета
 //
-//   name  — можно менять свободно. Это только подпись в интерфейсе, разметка
-//           не пострадает: она ссылается на slug.
-//   hint  — можно и нужно менять. Это подсказка модели, из неё собирается
-//           промпт. Уточнили формулировку — следующая разметка станет точнее.
-//   slug  — ключ. На него ссылаются словарь, правила по продавцам и разметка
-//           позиций. Переименование slug'а = потеря связи со всем этим, поэтому
-//           скрипт о таком предупреждает и показывает, сколько записей осиротеет.
-//
-// Добавить категорию: новый блок с новым slug'ом, прогнать скрипт.
-// Удалить: убрать из файла, прогнать — скрипт покажет, что на неё ссылается.
-import { readFileSync } from 'node:fs';
+// Про поля:
+//   name — подпись в интерфейсе, меняется свободно: разметка держится на slug.
+//   hint — подсказка модели, из неё собирается промпт классификации.
+//   slug — ключ. На него ссылаются словарь, правила по продавцам, штрихкоды и разметка.
+//          Неизменен. Группу задаёт group_slug, а не префикс slug'а: категорию переносят
+//          между группами, и slug при этом остаётся прежним.
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { openDb, migrate, API_ROOT } from './db.mjs';
@@ -73,13 +73,39 @@ export function flatten(catalog) {
         group_name: group.name,
         name: sub.name,
         hint: sub.hint ?? null,
-        color: group.color ?? null,
-        icon: group.icon ?? null,
         sort: gi * 100 + si,
       });
     });
   });
   return rows;
+}
+
+/** Группы отдельным списком: они самостоятельные записи, а не свойства категорий. */
+export function flattenGroups(catalog) {
+  return catalog.groups.map((group, gi) => ({
+    slug: group.slug,
+    name: group.name,
+    icon: group.icon ?? null,
+    color: group.color ?? null,
+    sort: gi * 100,
+  }));
+}
+
+/** Справочник из базы в том же виде, в каком лежит в файле — для --export. */
+export function dumpCatalog(db) {
+  const groups = db.prepare('SELECT slug, name, icon, color FROM groups ORDER BY sort, slug').all();
+  const cats = db.prepare('SELECT slug, group_slug, name, hint FROM categories ORDER BY sort, slug').all();
+  return {
+    groups: groups.map((g) => ({
+      slug: g.slug,
+      name: g.name,
+      icon: g.icon ?? undefined,
+      color: g.color ?? undefined,
+      subcategories: cats
+        .filter((c) => c.group_slug === g.slug)
+        .map((c) => ({ slug: c.slug, name: c.name, hint: c.hint ?? undefined })),
+    })),
+  };
 }
 
 /**
@@ -117,8 +143,10 @@ export function validate(catalog) {
       if (!sub.hint) problems.push(`${what}: нет hint — модель будет угадывать по одному названию`);
       if (sub.slug && slugs.has(sub.slug)) problems.push(`${what}: slug «${sub.slug}» повторяется`);
       if (sub.slug) slugs.add(sub.slug);
-      if (sub.slug && group.slug && !sub.slug.startsWith(`${group.slug}.`)) {
-        problems.push(`${what}: slug должен начинаться с «${group.slug}.», иначе связь с группой теряется`);
+      // Префикс slug'а группу больше не задаёт: категорию можно перенести, а slug неизменен.
+      // Требуем только формат — иначе опечатка вроде пробела всплывёт лишь в разметке.
+      if (sub.slug && !/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/.test(sub.slug)) {
+        problems.push(`${what}: slug «${sub.slug}» — только латиница в нижнем регистре, цифры, _ и .`);
       }
     }
   }
@@ -144,16 +172,22 @@ export function syncCategories(db, catalog) {
   }
 
   const rows = flatten(catalog);
-  const upsert = db.prepare(`
-    INSERT INTO categories (slug, group_slug, group_name, name, hint, color, icon, sort)
-    VALUES (:slug, :group_slug, :group_name, :name, :hint, :color, :icon, :sort)
+  const upsertGroup = db.prepare(`
+    INSERT INTO groups (slug, name, icon, color, sort)
+    VALUES (:slug, :name, :icon, :color, :sort)
     ON CONFLICT (slug) DO UPDATE SET
-      group_slug = :group_slug, group_name = :group_name, name = :name,
-      hint = :hint, color = :color, icon = :icon, sort = :sort`);
+      name = :name, icon = :icon, color = :color, sort = :sort`);
+
+  const upsert = db.prepare(`
+    INSERT INTO categories (slug, group_slug, name, hint, sort)
+    VALUES (:slug, :group_slug, :name, :hint, :sort)
+    ON CONFLICT (slug) DO UPDATE SET
+      group_slug = :group_slug, name = :name, hint = :hint, sort = :sort`);
 
   db.exec('BEGIN');
   try {
-    for (const row of rows) upsert.run(row);
+    for (const group of flattenGroups(catalog)) upsertGroup.run(group);
+    for (const { group_name, ...row } of rows) upsert.run(row);
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
@@ -173,10 +207,11 @@ export function syncCategories(db, catalog) {
 function show(db) {
   const rows = db
     .prepare(
-      `SELECT c.group_name, c.name, c.slug,
+      `SELECT g.name AS group_name, c.name, c.slug,
               (SELECT COUNT(*) FROM dictionary d WHERE d.category_slug = c.slug) AS dict,
               (SELECT COUNT(*) FROM item_labels l WHERE l.category_slug = c.slug) AS items
-         FROM categories c ORDER BY c.sort`,
+         FROM categories c JOIN groups g ON g.slug = c.group_slug
+        ORDER BY g.sort, c.sort`,
     )
     .all();
 
@@ -191,6 +226,16 @@ function show(db) {
   }
   console.log(`\nвсего подкатегорий: ${rows.length}`);
 }
+
+const usage = () =>
+  [
+    'Справочник категорий: источник правды — база, правится в кабинете.',
+    '',
+    '  --show     что сейчас в базе',
+    '  --check    проверить categories.json, ничего не меняя',
+    '  --export   база → файл (закоммитить правки из кабинета)',
+    '  --sync     файл → база, ПЕРЕЗАПИШЕТ правки из кабинета',
+  ].join('\n');
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const db = openDb();
@@ -227,7 +272,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
   } else if (process.argv.includes('--show')) {
     show(db);
-  } else {
+  } else if (process.argv.includes('--export')) {
+    // База → файл. Правки из кабинета живут в базе, в репозиторий их приносит эта команда.
+    const catalog = dumpCatalog(db);
+    const existing = JSON.parse(readFileSync(CATEGORIES_PATH, 'utf8'));
+    const next = { ...existing, groups: catalog.groups };
+    writeFileSync(CATEGORIES_PATH, `${JSON.stringify(next, null, 2)}\n`);
+    const subs = catalog.groups.reduce((n, g) => n + g.subcategories.length, 0);
+    console.log(`выгружено в ${CATEGORIES_PATH}: ${catalog.groups.length} групп, ${subs} подкатегорий`);
+    console.log('проверьте git diff и закоммитьте');
+  } else if (process.argv.includes('--sync')) {
     const { total, groups, orphans } = syncCategories(db, loadCategories());
     console.log(`справочник загружен: ${groups} групп, ${total} подкатегорий`);
 
@@ -237,6 +291,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log(`\nв базе остались категории, которых больше нет в файле: ${orphans.join(', ')}`);
       console.log('они не удалены — на них могут ссылаться словарь и разметка; разберите вручную');
     }
+  } else {
+    console.log(usage());
   }
   db.close();
 }

@@ -105,25 +105,36 @@ SELECT
   l.confidence AS category_confidence,
   c.name AS category_name,
   c.group_slug,
-  c.group_name
+  g.name AS group_name
 FROM items i
 JOIN receipts r ON r.id = i.receipt_id
 LEFT JOIN item_labels l ON l.item_id = i.id
-LEFT JOIN categories c ON c.slug = l.category_slug;
+LEFT JOIN categories c ON c.slug = l.category_slug
+LEFT JOIN groups g ON g.slug = c.group_slug;
 
 -- ── категории ───────────────────────────────────────────────────────────────
 -- Канонический справочник. Пользовательские деревья (когда появятся личные
 -- кабинеты) будут маппиться на эти slug'и: словарь, правила и модель всегда
 -- работают в каноне, пользователь видит свои названия.
 
+-- Группа — самостоятельная запись, а не колонка в категории: иначе её нельзя
+-- переименовать одним действием и нельзя завести пустой, чтобы потом наполнить.
+CREATE TABLE IF NOT EXISTS groups (
+  slug  TEXT PRIMARY KEY,                -- food
+  name  TEXT NOT NULL,                   -- Питание
+  icon  TEXT,                            -- имя фигуры из site/cabinet/icons.js
+  color TEXT,
+  sort  INTEGER NOT NULL DEFAULT 0
+);
+
+-- slug категории — идентификатор, а не адрес: на него ссылаются словарь, правила
+-- по продавцам, штрихкоды и разметка позиций. Он неизменен, а к какой группе
+-- относится категория, говорит group_slug — поэтому категорию можно переносить.
 CREATE TABLE IF NOT EXISTS categories (
   slug        TEXT PRIMARY KEY,          -- food.groceries
-  group_slug  TEXT NOT NULL,             -- food
-  group_name  TEXT NOT NULL,             -- Питание
+  group_slug  TEXT NOT NULL REFERENCES groups (slug),
   name        TEXT NOT NULL,             -- Еда
   hint        TEXT,                      -- подсказка для промпта и подсказок в интерфейсе
-  color       TEXT,
-  icon        TEXT,                      -- имя фигуры из site/cabinet/icons.js
   sort        INTEGER NOT NULL DEFAULT 0
 );
 
@@ -173,8 +184,10 @@ CREATE TABLE IF NOT EXISTS item_labels (
 CREATE INDEX IF NOT EXISTS idx_item_labels_category ON item_labels (category_slug);
 CREATE INDEX IF NOT EXISTS idx_item_labels_source   ON item_labels (source);
 
--- Позиция с категорией: на этом представлении строится колонка и фильтр в кабинете.
-CREATE VIEW IF NOT EXISTS v_item_categories AS
+-- Позиция с категорией: на ней работает классификатор. Пересоздаётся при каждом
+-- запуске, как и v_items, — иначе правки схемы не доезжают до существующих баз.
+DROP VIEW IF EXISTS v_item_categories;
+CREATE VIEW v_item_categories AS
 SELECT
   i.id,
   i.receipt_id,
@@ -189,11 +202,12 @@ SELECT
   l.confidence,
   c.name       AS category_name,
   c.group_slug,
-  c.group_name
+  g.name AS group_name
 FROM items i
 JOIN receipts r      ON r.id = i.receipt_id
 LEFT JOIN item_labels l ON l.item_id = i.id
-LEFT JOIN categories c  ON c.slug = l.category_slug;
+LEFT JOIN categories c  ON c.slug = l.category_slug
+LEFT JOIN groups g       ON g.slug = c.group_slug;
 
 -- Журнал импортов: видно, какие выгрузки уже залиты.
 CREATE TABLE IF NOT EXISTS imports (

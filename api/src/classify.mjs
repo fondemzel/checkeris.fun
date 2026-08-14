@@ -268,8 +268,11 @@ function stats(db) {
 
   const top = db
     .prepare(
-      `SELECT c.group_name, COUNT(*) n, SUM(i.sum) s
-         FROM item_labels l JOIN items i ON i.id = l.item_id JOIN categories c ON c.slug = l.category_slug
+      `SELECT g.name AS group_name, COUNT(*) n, SUM(i.sum) s
+         FROM item_labels l
+         JOIN items i      ON i.id = l.item_id
+         JOIN categories c ON c.slug = l.category_slug
+         JOIN groups g     ON g.slug = c.group_slug
         GROUP BY c.group_slug ORDER BY s DESC LIMIT 12`,
     )
     .all();

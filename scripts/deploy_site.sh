@@ -155,6 +155,26 @@ fi
 # (ваши выгрузки), это безопасно; когда чеки начнут добавляться на сервере,
 # заливать словарь нужно будет отдельно, а не всей базой.
 if [[ $DB -eq 1 ]]; then
+  # Справочник категорий правится в кабинете, то есть в серверной базе. Заливка снимка
+  # затрёт эти правки локальными. Сначала забрать их: categories.mjs --export на сервере.
+  REMOTE_CATS="$(ssh "$HOST" "curl -s http://127.0.0.1:8788/api/meta" |
+    node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.categories.reduce((n,g)=>n+g.subcategories.length,0)+' в '+j.categories.length+' группах')}catch{console.log('?')}})")"
+  LOCAL_CATS="$(node -e "
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync('api/data/checker.db', { readOnly: true });
+    const c = db.prepare('SELECT COUNT(*) c FROM categories').get().c;
+    const g = db.prepare('SELECT COUNT(*) c FROM groups').get().c;
+    console.log(c + ' в ' + g + ' группах');
+  " 2>/dev/null | tail -1)"
+
+  echo "ВНИМАНИЕ: --db перезаписывает серверную базу целиком, вместе со справочником категорий." >&2
+  echo "  на сервере: $REMOTE_CATS" >&2
+  echo "  зальётся:   $LOCAL_CATS" >&2
+  echo "  правки справочника с сервера сначала забираются так:" >&2
+  echo "    ssh $HOST 'cd $TARGET && node api/src/categories.mjs --export'" >&2
+  read -r -p "продолжить? [y/N] " ANSWER < /dev/tty
+  [[ "$ANSWER" == [yY]* ]] || { echo "отменено"; exit 1; }
+
   echo "→ снимок базы"
   SNAPSHOT=api/data/.deploy-snapshot.db
   rm -f "$SNAPSHOT"

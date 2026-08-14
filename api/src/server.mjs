@@ -19,6 +19,15 @@ import {
   setItemCategory,
 } from './queries.mjs';
 import { loadCategories, syncCategories } from './categories.mjs';
+import {
+  getTaxonomy,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+} from './taxonomy.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -44,13 +53,16 @@ const VERSION = JSON.parse(readFileSync(join(API_ROOT, 'package.json'), 'utf8'))
 const db = openDb();
 migrate(db);
 
-// Справочник категорий правится руками в api/db/categories.json, поэтому подтягиваем его
-// на старте: перезапуск сервиса = применить правку. Битый файл не должен ронять кабинет —
-// в этом случае остаётся справочник, уже лежащий в базе.
-try {
-  syncCategories(db, loadCategories());
-} catch (err) {
-  console.error('справочник категорий не применён, работаем со старым:', err.message);
+// Справочник живёт в базе и правится в кабинете. Файл categories.json — начальное
+// наполнение: заливаем его только в пустую базу, иначе перезапуск затирал бы правки
+// из интерфейса. Осознанный переимпорт — categories.mjs --sync.
+if (!db.prepare('SELECT COUNT(*) c FROM categories').get().c) {
+  try {
+    const { total, groups } = syncCategories(db, loadCategories());
+    console.log(`справочник категорий залит из файла: ${groups} групп, ${total} подкатегорий`);
+  } catch (err) {
+    console.error('начальный справочник категорий не залит:', err.message);
+  }
 }
 
 function sendJson(res, status, payload) {
@@ -129,7 +141,40 @@ async function serveStatic(req, res, pathname) {
 async function handleApi(req, res, url) {
   const { pathname, searchParams } = url;
 
-  // Единственный пишущий запрос: категория товара из карточки
+  // ── справочник категорий: правится из раздела «Категории» ──
+  if (pathname === '/api/taxonomy') {
+    if (req.method === 'GET') return sendJson(res, 200, getTaxonomy(db));
+    return sendJson(res, 405, { error: 'method not allowed' });
+  }
+
+  const taxonomyMatch = pathname.match(/^\/api\/taxonomy\/(groups|categories)(?:\/(.+))?$/);
+  if (taxonomyMatch) {
+    const [, kind, slugRaw] = taxonomyMatch;
+    const slug = slugRaw ? decodeURIComponent(slugRaw) : '';
+    const isGroup = kind === 'groups';
+
+    let body = {};
+    if (req.method === 'POST' || req.method === 'PATCH') {
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+    }
+
+    let result;
+    if (req.method === 'POST' && !slug) result = (isGroup ? createGroup : createCategory)(db, body);
+    else if (req.method === 'PATCH' && slug) result = (isGroup ? updateGroup : updateCategory)(db, slug, body);
+    else if (req.method === 'DELETE' && slug) {
+      result = isGroup ? deleteGroup(db, slug) : deleteCategory(db, slug, searchParams.get('move_to'));
+    } else return sendJson(res, 405, { error: 'method not allowed' });
+
+    return result.error
+      ? sendJson(res, result.status ?? 400, result)
+      : sendJson(res, 200, result);
+  }
+
+  // Категория товара из карточки — правка словаря, а не справочника
   const categoryMatch = pathname.match(/^\/api\/items\/(\d+)\/category$/);
   if (categoryMatch) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });

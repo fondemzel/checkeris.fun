@@ -124,7 +124,7 @@ function score(items, predicted) {
   };
 }
 
-function report(golden, predicted, showErrors) {
+function report(golden, predicted, showErrors, groupOf = new Map()) {
   const rows = golden.items.map((it) => ({
     ...it,
     predicted: predicted.get(it.name_norm) ?? null,
@@ -136,8 +136,10 @@ function report(golden, predicted, showErrors) {
   const okCount = rows.filter((r) => r.ok).length;
   const missing = rows.filter((r) => !r.predicted).length;
 
-  // Группа — более мягкая метрика: «Обувь вместо Одежды» дешевле, чем «Еда вместо Налогов»
-  const group = (slug) => (slug ?? '').split('.')[0];
+  // Группа — более мягкая метрика: «Обувь вместо Одежды» дешевле, чем «Еда вместо Налогов».
+  // Берём её из справочника, а не из префикса slug'а: категорию можно перенести в другую
+  // группу, slug при этом не меняется, и разбор по точке начал бы врать.
+  const group = (slug) => groupOf.get(slug) ?? null;
   const okGroup = rows.filter((r) => r.predicted && group(r.predicted) === group(r.category)).length;
 
   console.log(`\nточность по позициям: ${okCount}/${rows.length} = ${((okCount / rows.length) * 100).toFixed(1)}%`);
@@ -197,7 +199,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   console.log(`модель: yandexgpt-${model === 'pro' ? 'pro' : 'lite'}, позиций: ${labelled.length}`);
   const started = Date.now();
   const predicted = await classify(labelled, { model });
-  report({ items: labelled }, predicted, argv.includes('--errors'));
+  const groupOf = new Map(db.prepare('SELECT slug, group_slug FROM categories').all().map((r) => [r.slug, r.group_slug]));
+  report({ items: labelled }, predicted, argv.includes('--errors'), groupOf);
 
   const { withRules, overridden } = applyRules(db, predicted);
   const before = score(labelled, predicted);

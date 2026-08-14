@@ -398,9 +398,10 @@ export function getMeta(db) {
   // Справочник для чипсов: группы и вложенные подкатегории, с числом размеченных позиций
   const rows = db
     .prepare(
-      `SELECT c.slug, c.name, c.group_slug, c.group_name, c.icon, c.sort,
+      `SELECT c.slug, c.name, c.group_slug, g.name AS group_name, g.icon,
               (SELECT COUNT(*) FROM item_labels l WHERE l.category_slug = c.slug) AS items
-         FROM categories c ORDER BY c.sort`,
+         FROM categories c JOIN groups g ON g.slug = c.group_slug
+        ORDER BY g.sort, g.slug, c.sort`,
     )
     .all();
 
