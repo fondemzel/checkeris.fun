@@ -228,6 +228,8 @@ input::placeholder { color: #9aa1aa; }
 }
 
 .chips-range input[type="number"] { width: 82px; }
+.chips-range input[type="date"] { color: #9aa1aa; }
+.chips-range input[type="date"].filled { color: var(--text); }
 .chips-dash { color: var(--muted); }
 
 .check {

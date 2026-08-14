@@ -1002,8 +1002,12 @@ async function loadMeta() {
 function syncControls() {
   $('f-q').value = state.q;
   const { from, to } = periodRange();
-  $('f-from').value = from;
-  $('f-to').value = to;
+  // У пустого date-поля свой «mm/dd/yyyy» вместо placeholder'а, и :placeholder-shown на него
+  // не действует — приглушаем его классом, чтобы цвет совпал с полями «от — до»
+  for (const [id, value] of [['f-from', from], ['f-to', to]]) {
+    $(id).value = value;
+    $(id).classList.toggle('filled', Boolean(value));
+  }
   const bounds = sumBounds();
   $('f-min').value = bounds.min;
   $('f-max').value = bounds.max;
