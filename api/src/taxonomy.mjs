@@ -173,6 +173,46 @@ export function updateCategory(db, slug, body) {
   return { category: db.prepare('SELECT * FROM categories WHERE slug = ?').get(slug) };
 }
 
+/**
+ * Перестановка после перетаскивания. Клиент присылает весь новый порядок, а не «поставь
+ * между этими двумя»: целочисленный sort при вставке серединой исчерпывается за десяток
+ * перетаскиваний. Здесь же меняется группа — перенос и перестановка это одно движение.
+ */
+export function reorder(db, body) {
+  const order = Array.isArray(body.order) ? body.order.map(trim) : [];
+  if (!order.length) return fail(400, 'пустой порядок');
+  if (new Set(order).size !== order.length) return fail(400, 'в порядке есть повторы');
+
+  const groups = body.kind === 'groups';
+  const table = groups ? 'groups' : 'categories';
+  const known = new Set(db.prepare(`SELECT slug FROM ${table}`).all().map((r) => r.slug));
+  const missing = order.filter((slug) => !known.has(slug));
+  if (missing.length) return fail(400, `неизвестные записи: ${missing.join(', ')}`);
+
+  const groupSlug = trim(body.group_slug);
+  if (!groups) {
+    if (!db.prepare('SELECT 1 FROM groups WHERE slug = ?').get(groupSlug)) return fail(400, 'нет такой группы');
+  }
+
+  const setSort = db.prepare(`UPDATE ${table} SET sort = ? WHERE slug = ?`);
+  const setGroup = db.prepare('UPDATE categories SET group_slug = ? WHERE slug = ?');
+
+  db.exec('BEGIN');
+  try {
+    order.forEach((slug, i) => {
+      setSort.run(i * 10, slug);
+      if (!groups) setGroup.run(groupSlug, slug);
+    });
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  // Переразметка не нужна: метки ссылаются на slug, а он не менялся
+  return { reordered: order.length, group_slug: groups ? null : groupSlug };
+}
+
 /** На что завязана категория — этим же считается цена удаления. */
 export function categoryUsage(db, slug) {
   const count = (sql) => db.prepare(sql).get(slug).c;

@@ -462,6 +462,12 @@ tbody tr.child-more td { padding-left: 24px; }
 .tree-row .ellipsis-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-count { flex: none; font-size: 12px; }
 
+/* Перетаскивание: строка-источник бледнеет, место вставки показывает линия */
+.tree-row[draggable="true"] { cursor: grab; }
+.tree-row.dragging { opacity: 0.4; }
+.tree-row.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
+.tree-row.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
+
 .tree-head-row { font-weight: 600; background: var(--head-bg); }
 .tree-head-row:hover { background: var(--hover); }
 .tree-cat { padding-left: 33px; }

@@ -27,6 +27,7 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  reorder,
 } from './taxonomy.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -145,6 +146,19 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/taxonomy') {
     if (req.method === 'GET') return sendJson(res, 200, getTaxonomy(db));
     return sendJson(res, 405, { error: 'method not allowed' });
+  }
+
+  // Перестановка перетаскиванием: приходит весь новый порядок группы
+  if (pathname === '/api/taxonomy/reorder') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = reorder(db, body);
+    return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
   }
 
   const taxonomyMatch = pathname.match(/^\/api\/taxonomy\/(groups|categories)(?:\/(.+))?$/);

@@ -360,6 +360,108 @@ function renderCategoryChips() {
   }
 }
 
+/**
+ * Перетаскивание в дереве: порядок категорий, перенос в другую группу, порядок групп.
+ * На сервер уходит весь новый порядок группы, а не «вставь между этими двумя»: sort
+ * целочисленный, и вставка серединой исчерпала бы промежутки за десяток движений.
+ */
+function bindTreeDrag() {
+  const tree = $('tree');
+  let dragging = null; // { kind: 'cat' | 'group', slug, from }
+
+  const clearMarks = () =>
+    tree.querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
+
+  tree.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('[data-cat], [data-grouprow]');
+    if (!row) return;
+    dragging = row.dataset.cat
+      ? { kind: 'cat', slug: row.dataset.cat, from: row.dataset.group }
+      : { kind: 'group', slug: row.dataset.grouprow };
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragging.slug); // без этого Firefox не начинает перенос
+  });
+
+  tree.addEventListener('dragend', () => {
+    tree.querySelectorAll('.dragging').forEach((el) => el.classList.remove('dragging'));
+    clearMarks();
+    dragging = null;
+  });
+
+  /** Куда встанет строка: до или после наведённой, либо в начало/конец группы. */
+  const target = (e) => {
+    if (!dragging) return null;
+    if (dragging.kind === 'group') {
+      const row = e.target.closest('[data-grouprow]');
+      return row && row.dataset.grouprow !== dragging.slug ? { row, after: below(e, row) } : null;
+    }
+    const cat = e.target.closest('[data-cat]');
+    if (cat) return cat.dataset.cat === dragging.slug ? null : { row: cat, after: below(e, cat) };
+    const head = e.target.closest('[data-grouprow]');
+    if (head) return { row: head, after: true }; // на заголовок — в начало группы
+    const tail = e.target.closest('[data-tail]');
+    if (tail) return { row: tail, after: false }; // на «+ категория» — в конец
+    return null;
+  };
+
+  const below = (e, row) => {
+    const rect = row.getBoundingClientRect();
+    return e.clientY > rect.top + rect.height / 2;
+  };
+
+  tree.addEventListener('dragover', (e) => {
+    const spot = target(e);
+    clearMarks();
+    if (!spot) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    spot.row.classList.add(spot.after ? 'drop-after' : 'drop-before');
+  });
+
+  tree.addEventListener('drop', async (e) => {
+    const spot = target(e);
+    e.preventDefault();
+    clearMarks();
+    if (!spot || !dragging) return;
+    const moved = dragging;
+    dragging = null;
+
+    try {
+      await (moved.kind === 'group' ? dropGroup(moved, spot) : dropCategory(moved, spot));
+      await afterTaxonomyChange();
+      renderTree();
+    } catch (err) {
+      treeNote(`Не удалось переставить: ${err.message}`, true);
+    }
+  });
+}
+
+async function dropGroup(moved, spot) {
+  const order = taxonomy.groups.map((g) => g.slug).filter((slug) => slug !== moved.slug);
+  const at = order.indexOf(spot.row.dataset.grouprow);
+  order.splice(spot.after ? at + 1 : at, 0, moved.slug);
+  await taxonomyCall('POST', '/reorder', { kind: 'groups', order });
+}
+
+async function dropCategory(moved, spot) {
+  // Куда именно: строка категории задаёт и группу, и место; заголовок и «+ категория» — только группу
+  const box = spot.row.closest('[data-group-box]');
+  const targetGroup = box.dataset.groupBox;
+  const order = (findGroup(targetGroup)?.categories ?? []).map((c) => c.slug).filter((slug) => slug !== moved.slug);
+
+  if (spot.row.dataset.cat) {
+    const at = order.indexOf(spot.row.dataset.cat);
+    order.splice(spot.after ? at + 1 : at, 0, moved.slug);
+  } else if (spot.row.dataset.grouprow) {
+    order.unshift(moved.slug);
+  } else {
+    order.push(moved.slug);
+  }
+
+  await taxonomyCall('POST', '/reorder', { kind: 'categories', group_slug: targetGroup, order });
+}
+
 /** Оттенки категорий группы в порядке их следования. */
 const categoryShades = (group) =>
   shades(group.color ?? '', (group.subcategories ?? group.categories ?? []).length, group.shade_from, group.shade_to);
@@ -412,21 +514,23 @@ function renderTree() {
         .map((c, i) => {
           const on = state.node === `c:${c.slug}`;
           return (
-            `<button class="tree-row tree-cat${on ? ' selected' : ''}" type="button" data-node="c:${esc(c.slug)}">` +
+            `<button class="tree-row tree-cat${on ? ' selected' : ''}" type="button" draggable="true"` +
+            ` data-node="c:${esc(c.slug)}" data-cat="${esc(c.slug)}" data-group="${esc(g.slug)}">` +
             `${swatch(tones[i])}<span class="ellipsis-text">${esc(c.name)}</span>` +
             `<span class="dim tree-count">${c.items ? int.format(c.items) : ''}</span></button>`
           );
         })
         .join('');
       return (
-        `<div class="tree-group">` +
-        `<button class="tree-row tree-head-row${active ? ' selected' : ''}" type="button" data-node="g:${esc(g.slug)}"` +
+        `<div class="tree-group" data-group-box="${esc(g.slug)}">` +
+        `<button class="tree-row tree-head-row${active ? ' selected' : ''}" type="button" draggable="true"` +
+        ` data-node="g:${esc(g.slug)}" data-grouprow="${esc(g.slug)}"` +
         `${g.color ? ` style="background:${tint(g.color, 30)}"` : ''}>` +
         `${groupIcon(g.icon) || '<span class="chip-icon"></span>'}` +
         `<span class="ellipsis-text">${esc(g.name)}</span>` +
         `<span class="dim tree-count">${g.items ? int.format(g.items) : ''}</span></button>` +
         rows +
-        `<button class="tree-row tree-add" type="button" data-add="${esc(g.slug)}">+ категория</button>` +
+        `<button class="tree-row tree-add" type="button" data-add="${esc(g.slug)}" data-tail="${esc(g.slug)}">+ категория</button>` +
         `</div>`
       );
     })
@@ -1330,6 +1434,7 @@ function bind() {
   });
 
   $('add-group').addEventListener('click', addGroup);
+  bindTreeDrag();
 
   $('detail').addEventListener('click', (e) => {
     const icon = e.target.closest('.icon-option');
