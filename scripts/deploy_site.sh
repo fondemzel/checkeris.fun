@@ -164,8 +164,13 @@ fi
 if [[ $DB -eq 1 ]]; then
   # Справочник категорий правится в кабинете, то есть в серверной базе. Заливка снимка
   # затрёт эти правки локальными. Сначала забрать их: categories.mjs --export на сервере.
-  REMOTE_CATS="$(ssh "$HOST" "curl -s http://127.0.0.1:8788/api/meta" |
-    node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.categories.reduce((n,g)=>n+g.subcategories.length,0)+' в '+j.categories.length+' группах')}catch{console.log('?')}})")"
+  # API закрыт токеном, поэтому считаем прямо в серверной базе
+  REMOTE_CATS="$(ssh "$HOST" "cd $TARGET && sudo -u checker /usr/bin/node -e \"
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync('api/data/checker.db', { readOnly: true });
+    console.log(db.prepare('SELECT COUNT(*) c FROM categories').get().c + ' в ' +
+                db.prepare('SELECT COUNT(*) c FROM groups').get().c + ' группах');
+  \" 2>/dev/null | tail -1")"
   LOCAL_CATS="$(node -e "
     const { DatabaseSync } = require('node:sqlite');
     const db = new DatabaseSync('api/data/checker.db', { readOnly: true });
@@ -207,12 +212,12 @@ fi
 echo "→ перезапуск"
 ssh "$HOST" "systemctl restart checker-api"
 
-# ── проверка: сервис отвечает в обход nginx, пароль не нужен ─
+# ── проверка: /api/version открыт наружу, остальное закрыто токеном ─
 sleep 1
-LIVE="$(ssh "$HOST" "curl -s http://127.0.0.1:8788/api/meta" |
-  node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.version+' '+j.stats.receipts)}catch{console.log('? ?')}})")"
+LIVE="$(ssh "$HOST" "curl -s http://127.0.0.1:8788/api/version" |
+  node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.version+' '+(j.users?'есть':'НЕТ'))}catch{console.log('? ?')}})")"
 LIVE_VERSION="${LIVE% *}"
-LIVE_RECEIPTS="${LIVE#* }"
+LIVE_USERS="${LIVE#* }"
 
 if [[ "$LIVE_VERSION" != "$NEXT" ]]; then
   echo "ВНИМАНИЕ: на сервере v$LIVE_VERSION, ожидалась v$NEXT" >&2
@@ -220,5 +225,10 @@ if [[ "$LIVE_VERSION" != "$NEXT" ]]; then
   exit 1
 fi
 
-echo "на сервере v$LIVE_VERSION, чеков в базе: $LIVE_RECEIPTS"
+if [[ "$LIVE_USERS" != "есть" ]]; then
+  echo "ВНИМАНИЕ: на сервере нет пользователей — в кабинет никто не войдёт." >&2
+  echo "  заведите: ssh $HOST 'cd $TARGET && sudo -u checker node api/src/users.mjs --add <логин> <пароль>'" >&2
+fi
+
+echo "на сервере v$LIVE_VERSION, пользователи: $LIVE_USERS"
 echo "готово: https://checkeris.fun/cabinet/  ($HOST, $(ssh -G "$HOST" | awk '/^hostname /{print $2}'))"

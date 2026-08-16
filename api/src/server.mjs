@@ -173,6 +173,10 @@ async function handleToken(req, res) {
 async function handleApi(req, res, url) {
   const { pathname, searchParams } = url;
 
+  // Открыто наружу: по нему выкладка проверяет, что поднялась нужная версия.
+  // Данных здесь нет — только номер и есть ли кому входить.
+  if (pathname === '/api/version') return sendJson(res, 200, { version: VERSION, users: hasUsers(db) });
+
   if (pathname === '/api/token') return handleToken(req, res);
 
   // Всё остальное — только по токену. Кабинет и телефон ходят одинаково.
