@@ -23,6 +23,7 @@
       <a class="sidebar-brand" href="/">Чекер <span>Кабинет</span></a>
       <button class="nav-item" type="button" data-view="receipts" aria-current="true">Чеки</button>
       <button class="nav-item" type="button" data-view="items">Товары</button>
+      <button class="nav-item" type="button" data-view="analysis">Анализ</button>
       <button class="nav-item" type="button" data-view="taxonomy">Категории</button>
       <div class="sidebar-foot">
         <div id="data-period">загрузка данных…</div>
@@ -98,6 +99,16 @@
               <span id="load-info" class="dim"></span>
             </div>
           </div>
+        </section>
+
+        <section class="analysis-pane" id="analysis-pane" hidden>
+          <div class="period">
+            <button class="arrow-btn" id="year-prev" type="button" aria-label="Предыдущий год">‹</button>
+            <span class="period-name" id="period-name">—</span>
+            <button class="arrow-btn" id="year-next" type="button" aria-label="Следующий год">›</button>
+            <button class="chip" id="period-all" type="button">Всё время</button>
+          </div>
+          <div class="analysis-scroll" id="analysis"></div>
         </section>
 
         <section class="tree-pane" id="tree-pane" hidden>

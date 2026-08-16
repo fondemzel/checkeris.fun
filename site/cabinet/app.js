@@ -1,6 +1,9 @@
 // Кабинет: слева список с подгрузкой по скроллу, справа карточка выбранной строки.
 import { groupIcon, searchIcons, GROUP_ICONS } from '/shared/icons.js';
 import { hexToHsl, hslToHex, tint, shades, readableText, edge, hexToRgb } from '/shared/colors.js';
+import { columns, bars, bindTooltip } from '/cabinet/charts.js';
+
+const CHART_COLOR = '#2563eb'; // один ряд — один цвет; величину несёт длина марки
 
 const DEFAULT_GROUP_COLOR = '#7c9cd6'; // чем красить группу, которой цвет ещё не задали
 
@@ -98,6 +101,7 @@ const DEFAULTS = {
   sort: 'date',
   dir: 'desc',
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция
+  year: String(new Date().getFullYear()), // период раздела «Анализ»: год или all
   node: '', // выбранное в разделе «Категории»: g:<slug> — группа, c:<slug> — категория
 };
 
@@ -115,7 +119,7 @@ function readUrl() {
   for (const key of Object.keys(DEFAULTS)) {
     if (params.has(key)) state[key] = params.get(key);
   }
-  if (!['items', 'taxonomy'].includes(state.view)) state.view = 'receipts';
+  if (!['items', 'taxonomy', 'analysis'].includes(state.view)) state.view = 'receipts';
   if (!['', 'day', 'week', 'month', 'year'].includes(state.period)) state.period = '';
   if (!/^[ri]\d+$/.test(state.card)) state.card = '';
   if (!/^[gc]:.+$/.test(state.node)) state.node = '';
@@ -508,6 +512,103 @@ function chipStyle(color, active) {
   return (
     ` style="background:${background};border-color:${edge(background)};color:${readableText(background)}"`
   );
+}
+
+// ── раздел «Анализ» ──────────────────────────────────────
+// Смотреть на отдельные чеки неинтересно: здесь те же данные, но целиком —
+// сколько уходит, куда и как меняется. Всё считает сервер (/api/summary),
+// клиент только рисует.
+
+/** Период раздела: год целиком или вся база. */
+function analysisRange() {
+  if (state.year === 'all') return {};
+  return { from: `${state.year}-01-01`, to: `${state.year}-12-31` };
+}
+
+const statTile = (title, value, note) =>
+  `<div class="tile"><div class="tile-title">${esc(title)}</div>` +
+  `<div class="tile-value">${value}</div><div class="tile-note">${esc(note ?? '')}</div></div>`;
+
+const block = (title, subtitle, body) =>
+  `<section class="block"><h2>${esc(title)}</h2>` +
+  (subtitle ? `<p class="dim">${esc(subtitle)}</p>` : '') +
+  `${body}</section>`;
+
+async function renderAnalysis() {
+  const box = $('analysis');
+  const { from, to } = analysisRange();
+  const period = new URLSearchParams();
+  if (from) period.set('from', from);
+  if (to) period.set('to', to);
+  $('period-name').textContent = state.year === 'all' ? 'Всё время' : state.year;
+
+  box.innerHTML = '<div class="chart-empty">Загрузка…</div>';
+  const seq = ++loadSeq;
+
+  try {
+    // Четыре разреза одного и того же периода: сводка отвечает на каждый одним запросом
+    const [months, groups, categories, sellers] = await Promise.all(
+      ['month', 'group', 'category', 'seller'].map((by) => apiJson(`/api/summary?by=${by}&${period}`)),
+    );
+    if (seq !== loadSeq) return;
+
+    const totals = groups.totals;
+    const monthsWithData = months.rows.filter((r) => r.sum > 0);
+    const perMonth = monthsWithData.length ? totals.sum / monthsWithData.length : 0;
+
+    const top = (rows, n = 10) =>
+      rows
+        .filter((r) => r.sum > 0)
+        .slice(0, n)
+        .map((r) => ({ name: r.name ?? 'Без категории', sum: r.sum, note: `${int.format(r.count)} позиций` }));
+
+    // Цвет группы — опознание сущности, как в чипсах и дереве; величину несёт длина полосы
+    const groupRows = groups.rows
+      .filter((r) => r.sum > 0)
+      .map((r) => ({
+        name: r.name ?? 'Без категории',
+        sum: r.sum,
+        color: r.color ?? '#c9ced6',
+        note: `${int.format(r.count)} позиций · ${int.format(r.receipts)} чеков`,
+      }));
+
+    const categoryRows = categories.rows
+      .filter((r) => r.sum > 0)
+      .slice(0, 12)
+      .map((r) => {
+        const g = (meta?.categories ?? []).find((x) => x.slug === r.group_slug);
+        return {
+          name: r.name ?? 'Без категории',
+          sum: r.sum,
+          dot: g?.color ?? null,
+          note: g ? g.name : '',
+        };
+      });
+
+    box.innerHTML =
+      `<div class="tiles">
+        ${statTile('Расходы за период', money(totals.sum), `${int.format(totals.receipts)} ${plural(totals.receipts, 'чек', 'чека', 'чеков')}`)}
+        ${statTile('В среднем за месяц', money(perMonth), `${monthsWithData.length} ${plural(monthsWithData.length, 'месяц', 'месяца', 'месяцев')} с тратами`)}
+        ${statTile('Средний чек', money(totals.receipts ? totals.sum / totals.receipts : 0), `${int.format(totals.count)} позиций`)}
+        ${statTile('Вне суммы', money(totals.excluded_sum), 'возвраты и зачёты аванса')}
+      </div>` +
+      block('Расходы по месяцам', 'Столбец — месяц. Подписаны самый крупный и последний, остальное — по наведению', '<div id="months-chart"></div>') +
+      block('Куда уходят деньги', 'Группы за период, от большего к меньшему', bars(groupRows, { showShare: true })) +
+      block('Крупнейшие категории', 'Цветная точка — группа, к которой относится категория', bars(categoryRows, { color: CHART_COLOR })) +
+      block('Где покупаем', 'Продавцы по сумме за период', bars(top(sellers.rows), { color: CHART_COLOR }));
+
+    // Ширина известна только после вставки: рисуем столбцы по измеренной колонке
+    const host = $('months-chart');
+    const draw = () => {
+      host.innerHTML = columns(months.rows, { color: CHART_COLOR, width: host.clientWidth });
+    };
+    draw();
+    window.addEventListener('resize', draw, { once: true });
+
+    bindTooltip(box);
+  } catch (err) {
+    if (seq === loadSeq) box.innerHTML = `<div class="chart-empty error">Не удалось построить: ${esc(err.message)}</div>`;
+  }
 }
 
 // ── раздел «Категории» ───────────────────────────────────
@@ -1357,17 +1458,23 @@ function syncControls() {
     chip.setAttribute('aria-pressed', String(chip.dataset.sum === state.sum));
   });
 
-  $('page-title').textContent = { items: 'Товары', taxonomy: 'Категории' }[state.view] ?? 'Чеки';
+  $('page-title').textContent =
+    { items: 'Товары', taxonomy: 'Категории', analysis: 'Анализ' }[state.view] ?? 'Чеки';
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.setAttribute('aria-current', String(item.dataset.view === state.view));
   });
 
-  // Справочник — не список чеков: ни фильтров, ни поиска, ни выгрузки к нему не относится
+  // Справочник и анализ — не списки чеков: фильтры, поиск и выгрузка к ним не относятся
   const isTaxonomy = state.view === 'taxonomy';
-  document.querySelector('.list-pane').hidden = isTaxonomy;
+  const isAnalysis = state.view === 'analysis';
+  document.querySelector('.list-pane').hidden = isTaxonomy || isAnalysis;
   $('tree-pane').hidden = !isTaxonomy;
-  $('f-q').hidden = isTaxonomy;
-  $('export-btn').hidden = isTaxonomy;
+  $('analysis-pane').hidden = !isAnalysis;
+  // Карточки справа в анализе нет, поэтому и колонку под неё сетка держать не должна
+  $('detail').hidden = isAnalysis;
+  document.querySelector('.layout').classList.toggle('single', isAnalysis);
+  $('f-q').hidden = isTaxonomy || isAnalysis;
+  $('export-btn').hidden = isTaxonomy || isAnalysis;
 
   renderCategoryChips();
 }
@@ -1446,6 +1553,12 @@ function bind() {
         return renderNode();
       }
 
+      if (view === 'analysis') {
+        syncControls();
+        writeUrl();
+        return renderAnalysis();
+      }
+
       // сортировка «по дате» есть в обоих списках, остальные ключи не пересекаются
       const sort = COLUMNS[view].some((c) => c.sort === state.sort) ? state.sort : 'date';
       renderCard();
@@ -1467,6 +1580,18 @@ function bind() {
 
   $('add-group').addEventListener('click', addGroup);
   bindTreeDrag();
+
+  // ── период раздела «Анализ» ──
+  const setYear = (year) => {
+    state.year = year;
+    writeUrl();
+    renderAnalysis();
+  };
+  $('year-prev').addEventListener('click', () =>
+    setYear(String(Number(state.year === 'all' ? new Date().getFullYear() : state.year) - 1)));
+  $('year-next').addEventListener('click', () =>
+    setYear(String(Number(state.year === 'all' ? new Date().getFullYear() : state.year) + 1)));
+  $('period-all').addEventListener('click', () => setYear(state.year === 'all' ? String(new Date().getFullYear()) : 'all'));
 
   $('detail').addEventListener('click', (e) => {
     const icon = e.target.closest('.icon-option');
@@ -1595,6 +1720,8 @@ async function start() {
   if (state.view === 'taxonomy') {
     await loadTaxonomy();
     renderNode();
+  } else if (state.view === 'analysis') {
+    renderAnalysis();
   } else {
     renderCard();
     reload();
