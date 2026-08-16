@@ -1,7 +1,7 @@
 // Кабинет: слева список с подгрузкой по скроллу, справа карточка выбранной строки.
 import { groupIcon, searchIcons, GROUP_ICONS } from '/shared/icons.js';
 import { hexToHsl, hslToHex, tint, shades, readableText, edge, hexToRgb } from '/shared/colors.js';
-import { columns, bars, bindTooltip } from '/cabinet/charts.js';
+import { columns, bars, sunburst, bindTooltip } from '/cabinet/charts.js';
 
 const CHART_COLOR = '#2563eb'; // один ряд — один цвет; величину несёт длина марки
 
@@ -547,8 +547,8 @@ async function renderAnalysis() {
 
   try {
     // Четыре разреза одного и того же периода: сводка отвечает на каждый одним запросом
-    const [months, groups, categories, sellers] = await Promise.all(
-      ['month', 'group', 'category', 'seller'].map((by) => apiJson(`/api/summary?by=${by}&${period}`)),
+    const [months, groups, categories] = await Promise.all(
+      ['month', 'group', 'category'].map((by) => apiJson(`/api/summary?by=${by}&${period}`)),
     );
     if (seq !== loadSeq) return;
 
@@ -556,21 +556,39 @@ async function renderAnalysis() {
     const monthsWithData = months.rows.filter((r) => r.sum > 0);
     const perMonth = monthsWithData.length ? totals.sum / monthsWithData.length : 0;
 
-    const top = (rows, n = 10) =>
-      rows
-        .filter((r) => r.sum > 0)
-        .slice(0, n)
-        .map((r) => ({ name: r.name ?? 'Без категории', sum: r.sum, note: `${int.format(r.count)} позиций` }));
+    // Дерево «группа → её категории»: на нём строятся и полосы, и круговая.
+    // Цвет группы опознаёт сущность, оттенок — категорию внутри неё: та же
+    // раскладка, что в чипсах и в справочнике, поэтому узнаётся без легенды.
+    const byGroup = new Map();
+    for (const c of categories.rows) {
+      if (c.sum <= 0) continue;
+      const list = byGroup.get(c.group_slug) ?? [];
+      list.push(c);
+      byGroup.set(c.group_slug, list);
+    }
 
-    // Цвет группы — опознание сущности, как в чипсах и дереве; величину несёт длина полосы
     const groupRows = groups.rows
       .filter((r) => r.sum > 0)
-      .map((r) => ({
-        name: r.name ?? 'Без категории',
-        sum: r.sum,
-        color: r.color ?? '#c9ced6',
-        note: `${int.format(r.count)} позиций · ${int.format(r.receipts)} чеков`,
-      }));
+      .map((r) => {
+        const g = (meta?.categories ?? []).find((x) => x.slug === r.key);
+        const order = g?.subcategories ?? [];
+        const tones = g?.color ? shades(g.color, order.length, g.shade_from, g.shade_to) : [];
+        const parts = (byGroup.get(r.key) ?? [])
+          .map((c) => ({
+            name: c.name ?? 'Без категории',
+            sum: c.sum,
+            color: tones[order.findIndex((s) => s.slug === c.key)] ?? r.color ?? '#c9ced6',
+          }))
+          .sort((a, b) => b.sum - a.sum);
+
+        return {
+          name: r.name ?? 'Без категории',
+          sum: r.sum,
+          color: r.color ?? '#c9ced6',
+          parts,
+          note: `${int.format(r.count)} позиций · ${int.format(r.receipts)} чеков`,
+        };
+      });
 
     const categoryRows = categories.rows
       .filter((r) => r.sum > 0)
@@ -593,9 +611,13 @@ async function renderAnalysis() {
         ${statTile('Вне суммы', money(totals.excluded_sum), 'возвраты и зачёты аванса')}
       </div>` +
       block('Расходы по месяцам', 'Столбец — месяц. Подписаны самый крупный и последний, остальное — по наведению', '<div id="months-chart"></div>') +
-      block('Куда уходят деньги', 'Группы за период, от большего к меньшему', bars(groupRows, { showShare: true })) +
-      block('Крупнейшие категории', 'Цветная точка — группа, к которой относится категория', bars(categoryRows, { color: CHART_COLOR })) +
-      block('Где покупаем', 'Продавцы по сумме за период', bars(top(sellers.rows), { color: CHART_COLOR }));
+      block(
+        'Структура расходов',
+        'Внутреннее кольцо — группы, внешнее — категории внутри них. Подписаны крупные, остальное — по наведению',
+        `<div class="pie-wrap">${sunburst(groupRows)}</div>`,
+      ) +
+      block('Куда уходят деньги', 'Полоса группы разбита на категории, от большего к меньшему', bars(groupRows, { showShare: true })) +
+      block('Крупнейшие категории', 'Цветная точка — группа, к которой относится категория', bars(categoryRows, { color: CHART_COLOR }));
 
     // Ширина известна только после вставки: рисуем столбцы по измеренной колонке
     const host = $('months-chart');

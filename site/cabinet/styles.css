@@ -815,9 +815,23 @@ tbody tr.child-more td { padding-left: 24px; }
 .hbar-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbar-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; }
 .hbar-track { height: 14px; background: #f2f4f7; border-radius: 4px; }
-.hbar-track i { display: block; height: 100%; border-radius: 4px; }
+.hbar-track { overflow: hidden; }
 .hbar-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hbar:hover .hbar-track { background: #e8ecf2; }
+
+
+/* Полоса группы разбита на категории: зазор цвета фона вместо обводки */
+.hbar-fill { display: flex; height: 100%; border-radius: 4px; overflow: hidden; }
+.hbar-fill i { display: block; height: 100%; box-shadow: 1px 0 0 0 var(--surface); }
+.hbar-fill i:last-child { box-shadow: none; }
+
+/* Круговая: два кольца, группы внутри, категории снаружи */
+.pie-wrap { display: flex; justify-content: center; padding: 4px 0 2px; }
+.pie path { stroke: none; cursor: default; }
+.pie path:hover { opacity: 0.82; }
+.pie-label { font-size: 10px; font-weight: 600; pointer-events: none; }
+.pie-total { fill: var(--text); font-size: 17px; font-weight: 600; }
+.pie-total-note { fill: var(--muted); font-size: 10px; }
 
 /* Подсказка: цифры, которые намеренно не подписаны на марках */
 .chart-tip {
