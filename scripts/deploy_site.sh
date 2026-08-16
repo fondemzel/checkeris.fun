@@ -138,6 +138,7 @@ fi
 # ── код на сервер ────────────────────────────────────────
 echo "→ код в $HOST:$TARGET"
 tar -czf - --exclude='api/data' --exclude='.git' --exclude='node_modules' \
+    --exclude='docs/fns/token' \
     api site deploy docs README.md CHANGELOG_SITE.md |
   ssh "$HOST" "tar -xzf - -C $TARGET && chown -R checker:checker $TARGET"
 

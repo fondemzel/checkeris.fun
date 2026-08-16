@@ -19,6 +19,7 @@ import {
   setItemCategory,
 } from './queries.mjs';
 import { loadCategories, syncCategories } from './categories.mjs';
+import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
 import {
   getTaxonomy,
   createGroup,
@@ -53,6 +54,12 @@ const VERSION = JSON.parse(readFileSync(join(API_ROOT, 'package.json'), 'utf8'))
 
 const db = openDb();
 migrate(db);
+
+// Без пользователей API никого не пустит — предупреждаем сразу, а не при первом 401
+if (!hasUsers(db)) {
+  console.error('ВНИМАНИЕ: пользователей нет, войти в кабинет не получится.');
+  console.error('  заведите первого: node api/src/users.mjs --add <логин> <пароль>');
+}
 
 // Справочник живёт в базе и правится в кабинете. Файл categories.json — начальное
 // наполнение: заливаем его только в пустую базу, иначе перезапуск затирал бы правки
@@ -139,8 +146,47 @@ async function serveStatic(req, res, pathname) {
   }
 }
 
+/**
+ * Вход: логин и пароль → токен на 90 дней. Единственный эндпойнт без токена.
+ * Задержка при неудаче — чтобы перебор паролей был дороже; сам scrypt и так медленный.
+ */
+async function handleToken(req, res) {
+  if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+
+  let body;
+  try {
+    body = await readJson(req);
+  } catch {
+    return sendJson(res, 400, { error: 'bad request body' });
+  }
+
+  const user = findUser(db, body.login);
+  if (!user || !verifyPassword(String(body.password ?? ''), user.password)) {
+    await new Promise((r) => setTimeout(r, 400));
+    return sendJson(res, 401, { error: 'неверный логин или пароль' });
+  }
+
+  const { token, expires_at } = issueToken(db, user.id, String(body.label ?? '').trim() || null);
+  return sendJson(res, 200, { token, expires_at, login: user.login });
+}
+
 async function handleApi(req, res, url) {
   const { pathname, searchParams } = url;
+
+  if (pathname === '/api/token') return handleToken(req, res);
+
+  // Всё остальное — только по токену. Кабинет и телефон ходят одинаково.
+  const user = userByToken(db, bearer(req));
+  if (!user) return sendJson(res, 401, { error: 'нужен вход' });
+
+  // Кабинет спрашивает при загрузке, жив ли сохранённый токен
+  if (pathname === '/api/session') return sendJson(res, 200, { login: user.login });
+
+  if (pathname === '/api/logout') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    revokeToken(db, bearer(req));
+    return sendJson(res, 200, { ok: true });
+  }
 
   // ── справочник категорий: правится из раздела «Категории» ──
   if (pathname === '/api/taxonomy') {

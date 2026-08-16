@@ -6,6 +6,38 @@ const DEFAULT_GROUP_COLOR = '#7c9cd6'; // чем красить группу, к
 
 const $ = (id) => document.getElementById(id);
 
+// ── доступ ───────────────────────────────────────────────
+// Кабинет ходит в API с токеном, как будет ходить приложение на телефоне.
+// Токен лежит в localStorage: перезагрузка страницы не должна требовать пароля.
+
+const TOKEN_KEY = 'checker.token';
+const token = {
+  get: () => localStorage.getItem(TOKEN_KEY) ?? '',
+  set: (value) => localStorage.setItem(TOKEN_KEY, value),
+  clear: () => localStorage.removeItem(TOKEN_KEY),
+};
+
+/** Единственная точка обращения к API: сама подставляет токен и ловит 401. */
+async function api(path, options = {}) {
+  const headers = { ...(options.headers ?? {}) };
+  if (token.get()) headers.authorization = `Bearer ${token.get()}`;
+
+  const res = await fetch(path, { ...options, headers });
+  if (res.status === 401) {
+    token.clear();
+    showLogin('Сессия закончилась — войдите заново');
+    throw new Error('нужен вход');
+  }
+  return res;
+}
+
+const apiJson = async (path, options) => {
+  const res = await api(path, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  return data;
+};
+
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 });
 const rub0 = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
 const int = new Intl.NumberFormat('ru-RU');
@@ -274,7 +306,7 @@ async function toggleGroup(button) {
   params.delete('collapse');
   params.set('name_norm', row.dataset.norm);
   try {
-    const data = await fetch(`/api/items?${params}`).then((r) => r.json());
+    const data = await apiJson(`/api/items?${params}`);
     row.insertAdjacentHTML('afterend', childRowsHtml(data.rows, row.dataset.norm, data.totals.count));
   } catch (err) {
     button.setAttribute('aria-expanded', 'false');
@@ -490,7 +522,7 @@ const findCategory = (slug) =>
 
 async function loadTaxonomy() {
   try {
-    taxonomy = await fetch('/api/taxonomy').then((r) => r.json());
+    taxonomy = await apiJson('/api/taxonomy');
   } catch (err) {
     $('tree').innerHTML = `<div class="card-empty error">Не удалось загрузить справочник: ${esc(err.message)}</div>`;
     return;
@@ -722,7 +754,7 @@ async function afterTaxonomyChange(select) {
 }
 
 async function taxonomyCall(method, path, body, params = '') {
-  const res = await fetch(`/api/taxonomy${path}${params}`, {
+  const res = await api(`/api/taxonomy${path}${params}`, {
     method,
     headers: body ? { 'content-type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -1109,7 +1141,7 @@ async function applyCategory(itemId, slug, box) {
   selects.forEach((s) => (s.disabled = true));
 
   try {
-    const res = await fetch(`/api/items/${itemId}/category`, {
+    const res = await api(`/api/items/${itemId}/category`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ category: slug }),
@@ -1180,7 +1212,7 @@ async function renderCard() {
   pane.innerHTML = '<div class="card-empty">Загрузка…</div>';
 
   try {
-    const res = await fetch(kind === 'r' ? `/api/receipts/${id}` : `/api/items/${id}`);
+    const res = await api(kind === 'r' ? `/api/receipts/${id}` : `/api/items/${id}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (seq !== cardSeq) return;
@@ -1228,7 +1260,7 @@ async function fetchPage(seq = loadSeq) {
   if (nextPage === 1) pane.classList.add('is-loading');
 
   try {
-    const res = await fetch(`/api/${state.view}?${apiParams(nextPage)}`);
+    const res = await api(`/api/${state.view}?${apiParams(nextPage)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (seq !== loadSeq) return; // фильтры успели смениться
@@ -1276,7 +1308,7 @@ function onScroll() {
 
 async function loadMeta() {
   try {
-    meta = await fetch('/api/meta').then((r) => r.json());
+    meta = await apiJson('/api/meta');
   } catch {
     $('data-period').textContent = 'нет связи с API';
     return;
@@ -1517,24 +1549,100 @@ function bind() {
   document.querySelector('.table-scroll').addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', () => fillViewport(loadSeq));
 
-  $('export-btn').addEventListener('click', () => {
+  // Переход по ссылке не несёт заголовка с токеном, поэтому файл забираем запросом
+  // и отдаём браузеру как blob. Токен при этом не светится в адресе и в логах.
+  $('export-btn').addEventListener('click', async () => {
     const params = apiParams(1);
     params.delete('page');
     params.delete('per');
     params.set('type', state.view);
-    location.href = `/api/export.csv?${params}`;
+
+    const button = $('export-btn');
+    button.disabled = true;
+    try {
+      const res = await api(`/api/export.csv?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${state.view}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showState(`Не удалось выгрузить CSV: ${err.message}`, true);
+    } finally {
+      button.disabled = false;
+    }
   });
+}
+
+// ── запуск ───────────────────────────────────────────────
+
+function showLogin(note) {
+  $('login').hidden = false;
+  $('app').hidden = true;
+  $('login-note').textContent = note ?? 'Кабинет закрыт: внутри личные чеки';
+  $('login-note').classList.toggle('error', Boolean(note));
+  $('login-name').focus();
+}
+
+/** Первая загрузка данных. Отсюда же кабинет показывается после входа. */
+async function start() {
+  $('login').hidden = true;
+  $('app').hidden = false;
+
+  await loadMeta(); // справочник категорий нужен карточке для выпадающих списков
+  if (state.view === 'taxonomy') {
+    await loadTaxonomy();
+    renderNode();
+  } else {
+    renderCard();
+    reload();
+  }
 }
 
 readUrl();
 syncControls();
 bind();
-await loadMeta(); // справочник категорий нужен карточке для выпадающих списков
 
-if (state.view === 'taxonomy') {
-  await loadTaxonomy();
-  renderNode();
+$('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const button = $('login-submit');
+  button.disabled = true;
+  try {
+    const data = await fetch('/api/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ login: $('login-name').value, password: $('login-pass').value, label: 'кабинет' }),
+    }).then(async (r) => {
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+      return body;
+    });
+    token.set(data.token);
+    $('login-pass').value = '';
+    await start();
+  } catch (err) {
+    showLogin(err.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('logout').addEventListener('click', async () => {
+  await api('/api/logout', { method: 'POST' }).catch(() => {});
+  token.clear();
+  location.reload();
+});
+
+// Сохранённый токен может быть просрочен или отозван — проверяем до отрисовки
+if (token.get()) {
+  try {
+    await apiJson('/api/session');
+    await start();
+  } catch {
+    showLogin();
+  }
 } else {
-  renderCard();
-  reload();
+  showLogin();
 }

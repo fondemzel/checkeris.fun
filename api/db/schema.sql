@@ -214,6 +214,28 @@ LEFT JOIN item_labels l ON l.item_id = i.id
 LEFT JOIN categories c  ON c.slug = l.category_slug
 LEFT JOIN groups g       ON g.slug = c.group_slug;
 
+-- ── доступ ──────────────────────────────────────────────────────────────────
+-- Проверка входа живёт в приложении, а не в nginx: телефону нужен токен, а не
+-- basic auth. Пароль хранится хешем scrypt с солью, сам пароль нигде не лежит.
+CREATE TABLE IF NOT EXISTS users (
+  id         INTEGER PRIMARY KEY,
+  login      TEXT NOT NULL UNIQUE,
+  password   TEXT NOT NULL,            -- scrypt: <соль в hex>:<хеш в hex>
+  created_at TEXT NOT NULL
+);
+
+-- Токен хранится хешем: если база утечёт, войти по ней будет нельзя.
+CREATE TABLE IF NOT EXISTS tokens (
+  hash       TEXT PRIMARY KEY,         -- sha256 от выданного токена
+  user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  label      TEXT,                     -- откуда вошли: кабинет, телефон
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens (user_id);
+
 -- Журнал импортов: видно, какие выгрузки уже залиты.
 CREATE TABLE IF NOT EXISTS imports (
   id            INTEGER PRIMARY KEY,

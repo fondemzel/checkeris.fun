@@ -30,6 +30,51 @@ a { color: inherit; text-decoration: none; }
 /* ── каркас: меню слева, рабочая область справа ────────── */
 
 .app { display: flex; height: 100%; }
+.app[hidden] { display: none; }
+
+/* ── вход ──────────────────────────────────────────────── */
+
+.login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 16px;
+}
+
+.login[hidden] { display: none; }
+
+.login-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 280px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.login-title { font-size: 17px; font-weight: 600; }
+.login-box p { margin: 0; font-size: 12px; line-height: 1.35; }
+.login-box p.error { color: var(--danger); }
+.login-box input { height: 30px; }
+.login-box .btn { height: 30px; }
+
+.nav-logout {
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #79808d;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-logout:hover { color: #fff; }
 
 .sidebar {
   width: 190px;
