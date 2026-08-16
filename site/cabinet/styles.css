@@ -809,14 +809,16 @@ tbody tr.child-more td { padding-left: 24px; }
 .chart .col:hover .bar { opacity: 0.82; }
 
 /* Горизонтальные полосы: имя слева отдельной колонкой, значение справа */
-.hbars { display: flex; flex-direction: column; gap: 7px; }
-.hbar { display: grid; grid-template-columns: minmax(120px, 190px) 1fr auto; align-items: center; gap: 10px; }
+/* Одна сетка на все строки: колонка значений тянется по самому длинному числу,
+   поэтому «2 445 639 ₽ 50%» и «20 720 ₽ 0%» не делают полосы разной длины. */
+.hbars { display: grid; grid-template-columns: minmax(120px, 190px) 1fr auto; align-items: center; gap: 7px 10px; }
+.hbar { display: contents; }
 .hbar-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .hbar-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbar-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; }
 .hbar-track { height: 14px; background: #f2f4f7; border-radius: 4px; }
 .hbar-track { overflow: hidden; }
-.hbar-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hbar-value { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
 .hbar:hover .hbar-track { background: #e8ecf2; }
 
 
