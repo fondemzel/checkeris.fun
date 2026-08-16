@@ -573,13 +573,20 @@ async function renderAnalysis() {
         const g = (meta?.categories ?? []).find((x) => x.slug === r.key);
         const order = g?.subcategories ?? [];
         const tones = g?.color ? shades(g.color, order.length, g.shade_from, g.shade_to) : [];
+        // Сегменты идут по оттенку, от насыщенного к бледному, а не по сумме:
+        // так полоса читается как плавный переход, а не как чересполосица.
+        // Порядок оттенка задаёт место категории в справочнике.
         const parts = (byGroup.get(r.key) ?? [])
-          .map((c) => ({
-            name: c.name ?? 'Без категории',
-            sum: c.sum,
-            color: tones[order.findIndex((s) => s.slug === c.key)] ?? r.color ?? '#c9ced6',
-          }))
-          .sort((a, b) => b.sum - a.sum);
+          .map((c) => {
+            const at = order.findIndex((s) => s.slug === c.key);
+            return {
+              name: c.name ?? 'Без категории',
+              sum: c.sum,
+              tone: at,
+              color: tones[at] ?? r.color ?? '#c9ced6',
+            };
+          })
+          .sort((a, b) => b.tone - a.tone);
 
         return {
           name: r.name ?? 'Без категории',
@@ -616,7 +623,11 @@ async function renderAnalysis() {
         'Внутреннее кольцо — группы, внешнее — категории внутри них. Подписаны крупные, остальное — по наведению',
         `<div class="pie-wrap">${sunburst(groupRows)}</div>`,
       ) +
-      block('Куда уходят деньги', 'Полоса группы разбита на категории, от большего к меньшему', bars(groupRows, { showShare: true })) +
+      block(
+        'Куда уходят деньги',
+        'Группы по убыванию суммы; внутри полосы — её категории, от насыщенного оттенка к бледному',
+        bars(groupRows, { showShare: true }),
+      ) +
       block('Крупнейшие категории', 'Цветная точка — группа, к которой относится категория', bars(categoryRows, { color: CHART_COLOR }));
 
     // Ширина известна только после вставки: рисуем столбцы по измеренной колонке
