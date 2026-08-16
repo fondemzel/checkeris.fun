@@ -13,6 +13,7 @@ import {
   listReceipts,
   listItems,
   listItemGroups,
+  summary,
   getReceipt,
   getItem,
   getMeta,
@@ -255,6 +256,9 @@ async function handleApi(req, res, url) {
   }
 
   if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db) });
+
+  // Сводка: сколько и на что. Главный запрос телефона — один вместо выкачивания строк
+  if (pathname === '/api/summary') return sendJson(res, 200, summary(db, searchParams));
 
   if (pathname === '/api/receipts') return sendJson(res, 200, listReceipts(db, searchParams));
 

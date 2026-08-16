@@ -270,6 +270,68 @@ export function listItemGroups(db, params) {
   };
 }
 
+// Разрезы сводки. Ключ группировки и порядок задаются здесь, а не приходят из запроса:
+// подстановка в GROUP BY чужой строки — прямой путь к инъекции.
+const SUMMARY_BY = {
+  group: { key: 'v.group_slug', order: 'sum DESC' },
+  category: { key: 'v.category_slug', order: 'sum DESC' },
+  month: { key: "substr(v.purchased_date, 1, 7)", order: 'key ASC' },
+  seller: { key: 'v.seller_inn', order: 'sum DESC' },
+};
+
+/**
+ * Сводка: сколько потрачено в разрезе групп, категорий, месяцев или продавцов.
+ * Ради одного числа «за май на Питание 64 043 ₽» иначе пришлось бы выкачать 735 строк —
+ * на телефоне это бессмысленно, поэтому складывает база.
+ *
+ * Фильтры те же, что у списков, поэтому сводка и список всегда об одном и том же.
+ * Названия и цвета отдаются вместе с числами: клиенту не нужен второй запрос.
+ */
+export function summary(db, params) {
+  // prefix: колонки берутся из v_items под псевдонимом v — иначе они спорят с groups
+  const { sql: whereSql, args } = buildFilters(params, { searchItems: true, prefix: 'v.' });
+  const by = Object.hasOwn(SUMMARY_BY, params.get('by')) ? params.get('by') : 'group';
+  const { key, order } = SUMMARY_BY[by];
+
+  const extra = {
+    group: ', g.name AS name, g.icon AS icon, g.color AS color, g.shade_from, g.shade_to',
+    category: ', v.category_name AS name, v.group_slug',
+    month: '',
+    seller: ', MIN(v.seller) AS name',
+  }[by];
+
+  const join = by === 'group' ? 'LEFT JOIN groups g ON g.slug = v.group_slug' : '';
+
+  const rows = db
+    .prepare(
+      `SELECT ${key} AS key,
+              COUNT(*) AS count,
+              COUNT(DISTINCT v.receipt_id) AS receipts,
+              COALESCE(SUM(CASE WHEN v.counted = 1 THEN v.sum ELSE 0 END), 0) AS sum,
+              COALESCE(SUM(CASE WHEN v.counted = 1 THEN 0 ELSE v.sum END), 0) AS excluded_sum
+              ${extra}
+         FROM v_items v
+         ${join}
+         ${whereSql}
+        GROUP BY 1
+        ORDER BY ${order}`,
+    )
+    .all(args);
+
+  const totals = db
+    .prepare(
+      `SELECT COUNT(*) AS count,
+              COUNT(DISTINCT v.receipt_id) AS receipts,
+              COALESCE(SUM(CASE WHEN v.counted = 1 THEN v.sum ELSE 0 END), 0) AS sum,
+              COALESCE(SUM(CASE WHEN v.counted = 1 THEN 0 ELSE v.sum END), 0) AS excluded_sum
+         FROM v_items v
+         ${whereSql}`,
+    )
+    .get(args);
+
+  return { by, rows, totals };
+}
+
 export function getReceipt(db, id) {
   const receipt = db
     .prepare(
