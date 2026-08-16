@@ -1,0 +1,212 @@
+/* Мобильный кабинет. Одна колонка, крупные цели нажатия, ничего лишнего:
+   экран узкий, и каждая деталь конкурирует с цифрой, ради которой сюда зашли. */
+
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --text: #1f2328;
+  --muted: #6b7280;
+  --border: #e1e4e8;
+  --accent: #2563eb;
+  --danger: #b42318;
+  --bar: #131a26;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.35;
+  -webkit-text-size-adjust: 100%;
+}
+
+button, input, select { font: inherit; color: inherit; }
+
+/* ── вход ──────────────────────────────────────────────── */
+
+.login { display: flex; align-items: center; justify-content: center; height: 100%; padding: 20px; }
+.login[hidden] { display: none; }
+
+.login-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+  padding: 24px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.login-title { font-size: 20px; font-weight: 600; }
+.login-box input { height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; }
+
+.btn {
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.btn.primary { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+.btn:disabled { opacity: 0.6; }
+
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.note.error, .empty.error { color: var(--danger); }
+
+/* ── каркас ────────────────────────────────────────────── */
+
+.app { display: flex; flex-direction: column; height: 100%; }
+.app[hidden] { display: none; }
+
+/* Шапка закреплена: на телефоне «назад» должен быть под большим пальцем всегда */
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 52px;
+  padding: 0 6px;
+  padding-top: env(safe-area-inset-top);
+  height: calc(52px + env(safe-area-inset-top));
+  background: var(--bar);
+  color: #fff;
+}
+
+.bar-title { flex: 1; font-size: 17px; font-weight: 600; text-align: center; }
+
+.bar-back, .bar-action {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: none;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.bar-back[hidden] { visibility: hidden; display: block; } /* держим место, чтобы заголовок не прыгал */
+.bar-action { font-size: 17px; opacity: 0.7; }
+
+.screen {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+}
+
+.empty { padding: 40px 12px; color: var(--muted); text-align: center; }
+
+/* ── месяц и итог ──────────────────────────────────────── */
+
+.month {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.month-name { font-size: 16px; font-weight: 600; text-transform: capitalize; }
+
+.month-arrow {
+  width: 44px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.total {
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.total-sum { display: block; font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.total-note { display: block; margin-top: 4px; font-size: 13px; color: var(--muted); }
+
+/* ── список ────────────────────────────────────────────── */
+
+.list { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--surface); }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 14px;
+  border: none;
+  border-bottom: 1px solid #f0f1f3;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:last-child { border-bottom: none; }
+.row:active { background: #eef2f9; }
+
+.ic {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.ic svg { width: 20px; height: 20px; }
+.dot { flex: none; width: 14px; height: 14px; margin: 0 11px; border: 1px solid transparent; border-radius: 50%; }
+
+.row-main { flex: 1; min-width: 0; }
+.row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-note { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+
+/* Полоска доли: сравнение соседних строк глазом, без чтения цифр */
+.row-bar { display: block; height: 3px; margin-top: 6px; border-radius: 2px; background: #eef1f5; }
+.row-bar i { display: block; height: 100%; border-radius: 2px; opacity: 0.75; }
+
+.row-sum { flex: none; font-weight: 600; white-space: nowrap; }
+.row-sum.muted { font-weight: 400; font-size: 13px; color: var(--muted); }
+.row.item .row-title { white-space: normal; }
+
+/* ── карточка позиции ──────────────────────────────────── */
+
+.card {
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.card-sum { font-size: 24px; font-weight: 600; }
+.card-name { margin: 4px 0 12px; }
+.card-label { margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+
+.kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid #f0f1f3; font-size: 14px; }
+.kv span { color: var(--muted); }
+.kv b { font-weight: 500; text-align: right; }
+
+.card select {
+  width: 100%;
+  height: 44px;
+  padding: 0 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}

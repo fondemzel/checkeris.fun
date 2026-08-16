@@ -1,6 +1,6 @@
 // Кабинет: слева список с подгрузкой по скроллу, справа карточка выбранной строки.
-import { groupIcon, searchIcons, GROUP_ICONS } from '/cabinet/icons.js';
-import { hexToHsl, hslToHex, tint, shades, readableText, edge, hexToRgb } from '/cabinet/colors.js';
+import { groupIcon, searchIcons, GROUP_ICONS } from '/shared/icons.js';
+import { hexToHsl, hslToHex, tint, shades, readableText, edge, hexToRgb } from '/shared/colors.js';
 
 const DEFAULT_GROUP_COLOR = '#7c9cd6'; // чем красить группу, которой цвет ещё не задали
 
