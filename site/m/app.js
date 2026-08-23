@@ -467,33 +467,26 @@ async function startCamera() {
 // поэтому следующий такой чек разберётся уже правильно.
 
 /**
- * Кнопка категории: иконка группы в её цвете и мелкая подпись категории.
- * Выпадающий список тут не годится — на телефоне он открывается системным
- * колесом на сорок пунктов, в котором не видно ни групп, ни цветов.
+ * Строка разбора: значок группы, название в одну строку и категория подстрочником.
+ * Названия в чеках длинные («ЧЕРКИЗОВО Колбас По-домаш с чесн рубл катБ0,4»), поэтому
+ * обрезаются: важнее видеть весь чек целиком, чем каждое слово в позиции.
+ * Нажатие на строку открывает выбор — цель шире, чем один значок.
  */
-function pickButton(item) {
+function sheetRow(item) {
   const group = findGroup(item.group_slug);
   const color = group?.color ?? '#eef1f5';
-  const icon = groupIcon(group?.icon ?? 'none');
-  // Пустая серединка у значка — категорию предложила модель, а не выбрал человек
+  // Значок в кольце — категорию предложила модель, сплошной — выбрал человек
   const guess = item.category_slug && item.category_source !== 'manual' ? ' guess' : '';
 
   return `
-    <button class="pick-btn${guess}" type="button" data-pick="${item.id}">
-      <span class="pick-ic" style="background:${color};color:${readableText(color)}">${icon}</span>
-      <span class="pick-cat">${esc(item.category_name ?? 'выбрать')}</span>
-    </button>`;
-}
-
-function sheetRow(item) {
-  return `
-    <div class="sheet-row" data-row="${item.id}">
-      <div class="sheet-head">
+    <button class="sheet-row${guess}" type="button" data-row="${item.id}" data-pick="${item.id}">
+      <span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(group?.icon ?? 'none')}</span>
+      <span class="sheet-main">
         <span class="sheet-name">${esc(item.name)}</span>
-        <span class="sheet-sum">${money(item.sum, true)}</span>
-      </div>
-      <div class="sheet-foot">${pickButton(item)}</div>
-    </div>`;
+        <span class="sheet-cat">${esc(item.category_name ?? 'выбрать категорию')}</span>
+      </span>
+      <span class="sheet-sum">${money(item.sum, true)}</span>
+    </button>`;
 }
 
 /**
@@ -621,17 +614,15 @@ async function saveCategory(itemId, slug) {
     });
 
     const group = (meta?.categories ?? []).find((g) => g.subcategories.some((x) => x.slug === slug));
-    row.querySelector('.sheet-foot').innerHTML =
-      pickButton({
-        id: itemId,
-        group_slug: group?.slug ?? null,
-        category_slug: slug,
-        category_name: data.category?.name ?? null,
-        category_source: 'manual', // выбор человека, значок становится сплошным
-      }) +
-      (data.affected > 1
-        ? `<span class="sheet-applied">и ещё ${int.format(data.affected - 1)}</span>`
-        : '');
+    const color = group?.color ?? '#eef1f5';
+    const ic = row.querySelector('.pick-ic');
+    ic.style.background = color;
+    ic.style.color = readableText(color);
+    ic.innerHTML = groupIcon(group?.icon ?? 'none');
+    row.classList.remove('guess'); // выбор человека, кольцо снимаем
+    row.querySelector('.sheet-cat').textContent =
+      (data.category?.name ?? 'выбрать категорию') +
+      (data.affected > 1 ? ` · и ещё ${int.format(data.affected - 1)}` : '');
 
     row.classList.add('picked');
     meta = await api('/api/meta'); // счётчики категорий изменились

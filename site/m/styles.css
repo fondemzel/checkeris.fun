@@ -297,52 +297,61 @@ button, input, select { font: inherit; color: inherit; }
 .sheet-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .sheet-sum-total { font-size: 22px; font-weight: 600; }
 .sheet-hint { margin: 8px 0 10px; }
-.sheet-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 
-.sheet-row { padding: 12px; border-radius: 10px; background: var(--surface); }
-.sheet-row.picked { box-shadow: inset 0 0 0 1px #cfe0fb; }
-.sheet-head { display: flex; align-items: baseline; gap: 8px; }
-.sheet-name { flex: 1; min-width: 0; }
-.sheet-sum { flex: none; font-weight: 600; white-space: nowrap; }
-
-.sheet-applied { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.sheet-row.saving { opacity: 0.6; }
-
-/* Категория строкой ниже названия, прижата вправо: на узком экране рядом с
-   длинным наименованием ей места нет */
-.sheet-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
-
-.pick-btn {
-  display: inline-flex;
+/* Одна позиция — одна строка: значок, название с подстрочником категории, сумма */
+.sheet-row {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  padding: 5px 10px 5px 5px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid #f0f1f3;
+  background: none;
+  text-align: left;
   cursor: pointer;
 }
 
-.pick-btn:active { background: #eef2f9; }
-.pick-cat { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-row:last-child { border-bottom: none; }
+.sheet-row:active { background: #eef2f9; }
+.sheet-row.saving { opacity: 0.6; }
+.sheet-row.picked .sheet-cat { color: var(--accent); }
+
+.sheet-main { flex: 1; min-width: 0; }
+
+/* Названия в чеках длинные — обрезаем, чтобы весь чек помещался на экран */
+.sheet-name,
+.sheet-cat { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-name { font-size: 14px; }
+.sheet-cat { margin-top: 1px; font-size: 12px; color: var(--muted); }
+
+.sheet-sum { flex: none; font-weight: 600; font-size: 14px; white-space: nowrap; }
 
 .pick-ic {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
 }
 
-.pick-ic svg { width: 16px; height: 16px; }
+.pick-ic svg { width: 17px; height: 17px; }
 .pick-ic.big { width: 44px; height: 44px; }
 .pick-ic.big svg { width: 24px; height: 24px; }
 
-/* Значок в кольце — категорию предложила модель; сплошной — выбрал человек */
-.pick-btn.guess .pick-ic { box-shadow: inset 0 0 0 2px var(--surface); }
+/* Кольцо внутри значка — категорию предложила модель, а не выбрал человек */
+.sheet-row.guess .pick-ic { box-shadow: inset 0 0 0 2px var(--surface); }
+
+/* Список позиций теперь сплошной, поэтому карточка одна на весь чек */
+.sheet-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-radius: 12px;
+  background: var(--surface);
+}
 
 /* ── выбор категории ───────────────────────────────────── */
 
