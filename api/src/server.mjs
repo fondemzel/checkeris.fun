@@ -21,6 +21,8 @@ import {
 } from './queries.mjs';
 import { loadCategories, syncCategories } from './categories.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
+import { addScan, getScan, recentScans, runScanQueue } from './scan.mjs';
+import { fnsReady, fnsUsage } from './fns.mjs';
 import {
   getTaxonomy,
   createGroup,
@@ -257,6 +259,34 @@ async function handleApi(req, res, url) {
 
   if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db) });
 
+  // ── сканирование чеков ──
+  // Приём скана: строка QR кладётся в очередь, ответ ФНС приезжает фоном.
+  if (pathname === '/api/scan') {
+    if (req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      if (!fnsReady()) return sendJson(res, 503, { error: 'доступ к ФНС не настроен' });
+
+      const result = addScan(db, body.qr);
+      if (result.error) return sendJson(res, result.status ?? 400, { error: result.error });
+
+      runScanQueue(db); // не ждём: клиент опрашивает состояние сам
+      return sendJson(res, 200, { ...result, usage: fnsUsage(db) });
+    }
+    if (req.method === 'GET') return sendJson(res, 200, { jobs: recentScans(db), usage: fnsUsage(db) });
+    return sendJson(res, 405, { error: 'method not allowed' });
+  }
+
+  const scanMatch = pathname.match(/^\/api\/scan\/(\d+)$/);
+  if (scanMatch) {
+    const job = getScan(db, Number(scanMatch[1]));
+    return job ? sendJson(res, 200, { job }) : sendJson(res, 404, { error: 'скан не найден' });
+  }
+
   // Сводка: сколько и на что. Главный запрос телефона — один вместо выкачивания строк
   if (pathname === '/api/summary') return sendJson(res, 200, summary(db, searchParams));
 
@@ -358,6 +388,16 @@ const server = createServer(async (req, res) => {
     else res.end();
   }
 });
+
+// Очередь сканов: раз в пять секунд смотрим, кому пришло время. Тик дешёвый —
+// без заданий это один запрос к индексу, обращений к ФНС он не тратит.
+if (fnsReady()) {
+  setInterval(() => {
+    runScanQueue(db).catch((err) => console.error('очередь сканов:', err.message));
+  }, 5000).unref();
+} else {
+  console.error('ФНС: доступ не настроен (нужны FNS_MASTER_TOKEN, FNS_AUTH_URL, FNS_KKT_URL) — сканирование выключено');
+}
 
 server.listen(PORT, HOST, () => {
   const { stats } = getMeta(db);

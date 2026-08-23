@@ -44,6 +44,97 @@ function collectFiles(args) {
   return entries.filter((f) => f.toLowerCase().endsWith('.json')).map((f) => join(DEFAULT_DIR, f));
 }
 
+/**
+ * Сохранение одного чека. Вынесено отдельно, потому что чеки приходят двумя путями:
+ * выгрузкой из приложения ФНС и сканированием QR через Открытые API. Разбор,
+ * идемпотентность по ФН/ФД/ФП и запись позиций у них общие.
+ *
+ * Возвращает null, если в записи нет чека (например, служебная строка выгрузки).
+ */
+export function saveReceipt(db, row, stmts) {
+  // БСО (бланк строгой отчётности, code 4) лежит под ключом bso — структура та же, что у чека
+  const doc = row?.ticket?.document ?? row?.document ?? row;
+  const receipt = doc?.receipt ?? doc?.bso ?? row?.receipt;
+  const fiscalDrive = str(receipt?.fiscalDriveNumber);
+  const purchasedAt = toIsoLocal(receipt?.dateTime);
+  if (!receipt || !fiscalDrive || !purchasedAt) return null;
+
+  const items = Array.isArray(receipt.items) ? receipt.items : [];
+  const itemsSum = items.reduce((acc, it) => acc + int(it?.sum), 0);
+
+  const values = {
+    source_id: str(row?._id) ?? null,
+    fiscal_drive: fiscalDrive,
+    fiscal_doc: int(receipt.fiscalDocumentNumber),
+    fiscal_sign: int(receipt.fiscalSign),
+    created_at: str(row?.createdAt) ?? null,
+    purchased_at: purchasedAt,
+    purchased_date: purchasedAt.slice(0, 10),
+    seller: str(receipt.user) ?? null,
+    seller_inn: str(receipt.userInn) ?? null,
+    retail_place: str(receipt.retailPlace) ?? null,
+    retail_address: str(receipt.retailPlaceAddress) ?? null,
+    kkt_reg_id: str(receipt.kktRegId) ?? null,
+    operation_type: int(receipt.operationType) || 1,
+    taxation_type: int(receipt.appliedTaxationType ?? receipt.taxationType),
+    total_sum: int(receipt.totalSum),
+    cash_sum: int(receipt.cashTotalSum),
+    ecash_sum: int(receipt.ecashTotalSum),
+    prepaid_sum: int(receipt.prepaidSum),
+    credit_sum: int(receipt.creditSum),
+    provision_sum: int(receipt.provisionSum),
+    // расчётные ставки (18/118, 10/110) кладём в тот же процентный «карман»
+    nds_18: int(receipt.nds18) + int(receipt.nds18118),
+    nds_10: int(receipt.nds10) + int(receipt.nds10110),
+    nds_0: int(receipt.nds0),
+    nds_no: int(receipt.ndsNo),
+    shift_number: int(receipt.shiftNumber),
+    request_number: int(receipt.requestNumber),
+    operator: str(receipt.operator) ?? null,
+    buyer: str(receipt.buyerPhoneOrAddress) ?? null,
+    internet_sign: int(receipt.internetSign),
+    item_count: items.length,
+    items_sum: itemsSum,
+    raw: JSON.stringify(receipt),
+  };
+
+  const existing = stmts.findReceipt.get(values.fiscal_drive, values.fiscal_doc, values.fiscal_sign);
+  let receiptId;
+  let created = false;
+  if (existing) {
+    stmts.updateReceipt.run({ ...values, id: existing.id });
+    stmts.deleteItems.run(existing.id);
+    receiptId = existing.id;
+  } else {
+    const res = stmts.insertReceipt.run(values);
+    receiptId = Number(res.lastInsertRowid);
+    created = true;
+  }
+
+  const itemIds = [];
+  items.forEach((it, index) => {
+    const saved = stmts.insertItem.run({
+      receipt_id: receiptId,
+      pos: index + 1,
+      name: str(it?.name) ?? '',
+      name_norm: normalizeName(it?.name),
+      quantity: num(it?.quantity) || 1,
+      unit: str(it?.unit) ?? null,
+      price: int(it?.price),
+      sum: int(it?.sum),
+      nds: it?.nds == null ? null : int(it.nds),
+      nds_sum: it?.ndsSum == null ? null : int(it.ndsSum),
+      product_type: it?.productType == null ? null : int(it.productType),
+      payment_type: it?.paymentType == null ? null : int(it.paymentType),
+      gtin: it?.productCodeData?.gtin == null ? null : String(it.productCodeData.gtin),
+      provider_inn: str(it?.providerInn) ?? null,
+    });
+    itemIds.push(Number(saved.lastInsertRowid));
+  });
+
+  return { id: receiptId, itemIds, created };
+}
+
 function importFile(db, file, stmts) {
   const parsed = JSON.parse(readFileSync(file, 'utf8'));
   const rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : [parsed];
@@ -57,88 +148,15 @@ function importFile(db, file, stmts) {
   db.exec('BEGIN');
   try {
     for (const row of rows) {
-      // БСО (бланк строгой отчётности, code 4) лежит под ключом bso — структура та же, что у чека
-      const doc = row?.ticket?.document ?? row?.document ?? row;
-      const receipt = doc?.receipt ?? doc?.bso ?? row?.receipt;
-      const fiscalDrive = str(receipt?.fiscalDriveNumber);
-      const purchasedAt = toIsoLocal(receipt?.dateTime);
-      if (!receipt || !fiscalDrive || !purchasedAt) {
+      const saved = saveReceipt(db, row, stmts);
+      if (!saved) {
         skipped += 1;
         continue;
       }
       seen += 1;
-
-      const items = Array.isArray(receipt.items) ? receipt.items : [];
-      const itemsSum = items.reduce((acc, it) => acc + int(it?.sum), 0);
-
-      const values = {
-        source_id: str(row?._id) ?? null,
-        fiscal_drive: fiscalDrive,
-        fiscal_doc: int(receipt.fiscalDocumentNumber),
-        fiscal_sign: int(receipt.fiscalSign),
-        created_at: str(row?.createdAt) ?? null,
-        purchased_at: purchasedAt,
-        purchased_date: purchasedAt.slice(0, 10),
-        seller: str(receipt.user) ?? null,
-        seller_inn: str(receipt.userInn) ?? null,
-        retail_place: str(receipt.retailPlace) ?? null,
-        retail_address: str(receipt.retailPlaceAddress) ?? null,
-        kkt_reg_id: str(receipt.kktRegId) ?? null,
-        operation_type: int(receipt.operationType) || 1,
-        taxation_type: int(receipt.appliedTaxationType ?? receipt.taxationType),
-        total_sum: int(receipt.totalSum),
-        cash_sum: int(receipt.cashTotalSum),
-        ecash_sum: int(receipt.ecashTotalSum),
-        prepaid_sum: int(receipt.prepaidSum),
-        credit_sum: int(receipt.creditSum),
-        provision_sum: int(receipt.provisionSum),
-        // расчётные ставки (18/118, 10/110) кладём в тот же процентный «карман»
-        nds_18: int(receipt.nds18) + int(receipt.nds18118),
-        nds_10: int(receipt.nds10) + int(receipt.nds10110),
-        nds_0: int(receipt.nds0),
-        nds_no: int(receipt.ndsNo),
-        shift_number: int(receipt.shiftNumber),
-        request_number: int(receipt.requestNumber),
-        operator: str(receipt.operator) ?? null,
-        buyer: str(receipt.buyerPhoneOrAddress) ?? null,
-        internet_sign: int(receipt.internetSign),
-        item_count: items.length,
-        items_sum: itemsSum,
-        raw: JSON.stringify(receipt),
-      };
-
-      const existing = stmts.findReceipt.get(values.fiscal_drive, values.fiscal_doc, values.fiscal_sign);
-      let receiptId;
-      if (existing) {
-        stmts.updateReceipt.run({ ...values, id: existing.id });
-        stmts.deleteItems.run(existing.id);
-        receiptId = existing.id;
-        updated += 1;
-      } else {
-        const res = stmts.insertReceipt.run(values);
-        receiptId = Number(res.lastInsertRowid);
-        created += 1;
-      }
-
-      items.forEach((it, index) => {
-        stmts.insertItem.run({
-          receipt_id: receiptId,
-          pos: index + 1,
-          name: str(it?.name) ?? '',
-          name_norm: normalizeName(it?.name),
-          quantity: num(it?.quantity) || 1,
-          unit: str(it?.unit) ?? null,
-          price: int(it?.price),
-          sum: int(it?.sum),
-          nds: it?.nds == null ? null : int(it.nds),
-          nds_sum: it?.ndsSum == null ? null : int(it.ndsSum),
-          product_type: it?.productType == null ? null : int(it.productType),
-          payment_type: it?.paymentType == null ? null : int(it.paymentType),
-          gtin: it?.productCodeData?.gtin == null ? null : String(it.productCodeData.gtin),
-          provider_inn: str(it?.providerInn) ?? null,
-        });
-        itemsTotal += 1;
-      });
+      itemsTotal += saved.itemIds.length;
+      if (saved.created) created += 1;
+      else updated += 1;
     }
 
     stmts.logImport.run(basename(file), new Date().toISOString(), seen, created, updated, itemsTotal);
@@ -151,10 +169,8 @@ function importFile(db, file, stmts) {
   return { seen, created, updated, itemsTotal, skipped };
 }
 
-export function runImport(files) {
-  const db = openDb();
-  migrate(db);
-
+/** Подготовленные запросы импорта. Нужны и файловому импорту, и очереди сканирования. */
+export function importStatements(db) {
   const stmts = {
     findReceipt: db.prepare(
       'SELECT id FROM receipts WHERE fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?',
@@ -201,6 +217,13 @@ export function runImport(files) {
 
   // UPDATE не трогает ключ ФН/ФД/ФП, но получает тот же объект значений, что и INSERT.
   stmts.updateReceipt.setAllowUnknownNamedParameters(true);
+  return stmts;
+}
+
+export function runImport(files) {
+  const db = openDb();
+  migrate(db);
+  const stmts = importStatements(db);
 
   const totals = { seen: 0, created: 0, updated: 0, itemsTotal: 0, skipped: 0 };
   for (const file of files) {

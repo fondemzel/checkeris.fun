@@ -150,6 +150,42 @@ function apply(db) {
   return counts;
 }
 
+/**
+ * Разметка нескольких позиций — для только что отсканированного чека.
+ * Полный пересчёт тут не нужен: он строит индекс по всему словарю ради десяти строк.
+ * Закреплённые метки (ручные траты) не трогаем, как и в общем пересчёте.
+ */
+export function classifyItems(db, itemIds) {
+  if (!itemIds?.length) return {};
+  const tables = loadTables(db);
+  const nearest = buildNeighbourIndex(db);
+  const placeholders = itemIds.map(() => '?').join(',');
+
+  const items = db
+    .prepare(
+      `SELECT v.id, v.name_norm, v.gtin, v.seller_inn
+         FROM v_item_categories v
+         LEFT JOIN item_labels l ON l.item_id = v.id
+        WHERE v.id IN (${placeholders}) AND (l.source IS NULL OR l.source <> 'pinned')`,
+    )
+    .all(...itemIds);
+
+  const upsert = db.prepare(`
+    INSERT INTO item_labels (item_id, category_slug, source, confidence, updated_at)
+    VALUES (:id, :category, :source, :confidence, :now)
+    ON CONFLICT (item_id) DO UPDATE SET
+      category_slug = :category, source = :source, confidence = :confidence, updated_at = :now`);
+
+  const now = new Date().toISOString();
+  const counts = {};
+  for (const item of items) {
+    const { category, source, confidence } = resolve(item, tables, nearest);
+    upsert.run({ id: item.id, category, source, confidence, now });
+    counts[source] = (counts[source] ?? 0) + 1;
+  }
+  return counts;
+}
+
 /** Названия, которые не берёт ни одна дешёвая ступень — их и отдаём модели. */
 function unknownNames(db, limit) {
   const tables = loadTables(db);

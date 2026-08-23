@@ -236,6 +236,38 @@ CREATE TABLE IF NOT EXISTS tokens (
 
 CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens (user_id);
 
+-- ── сканирование чеков ──────────────────────────────────────────────────────
+-- Обмен с ФНС асинхронный: запрос кладётся в очередь, воркер отправляет его,
+-- опрашивает ответ и передаёт готовый чек обычному импорту. Состояние задания
+-- живёт здесь, чтобы перезапуск сервиса ничего не терял.
+CREATE TABLE IF NOT EXISTS scan_jobs (
+  id          INTEGER PRIMARY KEY,
+  qr          TEXT NOT NULL,            -- строка из QR как есть, для разбора и разбора ошибок
+  fiscal_drive TEXT NOT NULL,           -- ФН/ФД/ФП: тот же ключ, что у импорта выгрузок
+  fiscal_doc  INTEGER NOT NULL,
+  fiscal_sign INTEGER NOT NULL,
+  total_sum   INTEGER NOT NULL,
+  purchased_at TEXT NOT NULL,
+  operation   INTEGER NOT NULL DEFAULT 1,
+  status      TEXT NOT NULL,            -- new | sent | done | failed
+  message_id  TEXT,                     -- идентификатор запроса в ФНС
+  receipt_id  INTEGER REFERENCES receipts (id) ON DELETE SET NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  error       TEXT,
+  next_at     TEXT,                     -- когда воркеру можно взяться снова
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL,
+  UNIQUE (fiscal_drive, fiscal_doc, fiscal_sign)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scan_jobs_status ON scan_jobs (status, next_at);
+
+-- Расход суточного лимита обращений к ФНС (1000 в сутки на всё приложение).
+CREATE TABLE IF NOT EXISTS fns_usage (
+  day   TEXT PRIMARY KEY,
+  calls INTEGER NOT NULL DEFAULT 0
+);
+
 -- Журнал импортов: видно, какие выгрузки уже залиты.
 CREATE TABLE IF NOT EXISTS imports (
   id            INTEGER PRIMARY KEY,
