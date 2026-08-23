@@ -466,38 +466,105 @@ async function startCamera() {
 // Правка уходит в словарь и распространяется на все позиции с таким же названием,
 // поэтому следующий такой чек разберётся уже правильно.
 
-/** Один список с заголовками групп: два выпадающих списка подряд на телефоне неудобны. */
-function categorySelect(item) {
-  const groups = meta?.categories ?? [];
-  const current = item.category_slug ?? '';
-  const option = (slug, label) =>
-    `<option value="${esc(slug)}"${slug === current ? ' selected' : ''}>${esc(label)}</option>`;
+/**
+ * Кнопка категории: иконка группы в её цвете и мелкая подпись категории.
+ * Выпадающий список тут не годится — на телефоне он открывается системным
+ * колесом на сорок пунктов, в котором не видно ни групп, ни цветов.
+ */
+function pickButton(item) {
+  const group = findGroup(item.group_slug);
+  const color = group?.color ?? '#eef1f5';
+  const icon = groupIcon(group?.icon ?? 'none');
+  // Пустая серединка у значка — категорию предложила модель, а не выбрал человек
+  const guess = item.category_slug && item.category_source !== 'manual' ? ' guess' : '';
 
-  return (
-    `<select class="pick" data-item="${item.id}">` +
-    option('', '— не определена —') +
-    groups
-      .map(
-        (g) =>
-          `<optgroup label="${esc(g.name)}">${g.subcategories.map((s) => option(s.slug, s.name)).join('')}</optgroup>`,
-      )
-      .join('') +
-    '</select>'
-  );
+  return `
+    <button class="pick-btn${guess}" type="button" data-pick="${item.id}">
+      <span class="pick-ic" style="background:${color};color:${readableText(color)}">${icon}</span>
+      <span class="pick-cat">${esc(item.category_name ?? 'выбрать')}</span>
+    </button>`;
 }
 
 function sheetRow(item) {
-  const color = categoryColor(item.group_slug, item.category_slug);
-  const guess = item.category_source === 'manual' ? '' : ' guess';
   return `
     <div class="sheet-row" data-row="${item.id}">
       <div class="sheet-head">
-        <span class="dot${guess}" style="background:${color ?? '#eef1f5'}"></span>
         <span class="sheet-name">${esc(item.name)}</span>
         <span class="sheet-sum">${money(item.sum, true)}</span>
       </div>
-      ${categorySelect(item)}
+      <div class="sheet-foot">${pickButton(item)}</div>
     </div>`;
+}
+
+/**
+ * Выбор категории в два шага: сначала группа иконками, потом её категории.
+ * Так вместо одного списка на сорок строк — две коротких страницы,
+ * а цвета и значки те же, что во всём остальном приложении.
+ */
+function openCategoryPicker(itemId, onPick) {
+  const groups = meta?.categories ?? [];
+  const picker = document.createElement('div');
+  picker.className = 'picker';
+  document.body.appendChild(picker);
+
+  const close = () => picker.remove();
+
+  const showGroups = () => {
+    picker.innerHTML = `
+      <div class="picker-box" role="dialog" aria-label="Выбор группы">
+        <div class="picker-top"><span>Группа</span><button class="btn" data-close type="button">Отмена</button></div>
+        <div class="picker-grid">
+          ${groups
+            .map(
+              (g) => `
+              <button class="picker-tile" type="button" data-group="${esc(g.slug)}">
+                <span class="pick-ic big" style="background:${g.color ?? '#eef1f5'};color:${readableText(g.color ?? '#eef1f5')}">${groupIcon(g.icon ?? 'none')}</span>
+                <span class="picker-tile-name">${esc(g.name)}</span>
+              </button>`,
+            )
+            .join('')}
+        </div>
+      </div>`;
+  };
+
+  const showCategories = (group) => {
+    const tones = shades(group.color ?? '', group.subcategories.length, group.shade_from, group.shade_to);
+    picker.innerHTML = `
+      <div class="picker-box" role="dialog" aria-label="Выбор категории">
+        <div class="picker-top">
+          <button class="picker-back" data-back type="button" aria-label="Назад">‹</button>
+          <span>${esc(group.name)}</span>
+          <button class="btn" data-close type="button">Отмена</button>
+        </div>
+        <div class="picker-list">
+          ${group.subcategories
+            .map(
+              (s, i) => `
+              <button class="picker-item" type="button" data-category="${esc(s.slug)}">
+                <span class="dot" style="background:${tones[i] ?? group.color ?? '#eef1f5'}"></span>
+                <span>${esc(s.name)}</span>
+              </button>`,
+            )
+            .join('')}
+        </div>
+      </div>`;
+  };
+
+  picker.addEventListener('click', (e) => {
+    if (e.target === picker || e.target.closest('[data-close]')) return close();
+    if (e.target.closest('[data-back]')) return showGroups();
+
+    const group = e.target.closest('[data-group]');
+    if (group) return showCategories(findGroup(group.dataset.group));
+
+    const category = e.target.closest('[data-category]');
+    if (category) {
+      close(); // возвращаемся к списку товаров сразу, не дожидаясь сохранения
+      onPick(itemId, category.dataset.category);
+    }
+  });
+
+  showGroups();
 }
 
 async function openReceiptSheet(receiptId) {
@@ -533,36 +600,46 @@ async function openReceiptSheet(receiptId) {
     }
   });
 
-  sheet.addEventListener('change', async (e) => {
-    const select = e.target.closest('.pick');
-    if (!select) return;
-    const row = select.closest('.sheet-row');
-    select.disabled = true;
-    try {
-      const data = await api(`/api/items/${select.dataset.item}/category`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ category: select.value }),
-      });
-      // Ручной выбор — уже не догадка: точка становится сплошной и меняет цвет
-      const group = (meta?.categories ?? []).find((g) => g.subcategories.some((s) => s.slug === select.value));
-      const dot = row.querySelector('.dot');
-      dot.classList.remove('guess');
-      dot.style.background = categoryColor(group?.slug, select.value) ?? '#eef1f5';
-      row.classList.add('picked');
-      if (data.affected > 1) {
-        row.querySelector('.sheet-name').insertAdjacentHTML(
-          'afterend',
-          `<span class="sheet-applied">и ещё ${int.format(data.affected - 1)}</span>`,
-        );
-      }
-      meta = await api('/api/meta');
-    } catch (err) {
-      row.insertAdjacentHTML('beforeend', `<p class="note error">${esc(err.message)}</p>`);
-    } finally {
-      select.disabled = false;
-    }
+  // Нажатие на значок категории открывает выбор; сохранение — уже по возврату
+  sheet.addEventListener('click', (e) => {
+    const pick = e.target.closest('[data-pick]');
+    if (pick) openCategoryPicker(Number(pick.dataset.pick), saveCategory);
   });
+}
+
+/** Сохранение выбранной категории и обновление строки на месте. */
+async function saveCategory(itemId, slug) {
+  const row = document.querySelector(`.sheet-row[data-row="${itemId}"]`);
+  if (!row) return;
+  row.classList.add('saving');
+
+  try {
+    const data = await api(`/api/items/${itemId}/category`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ category: slug }),
+    });
+
+    const group = (meta?.categories ?? []).find((g) => g.subcategories.some((x) => x.slug === slug));
+    row.querySelector('.sheet-foot').innerHTML =
+      pickButton({
+        id: itemId,
+        group_slug: group?.slug ?? null,
+        category_slug: slug,
+        category_name: data.category?.name ?? null,
+        category_source: 'manual', // выбор человека, значок становится сплошным
+      }) +
+      (data.affected > 1
+        ? `<span class="sheet-applied">и ещё ${int.format(data.affected - 1)}</span>`
+        : '');
+
+    row.classList.add('picked');
+    meta = await api('/api/meta'); // счётчики категорий изменились
+  } catch (err) {
+    row.insertAdjacentHTML('beforeend', `<p class="note error">${esc(err.message)}</p>`);
+  } finally {
+    row.classList.remove('saving');
+  }
 }
 
 const SCREENS = {
