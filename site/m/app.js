@@ -318,7 +318,7 @@ async function screenScan() {
         .slice(0, 8)
         .map(
           (j) => `
-          <div class="scan-row">
+          <div class="scan-row"${j.receipt_id ? ` data-receipt="${j.receipt_id}"` : ''}>
             <span class="scan-dot ${esc(j.status)}"></span>
             <span class="row-main">
               <span class="row-title">${esc(scanTitle(j))}</span>
@@ -403,13 +403,8 @@ async function submitScan(qr) {
   }
 
   if (job.status === 'done' && job.receipt_id) {
-    const receipt = await api(`/api/receipts/${job.receipt_id}`).catch(() => null);
-    box.innerHTML = `
-      <div class="card">
-        <div class="card-sum">${money(job.total_sum, true)}</div>
-        <div class="card-name">${esc(receipt?.seller ?? 'Чек добавлен')}</div>
-        <p class="note">${receipt ? `${receipt.items.length} позиций разобрано и размечено` : 'Чек добавлен'}</p>
-      </div>`;
+    box.innerHTML = '';
+    await openReceiptSheet(job.receipt_id);
   } else if (job.status === 'failed') {
     box.innerHTML = `<div class="card"><p class="note error">${esc(scanState(job))}</p></div>`;
   }
@@ -465,6 +460,111 @@ async function startCamera() {
   }
 }
 
+// ── разбор чека после сканирования ───────────────────────
+// Модель угадывает категорию, но угадывает не всегда. Показываем разобранный чек
+// сразу после распознавания: согласиться — ничего не делать, поправить — один выбор.
+// Правка уходит в словарь и распространяется на все позиции с таким же названием,
+// поэтому следующий такой чек разберётся уже правильно.
+
+/** Один список с заголовками групп: два выпадающих списка подряд на телефоне неудобны. */
+function categorySelect(item) {
+  const groups = meta?.categories ?? [];
+  const current = item.category_slug ?? '';
+  const option = (slug, label) =>
+    `<option value="${esc(slug)}"${slug === current ? ' selected' : ''}>${esc(label)}</option>`;
+
+  return (
+    `<select class="pick" data-item="${item.id}">` +
+    option('', '— не определена —') +
+    groups
+      .map(
+        (g) =>
+          `<optgroup label="${esc(g.name)}">${g.subcategories.map((s) => option(s.slug, s.name)).join('')}</optgroup>`,
+      )
+      .join('') +
+    '</select>'
+  );
+}
+
+function sheetRow(item) {
+  const color = categoryColor(item.group_slug, item.category_slug);
+  const guess = item.category_source === 'manual' ? '' : ' guess';
+  return `
+    <div class="sheet-row" data-row="${item.id}">
+      <div class="sheet-head">
+        <span class="dot${guess}" style="background:${color ?? '#eef1f5'}"></span>
+        <span class="sheet-name">${esc(item.name)}</span>
+        <span class="sheet-sum">${money(item.sum, true)}</span>
+      </div>
+      ${categorySelect(item)}
+    </div>`;
+}
+
+async function openReceiptSheet(receiptId) {
+  const receipt = await api(`/api/receipts/${receiptId}`).catch(() => null);
+  if (!receipt) return;
+
+  const unknown = receipt.items.filter((i) => !i.category_slug).length;
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  sheet.innerHTML = `
+    <div class="sheet-box" role="dialog" aria-label="Разбор чека">
+      <div class="sheet-top">
+        <div>
+          <div class="sheet-sum-total">${money(receipt.total_sum, true)}</div>
+          <div class="note">${esc(receipt.seller ?? '')}</div>
+        </div>
+        <button class="btn" data-close type="button">Готово</button>
+      </div>
+      <p class="note sheet-hint">${
+        unknown
+          ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — выберите вручную`
+          : 'Категории проставлены автоматически. Если ошиблись — поправьте'
+      }</p>
+      <div class="sheet-list">${receipt.items.map(sheetRow).join('')}</div>
+    </div>`;
+
+  document.body.appendChild(sheet);
+
+  sheet.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]') || e.target === sheet) {
+      sheet.remove();
+      render(); // сводка могла измениться
+    }
+  });
+
+  sheet.addEventListener('change', async (e) => {
+    const select = e.target.closest('.pick');
+    if (!select) return;
+    const row = select.closest('.sheet-row');
+    select.disabled = true;
+    try {
+      const data = await api(`/api/items/${select.dataset.item}/category`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ category: select.value }),
+      });
+      // Ручной выбор — уже не догадка: точка становится сплошной и меняет цвет
+      const group = (meta?.categories ?? []).find((g) => g.subcategories.some((s) => s.slug === select.value));
+      const dot = row.querySelector('.dot');
+      dot.classList.remove('guess');
+      dot.style.background = categoryColor(group?.slug, select.value) ?? '#eef1f5';
+      row.classList.add('picked');
+      if (data.affected > 1) {
+        row.querySelector('.sheet-name').insertAdjacentHTML(
+          'afterend',
+          `<span class="sheet-applied">и ещё ${int.format(data.affected - 1)}</span>`,
+        );
+      }
+      meta = await api('/api/meta');
+    } catch (err) {
+      row.insertAdjacentHTML('beforeend', `<p class="note error">${esc(err.message)}</p>`);
+    } finally {
+      select.disabled = false;
+    }
+  });
+}
+
 const SCREENS = {
   summary: { title: 'Расходы', render: screenSummary },
   scan: { title: 'Сканировать', render: screenScan },
@@ -508,6 +608,9 @@ $('screen').addEventListener('click', (e) => {
 
   const screen = e.target.closest('[data-screen]');
   if (screen) return go({ screen: screen.dataset.screen });
+
+  const scanRow = e.target.closest('[data-receipt]');
+  if (scanRow) return openReceiptSheet(Number(scanRow.dataset.receipt));
 
   if (e.target.closest('#scan-start')) return startCamera();
   if (e.target.closest('#scan-send')) {

@@ -88,6 +88,7 @@ SELECT
   i.product_type,
   i.payment_type,
   i.gtin,
+  i.provider_inn,
   r.purchased_at,
   r.purchased_date,
   r.seller,

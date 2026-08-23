@@ -343,10 +343,12 @@ export function getReceipt(db, id) {
     )
     .get(id);
   if (!receipt) return null;
+  // Категория идёт вместе с позицией: после сканирования её сразу показывают на правку
   receipt.items = db
     .prepare(
-      `SELECT id, pos, name, quantity, unit, price, sum, nds, nds_sum, product_type, gtin, provider_inn
-         FROM items WHERE receipt_id = ? ORDER BY pos`,
+      `SELECT id, pos, name, quantity, unit, price, sum, nds, nds_sum, product_type, gtin, provider_inn,
+              category_slug, category_name, category_source, group_slug, group_name
+         FROM v_items WHERE receipt_id = ? ORDER BY pos`,
     )
     .all(id);
   return receipt;
