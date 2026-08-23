@@ -107,8 +107,10 @@ async function step(db, job) {
     return true;
   }
 
-  // Дальше чек идёт обычным путём импорта — тем же, что и выгрузки из приложения ФНС
-  const saved = saveReceipt(db, answer.ticket, importStatements(db));
+  // ФНС кладёт разобранный чек в content, выгрузка приложения — в document.receipt.
+  // Приводим к одному виду и дальше идём общим путём импорта.
+  const { rawData, ...content } = answer.ticket.content ?? {};
+  const saved = saveReceipt(db, { _id: String(answer.ticket.id ?? ''), receipt: content }, importStatements(db));
   if (!saved?.id) {
     fail(db, job, 'чек получен, но не разобрался');
     return true;

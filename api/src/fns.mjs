@@ -164,7 +164,9 @@ export async function requestTicket(db, qr) {
       `<tns:TypeOperation>${qr.type}</tns:TypeOperation>` +
       `<tns:FiscalDocumentId>${qr.fd}</tns:FiscalDocumentId>` +
       `<tns:FiscalSign>${qr.fp}</tns:FiscalSign>` +
-      '<tns:RawData>true</tns:RawData>' +
+      // RawData просит вернуть ещё и двоичный ФФД в base64 — лишние 5 КБ на чек,
+      // разобранные поля и так приходят в content
+      '<tns:RawData>false</tns:RawData>' +
       '</tns:GetTicketInfo></tns:GetTicketRequest></ns:Message></ns:SendMessageRequest>',
     token,
   );
