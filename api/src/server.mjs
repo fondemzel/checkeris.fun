@@ -50,6 +50,7 @@ const MIME = {
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 // Версия из package.json — по ней после выкладки видно, что на сервере свежий код

@@ -61,7 +61,7 @@ async function api(path, options = {}) {
 let meta = null;
 const state = {
   month: new Date().toISOString().slice(0, 7),
-  screen: 'summary', // summary | group | category | item
+  screen: 'summary', // summary | group | category | item | scan
   group: '',
   category: '',
   item: '',
@@ -111,7 +111,7 @@ function go(patch, replace = false) {
 
 function readUrl() {
   const p = new URLSearchParams(location.search);
-  state.screen = ['summary', 'group', 'category', 'item'].includes(p.get('screen')) ? p.get('screen') : 'summary';
+  state.screen = ['summary', 'group', 'category', 'item', 'scan'].includes(p.get('screen')) ? p.get('screen') : 'summary';
   if (/^\d{4}-\d{2}$/.test(p.get('month') ?? '')) state.month = p.get('month');
   state.group = p.get('group') ?? '';
   state.category = p.get('category') ?? '';
@@ -179,7 +179,8 @@ async function screenSummary() {
     )
     .join('');
 
-  return `${nav}<div class="list">${rows}</div>`;
+  return `${nav}<div class="list">${rows}</div>` +
+    '<button class="fab" type="button" data-screen="scan" aria-label="Сканировать чек">+</button>';
 }
 
 async function screenGroup() {
@@ -294,8 +295,179 @@ async function screenItem() {
     </div>`;
 }
 
+// ── сканирование ─────────────────────────────────────────
+// QR чека содержит только реквизиты, позиции запрашиваются у ФНС, а обмен там
+// асинхронный. Поэтому экран не ждёт ответа: скан уходит в очередь на сервере,
+// а мы показываем, как он продвигается.
+
+let camera = null; // активный поток, чтобы погасить его при уходе с экрана
+
+function stopCamera() {
+  if (!camera) return;
+  camera.stop = true;
+  camera.stream?.getTracks().forEach((t) => t.stop());
+  camera = null;
+}
+
+const scanSupported = () => 'BarcodeDetector' in window && Boolean(navigator.mediaDevices?.getUserMedia);
+
+async function screenScan() {
+  const { jobs, usage } = await api('/api/scan');
+  const rows = jobs.length
+    ? jobs
+        .slice(0, 8)
+        .map(
+          (j) => `
+          <div class="scan-row">
+            <span class="scan-dot ${esc(j.status)}"></span>
+            <span class="row-main">
+              <span class="row-title">${esc(scanTitle(j))}</span>
+              <span class="row-note">${dateRu(j.purchased_at)} · ${esc(scanState(j))}</span>
+            </span>
+            <span class="row-sum">${money(j.total_sum)}</span>
+          </div>`,
+        )
+        .join('')
+    : '<p class="note">Пока ничего не сканировали</p>';
+
+  return `
+    <div class="scan-view" id="scan-view" hidden>
+      <video id="scan-video" playsinline muted autoplay></video>
+      <span class="scan-frame"></span>
+    </div>
+
+    <button class="btn primary big" id="scan-start">Навести камеру на чек</button>
+    <p class="note" id="scan-note">${
+      scanSupported()
+        ? 'Наведите на QR-код внизу чека'
+        : 'Браузер не умеет читать QR — введите строку из чека вручную'
+    }</p>
+
+    <div id="scan-result"></div>
+
+    <details class="card scan-manual"${scanSupported() ? '' : ' open'}>
+      <summary>Ввести строку вручную</summary>
+      <textarea id="scan-text" rows="3" placeholder="t=20250514T1830&amp;s=1234.00&amp;fn=…&amp;i=…&amp;fp=…&amp;n=1"></textarea>
+      <button class="btn" id="scan-send">Отправить</button>
+    </details>
+
+    <div class="card">
+      <div class="card-label">Последние сканы</div>
+      ${rows}
+      <p class="note">Запросов к ФНС сегодня: ${int.format(usage.calls)} из ${int.format(usage.limit)}</p>
+    </div>`;
+}
+
+const scanTitle = (job) => (job.receipt_id ? `Чек №${job.receipt_id}` : `ФД ${job.fiscal_doc}`);
+
+const scanState = (job) =>
+  ({
+    new: 'в очереди',
+    sent: 'ждём ответа ФНС',
+    done: 'готово',
+    failed: job.error ? `не вышло: ${job.error}` : 'не вышло',
+  })[job.status] ?? job.status;
+
+/** Отправка распознанной строки и слежение за заданием до готовности. */
+async function submitScan(qr) {
+  const box = $('scan-result');
+  box.innerHTML = '<div class="card"><p class="note">Отправляем…</p></div>';
+
+  let job;
+  try {
+    const data = await api('/api/scan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ qr }),
+    });
+    job = data.job;
+    if (data.known) {
+      box.innerHTML = '<div class="card"><p class="note">Этот чек уже был в базе</p></div>';
+      return;
+    }
+  } catch (err) {
+    box.innerHTML = `<div class="card"><p class="note error">${esc(err.message)}</p></div>`;
+    return;
+  }
+
+  // Ответ ФНС приходит за несколько секунд, но бывает и дольше — спрашиваем с паузой
+  for (let i = 0; i < 30; i += 1) {
+    box.innerHTML = `<div class="card"><p class="note">${esc(scanState(job))}…</p></div>`;
+    if (job.status === 'done' || job.status === 'failed') break;
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      ({ job } = await api(`/api/scan/${job.id}`));
+    } catch {
+      break;
+    }
+  }
+
+  if (job.status === 'done' && job.receipt_id) {
+    const receipt = await api(`/api/receipts/${job.receipt_id}`).catch(() => null);
+    box.innerHTML = `
+      <div class="card">
+        <div class="card-sum">${money(job.total_sum, true)}</div>
+        <div class="card-name">${esc(receipt?.seller ?? 'Чек добавлен')}</div>
+        <p class="note">${receipt ? `${receipt.items.length} позиций разобрано и размечено` : 'Чек добавлен'}</p>
+      </div>`;
+  } else if (job.status === 'failed') {
+    box.innerHTML = `<div class="card"><p class="note error">${esc(scanState(job))}</p></div>`;
+  }
+  render();
+}
+
+/** Камера и поиск QR в кадре. Разрешение спрашивается по нажатию, а не при входе. */
+async function startCamera() {
+  if (!scanSupported()) return;
+  stopCamera();
+
+  const view = $('scan-view');
+  const video = $('scan-video');
+  const note = $('scan-note');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    });
+    camera = { stream, stop: false };
+    video.srcObject = stream;
+    await video.play();
+    view.hidden = false;
+    $('scan-start').hidden = true;
+    note.textContent = 'Ищем QR-код…';
+  } catch (err) {
+    note.textContent = `Камера недоступна: ${err.message}`;
+    note.classList.add('error');
+    return;
+  }
+
+  const detector = new BarcodeDetector({ formats: ['qr_code'] });
+  const current = camera;
+
+  while (camera === current && !current.stop) {
+    try {
+      const found = await detector.detect(video);
+      const qr = found.find((c) => /(^|[?&])fn=/.test(c.rawValue ?? ''));
+      if (qr) {
+        navigator.vibrate?.(60);
+        stopCamera();
+        view.hidden = true;
+        $('scan-start').hidden = false;
+        note.textContent = 'Код прочитан';
+        await submitScan(qr.rawValue);
+        return;
+      }
+    } catch {
+      /* кадр не разобрался — просто пробуем следующий */
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
 const SCREENS = {
   summary: { title: 'Расходы', render: screenSummary },
+  scan: { title: 'Сканировать', render: screenScan },
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem },
@@ -305,6 +477,7 @@ let renderSeq = 0;
 
 async function render() {
   const seq = ++renderSeq;
+  stopCamera(); // уходим с экрана — гасим поток, иначе камера остаётся включённой
   const screen = SCREENS[state.screen] ?? SCREENS.summary;
   $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
   $('back').hidden = state.screen === 'summary';
@@ -332,6 +505,15 @@ $('screen').addEventListener('click', (e) => {
 
   const item = e.target.closest('[data-item]');
   if (item) return go({ screen: 'item', item: item.dataset.item });
+
+  const screen = e.target.closest('[data-screen]');
+  if (screen) return go({ screen: screen.dataset.screen });
+
+  if (e.target.closest('#scan-start')) return startCamera();
+  if (e.target.closest('#scan-send')) {
+    const value = $('scan-text').value.trim();
+    if (value) submitScan(value);
+  }
 });
 
 // Смена категории: группа перезаполняет второй список, выбор категории сохраняет
