@@ -14,9 +14,10 @@
 //   5. похожее         — символьные триграммы: «мандарины абхаз вес» ~ «мандарины вес»
 //   6. запасное правило— супермаркет: если иначе не определилось, это еда
 //
-// Модель в этот список не входит: она работает офлайн (--fill) и наполняет
-// словарь. В момент показа чека пользователю обращений к модели нет — только
-// запросы к таблицам, то есть миллисекунды.
+// Модель в этот список не входит: она наполняет словарь, а не решает на месте.
+// Вызывается она в двух случаях: пакетом из --fill и точечно из очереди сканирования
+// (scan.mjs), когда у свежего чека попались незнакомые названия. В момент показа
+// данных пользователю обращений к модели нет — только запросы к таблицам.
 import { pathToFileURL } from 'node:url';
 import { openDb, migrate } from './db.mjs';
 import { loadCategories, flatten } from './categories.mjs';
@@ -213,12 +214,16 @@ function unknownNames(db, limit) {
     .slice(0, limit);
 }
 
-async function fill(db, { limit, model = 'lite' }) {
-  const names = unknownNames(db, limit);
-  if (!names.length) {
-    console.log('неизвестных названий нет — словарь покрывает всё');
-    return;
-  }
+/**
+ * Разметка списка названий моделью и запись в словарь.
+ * Вынесено из CLI, потому что тем же путём идёт сканирование: у свежего чека
+ * бывает одно-два названия, которых словарь не видел, и спрашивать про них
+ * модель надо сразу, а не ждать ручного прогона.
+ *
+ * Ручные записи не перетираются: ON CONFLICT пропускает source='manual'.
+ */
+export async function fillNames(db, names, { model = 'lite', onBatch = null } = {}) {
+  if (!names.length) return { written: 0 };
 
   const catalog = loadCategories();
   const slugs = flatten(catalog).map((c) => c.slug);
@@ -245,10 +250,9 @@ async function fill(db, { limit, model = 'lite' }) {
       category_slug = :category, source = 'llm', updated_at = :now
       WHERE dictionary.source != 'manual'`);
 
-  const money = names.reduce((a, b) => a + b.money, 0);
-  console.log(`к разметке ${names.length} названий (${(money / 100).toFixed(0)} ₽ оборота), модель ${model}`);
-
   let written = 0;
+  const failures = [];
+
   for (let offset = 0; offset < names.length; offset += FILL_BATCH) {
     const chunk = names.slice(offset, offset + FILL_BATCH);
     const user = chunk
@@ -259,7 +263,7 @@ async function fill(db, { limit, model = 'lite' }) {
     try {
       ({ data } = await completeJson({ system, user, schema, model, maxTokens: 2000 }));
     } catch (err) {
-      console.error(`\n  порция ${offset / FILL_BATCH + 1}: ${err.message}`);
+      failures.push(err.message);
       continue;
     }
 
@@ -278,9 +282,29 @@ async function fill(db, { limit, model = 'lite' }) {
       throw err;
     }
 
-    process.stderr.write(`  порция ${Math.floor(offset / FILL_BATCH) + 1}/${Math.ceil(names.length / FILL_BATCH)}, записано ${written}\r`);
+    onBatch?.(Math.floor(offset / FILL_BATCH) + 1, Math.ceil(names.length / FILL_BATCH), written);
   }
 
+  return { written, failures };
+}
+
+async function fill(db, { limit, model = 'lite' }) {
+  const names = unknownNames(db, limit);
+  if (!names.length) {
+    console.log('неизвестных названий нет — словарь покрывает всё');
+    return;
+  }
+
+  const money = names.reduce((a, b) => a + b.money, 0);
+  console.log(`к разметке ${names.length} названий (${(money / 100).toFixed(0)} ₽ оборота), модель ${model}`);
+
+  const { written, failures } = await fillNames(db, names, {
+    model,
+    onBatch: (i, total, done) => process.stderr.write(`  порция ${i}/${total}, записано ${done}
+`),
+  });
+
+  for (const f of failures) console.error(`\n  порция не разобралась: ${f}`);
   console.log(`\nв словарь записано ${written} названий; ${usageLine()}`);
 }
 

@@ -11,7 +11,7 @@
 // на всё приложение, и цикл «спрашивать раз в секунду» съел бы его за час.
 import { parseQr, requestTicket, fetchTicket, fnsReady, fnsUsage } from './fns.mjs';
 import { saveReceipt, importStatements } from './import.mjs';
-import { classifyItems } from './classify.mjs';
+import { classifyItems, fillNames } from './classify.mjs';
 
 // Через сколько секунд после отправки спрашивать ответ: сначала часто, дальше реже
 const BACKOFF = [3, 5, 10, 20, 40, 60, 120, 300];
@@ -117,9 +117,51 @@ async function step(db, job) {
   }
 
   classifyItems(db, saved.itemIds);
+  await askModel(db, saved.itemIds);
+
   db.prepare("UPDATE scan_jobs SET status = 'done', receipt_id = ?, error = NULL, next_at = NULL, updated_at = ? WHERE id = ?")
     .run(saved.id, now(), job.id);
   return true;
+}
+
+// Больше названий в одном чеке модели не отдаём: чек на сотню незнакомых позиций
+// означает, что что-то не так, и платить за это по полной незачем
+const MAX_ASK = 25;
+
+/**
+ * Названия, которых не взяла лестница, спрашиваем у модели прямо здесь.
+ * Иначе свежий чек с незнакомым товаром приезжал бы в разбор пустым и ждал
+ * ручного прогона --fill. Ответ пишется в словарь, поэтому следующий такой чек
+ * разберётся уже без модели.
+ *
+ * Запасное правило продавца не трогаем: это осознанный выбор пользователя,
+ * и перерешать его на каждом скане — значит спорить с ним.
+ *
+ * Ошибка модели не проваливает задание: чек уже сохранён и размечен лестницей,
+ * а без категории позиция просто попросит выбрать её руками.
+ */
+async function askModel(db, itemIds) {
+  if (!itemIds.length) return;
+
+  const placeholders = itemIds.map(() => '?').join(',');
+  const names = db
+    .prepare(
+      `SELECT v.name_norm, MIN(v.name) AS name, MIN(v.seller) AS seller
+         FROM v_items v JOIN item_labels l ON l.item_id = v.id
+        WHERE v.id IN (${placeholders}) AND l.source = 'unknown'
+        GROUP BY v.name_norm
+        LIMIT ${MAX_ASK}`,
+    )
+    .all(...itemIds);
+
+  if (!names.length) return;
+
+  try {
+    const { written } = await fillNames(db, names);
+    if (written) classifyItems(db, itemIds); // словарь пополнился — перечитываем метки
+  } catch (err) {
+    console.error('модель не разметила новые названия:', err.message);
+  }
 }
 
 let running = false;
