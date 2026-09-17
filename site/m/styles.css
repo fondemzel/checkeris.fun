@@ -372,7 +372,23 @@ button, input, select { font: inherit; color: inherit; }
 .done-title { margin-top: 8px; font-size: 15px; color: var(--muted); }
 .done-sum { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
 
-.done-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+/* Полоса главных кнопок: часть каркаса, поэтому список прокручивается под ней,
+   а кнопки всегда на виду */
+.actions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.actions[hidden] { display: none; }
+
+/* Запас снизу нужен под кнопку «+»; когда внизу полоса кнопок, он лишний */
+.app:has(.actions:not([hidden])) .screen { padding-bottom: 14px; }
+.actions .btn.big { height: 48px; }
 
 /* ── ручная трата ──────────────────────────────────────── */
 
@@ -448,9 +464,10 @@ button, input, select { font: inherit; color: inherit; }
 .row .scan-dot { margin: 0 3px; }
 .scan-dot.waiting { background: #eda100; box-shadow: 0 0 0 3px #fbe7bd; }
 
-.sheet-card { margin: 12px 0 0; }
+/* Прокручивается середина листа, а кнопки под ней остаются на виду */
+.sheet-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; margin: 12px 0 0; }
 .scan-explain { margin: 0 0 10px; font-size: 14px; }
-.sheet-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.sheet-actions { flex: none; display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 
 /* ── календарь ─────────────────────────────────────────── */
 
@@ -487,6 +504,9 @@ button, input, select { font: inherit; color: inherit; }
 .cal-day.future:not(.edge) { color: #b6bcc6; }
 
 .cal-note { margin: 10px 0; text-align: center; }
+
+/* Лист календаря прокручивается — кнопка применения прилипает к его низу */
+.cal .btn.primary.big { position: sticky; bottom: 0; }
 
 /* Камера во весь экран поверх приложения: отдельной страницы у сканирования нет */
 .scanner {

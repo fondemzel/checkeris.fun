@@ -814,12 +814,7 @@ async function screenAdded() {
         ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — нажмите и выберите`
         : 'Нажмите на строку, если категория неверная'
     }</p>
-    <div class="list sheet-list">${receipt.items.map(sheetRow).join('')}</div>
-
-    <div class="done-actions">
-      <button class="btn primary big" type="button" data-screen="add">Добавить ещё</button>
-      <button class="btn big" type="button" data-back-home>Вернуться</button>
-    </div>`;
+    <div class="list sheet-list">${receipt.items.map(sheetRow).join('')}</div>`;
 }
 
 // ── сканирование ─────────────────────────────────────────
@@ -1269,7 +1264,15 @@ const SCREENS = {
   receipts: { title: 'Чеки', render: screenReceipts },
   add: { title: 'Добавить', render: screenAdd },
   manual: { title: 'Вручную', render: screenManual, after: () => $('m-sum')?.focus() },
-  added: { title: 'Добавлено', render: screenAdded },
+  added: {
+    title: 'Добавлено',
+    render: screenAdded,
+    // Главные кнопки живут в каркасе, а не в содержимом: длинный чек не должен
+    // уводить их за край экрана
+    actions: () => `
+      <button class="btn primary big" type="button" data-screen="add">Добавить ещё</button>
+      <button class="btn big" type="button" data-back-home>Вернуться</button>`,
+  },
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem },
@@ -1289,6 +1292,10 @@ async function render() {
   $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
   $('back').hidden = top;
   $('fab').hidden = !top;
+
+  const actions = screen.actions?.() ?? '';
+  $('actions').innerHTML = actions;
+  $('actions').hidden = !actions;
   for (const tab of document.querySelectorAll('[data-tab]')) {
     tab.classList.toggle('on', tab.dataset.tab === TAB_OF[state.screen]);
   }
@@ -1307,7 +1314,7 @@ async function render() {
 
 // ── события ──────────────────────────────────────────────
 
-$('screen').addEventListener('click', (e) => {
+function onScreenClick(e) {
   const shift = e.target.closest('[data-shift]');
   if (shift) return go(shiftPeriod(state.from, state.to, Number(shift.dataset.shift)), true);
 
@@ -1349,8 +1356,11 @@ $('screen').addEventListener('click', (e) => {
       $('m-note').textContent = '';
     });
   }
+}
 
-});
+// Полоса действий лежит вне #screen, но кнопки на ней — те же data-атрибуты
+$('screen').addEventListener('click', onScreenClick);
+$('actions').addEventListener('click', onScreenClick);
 
 $('screen').addEventListener('submit', (e) => {
   if (e.target.id !== 'manual-form') return;
