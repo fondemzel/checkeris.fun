@@ -17,6 +17,14 @@ import { classifyItems, fillNames } from './classify.mjs';
 const BACKOFF = [3, 5, 10, 20, 40, 60, 120, 300];
 const MAX_ATTEMPTS = BACKOFF.length;
 
+// Отказы, которые значат «у ФНС ещё нет этого чека», а не «чек плохой»:
+// касса передаёт данные с задержкой, иногда в сутки и больше.
+//   455 — не найдены данные в сервисе поиска чека
+//   544 — не прошла проверка пары ККТ+ФН (свежая регистрация кассы ещё не доехала)
+// Такие задания не хороним, а переспрашиваем через нарастающие паузы.
+const SYNC_CODES = new Set(['455', '544']);
+const RETRY_HOURS = [1, 6, 24, 72];
+
 const now = () => new Date().toISOString();
 const later = (seconds) => new Date(Date.now() + seconds * 1000).toISOString();
 
@@ -31,6 +39,8 @@ export function addScan(db, qrText) {
   const existing = db
     .prepare('SELECT * FROM scan_jobs WHERE fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?')
     .get(qr.fn, qr.fd, qr.fp);
+  // Повторный скан чека, на который ФНС отказала, — это просьба спросить ещё раз
+  if (existing?.status === 'failed') return { job: retryScan(db, existing.id).job, repeat: true };
   if (existing) return { job: existing, repeat: true };
 
   // Чек мог приехать раньше выгрузкой — тогда запрашивать его у ФНС незачем
@@ -65,13 +75,67 @@ export function addScan(db, qrText) {
 
 export const getScan = (db, id) => db.prepare('SELECT * FROM scan_jobs WHERE id = ?').get(id) ?? null;
 
-export const recentScans = (db, limit = 20) =>
-  db.prepare('SELECT * FROM scan_jobs ORDER BY id DESC LIMIT ?').all(Math.min(100, Math.max(1, limit)));
+const STATES = {
+  failed: "status = 'failed'",
+  pending: "status IN ('new', 'sent')",
+};
 
-const fail = (db, job, message) =>
-  db
-    .prepare("UPDATE scan_jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?")
-    .run(String(message).slice(0, 400), now(), job.id);
+/**
+ * Сканы, у которых ещё нет чека: с ошибкой и в работе. Готовые здесь не нужны —
+ * они уже чеки и показываются списком чеков. Счётчики — для чипсов фильтра.
+ */
+export function listScans(db, state = '') {
+  const where = STATES[state] ?? `(${STATES.failed} OR ${STATES.pending})`;
+  const jobs = db.prepare(`SELECT * FROM scan_jobs WHERE ${where} ORDER BY purchased_at DESC, id DESC LIMIT 200`).all();
+  const counts = db
+    .prepare(
+      `SELECT COALESCE(SUM(${STATES.failed}), 0) AS failed, COALESCE(SUM(${STATES.pending}), 0) AS pending
+         FROM scan_jobs`,
+    )
+    .get();
+  return { jobs, counts };
+}
+
+/** Спросить ФНС заново прямо сейчас. Счётчик автоповторов не сбрасываем: он про расход лимита. */
+export function retryScan(db, id) {
+  const job = getScan(db, id);
+  if (!job) return { error: 'скан не найден', status: 404 };
+  if (job.status !== 'failed') return { error: 'повторять можно только скан с ошибкой', status: 409 };
+  db.prepare(
+    "UPDATE scan_jobs SET status = 'new', attempts = 0, message_id = NULL, next_at = ?, updated_at = ? WHERE id = ?",
+  ).run(now(), now(), id);
+  return { job: getScan(db, id) };
+}
+
+/** Удаляется только неудачный скан: у готового есть чек, у ждущего — запрос в ФНС. */
+export function deleteScan(db, id) {
+  const job = getScan(db, id);
+  if (!job) return { error: 'скан не найден', status: 404 };
+  if (job.status !== 'failed') return { error: 'удалить можно только скан с ошибкой', status: 409 };
+  db.prepare('DELETE FROM scan_jobs WHERE id = ?').run(id);
+  return { ok: true };
+}
+
+/**
+ * Отказ. Если это «у ФНС ещё нет данных», назначаем следующий повтор — задание
+ * остаётся в ошибках, но с датой, когда очередь спросит снова. next_at у окончательного
+ * отказа обязательно пустой: очередь берёт ошибки с наступившим next_at.
+ */
+function fail(db, job, message, code = null) {
+  const retries = job.retries ?? 0;
+  const again = code && SYNC_CODES.has(String(code)) && retries < RETRY_HOURS.length;
+  db.prepare(
+    `UPDATE scan_jobs SET status = 'failed', error = ?, error_code = ?, retries = ?, next_at = ?, updated_at = ?
+      WHERE id = ?`,
+  ).run(
+    String(message).slice(0, 400),
+    code ? String(code) : null,
+    again ? retries + 1 : retries,
+    again ? later(RETRY_HOURS[retries] * 3600) : null,
+    now(),
+    job.id,
+  );
+}
 
 /** Один шаг задания. Возвращает true, если что-то сделали (чтобы не крутить цикл вхолостую). */
 async function step(db, job) {
@@ -103,7 +167,7 @@ async function step(db, job) {
   }
 
   if (!answer.ticket) {
-    fail(db, job, answer.error ?? 'ФНС вернула пустой ответ');
+    fail(db, job, answer.error ?? 'ФНС вернула пустой ответ', answer.code);
     return true;
   }
 
@@ -119,7 +183,9 @@ async function step(db, job) {
   classifyItems(db, saved.itemIds);
   await askModel(db, saved.itemIds);
 
-  db.prepare("UPDATE scan_jobs SET status = 'done', receipt_id = ?, error = NULL, next_at = NULL, updated_at = ? WHERE id = ?")
+  db.prepare(
+    "UPDATE scan_jobs SET status = 'done', receipt_id = ?, error = NULL, error_code = NULL, next_at = NULL, updated_at = ? WHERE id = ?",
+  )
     .run(saved.id, now(), job.id);
   return true;
 }
@@ -175,12 +241,23 @@ export async function runScanQueue(db) {
 
   running = true;
   try {
+    // Ошибки с наступившим next_at — назначенные повторы «ФНС ещё не знает этот чек»
     const due = db
-      .prepare("SELECT * FROM scan_jobs WHERE status IN ('new', 'sent') AND (next_at IS NULL OR next_at <= ?) ORDER BY id LIMIT 5")
-      .all(now());
+      .prepare(
+        `SELECT * FROM scan_jobs
+          WHERE (status IN ('new', 'sent') AND (next_at IS NULL OR next_at <= :now))
+             OR (status = 'failed' AND next_at IS NOT NULL AND next_at <= :now)
+          ORDER BY id LIMIT 5`,
+      )
+      .all({ now: now() });
 
     for (const job of due) {
       try {
+        if (job.status === 'failed') {
+          db.prepare("UPDATE scan_jobs SET status = 'new', attempts = 0, message_id = NULL, next_at = NULL WHERE id = ?")
+            .run(job.id);
+          Object.assign(job, { status: 'new', attempts: 0, message_id: null });
+        }
         await step(db, job);
       } catch (err) {
         // Лимит и сетевые сбои — не вина чека: откладываем, а не хороним задание

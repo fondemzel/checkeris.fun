@@ -195,11 +195,14 @@ export async function fetchTicket(db, messageId) {
   const status = tag(xml, 'ProcessingStatus');
   if (status !== 'COMPLETED') return { status: status ?? 'PROCESSING' };
 
-  const code = tag(xml, 'Code');
+  // Ответ вложен в <Message> конверта, а внутри у GetTicketResponse свой <Message> —
+  // поэтому код и текст берём из <Result>, иначе в ошибку уезжает весь вложенный XML
+  const result = tag(xml, 'Result') ?? xml;
+  const code = tag(result, 'Code');
   const raw = tag(xml, 'Ticket');
   if (!raw) {
-    const message = tag(xml, 'Message') ?? tag(xml, 'Text') ?? xml.slice(0, 300);
-    return { status, code, error: `чек не получен: ${String(message).slice(0, 300)}` };
+    const message = tag(result, 'Message') ?? tag(result, 'Text') ?? result.slice(0, 300);
+    return { status, code, error: String(message).slice(0, 300) };
   }
 
   // Ticket приходит JSON-строкой внутри XML, поэтому сущности уже развёрнуты

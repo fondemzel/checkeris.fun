@@ -13,7 +13,7 @@
 // поэтому ключ идемпотентности собирается из самой строки: повторный запуск обновит
 // записи, а не создаст вторые. Порядок строк в файле на ключ не влияет.
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { openDb, migrate, API_ROOT } from './db.mjs';
@@ -191,6 +191,85 @@ export function importManual(db, file = DEFAULT_FILE) {
 
   const total = rows.reduce((s, r) => s + r.sum, 0);
   return { rows: rows.length, created, updated, total, skipped };
+}
+
+// ── трата, вбитая с телефона ────────────────────────────────
+// Та же запись, что у строки файла: чек с одной позицией и закреплённой категорией.
+// Ключ у неё случайный — повторять её нечему, а совпасть с ключом строки файла
+// хеш-кусок и случайное число на миллиард практически не могут; на всякий случай проверяем.
+
+const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+
+export function addManual(db, body) {
+  const rubles = Number(String(body.sum ?? '').replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(rubles) || rubles <= 0 || rubles > 100_000_000) return { error: 'укажите сумму', status: 400 };
+  const sum = Math.round(rubles * 100);
+
+  const date = String(body.date ?? '');
+  if (!isDay(date)) return { error: 'укажите дату', status: 400 };
+  const time = /^\d{2}:\d{2}$/.test(body.time ?? '') ? body.time : '12:00';
+
+  const category = db
+    .prepare('SELECT slug, name FROM categories WHERE slug = ?')
+    .get(String(body.category ?? ''));
+  if (!category) return { error: 'выберите категорию', status: 400 };
+
+  const quantity = Number(body.quantity) > 0 ? Number(body.quantity) : 1;
+  const name = String(body.name ?? '').trim().slice(0, 200) || category.name;
+
+  const taken = db.prepare(
+    "SELECT 1 FROM receipts WHERE fiscal_drive = 'manual' AND fiscal_doc = ? AND fiscal_sign = ?",
+  );
+  let key;
+  do {
+    const bytes = randomBytes(8);
+    key = { doc: bytes.readUInt32BE(0) % 1_000_000_000, sign: bytes.readUInt32BE(4) % 1_000_000_000 };
+  } while (taken.get(key.doc, key.sign));
+
+  const now = new Date().toISOString();
+  db.exec('BEGIN');
+  try {
+    const receipt = db
+      .prepare(
+        `INSERT INTO receipts (
+           source_id, fiscal_drive, fiscal_doc, fiscal_sign, purchased_at, purchased_date,
+           seller, operation_type, total_sum, cash_sum, item_count, items_sum
+         ) VALUES (?, 'manual', ?, ?, ?, ?, ?, 1, ?, ?, 1, ?)`,
+      )
+      .run(`manual:app:${key.doc}`, key.doc, key.sign, `${date}T${time}:00`, date, SELLER, sum, sum, sum);
+    const receiptId = Number(receipt.lastInsertRowid);
+
+    const item = db
+      .prepare(
+        `INSERT INTO items (receipt_id, pos, name, name_norm, quantity, price, sum)
+         VALUES (?, 1, ?, ?, ?, ?, ?)`,
+      )
+      .run(receiptId, name, normalizeName(name), quantity, Math.round(sum / quantity), sum);
+    const itemId = Number(item.lastInsertRowid);
+
+    db.prepare(
+      `INSERT INTO item_labels (item_id, category_slug, source, confidence, updated_at)
+       VALUES (?, ?, 'pinned', 1, ?)`,
+    ).run(itemId, category.slug, now);
+
+    db.exec('COMMIT');
+    return { id: receiptId, item_id: itemId };
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+/**
+ * Удаление ручной траты — только ручной: чек ФНС удалять незачем, он настоящий.
+ * Строка из manual_data.csv после удаления вернётся при следующем импорте файла.
+ */
+export function deleteManual(db, id) {
+  const receipt = db.prepare('SELECT fiscal_drive FROM receipts WHERE id = ?').get(id);
+  if (!receipt) return { error: 'чек не найден', status: 404 };
+  if (receipt.fiscal_drive !== 'manual') return { error: 'удалить можно только ручную запись', status: 409 };
+  db.prepare('DELETE FROM receipts WHERE id = ?').run(id); // позиции и метки уходят каскадом
+  return { ok: true };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

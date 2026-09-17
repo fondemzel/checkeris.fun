@@ -25,10 +25,19 @@
     <header class="bar">
       <button class="bar-back" id="back" type="button" hidden aria-label="Назад">‹</button>
       <div class="bar-title" id="title">Расходы</div>
-      <button class="bar-action" id="logout" type="button" aria-label="Выйти">⏻</button>
+      <button class="bar-action" id="logout" type="button" aria-label="Выйти" title="Выйти"></button>
     </header>
 
     <main class="screen" id="screen"></main>
+
+    <button class="fab" id="fab" type="button" aria-label="Добавить трату" hidden>+</button>
+
+    <nav class="tabs" aria-label="Разделы">
+      <button class="tab" type="button" data-tab="summary"><span class="tab-ic" id="tab-summary-ic"></span>Расходы</button>
+      <button class="tab" type="button" data-tab="receipts">
+        <span class="tab-ic" id="tab-receipts-ic"></span>Чеки<i class="badge" id="tab-badge" hidden></i>
+      </button>
+    </nav>
   </div>
 
   <script type="module" src="/m/app.js"></script>

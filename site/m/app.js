@@ -1,14 +1,15 @@
-// Мобильный кабинет: сводка за месяц → группа → категория → позиция.
+// Мобильный кабинет: сводка за период → группа → категория → позиция, и список чеков.
 //
 // Это не уменьшенный десктопный кабинет, а другой инструмент на тех же данных.
 // Десктоп нужен для разбора: 24 тысячи строк, сортировки, справочник. Телефон
-// отвечает на два вопроса — сколько ушло и на что, — и даёт поправить категорию.
+// отвечает на два вопроса — сколько ушло и на что, — даёт поправить категорию
+// и добавить трату: отсканировать чек или вбить руками.
 //
 // Клиент намеренно маленький и самодостаточный: именно его предстоит повторить
 // в приложении на Rust, поэтому вся логика здесь про экраны, а всё, что можно
 // посчитать в базе, считает сервер (/api/summary).
 import { groupIcon } from '/shared/icons.js';
-import { shades, tint, edge, readableText } from '/shared/colors.js';
+import { shades, edge, readableText } from '/shared/colors.js';
 
 const $ = (id) => document.getElementById(id);
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
@@ -17,8 +18,10 @@ const int = new Intl.NumberFormat('ru-RU');
 
 const money = (k, exact = false) => (exact ? rubExact : rub).format(Number(k ?? 0) / 100);
 const dateRu = (iso) => (iso ? iso.slice(0, 10).split('-').reverse().join('.') : '');
+const timeRu = (iso) => (iso ? iso.slice(11, 16) : '');
 const esc = (v) =>
   String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 function plural(n, one, few, many) {
   const m100 = Math.abs(n) % 100;
@@ -31,6 +34,30 @@ function plural(n, one, few, many) {
 
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
   'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+
+// Значки интерфейса — тот же набор Lucide, что у групп, но это не группы
+const svg = (shape) =>
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg>`;
+
+const UI = {
+  logout: svg('<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>'),
+  scan: svg(
+    '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>' +
+      '<path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
+  ),
+  pen: svg(
+    '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>' +
+      '<path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>',
+  ),
+  calendar: svg('<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>'),
+  wallet: groupIcon('card'),
+  receipt: groupIcon('receipt'),
+};
 
 // ── доступ ───────────────────────────────────────────────
 
@@ -56,36 +83,92 @@ async function api(path, options = {}) {
   return data;
 }
 
+const post = (path, body) =>
+  api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+
+// ── период ───────────────────────────────────────────────
+// Период — пара дат. Месяц — частный случай, поэтому стрелки листают целыми
+// месяцами, если период выровнен по месяцам, и его же длиной, если нет.
+
+const pad = (n) => String(n).padStart(2, '0');
+const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const isDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s ?? '');
+const parseDay = (s) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+
+function monthPeriod(y, m, count = 1) {
+  return { from: isoDay(new Date(y, m, 1)), to: isoDay(new Date(y, m + count, 0)) };
+}
+
+/** Сколько целых месяцев в периоде, если он ровно по их границам; иначе 0. */
+function wholeMonths(from, to) {
+  const a = parseDay(from);
+  const next = addDays(parseDay(to), 1);
+  if (a.getDate() !== 1 || next.getDate() !== 1) return 0;
+  return (next.getFullYear() - a.getFullYear()) * 12 + next.getMonth() - a.getMonth();
+}
+
+function shiftPeriod(from, to, delta) {
+  const a = parseDay(from);
+  const months = wholeMonths(from, to);
+  if (months) return monthPeriod(a.getFullYear(), a.getMonth() + delta * months, months);
+  const days = Math.round((parseDay(to) - a) / 86400000) + 1;
+  return { from: isoDay(addDays(a, delta * days)), to: isoDay(addDays(parseDay(to), delta * days)) };
+}
+
+function periodTitle(from, to) {
+  const a = parseDay(from);
+  const b = parseDay(to);
+  const sameYear = a.getFullYear() === b.getFullYear();
+  const months = wholeMonths(from, to);
+
+  if (months === 1) return cap(`${MONTHS[a.getMonth()]} ${a.getFullYear()}`);
+  if (months === 12 && a.getMonth() === 0) return `${a.getFullYear()} год`;
+  if (months) {
+    return sameYear
+      ? cap(`${MONTHS[a.getMonth()]} – ${MONTHS[b.getMonth()]} ${a.getFullYear()}`)
+      : cap(`${MONTHS[a.getMonth()]} ${a.getFullYear()} – ${MONTHS[b.getMonth()]} ${b.getFullYear()}`);
+  }
+  if (from === to) return `${a.getDate()} ${MONTHS_GEN[a.getMonth()]} ${a.getFullYear()}`;
+
+  const left = !sameYear
+    ? `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]} ${a.getFullYear()}`
+    : a.getMonth() === b.getMonth()
+      ? `${a.getDate()}`
+      : `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]}`;
+  return `${left} – ${b.getDate()} ${MONTHS_SHORT[b.getMonth()]} ${b.getFullYear()}`;
+}
+
 // ── состояние ────────────────────────────────────────────
 
 let meta = null;
+const thisMonth = monthPeriod(new Date().getFullYear(), new Date().getMonth());
+
 const state = {
-  month: new Date().toISOString().slice(0, 7),
-  screen: 'summary', // summary | group | category | item | scan
+  from: thisMonth.from,
+  to: thisMonth.to,
+  screen: 'summary', // summary | group | category | item | receipts | add | scan | manual
   group: '',
   category: '',
   item: '',
+  filter: 'all', // список чеков: all | failed | pending | manual
 };
 
-/** Границы выбранного месяца: сводка и списки живут в одном периоде. */
-function monthRange(month = state.month) {
-  const [y, m] = month.split('-').map(Number);
-  const last = new Date(y, m, 0).getDate();
-  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` };
-}
-
-const shiftMonth = (month, delta) => {
-  const [y, m] = month.split('-').map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
-
-const monthTitle = (month) => {
-  const [y, m] = month.split('-').map(Number);
-  return `${MONTHS[m - 1]} ${y}`;
-};
+const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'scan', 'manual'];
+const FILTERS = ['all', 'failed', 'pending', 'manual'];
+const TOP = ['summary', 'receipts']; // корневые экраны: у них нет «назад», зато есть «+»
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;
+const findCategory = (slug) => {
+  for (const g of meta?.categories ?? []) {
+    const s = g.subcategories.find((x) => x.slug === slug);
+    if (s) return { group: g, category: s };
+  }
+  return null;
+};
 
 /** Цвет категории — оттенок цвета её группы, тот же расчёт, что в кабинете. */
 function categoryColor(groupSlug, categorySlug) {
@@ -101,21 +184,30 @@ function categoryColor(groupSlug, categorySlug) {
 
 function go(patch, replace = false) {
   Object.assign(state, patch);
-  const params = new URLSearchParams({ screen: state.screen, month: state.month });
+  const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
   if (state.category) params.set('category', state.category);
   if (state.item) params.set('item', state.item);
+  if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   history[replace ? 'replaceState' : 'pushState']({ ...state }, '', `?${params}`);
   render();
 }
 
 function readUrl() {
   const p = new URLSearchParams(location.search);
-  state.screen = ['summary', 'group', 'category', 'item', 'scan'].includes(p.get('screen')) ? p.get('screen') : 'summary';
-  if (/^\d{4}-\d{2}$/.test(p.get('month') ?? '')) state.month = p.get('month');
+  state.screen = SCREEN_NAMES.includes(p.get('screen')) ? p.get('screen') : 'summary';
+  if (isDay(p.get('from')) && isDay(p.get('to')) && p.get('from') <= p.get('to')) {
+    state.from = p.get('from');
+    state.to = p.get('to');
+  } else if (/^\d{4}-\d{2}$/.test(p.get('month') ?? '')) {
+    // старые ссылки и ярлыки хранили месяц
+    const [y, m] = p.get('month').split('-').map(Number);
+    Object.assign(state, monthPeriod(y, m - 1));
+  }
   state.group = p.get('group') ?? '';
   state.category = p.get('category') ?? '';
   state.item = p.get('item') ?? '';
+  state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
 }
 
 window.addEventListener('popstate', (e) => {
@@ -124,10 +216,18 @@ window.addEventListener('popstate', (e) => {
   render();
 });
 
-// ── экраны ───────────────────────────────────────────────
+// ── общие куски экранов ──────────────────────────────────
 
 const loading = () => '<div class="empty">Загрузка…</div>';
 const failed = (err) => `<div class="empty error">${esc(err.message)}</div>`;
+
+/** Строка периода: стрелки листают, нажатие на даты открывает календарь. */
+const periodNav = () => `
+  <div class="month">
+    <button class="month-arrow" type="button" data-shift="-1" aria-label="Раньше">‹</button>
+    <button class="month-name" type="button" data-period>${UI.calendar}<span>${esc(periodTitle(state.from, state.to))}</span></button>
+    <button class="month-arrow" type="button" data-shift="1" aria-label="Позже">›</button>
+  </div>`;
 
 /** Строка списка: иконка или кружок цвета, название, сумма и доля от итога. */
 function row({ href, color, icon, title, note, sum, share }) {
@@ -146,24 +246,30 @@ function row({ href, color, icon, title, note, sum, share }) {
     </button>`;
 }
 
+function toast(text) {
+  document.querySelector('.toast')?.remove();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+// ── расходы ──────────────────────────────────────────────
+
 async function screenSummary() {
-  const { from, to } = monthRange();
-  const data = await api(`/api/summary?by=group&from=${from}&to=${to}`);
+  const data = await api(`/api/summary?by=group&from=${state.from}&to=${state.to}`);
   const max = Math.max(1, ...data.rows.map((r) => r.sum));
 
-  const nav = `
-    <div class="month">
-      <button class="month-arrow" type="button" data-month="-1" aria-label="Предыдущий месяц">‹</button>
-      <span class="month-name">${monthTitle(state.month)}</span>
-      <button class="month-arrow" type="button" data-month="1" aria-label="Следующий месяц">›</button>
-    </div>
+  const head = `
+    ${periodNav()}
     <div class="total">
       <span class="total-sum">${money(data.totals.sum)}</span>
       <span class="total-note">${int.format(data.totals.receipts)} ${plural(data.totals.receipts, 'чек', 'чека', 'чеков')} ·
         ${int.format(data.totals.count)} ${plural(data.totals.count, 'позиция', 'позиции', 'позиций')}</span>
     </div>`;
 
-  if (!data.rows.length) return `${nav}<div class="empty">За этот месяц трат нет</div>`;
+  if (!data.rows.length) return `${head}<div class="empty">За этот период трат нет</div>`;
 
   const rows = data.rows
     .map((r) =>
@@ -179,20 +285,20 @@ async function screenSummary() {
     )
     .join('');
 
-  return `${nav}<div class="list">${rows}</div>` +
-    '<button class="fab" type="button" data-screen="scan" aria-label="Сканировать чек">+</button>';
+  return `${head}<div class="list">${rows}</div>`;
 }
 
 async function screenGroup() {
-  const { from, to } = monthRange();
-  const data = await api(`/api/summary?by=category&group=${encodeURIComponent(state.group)}&from=${from}&to=${to}`);
+  const data = await api(
+    `/api/summary?by=category&group=${encodeURIComponent(state.group)}&from=${state.from}&to=${state.to}`,
+  );
   const g = findGroup(state.group);
   const max = Math.max(1, ...data.rows.map((r) => r.sum));
 
   const head = `
     <div class="total">
       <span class="total-sum">${money(data.totals.sum)}</span>
-      <span class="total-note">${monthTitle(state.month)} · ${esc(g?.name ?? '')}</span>
+      <span class="total-note">${esc(periodTitle(state.from, state.to))} · ${esc(g?.name ?? '')}</span>
     </div>`;
 
   if (!data.rows.length) return `${head}<div class="empty">В этой группе трат нет</div>`;
@@ -215,8 +321,9 @@ async function screenGroup() {
 }
 
 async function screenCategory() {
-  const { from, to } = monthRange();
-  const params = new URLSearchParams({ from, to, collapse: '1', sort: 'sum', dir: 'desc', per: '100' });
+  const params = new URLSearchParams({
+    from: state.from, to: state.to, collapse: '1', sort: 'sum', dir: 'desc', per: '100',
+  });
   if (state.category) params.set('category', state.category);
   else params.set('group', state.group);
 
@@ -228,7 +335,7 @@ async function screenCategory() {
   const head = `
     <div class="total">
       <span class="total-sum">${money(data.totals.sum)}</span>
-      <span class="total-note">${monthTitle(state.month)} · ${esc(name ?? '')}</span>
+      <span class="total-note">${esc(periodTitle(state.from, state.to))} · ${esc(name ?? '')}</span>
     </div>`;
 
   if (!data.rows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
@@ -272,7 +379,7 @@ async function screenItem() {
       <div class="card-sum">${money(it.sum, true)}</div>
       <div class="card-name">${esc(it.name)}</div>
       ${kv([
-        ['Дата', `${dateRu(it.purchased_at)} ${esc(it.purchased_at.slice(11, 16))}`],
+        ['Дата', `${dateRu(it.purchased_at)} ${esc(timeRu(it.purchased_at))}`],
         ['Количество', it.quantity !== 1 ? `${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''],
         ['Продавец', esc(it.seller ?? '')],
         ['Точка', esc(it.retail_place ?? '')],
@@ -295,12 +402,397 @@ async function screenItem() {
     </div>`;
 }
 
+// ── календарь ────────────────────────────────────────────
+// Нативный input[type=date] диапазон не выбирает, поэтому сетка своя:
+// первое нажатие — начало, второе — конец. Готовые периоды применяются сразу.
+
+function openPeriodPicker() {
+  let start = state.from;
+  let end = state.to;
+  const first = parseDay(state.to);
+  let view = new Date(first.getFullYear(), first.getMonth(), 1);
+  const today = isoDay(new Date());
+
+  const now = new Date();
+  const presets = [
+    ['Этот месяц', () => monthPeriod(now.getFullYear(), now.getMonth())],
+    ['Прошлый месяц', () => monthPeriod(now.getFullYear(), now.getMonth() - 1)],
+    ['3 месяца', () => monthPeriod(now.getFullYear(), now.getMonth() - 2, 3)],
+    ['Этот год', () => monthPeriod(now.getFullYear(), 0, 12)],
+    ['Прошлый год', () => monthPeriod(now.getFullYear() - 1, 0, 12)],
+  ];
+  if (meta?.stats?.date_from) {
+    presets.push(['Всё время', () => ({ from: meta.stats.date_from.slice(0, 10), to: meta.stats.date_to.slice(0, 10) })]);
+  }
+
+  const el = document.createElement('div');
+  el.className = 'picker';
+  document.body.appendChild(el);
+  const close = () => el.remove();
+
+  const draw = () => {
+    const y = view.getFullYear();
+    const m = view.getMonth();
+    const offset = (new Date(y, m, 1).getDay() + 6) % 7; // неделя с понедельника
+    const days = new Date(y, m + 1, 0).getDate();
+
+    let cells = '<span></span>'.repeat(offset);
+    for (let d = 1; d <= days; d += 1) {
+      const iso = isoDay(new Date(y, m, d));
+      const last = end ?? start;
+      const cls = [
+        'cal-day',
+        iso === start || iso === end ? 'edge' : '',
+        end && iso > start && iso < end ? 'in' : '',
+        iso === start && end && end !== start ? 'from' : '',
+        iso === end && end !== start ? 'to' : '',
+        iso === today ? 'today' : '',
+        iso > today ? 'future' : '',
+      ].filter(Boolean).join(' ');
+      cells += `<button class="${cls}" type="button" data-day="${iso}"${iso === last ? ' aria-current="date"' : ''}><span>${d}</span></button>`;
+    }
+
+    el.innerHTML = `
+      <div class="picker-box cal" role="dialog" aria-label="Выбор периода">
+        <div class="picker-top"><span>Период</span><button class="btn" data-close type="button">Отмена</button></div>
+        <div class="chips">${presets
+          .map(([label], i) => `<button class="chip" type="button" data-preset="${i}">${label}</button>`)
+          .join('')}</div>
+        <div class="cal-head">
+          <button class="month-arrow" type="button" data-view="-1" aria-label="Предыдущий месяц">‹</button>
+          <span>${cap(MONTHS[m])} ${y}</span>
+          <button class="month-arrow" type="button" data-view="1" aria-label="Следующий месяц">›</button>
+        </div>
+        <div class="cal-grid">
+          ${WEEKDAYS.map((w) => `<span class="cal-wd">${w}</span>`).join('')}
+          ${cells}
+        </div>
+        <p class="note cal-note">${end ? 'Нажмите на день, чтобы выбрать заново' : 'Теперь последний день — или сразу «Показать»'}</p>
+        <button class="btn primary big" type="button" data-apply>Показать: ${esc(periodTitle(start, end ?? start))}</button>
+      </div>`;
+  };
+
+  el.addEventListener('click', (e) => {
+    if (e.target === el || e.target.closest('[data-close]')) return close();
+
+    const shift = e.target.closest('[data-view]');
+    if (shift) {
+      view = new Date(view.getFullYear(), view.getMonth() + Number(shift.dataset.view), 1);
+      return draw();
+    }
+
+    const day = e.target.closest('[data-day]');
+    if (day) {
+      const iso = day.dataset.day;
+      if (end) {
+        start = iso;
+        end = null;
+      } else if (iso < start) {
+        end = start;
+        start = iso;
+      } else {
+        end = iso;
+      }
+      return draw();
+    }
+
+    const preset = e.target.closest('[data-preset]');
+    if (preset) {
+      close();
+      return go(presets[Number(preset.dataset.preset)][1](), true);
+    }
+
+    if (e.target.closest('[data-apply]')) {
+      close();
+      go({ from: start, to: end ?? start }, true);
+    }
+  });
+
+  draw();
+}
+
+// ── чеки ─────────────────────────────────────────────────
+// Отдельный список: всё, что приехало, и всё, что застряло. Сканы с ошибкой
+// чеками ещё не стали, поэтому идут своими строками поверх списка.
+
+const RECEIPTS_PER = 50;
+
+/** «ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ГАЗПРОМНЕФТЬ - ЦЕНТР"» → «ГАЗПРОМНЕФТЬ - ЦЕНТР». */
+function sellerName(r) {
+  const quoted = /["«]([^"»]+)["»]/.exec(r.seller ?? '');
+  return (quoted?.[1] ?? r.seller ?? r.retail_place ?? '').trim() || 'Без продавца';
+}
+
+const jobIsSync = (job) => ['455', '544'].includes(String(job.error_code ?? ''));
+const RETRIES = 4; // столько отложенных повторов делает сервер (scan.mjs, RETRY_HOURS)
+
+function jobNote(job) {
+  if (job.status === 'new') return 'в очереди';
+  if (job.status === 'sent') return 'ждём ответа ФНС';
+  if (job.next_at) return `ФНС ещё не знает чек · спросим ${whenRu(job.next_at)}`;
+  if (jobIsSync(job)) return 'ФНС так и не отдала чек';
+  return job.error ?? 'не вышло';
+}
+
+/** Когда будет повтор — по-человечески, в часовом поясе телефона. */
+function whenRu(iso) {
+  const d = new Date(iso);
+  if (d <= new Date()) return 'в ближайшие минуты';
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - parseDay(isoDay(new Date()))) / 86400000);
+  if (days <= 0) return `в ${time}`;
+  if (days === 1) return `завтра в ${time}`;
+  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]} в ${time}`;
+}
+
+const jobRow = (job) => `
+  <button class="row" type="button" data-job="${job.id}">
+    <span class="scan-dot ${esc(job.status)}${job.next_at && job.status === 'failed' ? ' waiting' : ''}"></span>
+    <span class="row-main">
+      <span class="row-title">Скан от ${dateRu(job.purchased_at)} ${esc(timeRu(job.purchased_at))}</span>
+      <span class="row-note">${esc(jobNote(job))}</span>
+    </span>
+    <span class="row-sum">${money(job.total_sum, true)}</span>
+  </button>`;
+
+let lastDay = ''; // последний выведенный день: следующая страница не повторит его заголовок
+
+function receiptRows(rows) {
+  return rows
+    .map((r) => {
+      const heading = r.purchased_date !== lastDay ? `<div class="day">${esc(dayTitle(r.purchased_date))}</div>` : '';
+      lastDay = r.purchased_date;
+      const marks = [
+        timeRu(r.purchased_at),
+        `${int.format(r.item_count)} ${plural(r.item_count, 'позиция', 'позиции', 'позиций')}`,
+        r.manual ? 'вручную' : '',
+        r.operation_type === 2 ? 'возврат' : '',
+      ].filter(Boolean);
+      return `${heading}
+        <button class="row" type="button" data-receipt="${r.id}">
+          <span class="row-main">
+            <span class="row-title">${esc(r.manual ? r.title : sellerName(r))}</span>
+            <span class="row-note">${esc(marks.join(' · '))}</span>
+          </span>
+          <span class="row-sum${r.counted ? '' : ' muted'}">${money(r.total_sum, true)}</span>
+        </button>`;
+    })
+    .join('');
+}
+
+function dayTitle(iso) {
+  const d = parseDay(iso);
+  const today = isoDay(new Date());
+  if (iso === today) return 'Сегодня';
+  if (iso === isoDay(addDays(new Date(), -1))) return 'Вчера';
+  const year = d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '';
+  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}${year}`;
+}
+
+let receiptsPage = 1; // «Показать ещё» дописывает страницы, не перерисовывая экран
+
+async function screenReceipts() {
+  const f = state.filter;
+  const scanState = f === 'failed' || f === 'pending' ? `?state=${f}` : '';
+  const scans = await api(`/api/scan${scanState}`);
+  updateBadge(scans.counts.failed);
+
+  const chip = (key, label, count) =>
+    `<button class="chip${f === key ? ' on' : ''}${key === 'failed' && count ? ' alert' : ''}" type="button" data-filter="${key}">` +
+    `${label}${count ? ` <b>${int.format(count)}</b>` : ''}</button>`;
+
+  const chips = `<div class="chips">
+    ${chip('all', 'Все')}
+    ${chip('failed', 'С ошибкой', scans.counts.failed)}
+    ${scans.counts.pending || f === 'pending' ? chip('pending', 'В очереди', scans.counts.pending) : ''}
+    ${chip('manual', 'Вручную')}
+  </div>`;
+
+  // Ошибки и очередь живут вне периода: застрявший скан важен, когда бы ни была покупка
+  if (f === 'failed' || f === 'pending') {
+    const hint = f === 'failed'
+      ? '<p class="note list-hint">Обычно это чек, который касса ещё не передала в ФНС. Мы переспрашиваем сами — через час, 6 часов, сутки и трое суток.</p>'
+      : '';
+    return scans.jobs.length
+      ? `${chips}${hint}<div class="list">${scans.jobs.map(jobRow).join('')}</div>`
+      : `${chips}<div class="empty">${f === 'failed' ? 'Сканов с ошибкой нет' : 'Очередь пуста'}</div>`;
+  }
+
+  receiptsPage = 1;
+  lastDay = '';
+  const data = await api(`/api/receipts?${receiptsQuery(1)}`);
+  // В общем списке застрявшие сканы — те, что попадают в период
+  const stuck = f === 'all'
+    ? scans.jobs.filter((j) => j.purchased_at.slice(0, 10) >= state.from && j.purchased_at.slice(0, 10) <= state.to)
+    : [];
+
+  const head = `
+    ${chips}
+    ${periodNav()}
+    <div class="total">
+      <span class="total-sum">${money(data.totals.sum)}</span>
+      <span class="total-note">${int.format(data.totals.count)} ${plural(data.totals.count, 'чек', 'чека', 'чеков')}${
+        data.totals.excluded_count ? ` · ${int.format(data.totals.excluded_count)} вне суммы` : ''
+      }</span>
+    </div>`;
+
+  if (!data.rows.length && !stuck.length) {
+    return `${head}<div class="empty">${f === 'manual' ? 'Ручных записей за период нет' : 'Чеков за период нет'}</div>`;
+  }
+
+  const more = data.totals.count > RECEIPTS_PER
+    ? '<button class="btn more" type="button" id="more">Показать ещё</button>'
+    : '';
+
+  return `${head}
+    ${stuck.length ? `<div class="list stuck">${stuck.map(jobRow).join('')}</div>` : ''}
+    <div class="list" id="receipt-list">${receiptRows(data.rows)}</div>
+    ${more}`;
+}
+
+function receiptsQuery(page) {
+  const q = new URLSearchParams({ from: state.from, to: state.to, sort: 'date', dir: 'desc', per: RECEIPTS_PER, page });
+  if (state.filter === 'manual') q.set('kind', 'manual');
+  return q;
+}
+
+async function loadMoreReceipts(button) {
+  button.disabled = true;
+  try {
+    const data = await api(`/api/receipts?${receiptsQuery(receiptsPage + 1)}`);
+    receiptsPage += 1;
+    $('receipt-list').insertAdjacentHTML('beforeend', receiptRows(data.rows));
+    if (receiptsPage * RECEIPTS_PER >= data.totals.count) button.remove();
+    else button.disabled = false;
+  } catch (err) {
+    button.textContent = `Не загрузилось: ${err.message}`;
+    button.disabled = false;
+  }
+}
+
+function updateBadge(count) {
+  const badge = $('tab-badge');
+  badge.hidden = !count;
+  badge.textContent = count > 99 ? '99+' : String(count ?? '');
+}
+
+/** Застрявший скан: что случилось, когда повтор, и что можно сделать самому. */
+async function openScanSheet(jobId) {
+  let job;
+  try {
+    ({ job } = await api(`/api/scan/${jobId}`));
+  } catch (err) {
+    return toast(err.message);
+  }
+
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  document.body.appendChild(sheet);
+  const close = () => {
+    sheet.remove();
+    render();
+  };
+
+  const explain = () => {
+    if (job.status !== 'failed') return jobNote(job);
+    if (jobIsSync(job)) {
+      if (job.next_at) {
+        return `ФНС пока не получила этот чек от кассы — так бывает, данные доходят до суток и дольше. Спросим сами ${whenRu(job.next_at)}.`;
+      }
+      return job.retries >= RETRIES
+        ? 'ФНС так и не получила этот чек, автоповторы закончились. Можно спросить ещё раз или удалить скан.'
+        : 'ФНС не отдала этот чек. Данные могли уже дойти — спросите ещё раз или удалите скан.';
+    }
+    return 'ФНС отказала. Если QR прочитался криво, проще удалить скан и отсканировать чек заново.';
+  };
+
+  const draw = (busy = '') => {
+    sheet.innerHTML = `
+      <div class="sheet-box" role="dialog" aria-label="Скан чека">
+        <div class="sheet-top">
+          <div>
+            <div class="sheet-sum-total">${money(job.total_sum, true)}</div>
+            <div class="note">Покупка ${dateRu(job.purchased_at)} в ${esc(timeRu(job.purchased_at))}</div>
+          </div>
+          <button class="btn" data-close type="button">Закрыть</button>
+        </div>
+        <div class="card sheet-card">
+          <p class="scan-explain">${esc(explain())}</p>
+          ${job.status === 'failed' && job.error ? `<div class="kv"><span>Ответ ФНС</span><b>${esc(job.error)}${job.error_code ? ` (${esc(job.error_code)})` : ''}</b></div>` : ''}
+          <div class="kv"><span>ФН</span><b>${esc(job.fiscal_drive)}</b></div>
+          <div class="kv"><span>ФД / ФП</span><b>${esc(job.fiscal_doc)} / ${esc(job.fiscal_sign)}</b></div>
+          <div class="kv"><span>Отсканирован</span><b>${dateRu(job.created_at)}</b></div>
+          ${job.retries ? `<div class="kv"><span>Повторов</span><b>${int.format(job.retries)}</b></div>` : ''}
+        </div>
+        ${busy ? `<p class="note sheet-hint">${esc(busy)}</p>` : ''}
+        ${job.status === 'failed' ? `
+          <div class="sheet-actions">
+            <button class="btn primary" type="button" data-retry${busy ? ' disabled' : ''}>Спросить ФНС сейчас</button>
+            <button class="btn danger" type="button" data-delete${busy ? ' disabled' : ''}>Удалить скан</button>
+          </div>` : ''}
+      </div>`;
+  };
+
+  sheet.addEventListener('click', async (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) return close();
+
+    if (e.target.closest('[data-delete]')) {
+      if (!confirm('Удалить скан? Чек можно будет отсканировать заново.')) return;
+      try {
+        await api(`/api/scan/${job.id}`, { method: 'DELETE' });
+        toast('Скан удалён');
+        close();
+      } catch (err) {
+        draw(`Не удалилось: ${err.message}`);
+      }
+      return;
+    }
+
+    if (e.target.closest('[data-retry]')) {
+      try {
+        ({ job } = await post(`/api/scan/${job.id}/retry`));
+      } catch (err) {
+        return draw(`Не вышло: ${err.message}`);
+      }
+      job = await followScan(job, (j) => {
+        job = j;
+        draw(`${jobNote(j)}…`);
+      });
+      if (job.status === 'done' && job.receipt_id) {
+        sheet.remove();
+        await openReceiptSheet(job.receipt_id);
+      } else {
+        draw(job.status === 'failed' ? 'ФНС снова не отдала чек' : 'Ответ задерживается — проверим позже');
+      }
+    }
+  });
+
+  draw();
+}
+
+// ── добавление ───────────────────────────────────────────
+
+function screenAdd() {
+  return `
+    <div class="add">
+      <button class="add-btn" type="button" data-screen="scan" data-camera>
+        <span class="add-ic">${UI.scan}</span>
+        <span class="add-text"><b>Сканировать чек</b><span>QR-код внизу чека — позиции придут из ФНС</span></span>
+      </button>
+      <button class="add-btn" type="button" data-screen="manual">
+        <span class="add-ic">${UI.pen}</span>
+        <span class="add-text"><b>Вбить вручную</b><span>Трата без чека: рынок, перевод, наличные</span></span>
+      </button>
+    </div>`;
+}
+
 // ── сканирование ─────────────────────────────────────────
 // QR чека содержит только реквизиты, позиции запрашиваются у ФНС, а обмен там
 // асинхронный. Поэтому экран не ждёт ответа: скан уходит в очередь на сервере,
 // а мы показываем, как он продвигается.
 
 let camera = null; // активный поток, чтобы погасить его при уходе с экрана
+let cameraOnOpen = false; // камера включается сама, только если пришли кнопкой «Сканировать»
 
 function stopCamera() {
   if (!camera) return;
@@ -312,24 +804,7 @@ function stopCamera() {
 const scanSupported = () => 'BarcodeDetector' in window && Boolean(navigator.mediaDevices?.getUserMedia);
 
 async function screenScan() {
-  const { jobs, usage } = await api('/api/scan');
-  const rows = jobs.length
-    ? jobs
-        .slice(0, 8)
-        .map(
-          (j) => `
-          <div class="scan-row"${j.receipt_id ? ` data-receipt="${j.receipt_id}"` : ''}>
-            <span class="scan-dot ${esc(j.status)}"></span>
-            <span class="row-main">
-              <span class="row-title">${esc(scanTitle(j))}</span>
-              <span class="row-note">${dateRu(j.purchased_at)} · ${esc(scanState(j))}</span>
-            </span>
-            <span class="row-sum">${money(j.total_sum)}</span>
-          </div>`,
-        )
-        .join('')
-    : '<p class="note">Пока ничего не сканировали</p>';
-
+  const { usage } = await api('/api/scan?state=pending');
   return `
     <div class="scan-view" id="scan-view" hidden>
       <video id="scan-video" playsinline muted autoplay></video>
@@ -346,53 +821,18 @@ async function screenScan() {
     <div id="scan-result"></div>
 
     <details class="card scan-manual"${scanSupported() ? '' : ' open'}>
-      <summary>Ввести строку вручную</summary>
+      <summary>Ввести строку из QR вручную</summary>
       <textarea id="scan-text" rows="3" placeholder="t=20250514T1830&amp;s=1234.00&amp;fn=…&amp;i=…&amp;fp=…&amp;n=1"></textarea>
       <button class="btn" id="scan-send">Отправить</button>
     </details>
 
-    <div class="card">
-      <div class="card-label">Последние сканы</div>
-      ${rows}
-      <p class="note">Запросов к ФНС сегодня: ${int.format(usage.calls)} из ${int.format(usage.limit)}</p>
-    </div>`;
+    <p class="note usage">Запросов к ФНС сегодня: ${int.format(usage.calls)} из ${int.format(usage.limit)}</p>`;
 }
 
-const scanTitle = (job) => (job.receipt_id ? `Чек №${job.receipt_id}` : `ФД ${job.fiscal_doc}`);
-
-const scanState = (job) =>
-  ({
-    new: 'в очереди',
-    sent: 'ждём ответа ФНС',
-    done: 'готово',
-    failed: job.error ? `не вышло: ${job.error}` : 'не вышло',
-  })[job.status] ?? job.status;
-
-/** Отправка распознанной строки и слежение за заданием до готовности. */
-async function submitScan(qr) {
-  const box = $('scan-result');
-  box.innerHTML = '<div class="card"><p class="note">Отправляем…</p></div>';
-
-  let job;
-  try {
-    const data = await api('/api/scan', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ qr }),
-    });
-    job = data.job;
-    if (data.known) {
-      box.innerHTML = '<div class="card"><p class="note">Этот чек уже был в базе</p></div>';
-      return;
-    }
-  } catch (err) {
-    box.innerHTML = `<div class="card"><p class="note error">${esc(err.message)}</p></div>`;
-    return;
-  }
-
-  // Ответ ФНС приходит за несколько секунд, но бывает и дольше — спрашиваем с паузой
+/** Опрос задания до готовности или отказа. Ответ ФНС приходит за секунды, но бывает и дольше. */
+async function followScan(job, onUpdate) {
   for (let i = 0; i < 30; i += 1) {
-    box.innerHTML = `<div class="card"><p class="note">${esc(scanState(job))}…</p></div>`;
+    onUpdate(job);
     if (job.status === 'done' || job.status === 'failed') break;
     await new Promise((r) => setTimeout(r, 2000));
     try {
@@ -401,17 +841,51 @@ async function submitScan(qr) {
       break;
     }
   }
+  return job;
+}
+
+/** Отправка распознанной строки и слежение за заданием до готовности. */
+async function submitScan(qr) {
+  const box = $('scan-result');
+  const say = (text, cls = '') => {
+    box.innerHTML = `<div class="card"><p class="note ${cls}">${text}</p></div>`;
+  };
+  say('Отправляем…');
+
+  let job;
+  try {
+    const data = await post('/api/scan', { qr });
+    job = data.job;
+    if (data.known) {
+      say('Этот чек уже был в базе');
+      if (job.receipt_id) await openReceiptSheet(job.receipt_id);
+      return;
+    }
+  } catch (err) {
+    say(esc(err.message), 'error');
+    return;
+  }
+
+  job = await followScan(job, (j) => say(`${esc(jobNote(j))}…`));
 
   if (job.status === 'done' && job.receipt_id) {
     box.innerHTML = '';
     await openReceiptSheet(job.receipt_id);
   } else if (job.status === 'failed') {
-    box.innerHTML = `<div class="card"><p class="note error">${esc(scanState(job))}</p></div>`;
+    // Экран не перерисовываем: сообщение должно остаться видно
+    say(
+      `${esc(jobIsSync(job) ? 'ФНС пока не получила этот чек от кассы.' : `Не вышло: ${job.error ?? ''}`)}
+       ${job.next_at ? `Спросим сами ${esc(whenRu(job.next_at))}.` : ''}
+       <br><button class="link" type="button" data-to-failed>Сканы с ошибкой</button>`,
+      'error',
+    );
+    api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
+  } else {
+    say('Ответ задерживается — чек появится в списке, когда ФНС ответит');
   }
-  render();
 }
 
-/** Камера и поиск QR в кадре. Разрешение спрашивается по нажатию, а не при входе. */
+/** Камера и поиск QR в кадре. */
 async function startCamera() {
   if (!scanSupported()) return;
   stopCamera();
@@ -460,7 +934,92 @@ async function startCamera() {
   }
 }
 
-// ── разбор чека после сканирования ───────────────────────
+// ── ручная трата ─────────────────────────────────────────
+// Покупка без чека. Категория здесь обязательна: угадывать её не из чего,
+// а трата без категории потерялась бы в сводке.
+
+let manualCategory = ''; // переживает перерисовку: несколько трат подряд обычно из одной категории
+
+function categoryButton(slug) {
+  const found = findCategory(slug);
+  if (!found) {
+    return `<span class="pick-ic" style="background:#eef1f5;color:#6b7280">${groupIcon('none')}</span>
+      <span class="cat-name muted">Выбрать категорию</span>`;
+  }
+  const color = found.group.color ?? '#eef1f5';
+  return `<span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(found.group.icon ?? 'none')}</span>
+    <span class="cat-name">${esc(found.category.name)}<small>${esc(found.group.name)}</small></span>`;
+}
+
+function screenManual() {
+  const today = isoDay(new Date());
+  return `
+    <form class="card form" id="manual-form" novalidate>
+      <label class="field">
+        <span>Сумма, ₽</span>
+        <input id="m-sum" class="sum-input" inputmode="decimal" autocomplete="off" placeholder="0" required />
+      </label>
+      <label class="field">
+        <span>Что купили</span>
+        <input id="m-name" type="text" maxlength="200" autocomplete="off" placeholder="Необязательно" />
+      </label>
+      <label class="field">
+        <span>Дата</span>
+        <input id="m-date" type="date" value="${today}" max="${today}" required />
+      </label>
+      <div class="field">
+        <span>Категория</span>
+        <button class="cat-pick" id="m-cat" type="button">${categoryButton(manualCategory)}</button>
+      </div>
+      <p class="note" id="m-note"></p>
+      <button class="btn primary big" id="m-save" type="submit">Записать</button>
+    </form>`;
+}
+
+async function saveManual() {
+  const note = $('m-note');
+  const sum = $('m-sum').value.trim();
+  const date = $('m-date').value;
+  note.classList.add('error');
+
+  if (!(Number(sum.replace(/\s/g, '').replace(',', '.')) > 0)) {
+    note.textContent = 'Укажите сумму';
+    return $('m-sum').focus();
+  }
+  if (!date) {
+    note.textContent = 'Укажите дату';
+    return;
+  }
+  if (!manualCategory) {
+    note.textContent = 'Выберите категорию';
+    return;
+  }
+
+  // Сегодняшней трате — текущее время, прошлой — полдень: точного времени никто не помнит
+  const now = new Date();
+  const time = date === isoDay(now) ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : '12:00';
+
+  $('m-save').disabled = true;
+  note.classList.remove('error');
+  note.textContent = 'Записываем…';
+  try {
+    await post('/api/manual', { sum, date, time, name: $('m-name').value, category: manualCategory });
+    const found = findCategory(manualCategory);
+    toast(`Записано: ${money(Math.round(Number(sum.replace(/\s/g, '').replace(',', '.')) * 100), true)} · ${found?.category.name ?? ''}`);
+    // Форма остаётся: следующую трату того же дня и категории вбивать быстрее
+    $('m-sum').value = '';
+    $('m-name').value = '';
+    note.textContent = 'Можно вбить следующую';
+    $('m-sum').focus();
+  } catch (err) {
+    note.classList.add('error');
+    note.textContent = `Не записалось: ${err.message}`;
+  } finally {
+    $('m-save').disabled = false;
+  }
+}
+
+// ── разбор чека ──────────────────────────────────────────
 // Модель угадывает категорию, но угадывает не всегда. Показываем разобранный чек
 // сразу после распознавания: согласиться — ничего не делать, поправить — один выбор.
 // Правка уходит в словарь и распространяется на все позиции с таким же названием,
@@ -476,7 +1035,8 @@ function sheetRow(item) {
   const group = findGroup(item.group_slug);
   const color = group?.color ?? '#eef1f5';
   // Значок в кольце — категорию предложила модель, сплошной — выбрал человек
-  const guess = item.category_slug && item.category_source !== 'manual' ? ' guess' : '';
+  const human = item.category_source === 'manual' || item.category_source === 'pinned';
+  const guess = item.category_slug && !human ? ' guess' : '';
 
   return `
     <button class="sheet-row${guess}" type="button" data-row="${item.id}" data-pick="${item.id}">
@@ -561,9 +1121,14 @@ function openCategoryPicker(itemId, onPick) {
 }
 
 async function openReceiptSheet(receiptId) {
-  const receipt = await api(`/api/receipts/${receiptId}`).catch(() => null);
-  if (!receipt) return;
+  let receipt;
+  try {
+    receipt = await api(`/api/receipts/${receiptId}`);
+  } catch (err) {
+    return toast(`Чек не открылся: ${err.message}`);
+  }
 
+  const manual = receipt.fiscal_drive === 'manual';
   const unknown = receipt.items.filter((i) => !i.category_slug).length;
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
@@ -572,29 +1137,44 @@ async function openReceiptSheet(receiptId) {
       <div class="sheet-top">
         <div>
           <div class="sheet-sum-total">${money(receipt.total_sum, true)}</div>
-          <div class="note">${esc(receipt.seller ?? '')}</div>
+          <div class="note">${esc(manual ? 'Записано вручную' : sellerName(receipt))} · ${dateRu(receipt.purchased_at)} ${esc(timeRu(receipt.purchased_at))}</div>
         </div>
         <button class="btn" data-close type="button">Готово</button>
       </div>
       <p class="note sheet-hint">${
         unknown
           ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — выберите вручную`
-          : 'Категории проставлены автоматически. Если ошиблись — поправьте'
+          : manual
+            ? 'Нажмите на строку, чтобы сменить категорию'
+            : 'Категории проставлены автоматически. Если ошиблись — поправьте'
       }</p>
       <div class="sheet-list">${receipt.items.map(sheetRow).join('')}</div>
+      ${manual ? '<div class="sheet-actions"><button class="btn danger" type="button" data-remove>Удалить запись</button></div>' : ''}
     </div>`;
 
   document.body.appendChild(sheet);
 
-  sheet.addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]') || e.target === sheet) {
-      sheet.remove();
-      render(); // сводка могла измениться
-    }
-  });
+  const close = () => {
+    sheet.remove();
+    render(); // сводка могла измениться
+  };
 
-  // Нажатие на значок категории открывает выбор; сохранение — уже по возврату
-  sheet.addEventListener('click', (e) => {
+  sheet.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-close]') || e.target === sheet) return close();
+
+    if (e.target.closest('[data-remove]')) {
+      if (!confirm('Удалить эту запись?')) return;
+      try {
+        await api(`/api/receipts/${receipt.id}`, { method: 'DELETE' });
+        toast('Запись удалена');
+        close();
+      } catch (err) {
+        toast(`Не удалилось: ${err.message}`);
+      }
+      return;
+    }
+
+    // Нажатие на строку открывает выбор; сохранение — уже по возврату
     const pick = e.target.closest('[data-pick]');
     if (pick) openCategoryPicker(Number(pick.dataset.pick), saveCategory);
   });
@@ -607,13 +1187,9 @@ async function saveCategory(itemId, slug) {
   row.classList.add('saving');
 
   try {
-    const data = await api(`/api/items/${itemId}/category`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ category: slug }),
-    });
+    const data = await post(`/api/items/${itemId}/category`, { category: slug });
 
-    const group = (meta?.categories ?? []).find((g) => g.subcategories.some((x) => x.slug === slug));
+    const group = findCategory(slug)?.group;
     const color = group?.color ?? '#eef1f5';
     const ic = row.querySelector('.pick-ic');
     ic.style.background = color;
@@ -633,13 +1209,28 @@ async function saveCategory(itemId, slug) {
   }
 }
 
+// ── экраны ───────────────────────────────────────────────
+
 const SCREENS = {
   summary: { title: 'Расходы', render: screenSummary },
-  scan: { title: 'Сканировать', render: screenScan },
+  receipts: { title: 'Чеки', render: screenReceipts },
+  add: { title: 'Добавить', render: screenAdd },
+  scan: {
+    title: 'Сканировать',
+    render: screenScan,
+    after: () => {
+      if (cameraOnOpen) startCamera();
+      cameraOnOpen = false;
+    },
+  },
+  manual: { title: 'Вручную', render: screenManual, after: () => $('m-sum')?.focus() },
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem },
 };
+
+// Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
+const TAB_OF = { summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'receipts' };
 
 let renderSeq = 0;
 
@@ -647,13 +1238,22 @@ async function render() {
   const seq = ++renderSeq;
   stopCamera(); // уходим с экрана — гасим поток, иначе камера остаётся включённой
   const screen = SCREENS[state.screen] ?? SCREENS.summary;
+  const top = TOP.includes(state.screen);
+
   $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
-  $('back').hidden = state.screen === 'summary';
+  $('back').hidden = top;
+  $('fab').hidden = !top;
+  for (const tab of document.querySelectorAll('[data-tab]')) {
+    tab.classList.toggle('on', tab.dataset.tab === TAB_OF[state.screen]);
+  }
   $('screen').innerHTML = loading();
+  $('screen').scrollTop = 0;
 
   try {
     const html = await screen.render();
-    if (seq === renderSeq) $('screen').innerHTML = html;
+    if (seq !== renderSeq) return;
+    $('screen').innerHTML = html;
+    screen.after?.();
   } catch (err) {
     if (seq === renderSeq) $('screen').innerHTML = failed(err);
   }
@@ -662,8 +1262,15 @@ async function render() {
 // ── события ──────────────────────────────────────────────
 
 $('screen').addEventListener('click', (e) => {
-  const month = e.target.closest('[data-month]');
-  if (month) return go({ month: shiftMonth(state.month, Number(month.dataset.month)) }, true);
+  const shift = e.target.closest('[data-shift]');
+  if (shift) return go(shiftPeriod(state.from, state.to, Number(shift.dataset.shift)), true);
+
+  if (e.target.closest('[data-period]')) return openPeriodPicker();
+
+  const filter = e.target.closest('[data-filter]');
+  if (filter) return go({ filter: filter.dataset.filter }, true);
+
+  if (e.target.closest('[data-to-failed]')) return go({ screen: 'receipts', filter: 'failed' });
 
   const group = e.target.closest('[data-group]');
   if (group) return go({ screen: 'group', group: group.dataset.group, category: '' });
@@ -675,10 +1282,27 @@ $('screen').addEventListener('click', (e) => {
   if (item) return go({ screen: 'item', item: item.dataset.item });
 
   const screen = e.target.closest('[data-screen]');
-  if (screen) return go({ screen: screen.dataset.screen });
+  if (screen) {
+    cameraOnOpen = screen.hasAttribute('data-camera');
+    return go({ screen: screen.dataset.screen });
+  }
 
-  const scanRow = e.target.closest('[data-receipt]');
-  if (scanRow) return openReceiptSheet(Number(scanRow.dataset.receipt));
+  const job = e.target.closest('[data-job]');
+  if (job) return openScanSheet(Number(job.dataset.job));
+
+  const receipt = e.target.closest('[data-receipt]');
+  if (receipt) return openReceiptSheet(Number(receipt.dataset.receipt));
+
+  const more = e.target.closest('#more');
+  if (more) return loadMoreReceipts(more);
+
+  if (e.target.closest('#m-cat')) {
+    return openCategoryPicker(null, (_, slug) => {
+      manualCategory = slug;
+      $('m-cat').innerHTML = categoryButton(slug);
+      $('m-note').textContent = '';
+    });
+  }
 
   if (e.target.closest('#scan-start')) return startCamera();
   if (e.target.closest('#scan-send')) {
@@ -687,13 +1311,19 @@ $('screen').addEventListener('click', (e) => {
   }
 });
 
+$('screen').addEventListener('submit', (e) => {
+  if (e.target.id !== 'manual-form') return;
+  e.preventDefault();
+  saveManual();
+});
+
 // Смена категории: группа перезаполняет второй список, выбор категории сохраняет
 $('screen').addEventListener('change', async (e) => {
   const card = e.target.closest('[data-item-card]');
   if (!card) return;
 
   if (e.target.id === 'pick-group') {
-    const subs = (meta?.categories ?? []).find((g) => g.slug === e.target.value)?.subcategories ?? [];
+    const subs = findGroup(e.target.value)?.subcategories ?? [];
     $('pick-category').innerHTML =
       '<option value="">— не выбрана —</option>' +
       subs.map((s) => `<option value="${esc(s.slug)}">${esc(s.name)}</option>`).join('');
@@ -704,11 +1334,7 @@ $('screen').addEventListener('change', async (e) => {
   const note = $('pick-note');
   note.textContent = 'Сохранение…';
   try {
-    const data = await api(`/api/items/${card.dataset.itemCard}/category`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ category: e.target.value }),
-    });
+    const data = await post(`/api/items/${card.dataset.itemCard}/category`, { category: e.target.value });
     note.textContent = data.category
       ? `«${data.category.name}» — обновлено ${int.format(data.affected)} ${plural(data.affected, 'позиция', 'позиции', 'позиций')}`
       : `Категория снята, затронуто ${int.format(data.affected)}`;
@@ -720,8 +1346,16 @@ $('screen').addEventListener('change', async (e) => {
 });
 
 $('back').addEventListener('click', () => history.back());
+$('fab').addEventListener('click', () => go({ screen: 'add' }));
+
+// Вкладка сбрасывает глубину, но не период: переключение не должно терять выбор дат
+document.querySelector('.tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-tab]');
+  if (tab) go({ screen: tab.dataset.tab, group: '', category: '', item: '' });
+});
 
 $('logout').addEventListener('click', async () => {
+  if (!confirm('Выйти из аккаунта на этом устройстве?')) return;
   await api('/api/logout', { method: 'POST' }).catch(() => {});
   token.clear();
   location.reload();
@@ -739,13 +1373,21 @@ function showLogin(note) {
 async function start() {
   $('login').hidden = true;
   $('app').hidden = false;
+  $('logout').innerHTML = UI.logout;
+  $('tab-summary-ic').innerHTML = UI.wallet;
+  $('tab-receipts-ic').innerHTML = UI.receipt;
   meta = await api('/api/meta');
 
   // Пустой месяц на старте — не повод показывать ноль: открываем последний с данными
-  if (!new URLSearchParams(location.search).get('month') && meta.stats.date_to) {
-    state.month = meta.stats.date_to.slice(0, 7);
+  const p = new URLSearchParams(location.search);
+  if (!p.get('from') && !p.get('month') && meta.stats.date_to) {
+    const last = parseDay(meta.stats.date_to.slice(0, 10));
+    Object.assign(state, monthPeriod(last.getFullYear(), last.getMonth()));
   }
   go({}, true);
+
+  // Бейдж ошибок виден с любого экрана — застрявший скан не должен теряться
+  api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
 }
 
 $('login-form').addEventListener('submit', async (e) => {

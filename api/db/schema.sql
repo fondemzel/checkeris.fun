@@ -255,7 +255,9 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
   receipt_id  INTEGER REFERENCES receipts (id) ON DELETE SET NULL,
   attempts    INTEGER NOT NULL DEFAULT 0,
   error       TEXT,
-  next_at     TEXT,                     -- когда воркеру можно взяться снова
+  error_code  TEXT,                     -- код отказа ФНС: 455/544 значат «данных ещё нет»
+  retries     INTEGER NOT NULL DEFAULT 0, -- сколько отложенных повторов уже потрачено
+  next_at     TEXT,                     -- когда воркеру можно взяться снова (и у ошибки — повтор)
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL,
   UNIQUE (fiscal_drive, fiscal_doc, fiscal_sign)

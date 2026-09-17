@@ -24,6 +24,32 @@ export function migrate(db) {
   extractGroups(db);
   addColumn(db, 'groups', 'shade_from', 'INTEGER NOT NULL DEFAULT 25');
   addColumn(db, 'groups', 'shade_to', 'INTEGER NOT NULL DEFAULT 85');
+  addColumn(db, 'scan_jobs', 'error_code', 'TEXT');
+  addColumn(db, 'scan_jobs', 'retries', 'INTEGER NOT NULL DEFAULT 0');
+  repairScanErrors(db);
+}
+
+/**
+ * Первые версии клали в ошибку скана весь вложенный ответ ФНС вместе с разметкой.
+ * Достаём из него код и текст. Заодно гасим next_at у старых ошибок: раньше он
+ * оставался от опроса, а теперь непустой next_at у ошибки означает «повторить».
+ */
+function repairScanErrors(db) {
+  const broken = db.prepare("SELECT id, error FROM scan_jobs WHERE status = 'failed' AND error LIKE '%<Code>%'").all();
+  const update = db.prepare('UPDATE scan_jobs SET error = ?, error_code = ?, next_at = NULL WHERE id = ?');
+  for (const row of broken) {
+    const code = /<Code>([^<]*)<\/Code>/.exec(row.error)?.[1] ?? null;
+    const message = /<Message>([^<]*)/.exec(row.error)?.[1] ?? row.error;
+    update.run(message.trim(), code, row.id);
+  }
+  // Назначенный повтор всегда идёт с кодом отказа; без кода next_at — остаток опроса
+  db.exec("UPDATE scan_jobs SET next_at = NULL WHERE status = 'failed' AND error_code IS NULL AND next_at IS NOT NULL");
+  // Ошибки «данных ещё нет», случившиеся до автоповторов, переспрашиваем один раз.
+  // retries = 0 бывает только у них: новый отказ сразу получает повтор и счётчик 1
+  db.prepare(
+    `UPDATE scan_jobs SET next_at = ?
+      WHERE status = 'failed' AND retries = 0 AND next_at IS NULL AND error_code IN ('455', '544')`,
+  ).run(new Date().toISOString());
 }
 
 /** CREATE TABLE IF NOT EXISTS не добавит колонку в уже существующую таблицу. */

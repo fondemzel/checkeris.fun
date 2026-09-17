@@ -80,6 +80,13 @@ export function buildFilters(params, { prefix = '', searchItems = false } = {}) 
     args.max_sum = Math.round(maxSum * 100);
   }
 
+  // Происхождение чека: вбит руками или отсканирован с телефона. Только для списка чеков
+  const kind = params.get('kind');
+  if (!searchItems && kind === 'manual') where.push(`${prefix}fiscal_drive = 'manual'`);
+  if (!searchItems && kind === 'scan') {
+    where.push(`EXISTS (SELECT 1 FROM scan_jobs s WHERE s.receipt_id = ${prefix}id)`);
+  }
+
   // Категории есть только у позиций: у чека их столько же, сколько строк.
   if (searchItems) {
     const group = (params.get('group') ?? '').trim();
@@ -144,7 +151,10 @@ export function listReceipts(db, params) {
       `SELECT r.id, r.purchased_at, r.purchased_date, r.seller, r.seller_inn, r.retail_place,
               r.retail_address, r.operation_type, r.total_sum, r.cash_sum, r.ecash_sum,
               r.prepaid_sum, r.item_count, r.items_sum, r.internet_sign,
-              ${COUNTED} AS counted
+              ${COUNTED} AS counted, r.fiscal_drive = 'manual' AS manual,
+              -- у ручной записи продавца нет, её имя — то, что купили
+              CASE WHEN r.fiscal_drive = 'manual'
+                   THEN (SELECT i.name FROM items i WHERE i.receipt_id = r.id ORDER BY i.pos LIMIT 1) END AS title
          FROM receipts r
          ${whereSql}
         ORDER BY ${column} ${dir}, r.id ${dir}

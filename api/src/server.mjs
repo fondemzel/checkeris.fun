@@ -21,7 +21,8 @@ import {
 } from './queries.mjs';
 import { loadCategories, syncCategories } from './categories.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
-import { addScan, getScan, recentScans, runScanQueue } from './scan.mjs';
+import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
+import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
 import {
   getTaxonomy,
@@ -278,14 +279,41 @@ async function handleApi(req, res, url) {
       runScanQueue(db); // не ждём: клиент опрашивает состояние сам
       return sendJson(res, 200, { ...result, usage: fnsUsage(db) });
     }
-    if (req.method === 'GET') return sendJson(res, 200, { jobs: recentScans(db), usage: fnsUsage(db) });
+    // Сканы без чека: ?state=failed | pending, без него — и те и другие
+    if (req.method === 'GET') {
+      return sendJson(res, 200, { ...listScans(db, searchParams.get('state') ?? ''), usage: fnsUsage(db) });
+    }
     return sendJson(res, 405, { error: 'method not allowed' });
   }
 
-  const scanMatch = pathname.match(/^\/api\/scan\/(\d+)$/);
+  const scanMatch = pathname.match(/^\/api\/scan\/(\d+)(\/retry)?$/);
   if (scanMatch) {
-    const job = getScan(db, Number(scanMatch[1]));
-    return job ? sendJson(res, 200, { job }) : sendJson(res, 404, { error: 'скан не найден' });
+    const id = Number(scanMatch[1]);
+    let result;
+    if (scanMatch[2]) {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      result = retryScan(db, id);
+      if (!result.error) runScanQueue(db);
+    } else if (req.method === 'DELETE') {
+      result = deleteScan(db, id);
+    } else {
+      const job = getScan(db, id);
+      return job ? sendJson(res, 200, { job }) : sendJson(res, 404, { error: 'скан не найден' });
+    }
+    return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
+  }
+
+  // Трата без чека, вбитая с телефона
+  if (pathname === '/api/manual') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = addManual(db, body);
+    return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
   }
 
   // Сводка: сколько и на что. Главный запрос телефона — один вместо выкачивания строк
@@ -294,6 +322,10 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/receipts') return sendJson(res, 200, listReceipts(db, searchParams));
 
   const receiptMatch = pathname.match(/^\/api\/receipts\/(\d+)$/);
+  if (receiptMatch && req.method === 'DELETE') {
+    const result = deleteManual(db, Number(receiptMatch[1]));
+    return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
+  }
   if (receiptMatch) {
     const receipt = getReceipt(db, Number(receiptMatch[1]));
     return receipt ? sendJson(res, 200, receipt) : sendJson(res, 404, { error: 'receipt not found' });
