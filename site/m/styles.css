@@ -357,6 +357,23 @@ button, input, select { font: inherit; color: inherit; }
 .add-text b { display: block; font-size: 17px; font-weight: 600; }
 .add-text span { display: block; margin-top: 3px; font-size: 13px; color: var(--muted); }
 
+/* ── добавлено ─────────────────────────────────────────── */
+
+.done {
+  padding: 22px 16px 18px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.done-ic { display: block; color: #1baf7a; }
+.done-ic svg { width: 44px; height: 44px; }
+.done-title { margin-top: 8px; font-size: 15px; color: var(--muted); }
+.done-sum { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
+
+.done-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+
 /* ── ручная трата ──────────────────────────────────────── */
 
 .form { display: flex; flex-direction: column; gap: 14px; }

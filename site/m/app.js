@@ -54,6 +54,7 @@ const UI = {
     '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>' +
       '<path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>',
   ),
+  check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   calendar: svg('<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>'),
   wallet: groupIcon('card'),
   receipt: groupIcon('receipt'),
@@ -150,14 +151,15 @@ const thisMonth = monthPeriod(new Date().getFullYear(), new Date().getMonth());
 const state = {
   from: thisMonth.from,
   to: thisMonth.to,
-  screen: 'summary', // summary | group | category | item | receipts | add | manual
+  screen: 'summary', // summary | group | category | item | receipts | add | manual | added
   group: '',
   category: '',
   item: '',
   filter: 'all', // список чеков: all | failed | pending | manual
+  added: '', // чек, только что добавленный сканом или руками
 };
 
-const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual'];
+const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 const TOP = ['summary', 'receipts']; // корневые экраны: у них нет «назад», зато есть «+»
 
@@ -188,6 +190,7 @@ function go(patch, replace = false) {
   if (state.group) params.set('group', state.group);
   if (state.category) params.set('category', state.category);
   if (state.item) params.set('item', state.item);
+  if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   history[replace ? 'replaceState' : 'pushState']({ ...state }, '', `?${params}`);
   render();
@@ -207,6 +210,7 @@ function readUrl() {
   state.group = p.get('group') ?? '';
   state.category = p.get('category') ?? '';
   state.item = p.get('item') ?? '';
+  state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
 }
 
@@ -786,6 +790,38 @@ function screenAdd() {
     </div>`;
 }
 
+/**
+ * Что получилось после добавления: чек с позициями или одна ручная запись.
+ * Отдельный экран, а не всплывающий лист: после сканирования это конец дела,
+ * и здесь же решается, добавлять ли дальше. Категории правятся прямо тут —
+ * строки те же, что в разборе чека, поэтому и правка работает так же.
+ */
+async function screenAdded() {
+  const receipt = await api(`/api/receipts/${state.added}`);
+  const manual = receipt.fiscal_drive === 'manual';
+  const unknown = receipt.items.filter((i) => !i.category_slug).length;
+
+  return `
+    <div class="done">
+      <span class="done-ic">${UI.check}</span>
+      <div class="done-title">${manual ? 'Трата записана' : 'Чек добавлен'}</div>
+      <div class="done-sum">${money(receipt.total_sum, true)}</div>
+      <div class="note">${esc(manual ? 'Вручную' : sellerName(receipt))} · ${dateRu(receipt.purchased_at)} ${esc(timeRu(receipt.purchased_at))}</div>
+    </div>
+
+    <p class="note list-hint">${
+      unknown
+        ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — нажмите и выберите`
+        : 'Нажмите на строку, если категория неверная'
+    }</p>
+    <div class="list sheet-list">${receipt.items.map(sheetRow).join('')}</div>
+
+    <div class="done-actions">
+      <button class="btn primary big" type="button" data-screen="add">Добавить ещё</button>
+      <button class="btn big" type="button" data-back-home>Вернуться</button>
+    </div>`;
+}
+
 // ── сканирование ─────────────────────────────────────────
 // Камера открывается сразу поверх экрана — отдельной страницы с кнопкой «навести»
 // нет: нажатие «Сканировать» уже и есть это намерение.
@@ -940,7 +976,7 @@ async function submitScan(current, qr) {
 
   if (job.status === 'done' && job.receipt_id) {
     closeScanner();
-    await openReceiptSheet(job.receipt_id);
+    go({ screen: 'added', added: String(job.receipt_id) });
   } else if (job.status === 'failed') {
     api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
     scannerSay(
@@ -1026,14 +1062,8 @@ async function saveManual() {
   note.classList.remove('error');
   note.textContent = 'Записываем…';
   try {
-    await post('/api/manual', { sum, date, time, name: $('m-name').value, category: manualCategory });
-    const found = findCategory(manualCategory);
-    toast(`Записано: ${money(Math.round(Number(sum.replace(/\s/g, '').replace(',', '.')) * 100), true)} · ${found?.category.name ?? ''}`);
-    // Форма остаётся: следующую трату того же дня и категории вбивать быстрее
-    $('m-sum').value = '';
-    $('m-name').value = '';
-    note.textContent = 'Можно вбить следующую';
-    $('m-sum').focus();
+    const saved = await post('/api/manual', { sum, date, time, name: $('m-name').value, category: manualCategory });
+    go({ screen: 'added', added: String(saved.id) });
   } catch (err) {
     note.classList.add('error');
     note.textContent = `Не записалось: ${err.message}`;
@@ -1239,6 +1269,7 @@ const SCREENS = {
   receipts: { title: 'Чеки', render: screenReceipts },
   add: { title: 'Добавить', render: screenAdd },
   manual: { title: 'Вручную', render: screenManual, after: () => $('m-sum')?.focus() },
+  added: { title: 'Добавлено', render: screenAdded },
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem },
@@ -1295,6 +1326,9 @@ $('screen').addEventListener('click', (e) => {
   if (item) return go({ screen: 'item', item: item.dataset.item });
 
   if (e.target.closest('[data-scanner]')) return openScanner();
+
+  // «Вернуться» ведёт к расходам, а не на шаг назад: позади форма или камера
+  if (e.target.closest('[data-back-home]')) return go({ screen: 'summary', added: '' });
 
   const screen = e.target.closest('[data-screen]');
   if (screen) return go({ screen: screen.dataset.screen });
