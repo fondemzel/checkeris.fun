@@ -150,14 +150,14 @@ const thisMonth = monthPeriod(new Date().getFullYear(), new Date().getMonth());
 const state = {
   from: thisMonth.from,
   to: thisMonth.to,
-  screen: 'summary', // summary | group | category | item | receipts | add | scan | manual
+  screen: 'summary', // summary | group | category | item | receipts | add | manual
   group: '',
   category: '',
   item: '',
   filter: 'all', // список чеков: all | failed | pending | manual
 };
 
-const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'scan', 'manual'];
+const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 const TOP = ['summary', 'receipts']; // корневые экраны: у них нет «назад», зато есть «+»
 
@@ -775,7 +775,7 @@ async function openScanSheet(jobId) {
 function screenAdd() {
   return `
     <div class="add">
-      <button class="add-btn" type="button" data-screen="scan" data-camera>
+      <button class="add-btn" type="button" data-scanner>
         <span class="add-ic">${UI.scan}</span>
         <span class="add-text"><b>Сканировать чек</b><span>QR-код внизу чека — позиции придут из ФНС</span></span>
       </button>
@@ -787,46 +787,119 @@ function screenAdd() {
 }
 
 // ── сканирование ─────────────────────────────────────────
+// Камера открывается сразу поверх экрана — отдельной страницы с кнопкой «навести»
+// нет: нажатие «Сканировать» уже и есть это намерение.
+//
 // QR чека содержит только реквизиты, позиции запрашиваются у ФНС, а обмен там
-// асинхронный. Поэтому экран не ждёт ответа: скан уходит в очередь на сервере,
-// а мы показываем, как он продвигается.
+// асинхронный. Скан уходит в очередь на сервере, а камера показывает, как он
+// продвигается, и уступает место разбору чека, когда тот готов.
 
-let camera = null; // активный поток, чтобы погасить его при уходе с экрана
-let cameraOnOpen = false; // камера включается сама, только если пришли кнопкой «Сканировать»
-
-function stopCamera() {
-  if (!camera) return;
-  camera.stop = true;
-  camera.stream?.getTracks().forEach((t) => t.stop());
-  camera = null;
-}
+let scanner = null; // { el, stream, stop } — открытая камера, чтобы погасить её при уходе
 
 const scanSupported = () => 'BarcodeDetector' in window && Boolean(navigator.mediaDevices?.getUserMedia);
 
-async function screenScan() {
-  const { usage } = await api('/api/scan?state=pending');
-  return `
-    <div class="scan-view" id="scan-view" hidden>
-      <video id="scan-video" playsinline muted autoplay></video>
-      <span class="scan-frame"></span>
-    </div>
+function closeScanner() {
+  if (!scanner) return;
+  scanner.stop = true;
+  scanner.stream?.getTracks().forEach((t) => t.stop());
+  scanner.el.remove();
+  scanner = null;
+}
 
-    <button class="btn primary big" id="scan-start">Навести камеру на чек</button>
-    <p class="note" id="scan-note">${
-      scanSupported()
-        ? 'Наведите на QR-код внизу чека'
-        : 'Браузер не умеет читать QR — введите строку из чека вручную'
-    }</p>
+function openScanner() {
+  closeScanner();
+  const el = document.createElement('div');
+  el.className = 'scanner';
+  el.innerHTML = `
+    <video playsinline muted autoplay></video>
+    <span class="scanner-frame"></span>
+    <button class="scanner-close" type="button" data-close aria-label="Закрыть">×</button>
+    <div class="scanner-bottom">
+      <p class="scanner-status" id="scanner-status">Включаем камеру…</p>
+      <div class="scanner-actions" id="scanner-actions"></div>
+      <button class="scanner-link" type="button" data-typed>Ввести строку из QR вручную</button>
+      <form class="scanner-typed" id="scanner-typed" hidden>
+        <textarea rows="3" placeholder="t=20250514T1830&amp;s=1234.00&amp;fn=…&amp;i=…&amp;fp=…&amp;n=1"></textarea>
+        <button class="btn primary" type="submit">Отправить</button>
+      </form>
+    </div>`;
+  document.body.appendChild(el);
+  const current = { el, stream: null, stop: false };
+  scanner = current;
 
-    <div id="scan-result"></div>
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) return closeScanner();
+    if (e.target.closest('[data-typed]')) {
+      el.querySelector('#scanner-typed').hidden = false;
+      el.querySelector('[data-typed]').hidden = true;
+      return el.querySelector('textarea').focus();
+    }
+    if (e.target.closest('[data-again]')) return openScanner();
+    if (e.target.closest('[data-to-failed]')) {
+      closeScanner();
+      go({ screen: 'receipts', filter: 'failed' });
+    }
+  });
 
-    <details class="card scan-manual"${scanSupported() ? '' : ' open'}>
-      <summary>Ввести строку из QR вручную</summary>
-      <textarea id="scan-text" rows="3" placeholder="t=20250514T1830&amp;s=1234.00&amp;fn=…&amp;i=…&amp;fp=…&amp;n=1"></textarea>
-      <button class="btn" id="scan-send">Отправить</button>
-    </details>
+  el.querySelector('#scanner-typed').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const value = el.querySelector('textarea').value.trim();
+    if (value) submitScan(current, value);
+  });
 
-    <p class="note usage">Запросов к ФНС сегодня: ${int.format(usage.calls)} из ${int.format(usage.limit)}</p>`;
+  startCamera(current);
+}
+
+/** Статус и кнопки внизу камеры. Сканер могли закрыть, пока шёл запрос, — тогда молчим. */
+function scannerSay(current, text, { error = false, actions = '' } = {}) {
+  if (scanner !== current) return;
+  const status = current.el.querySelector('#scanner-status');
+  status.innerHTML = text;
+  status.classList.toggle('error', error);
+  current.el.querySelector('#scanner-actions').innerHTML = actions;
+}
+
+/** Камера и поиск QR в кадре. */
+async function startCamera(current) {
+  if (!scanSupported()) {
+    scannerSay(current, 'Этот браузер не умеет читать QR — введите строку из чека вручную', { error: true });
+    current.el.querySelector('[data-typed]').click();
+    return;
+  }
+
+  const video = current.el.querySelector('video');
+  try {
+    current.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    });
+    // Закрыли, пока телефон спрашивал разрешение, — поток сразу гасим
+    if (scanner !== current) return current.stream.getTracks().forEach((t) => t.stop());
+    video.srcObject = current.stream;
+    await video.play();
+    scannerSay(current, 'Наведите на QR-код внизу чека');
+  } catch (err) {
+    scannerSay(current, `Камера недоступна: ${esc(err.message)}`, { error: true });
+    return;
+  }
+
+  const detector = new BarcodeDetector({ formats: ['qr_code'] });
+  while (scanner === current && !current.stop) {
+    try {
+      const found = await detector.detect(video);
+      const qr = found.find((c) => /(^|[?&])fn=/.test(c.rawValue ?? ''));
+      if (qr) {
+        navigator.vibrate?.(60);
+        current.stream.getTracks().forEach((t) => t.stop()); // кадр держим, камеру гасим
+        current.el.classList.add('caught');
+        await submitScan(current, qr.rawValue);
+        return;
+      }
+    } catch {
+      /* кадр не разобрался — просто пробуем следующий */
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
 }
 
 /** Опрос задания до готовности или отказа. Ответ ФНС приходит за секунды, но бывает и дольше. */
@@ -845,92 +918,42 @@ async function followScan(job, onUpdate) {
 }
 
 /** Отправка распознанной строки и слежение за заданием до готовности. */
-async function submitScan(qr) {
-  const box = $('scan-result');
-  const say = (text, cls = '') => {
-    box.innerHTML = `<div class="card"><p class="note ${cls}">${text}</p></div>`;
-  };
-  say('Отправляем…');
+async function submitScan(current, qr) {
+  const again = '<button class="btn" type="button" data-again>Сканировать ещё</button>';
+  scannerSay(current, 'Код прочитан, отправляем…');
 
   let job;
   try {
     const data = await post('/api/scan', { qr });
     job = data.job;
-    if (data.known) {
-      say('Этот чек уже был в базе');
-      if (job.receipt_id) await openReceiptSheet(job.receipt_id);
-      return;
+    if (data.known && job.receipt_id) {
+      closeScanner();
+      toast('Этот чек уже был в базе');
+      return openReceiptSheet(job.receipt_id);
     }
   } catch (err) {
-    say(esc(err.message), 'error');
-    return;
+    return scannerSay(current, esc(err.message), { error: true, actions: again });
   }
 
-  job = await followScan(job, (j) => say(`${esc(jobNote(j))}…`));
+  job = await followScan(job, (j) => scannerSay(current, `${esc(cap(jobNote(j)))}…`));
+  if (scanner !== current) return; // закрыли, не дождавшись: чек и так появится в списке
 
   if (job.status === 'done' && job.receipt_id) {
-    box.innerHTML = '';
+    closeScanner();
     await openReceiptSheet(job.receipt_id);
   } else if (job.status === 'failed') {
-    // Экран не перерисовываем: сообщение должно остаться видно
-    say(
-      `${esc(jobIsSync(job) ? 'ФНС пока не получила этот чек от кассы.' : `Не вышло: ${job.error ?? ''}`)}
-       ${job.next_at ? `Спросим сами ${esc(whenRu(job.next_at))}.` : ''}
-       <br><button class="link" type="button" data-to-failed>Сканы с ошибкой</button>`,
-      'error',
-    );
     api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
+    scannerSay(
+      current,
+      `${esc(jobIsSync(job) ? 'ФНС пока не получила этот чек от кассы.' : `Не вышло: ${job.error ?? ''}`)}
+       ${job.next_at ? `Спросим сами ${esc(whenRu(job.next_at))}.` : ''}`,
+      {
+        error: true,
+        actions: `${again}<button class="btn" type="button" data-to-failed>Сканы с ошибкой</button>`,
+      },
+    );
   } else {
-    say('Ответ задерживается — чек появится в списке, когда ФНС ответит');
-  }
-}
-
-/** Камера и поиск QR в кадре. */
-async function startCamera() {
-  if (!scanSupported()) return;
-  stopCamera();
-
-  const view = $('scan-view');
-  const video = $('scan-video');
-  const note = $('scan-note');
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } },
-      audio: false,
-    });
-    camera = { stream, stop: false };
-    video.srcObject = stream;
-    await video.play();
-    view.hidden = false;
-    $('scan-start').hidden = true;
-    note.textContent = 'Ищем QR-код…';
-  } catch (err) {
-    note.textContent = `Камера недоступна: ${err.message}`;
-    note.classList.add('error');
-    return;
-  }
-
-  const detector = new BarcodeDetector({ formats: ['qr_code'] });
-  const current = camera;
-
-  while (camera === current && !current.stop) {
-    try {
-      const found = await detector.detect(video);
-      const qr = found.find((c) => /(^|[?&])fn=/.test(c.rawValue ?? ''));
-      if (qr) {
-        navigator.vibrate?.(60);
-        stopCamera();
-        view.hidden = true;
-        $('scan-start').hidden = false;
-        note.textContent = 'Код прочитан';
-        await submitScan(qr.rawValue);
-        return;
-      }
-    } catch {
-      /* кадр не разобрался — просто пробуем следующий */
-    }
-    await new Promise((r) => setTimeout(r, 300));
+    scannerSay(current, 'Ответ задерживается — чек появится в списке, когда ФНС ответит', { actions: again });
   }
 }
 
@@ -1215,14 +1238,6 @@ const SCREENS = {
   summary: { title: 'Расходы', render: screenSummary },
   receipts: { title: 'Чеки', render: screenReceipts },
   add: { title: 'Добавить', render: screenAdd },
-  scan: {
-    title: 'Сканировать',
-    render: screenScan,
-    after: () => {
-      if (cameraOnOpen) startCamera();
-      cameraOnOpen = false;
-    },
-  },
   manual: { title: 'Вручную', render: screenManual, after: () => $('m-sum')?.focus() },
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
@@ -1236,7 +1251,7 @@ let renderSeq = 0;
 
 async function render() {
   const seq = ++renderSeq;
-  stopCamera(); // уходим с экрана — гасим поток, иначе камера остаётся включённой
+  closeScanner(); // уходим с экрана (в том числе кнопкой «назад») — камера гаснет
   const screen = SCREENS[state.screen] ?? SCREENS.summary;
   const top = TOP.includes(state.screen);
 
@@ -1270,8 +1285,6 @@ $('screen').addEventListener('click', (e) => {
   const filter = e.target.closest('[data-filter]');
   if (filter) return go({ filter: filter.dataset.filter }, true);
 
-  if (e.target.closest('[data-to-failed]')) return go({ screen: 'receipts', filter: 'failed' });
-
   const group = e.target.closest('[data-group]');
   if (group) return go({ screen: 'group', group: group.dataset.group, category: '' });
 
@@ -1281,11 +1294,10 @@ $('screen').addEventListener('click', (e) => {
   const item = e.target.closest('[data-item]');
   if (item) return go({ screen: 'item', item: item.dataset.item });
 
+  if (e.target.closest('[data-scanner]')) return openScanner();
+
   const screen = e.target.closest('[data-screen]');
-  if (screen) {
-    cameraOnOpen = screen.hasAttribute('data-camera');
-    return go({ screen: screen.dataset.screen });
-  }
+  if (screen) return go({ screen: screen.dataset.screen });
 
   const job = e.target.closest('[data-job]');
   if (job) return openScanSheet(Number(job.dataset.job));
@@ -1304,11 +1316,6 @@ $('screen').addEventListener('click', (e) => {
     });
   }
 
-  if (e.target.closest('#scan-start')) return startCamera();
-  if (e.target.closest('#scan-send')) {
-    const value = $('scan-text').value.trim();
-    if (value) submitScan(value);
-  }
 });
 
 $('screen').addEventListener('submit', (e) => {

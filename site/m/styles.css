@@ -471,42 +471,81 @@ button, input, select { font: inherit; color: inherit; }
 
 .cal-note { margin: 10px 0; text-align: center; }
 
-.scan-view {
-  position: relative;
-  margin-bottom: 12px;
-  border-radius: 12px;
-  overflow: hidden;
+/* Камера во весь экран поверх приложения: отдельной страницы у сканирования нет */
+.scanner {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
   background: #000;
 }
 
-.scan-view[hidden] { display: none; }
-.scan-view video { display: block; width: 100%; max-height: 60vh; object-fit: cover; }
+.scanner video { width: 100%; height: 100%; object-fit: cover; }
 
 /* Рамка-подсказка: куда наводить */
-.scan-frame {
+.scanner-frame {
   position: absolute;
-  inset: 18% 18%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  border-radius: 12px;
+  top: 38%;
+  left: 50%;
+  width: min(64vw, 280px);
+  aspect-ratio: 1;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
-.scan-manual summary { cursor: pointer; color: var(--muted); font-size: 14px; }
-.scan-manual textarea {
-  width: 100%;
-  margin: 10px 0 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 13px;
-  resize: vertical;
+.scanner.caught .scanner-frame { border-color: #4ade80; }
+
+.scanner-close {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
 }
 
-.usage { margin-top: 12px; text-align: center; }
+.scanner-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75) 30%);
+  color: #fff;
+  text-align: center;
+}
 
-.scan-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #f0f1f3; }
-.scan-row:first-of-type { border-top: none; }
+.scanner-status { margin: 0; font-size: 15px; }
+.scanner-status.error { color: #ffb4ab; }
+.scanner-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.scanner-actions:empty { display: none; }
+.scanner-actions .btn { padding: 0 16px; }
+
+.scanner-link { border: none; background: none; color: rgba(255, 255, 255, 0.75); font-size: 13px; text-decoration: underline; cursor: pointer; }
+.scanner-link[hidden] { display: none; }
+
+.scanner-typed { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.scanner-typed[hidden] { display: none; }
+.scanner-typed textarea {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 16px;
+}
 
 .scan-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #c9ced6; }
 .scan-dot.new, .scan-dot.sent { background: #eda100; }
@@ -655,7 +694,3 @@ button, input, select { font: inherit; color: inherit; }
 .picker-item:active { background: #eef2f9; }
 .picker-item .dot { width: 14px; height: 14px; margin: 0; }
 
-.scan-row[data-receipt] { cursor: pointer; }
-.scan-row[data-receipt]:active { background: #eef2f9; }
-
-#scan-note { margin: 8px 2px 12px; }
