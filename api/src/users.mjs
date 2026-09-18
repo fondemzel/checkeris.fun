@@ -12,6 +12,7 @@
 import { pathToFileURL } from 'node:url';
 import { openDb, migrate } from './db.mjs';
 import { hashPassword, hasUsers } from './auth.mjs';
+import { provisionTaxonomy } from './taxonomy.mjs';
 
 export function addUser(db, login, password) {
   const name = String(login ?? '').trim();
@@ -19,11 +20,13 @@ export function addUser(db, login, password) {
   if (String(password ?? '').length < 8) throw new Error('пароль короче 8 символов');
   if (db.prepare('SELECT 1 FROM users WHERE login = ?').get(name)) throw new Error(`пользователь «${name}» уже есть`);
 
-  db.prepare('INSERT INTO users (login, password, created_at) VALUES (?, ?, ?)').run(
+  const { lastInsertRowid } = db.prepare('INSERT INTO users (login, password, created_at) VALUES (?, ?, ?)').run(
     name,
     hashPassword(password),
     new Date().toISOString(),
   );
+  // Без справочника у пользователя не будет ни одной категории: выдаём копию системного
+  provisionTaxonomy(db, Number(lastInsertRowid));
   return name;
 }
 

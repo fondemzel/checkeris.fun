@@ -7,6 +7,9 @@
 //
 // Состояния: new → sent → done | failed.
 //
+// Очередь одна на всё приложение, но у каждого задания есть владелец: чек ложится
+// в его базу, а список, повтор и удаление видят только его задания.
+//
 // Опрос идёт с нарастающей паузой, потому что суточный лимит обращений к ФНС — 1000
 // на всё приложение, и цикл «спрашивать раз в секунду» съел бы его за час.
 import { parseQr, requestTicket, fetchTicket, fnsReady, fnsUsage } from './fns.mjs';
@@ -31,31 +34,33 @@ const later = (seconds) => new Date(Date.now() + seconds * 1000).toISOString();
 /**
  * Приём скана. Возвращает задание — существующее, если этот чек уже приносили:
  * ключ тот же, что у импорта выгрузок, поэтому повтор не создаёт вторую запись.
+ * Ключ в пределах владельца: тот же чек, отсканированный другим, — его отдельный скан.
  */
-export function addScan(db, qrText) {
+export function addScan(db, userId, qrText) {
   const qr = parseQr(qrText);
   if (!qr) return { error: 'не похоже на QR чека', status: 400 };
 
   const existing = db
-    .prepare('SELECT * FROM scan_jobs WHERE fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?')
-    .get(qr.fn, qr.fd, qr.fp);
+    .prepare('SELECT * FROM scan_jobs WHERE user_id = ? AND fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?')
+    .get(userId, qr.fn, qr.fd, qr.fp);
   // Повторный скан чека, на который ФНС отказала, — это просьба спросить ещё раз
-  if (existing?.status === 'failed') return { job: retryScan(db, existing.id).job, repeat: true };
+  if (existing?.status === 'failed') return { job: retryScan(db, userId, existing.id).job, repeat: true };
   if (existing) return { job: existing, repeat: true };
 
   // Чек мог приехать раньше выгрузкой — тогда запрашивать его у ФНС незачем
   const known = db
-    .prepare('SELECT id FROM receipts WHERE fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?')
-    .get(qr.fn, qr.fd, qr.fp);
+    .prepare('SELECT id FROM receipts WHERE user_id = ? AND fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?')
+    .get(userId, qr.fn, qr.fd, qr.fp);
 
   const stamp = now();
   const info = db
     .prepare(
-      `INSERT INTO scan_jobs (qr, fiscal_drive, fiscal_doc, fiscal_sign, total_sum, purchased_at,
+      `INSERT INTO scan_jobs (user_id, qr, fiscal_drive, fiscal_doc, fiscal_sign, total_sum, purchased_at,
                               operation, status, receipt_id, next_at, created_at, updated_at)
-       VALUES (:qr, :fn, :fd, :fp, :sum, :date, :type, :status, :receipt, :next, :stamp, :stamp)`,
+       VALUES (:user_id, :qr, :fn, :fd, :fp, :sum, :date, :type, :status, :receipt, :next, :stamp, :stamp)`,
     )
     .run({
+      user_id: userId,
       qr: String(qrText),
       fn: qr.fn,
       fd: qr.fd,
@@ -73,7 +78,8 @@ export function addScan(db, qrText) {
   return { job, known: Boolean(known) };
 }
 
-export const getScan = (db, id) => db.prepare('SELECT * FROM scan_jobs WHERE id = ?').get(id) ?? null;
+export const getScan = (db, userId, id) =>
+  db.prepare('SELECT * FROM scan_jobs WHERE id = ? AND user_id = ?').get(id, userId) ?? null;
 
 const STATES = {
   failed: "status = 'failed'",
@@ -84,32 +90,34 @@ const STATES = {
  * Сканы, у которых ещё нет чека: с ошибкой и в работе. Готовые здесь не нужны —
  * они уже чеки и показываются списком чеков. Счётчики — для чипсов фильтра.
  */
-export function listScans(db, state = '') {
+export function listScans(db, userId, state = '') {
   const where = STATES[state] ?? `(${STATES.failed} OR ${STATES.pending})`;
-  const jobs = db.prepare(`SELECT * FROM scan_jobs WHERE ${where} ORDER BY purchased_at DESC, id DESC LIMIT 200`).all();
+  const jobs = db
+    .prepare(`SELECT * FROM scan_jobs WHERE user_id = ? AND ${where} ORDER BY purchased_at DESC, id DESC LIMIT 200`)
+    .all(userId);
   const counts = db
     .prepare(
       `SELECT COALESCE(SUM(${STATES.failed}), 0) AS failed, COALESCE(SUM(${STATES.pending}), 0) AS pending
-         FROM scan_jobs`,
+         FROM scan_jobs WHERE user_id = ?`,
     )
-    .get();
+    .get(userId);
   return { jobs, counts };
 }
 
 /** Спросить ФНС заново прямо сейчас. Счётчик автоповторов не сбрасываем: он про расход лимита. */
-export function retryScan(db, id) {
-  const job = getScan(db, id);
+export function retryScan(db, userId, id) {
+  const job = getScan(db, userId, id);
   if (!job) return { error: 'скан не найден', status: 404 };
   if (job.status !== 'failed') return { error: 'повторять можно только скан с ошибкой', status: 409 };
   db.prepare(
     "UPDATE scan_jobs SET status = 'new', attempts = 0, message_id = NULL, next_at = ?, updated_at = ? WHERE id = ?",
   ).run(now(), now(), id);
-  return { job: getScan(db, id) };
+  return { job: getScan(db, userId, id) };
 }
 
 /** Удаляется только неудачный скан: у готового есть чек, у ждущего — запрос в ФНС. */
-export function deleteScan(db, id) {
-  const job = getScan(db, id);
+export function deleteScan(db, userId, id) {
+  const job = getScan(db, userId, id);
   if (!job) return { error: 'скан не найден', status: 404 };
   if (job.status !== 'failed') return { error: 'удалить можно только скан с ошибкой', status: 409 };
   db.prepare('DELETE FROM scan_jobs WHERE id = ?').run(id);
@@ -174,7 +182,7 @@ async function step(db, job) {
   // ФНС кладёт разобранный чек в content, выгрузка приложения — в document.receipt.
   // Приводим к одному виду и дальше идём общим путём импорта.
   const { rawData, ...content } = answer.ticket.content ?? {};
-  const saved = saveReceipt(db, { _id: String(answer.ticket.id ?? ''), receipt: content }, importStatements(db));
+  const saved = saveReceipt(db, { _id: String(answer.ticket.id ?? ''), receipt: content }, importStatements(db), job.user_id);
   if (!saved?.id) {
     fail(db, job, 'чек получен, но не разобрался');
     return true;

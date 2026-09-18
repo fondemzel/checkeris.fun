@@ -20,7 +20,7 @@ const BATCH = 40;
 /** Промпт собирается из справочника: правим categories.json — меняется и промпт. */
 export function buildPrompt(catalog) {
   const taxonomy = catalog.groups
-    .map((g) => `${g.name}:\n${g.subcategories.map((s) => `  ${s.slug} — ${s.name}: ${s.hint}`).join('\n')}`)
+    .map((g) => `${g.name}:\n${g.subcategories.map((s) => `  ${s.slug} — ${s.name}${s.hint ? `: ${s.hint}` : ''}`).join('\n')}`)
     .join('\n');
 
   return `Ты классифицируешь позиции из кассовых чеков по справочнику категорий.
@@ -199,7 +199,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   console.log(`модель: yandexgpt-${model === 'pro' ? 'pro' : 'lite'}, позиций: ${labelled.length}`);
   const started = Date.now();
   const predicted = await classify(labelled, { model });
-  const groupOf = new Map(db.prepare('SELECT slug, group_slug FROM categories').all().map((r) => [r.slug, r.group_slug]));
+  const groupOf = new Map(db.prepare('SELECT slug, group_slug FROM sys_categories').all().map((r) => [r.slug, r.group_slug]));
   report({ items: labelled }, predicted, argv.includes('--errors'), groupOf);
 
   const { withRules, overridden } = applyRules(db, predicted);

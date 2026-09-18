@@ -1,11 +1,47 @@
 -- Схема кабинета: чеки ФНС и позиции в них.
 -- Все денежные поля хранятся в копейках (целые), как приходят из ФНС.
+--
+-- Данные делятся на два вида:
+--   личные — чеки, позиции, их разметка, сканы, справочник категорий пользователя;
+--            у каждой такой записи есть владелец, и чужие записи не видны;
+--   общие  — знание о товарах: словарь названий, штрихкоды, правила продавцов.
+--            Оно пишется в кодах системного справочника (sys_*) и через связи
+--            (category_links) попадает в личные категории каждого.
+--
+-- Файл выполняется при каждом старте. Старые базы доводит до этой схемы migrate()
+-- в db.mjs — CREATE TABLE IF NOT EXISTS существующую таблицу не перестраивает.
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
+-- ── доступ ──────────────────────────────────────────────────────────────────
+-- Проверка входа живёт в приложении, а не в nginx: телефону нужен токен, а не
+-- basic auth. Пароль хранится хешем scrypt с солью, сам пароль нигде не лежит.
+CREATE TABLE IF NOT EXISTS users (
+  id         INTEGER PRIMARY KEY,
+  login      TEXT NOT NULL UNIQUE,
+  password   TEXT NOT NULL,            -- scrypt: <соль в hex>:<хеш в hex>
+  created_at TEXT NOT NULL
+);
+
+-- Токен хранится хешем: если база утечёт, войти по ней будет нельзя.
+CREATE TABLE IF NOT EXISTS tokens (
+  hash       TEXT PRIMARY KEY,         -- sha256 от выданного токена
+  user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  label      TEXT,                     -- откуда вошли: кабинет, телефон
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens (user_id);
+
+-- ── чеки ────────────────────────────────────────────────────────────────────
+-- Чек принадлежит пользователю. Один и тот же чек (общий ужин) могут принести двое,
+-- поэтому тройка ФН/ФД/ФП уникальна в пределах владельца, а не на всю базу.
 CREATE TABLE IF NOT EXISTS receipts (
   id              INTEGER PRIMARY KEY,
+  user_id         INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   source_id       TEXT,                     -- _id из выгрузки
   fiscal_drive    TEXT NOT NULL,            -- fiscalDriveNumber (ФН)
   fiscal_doc      INTEGER NOT NULL,         -- fiscalDocumentNumber (ФД)
@@ -38,14 +74,15 @@ CREATE TABLE IF NOT EXISTS receipts (
   item_count      INTEGER NOT NULL DEFAULT 0,
   items_sum       INTEGER NOT NULL DEFAULT 0, -- сумма позиций, для сверки с total_sum
   raw             TEXT,                     -- исходный receipt целиком
-  UNIQUE (fiscal_drive, fiscal_doc, fiscal_sign)
+  UNIQUE (user_id, fiscal_drive, fiscal_doc, fiscal_sign)
 );
 
-CREATE INDEX IF NOT EXISTS idx_receipts_date    ON receipts (purchased_date);
-CREATE INDEX IF NOT EXISTS idx_receipts_at      ON receipts (purchased_at);
-CREATE INDEX IF NOT EXISTS idx_receipts_inn     ON receipts (seller_inn);
-CREATE INDEX IF NOT EXISTS idx_receipts_source  ON receipts (source_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_user_date ON receipts (user_id, purchased_date);
+CREATE INDEX IF NOT EXISTS idx_receipts_at        ON receipts (purchased_at);
+CREATE INDEX IF NOT EXISTS idx_receipts_inn       ON receipts (seller_inn);
+CREATE INDEX IF NOT EXISTS idx_receipts_source    ON receipts (source_id);
 
+-- Позиция принадлежит тому же, кому её чек: своего владельца ей не нужно.
 CREATE TABLE IF NOT EXISTS items (
   id            INTEGER PRIMARY KEY,
   receipt_id    INTEGER NOT NULL REFERENCES receipts (id) ON DELETE CASCADE,
@@ -68,14 +105,148 @@ CREATE INDEX IF NOT EXISTS idx_items_receipt ON items (receipt_id);
 CREATE INDEX IF NOT EXISTS idx_items_name    ON items (name_norm);
 CREATE INDEX IF NOT EXISTS idx_items_sum     ON items (sum);
 
+-- ── системный справочник ────────────────────────────────────────────────────
+-- Язык общего знания: словарь, штрихкоды и правила продавцов ссылаются на эти коды,
+-- модель размечает в них же. Он же — шаблон, который копируется новому пользователю.
+-- Правит его администратор (categories.mjs), не пользователи.
+--
+-- Цвет группы задаётся один, а её категории получают оттенки этого же цвета:
+-- shade_from и shade_to — доли (0–100) на переходе от белого к color.
+CREATE TABLE IF NOT EXISTS sys_groups (
+  slug       TEXT PRIMARY KEY,           -- food
+  name       TEXT NOT NULL,              -- Питание
+  icon       TEXT,                       -- имя фигуры из site/shared/icons.js
+  color      TEXT,                       -- #rrggbb
+  shade_from INTEGER NOT NULL DEFAULT 25,
+  shade_to   INTEGER NOT NULL DEFAULT 85,
+  sort       INTEGER NOT NULL DEFAULT 0
+);
+
+-- fallback_slug — из какой категории выделилась эта. Новая системная категория
+-- («Корм для рыбок») не должна ничего менять у тех, кто её себе не взял: для них
+-- её товары идут туда же, куда идёт запасная («Корм и уход»).
+CREATE TABLE IF NOT EXISTS sys_categories (
+  slug          TEXT PRIMARY KEY,        -- food.groceries
+  group_slug    TEXT NOT NULL REFERENCES sys_groups (slug),
+  name          TEXT NOT NULL,           -- Еда
+  hint          TEXT,                    -- подсказка модели: из неё собирается промпт
+  sort          INTEGER NOT NULL DEFAULT 0,
+  fallback_slug TEXT REFERENCES sys_categories (slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sys_categories_group ON sys_categories (group_slug, sort);
+
+-- ── общее знание о товарах ──────────────────────────────────────────────────
+-- Ключ — нормализованное название, оно стабильно между импортами (в отличие от items.id).
+CREATE TABLE IF NOT EXISTS dictionary (
+  name_norm     TEXT PRIMARY KEY,
+  category_slug TEXT NOT NULL REFERENCES sys_categories (slug),
+  source        TEXT NOT NULL,           -- manual (выверено человеком) | llm | seed
+  confidence    REAL,
+  votes         INTEGER NOT NULL DEFAULT 1,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_dictionary_category ON dictionary (category_slug);
+
+-- Штрихкод → категория. Самый надёжный ключ: ошибок быть не может.
+CREATE TABLE IF NOT EXISTS gtin_map (
+  gtin          TEXT PRIMARY KEY,
+  category_slug TEXT NOT NULL REFERENCES sys_categories (slug),
+  source        TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+-- Правила по продавцу: для услуг и платежей категорию задаёт чек, а не название
+-- позиции («Тариф по билету KUP7XEZL6K-1» опознаётся только по ИНН перевозчика).
+CREATE TABLE IF NOT EXISTS seller_rules (
+  seller_inn    TEXT PRIMARY KEY,
+  category_slug TEXT NOT NULL REFERENCES sys_categories (slug),
+  mode          TEXT NOT NULL DEFAULT 'fallback', -- always: перекрывает словарь; fallback: только если иначе не определилось
+  note          TEXT,
+  updated_at    TEXT NOT NULL
+);
+
+-- ── личный справочник ───────────────────────────────────────────────────────
+-- Копия системного при регистрации, дальше пользователь правит его как хочет.
+-- slug уникален в пределах владельца и неизменен: переименование и перенос между
+-- группами — правка name и group_slug, разметку они не трогают.
+CREATE TABLE IF NOT EXISTS groups (
+  user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  slug       TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  icon       TEXT,
+  color      TEXT,
+  shade_from INTEGER NOT NULL DEFAULT 25,
+  shade_to   INTEGER NOT NULL DEFAULT 85,
+  sort       INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, slug)
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+  user_id    INTEGER NOT NULL,
+  slug       TEXT NOT NULL,
+  group_slug TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  hint       TEXT,
+  sort       INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, slug),
+  FOREIGN KEY (user_id, group_slug) REFERENCES groups (user_id, slug) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_categories_group ON categories (user_id, group_slug, sort);
+
+-- Куда у этого пользователя ведёт каждая системная категория. Сразу после регистрации —
+-- в свою копию; удалил «Доставку еды» с переносом в «Рестораны» — связь переезжает туда же,
+-- и общее знание продолжает раскладывать доставку правильно. Категории, созданные самим
+-- пользователем, ни с чем системным не связаны: туда ведут только его ручные правки.
+CREATE TABLE IF NOT EXISTS category_links (
+  user_id  INTEGER NOT NULL,
+  sys_slug TEXT NOT NULL REFERENCES sys_categories (slug) ON DELETE CASCADE,
+  slug     TEXT NOT NULL,
+  PRIMARY KEY (user_id, sys_slug),
+  FOREIGN KEY (user_id, slug) REFERENCES categories (user_id, slug) ON DELETE CASCADE
+);
+
+-- Ручная правка категории — решение одного человека о названии товара. Верхняя
+-- ступень его лестницы разметки; на других пользователей не влияет.
+CREATE TABLE IF NOT EXISTS user_dictionary (
+  user_id       INTEGER NOT NULL,
+  name_norm     TEXT NOT NULL,
+  category_slug TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  PRIMARY KEY (user_id, name_norm),
+  FOREIGN KEY (user_id, category_slug) REFERENCES categories (user_id, slug) ON DELETE CASCADE
+);
+
+-- Результат классификации позиции, в кодах личного справочника владельца.
+-- Производная таблица: пересчитывается, знания живут в словарях и правилах.
+-- user_id здесь ради внешнего ключа: метка не может сослаться на чужую категорию.
+CREATE TABLE IF NOT EXISTS item_labels (
+  item_id       INTEGER PRIMARY KEY REFERENCES items (id) ON DELETE CASCADE,
+  user_id       INTEGER NOT NULL,
+  category_slug TEXT,
+  source        TEXT NOT NULL,           -- manual | pinned | gtin | rule | dictionary | ngram | rule-fallback | unknown
+  confidence    REAL,
+  updated_at    TEXT NOT NULL,
+  FOREIGN KEY (user_id, category_slug) REFERENCES categories (user_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_item_labels_category ON item_labels (user_id, category_slug);
+CREATE INDEX IF NOT EXISTS idx_item_labels_source   ON item_labels (source);
+
+-- ── представления ───────────────────────────────────────────────────────────
+-- Пересоздаются при каждом запуске — так изменения схемы доезжают без ручной миграции.
+-- Категория и группа берутся из справочника владельца чека, а не из общего.
+
 -- Позиции вместе с контекстом чека и категорией: на этом представлении строится
--- вкладка «Товары». Представление пересоздаётся при каждом запуске — так изменения
--- схемы доезжают без ручной миграции.
+-- вкладка «Товары», сводка и мобильная версия.
 DROP VIEW IF EXISTS v_items;
 CREATE VIEW v_items AS
 SELECT
   i.id,
   i.receipt_id,
+  r.user_id,
   i.pos,
   i.name,
   i.name_norm,
@@ -110,93 +281,16 @@ SELECT
 FROM items i
 JOIN receipts r ON r.id = i.receipt_id
 LEFT JOIN item_labels l ON l.item_id = i.id
-LEFT JOIN categories c ON c.slug = l.category_slug
-LEFT JOIN groups g ON g.slug = c.group_slug;
+LEFT JOIN categories c ON c.user_id = r.user_id AND c.slug = l.category_slug
+LEFT JOIN groups g ON g.user_id = c.user_id AND g.slug = c.group_slug;
 
--- ── категории ───────────────────────────────────────────────────────────────
--- Канонический справочник. Пользовательские деревья (когда появятся личные
--- кабинеты) будут маппиться на эти slug'и: словарь, правила и модель всегда
--- работают в каноне, пользователь видит свои названия.
-
--- Группа — самостоятельная запись, а не колонка в категории: иначе её нельзя
--- переименовать одним действием и нельзя завести пустой, чтобы потом наполнить.
--- Цвет группы задаётся один, а её категории получают оттенки этого же цвета:
--- shade_from и shade_to — доли (0–100) на переходе от белого к color, между которыми
--- раскладываются категории. Так группа читается пятном, а категории внутри различимы.
-CREATE TABLE IF NOT EXISTS groups (
-  slug       TEXT PRIMARY KEY,           -- food
-  name       TEXT NOT NULL,              -- Питание
-  icon       TEXT,                       -- имя фигуры из site/cabinet/icons.js
-  color      TEXT,                       -- #rrggbb
-  shade_from INTEGER NOT NULL DEFAULT 25,
-  shade_to   INTEGER NOT NULL DEFAULT 85,
-  sort       INTEGER NOT NULL DEFAULT 0
-);
-
--- slug категории — идентификатор, а не адрес: на него ссылаются словарь, правила
--- по продавцам, штрихкоды и разметка позиций. Он неизменен, а к какой группе
--- относится категория, говорит group_slug — поэтому категорию можно переносить.
-CREATE TABLE IF NOT EXISTS categories (
-  slug        TEXT PRIMARY KEY,          -- food.groceries
-  group_slug  TEXT NOT NULL REFERENCES groups (slug),
-  name        TEXT NOT NULL,             -- Еда
-  hint        TEXT,                      -- подсказка для промпта и подсказок в интерфейсе
-  sort        INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_categories_group ON categories (group_slug, sort);
-
--- Общий словарь названий — главный актив: наполняется от всех пользователей.
--- Ключ — нормализованное название, оно стабильно между импортами (в отличие от items.id).
-CREATE TABLE IF NOT EXISTS dictionary (
-  name_norm     TEXT PRIMARY KEY,
-  category_slug TEXT NOT NULL REFERENCES categories (slug),
-  source        TEXT NOT NULL,           -- manual | llm | model | rule | seed
-  confidence    REAL,
-  votes         INTEGER NOT NULL DEFAULT 1,
-  updated_at    TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_dictionary_category ON dictionary (category_slug);
-
--- Штрихкод → категория. Самый надёжный ключ: ошибок быть не может.
-CREATE TABLE IF NOT EXISTS gtin_map (
-  gtin          TEXT PRIMARY KEY,
-  category_slug TEXT NOT NULL REFERENCES categories (slug),
-  source        TEXT NOT NULL,
-  updated_at    TEXT NOT NULL
-);
-
--- Правила по продавцу: для услуг и платежей категорию задаёт чек, а не название
--- позиции («Тариф по билету KUP7XEZL6K-1» опознаётся только по ИНН перевозчика).
-CREATE TABLE IF NOT EXISTS seller_rules (
-  seller_inn    TEXT PRIMARY KEY,
-  category_slug TEXT NOT NULL REFERENCES categories (slug),
-  mode          TEXT NOT NULL DEFAULT 'fallback', -- always: перекрывает словарь; fallback: только если иначе не определилось
-  note          TEXT,
-  updated_at    TEXT NOT NULL
-);
-
--- Результат классификации позиции. Производная таблица: пересчитывается после
--- импорта и перезаписывается целиком, знания живут в словаре и правилах.
-CREATE TABLE IF NOT EXISTS item_labels (
-  item_id       INTEGER PRIMARY KEY REFERENCES items (id) ON DELETE CASCADE,
-  category_slug TEXT REFERENCES categories (slug),
-  source        TEXT NOT NULL,           -- gtin | dictionary | rule | ngram | llm | manual
-  confidence    REAL,
-  updated_at    TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_item_labels_category ON item_labels (category_slug);
-CREATE INDEX IF NOT EXISTS idx_item_labels_source   ON item_labels (source);
-
--- Позиция с категорией: на ней работает классификатор. Пересоздаётся при каждом
--- запуске, как и v_items, — иначе правки схемы не доезжают до существующих баз.
+-- Позиция с категорией: на ней работает классификатор.
 DROP VIEW IF EXISTS v_item_categories;
 CREATE VIEW v_item_categories AS
 SELECT
   i.id,
   i.receipt_id,
+  r.user_id,
   i.name,
   i.name_norm,
   i.sum,
@@ -212,58 +306,38 @@ SELECT
 FROM items i
 JOIN receipts r      ON r.id = i.receipt_id
 LEFT JOIN item_labels l ON l.item_id = i.id
-LEFT JOIN categories c  ON c.slug = l.category_slug
-LEFT JOIN groups g       ON g.slug = c.group_slug;
-
--- ── доступ ──────────────────────────────────────────────────────────────────
--- Проверка входа живёт в приложении, а не в nginx: телефону нужен токен, а не
--- basic auth. Пароль хранится хешем scrypt с солью, сам пароль нигде не лежит.
-CREATE TABLE IF NOT EXISTS users (
-  id         INTEGER PRIMARY KEY,
-  login      TEXT NOT NULL UNIQUE,
-  password   TEXT NOT NULL,            -- scrypt: <соль в hex>:<хеш в hex>
-  created_at TEXT NOT NULL
-);
-
--- Токен хранится хешем: если база утечёт, войти по ней будет нельзя.
-CREATE TABLE IF NOT EXISTS tokens (
-  hash       TEXT PRIMARY KEY,         -- sha256 от выданного токена
-  user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-  label      TEXT,                     -- откуда вошли: кабинет, телефон
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  used_at    TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens (user_id);
+LEFT JOIN categories c  ON c.user_id = r.user_id AND c.slug = l.category_slug
+LEFT JOIN groups g      ON g.user_id = c.user_id AND g.slug = c.group_slug;
 
 -- ── сканирование чеков ──────────────────────────────────────────────────────
 -- Обмен с ФНС асинхронный: запрос кладётся в очередь, воркер отправляет его,
 -- опрашивает ответ и передаёт готовый чек обычному импорту. Состояние задания
 -- живёт здесь, чтобы перезапуск сервиса ничего не терял.
 CREATE TABLE IF NOT EXISTS scan_jobs (
-  id          INTEGER PRIMARY KEY,
-  qr          TEXT NOT NULL,            -- строка из QR как есть, для разбора и разбора ошибок
+  id           INTEGER PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  qr           TEXT NOT NULL,           -- строка из QR как есть, для разбора и разбора ошибок
   fiscal_drive TEXT NOT NULL,           -- ФН/ФД/ФП: тот же ключ, что у импорта выгрузок
-  fiscal_doc  INTEGER NOT NULL,
-  fiscal_sign INTEGER NOT NULL,
-  total_sum   INTEGER NOT NULL,
+  fiscal_doc   INTEGER NOT NULL,
+  fiscal_sign  INTEGER NOT NULL,
+  total_sum    INTEGER NOT NULL,
   purchased_at TEXT NOT NULL,
-  operation   INTEGER NOT NULL DEFAULT 1,
-  status      TEXT NOT NULL,            -- new | sent | done | failed
-  message_id  TEXT,                     -- идентификатор запроса в ФНС
-  receipt_id  INTEGER REFERENCES receipts (id) ON DELETE SET NULL,
-  attempts    INTEGER NOT NULL DEFAULT 0,
-  error       TEXT,
-  error_code  TEXT,                     -- код отказа ФНС: 455/544 значат «данных ещё нет»
-  retries     INTEGER NOT NULL DEFAULT 0, -- сколько отложенных повторов уже потрачено
-  next_at     TEXT,                     -- когда воркеру можно взяться снова (и у ошибки — повтор)
-  created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL,
-  UNIQUE (fiscal_drive, fiscal_doc, fiscal_sign)
+  operation    INTEGER NOT NULL DEFAULT 1,
+  status       TEXT NOT NULL,           -- new | sent | done | failed
+  message_id   TEXT,                    -- идентификатор запроса в ФНС
+  receipt_id   INTEGER REFERENCES receipts (id) ON DELETE SET NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  error        TEXT,
+  error_code   TEXT,                    -- код отказа ФНС: 455/544 значат «данных ещё нет»
+  retries      INTEGER NOT NULL DEFAULT 0, -- сколько отложенных повторов уже потрачено
+  next_at      TEXT,                    -- когда воркеру можно взяться снова (и у ошибки — повтор)
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  UNIQUE (user_id, fiscal_drive, fiscal_doc, fiscal_sign)
 );
 
 CREATE INDEX IF NOT EXISTS idx_scan_jobs_status ON scan_jobs (status, next_at);
+CREATE INDEX IF NOT EXISTS idx_scan_jobs_user   ON scan_jobs (user_id, status);
 
 -- Расход суточного лимита обращений к ФНС (1000 в сутки на всё приложение).
 CREATE TABLE IF NOT EXISTS fns_usage (

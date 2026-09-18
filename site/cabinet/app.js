@@ -819,14 +819,15 @@ function groupEditor(g) {
 }
 
 function categoryEditor(c) {
-  const used = c.items + c.dictionary + c.sellers + c.gtin;
+  const used = c.items + c.dictionary + c.links;
   const others = taxonomy.groups
     .flatMap((g) => g.categories.map((x) => ({ ...x, group: g.name })))
     .filter((x) => x.slug !== c.slug);
 
   const usage = used
     ? `Завязано: ${int.format(c.items)} ${plural(c.items, 'позиция', 'позиции', 'позиций')}, ` +
-      `${int.format(c.dictionary)} в словаре, ${int.format(c.sellers)} ${plural(c.sellers, 'правило', 'правила', 'правил')} по продавцам.`
+      `${int.format(c.dictionary)} ${plural(c.dictionary, 'ручная правка', 'ручные правки', 'ручных правок')}` +
+      (c.links ? `; сюда же раскладываются новые покупки из общего знания — при удалении они поедут туда, куда перенесёте.` : '.')
     : 'На эту категорию пока ничего не ссылается.';
 
   return `

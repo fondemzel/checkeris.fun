@@ -1,26 +1,32 @@
 // Конвейер классификации позиций.
 //
 //   node api/src/classify.mjs --fill    — разметить неизвестные названия моделью (пишет в словарь)
-//   node api/src/classify.mjs --apply   — пересчитать категории всех позиций
+//   node api/src/classify.mjs --apply   — пересчитать категории всех позиций всех пользователей
 //   node api/src/classify.mjs --stats   — что чем определилось
 //
 // Ступени идут от самого надёжного к самому дорогому. Первая сработавшая
 // побеждает — это и есть весь алгоритм:
 //
-//   1. ручная правка   — решение пользователя, отменить его не может ничто
+//   1. ручная правка   — решение владельца позиции, отменить его не может ничто
 //   2. GTIN            — штрихкод: тот же код = тот же товар, ошибок не бывает
 //   3. жёсткое правило — продавец торгует одним («Тариф по билету» у авиаагентства)
 //   4. словарь         — точное совпадение нормализованного названия
 //   5. похожее         — символьные триграммы: «мандарины абхаз вес» ~ «мандарины вес»
 //   6. запасное правило— супермаркет: если иначе не определилось, это еда
 //
-// Модель в этот список не входит: она наполняет словарь, а не решает на месте.
+// Ступень 1 — личная, в кодах справочника владельца. Ступени 2–6 — общее знание,
+// оно отвечает кодом системного справочника, а в личную категорию его переводят
+// связи владельца (category_links). Если системная категория у человека ни с чем
+// не связана, идём по цепочке запасных (fallback_slug); не нашлось и там — ступень
+// считается несработавшей, и разметка спускается ниже.
+//
+// Модель в этот список не входит: она наполняет общий словарь, а не решает на месте.
 // Вызывается она в двух случаях: пакетом из --fill и точечно из очереди сканирования
 // (scan.mjs), когда у свежего чека попались незнакомые названия. В момент показа
 // данных пользователю обращений к модели нет — только запросы к таблицам.
 import { pathToFileURL } from 'node:url';
 import { openDb, migrate } from './db.mjs';
-import { loadCategories, flatten } from './categories.mjs';
+import { dumpCatalog, flatten } from './categories.mjs';
 import { completeJson, usageLine } from './llm.mjs';
 import { buildPrompt } from './bench.mjs';
 
@@ -34,7 +40,7 @@ const trigrams = (s) => {
   return set;
 };
 
-/** Индекс похожих названий по словарю. Строится один раз на прогон. */
+/** Индекс похожих названий по общему словарю. Строится один раз на прогон. */
 function buildNeighbourIndex(db) {
   const entries = db.prepare('SELECT name_norm, category_slug FROM dictionary').all();
   const grams = entries.map((e) => trigrams(e.name_norm));
@@ -68,78 +74,115 @@ function buildNeighbourIndex(db) {
   };
 }
 
+/** Общее знание — в кодах системного справочника. */
 function loadTables(db) {
-  const dict = new Map();
-  const manual = new Map();
-  for (const row of db.prepare('SELECT name_norm, category_slug, source FROM dictionary').all()) {
-    dict.set(row.name_norm, row.category_slug);
-    if (row.source === 'manual') manual.set(row.name_norm, row.category_slug);
-  }
-
+  const dict = new Map(db.prepare('SELECT name_norm, category_slug FROM dictionary').all().map((r) => [r.name_norm, r.category_slug]));
   const gtin = new Map(db.prepare('SELECT gtin, category_slug FROM gtin_map').all().map((r) => [r.gtin, r.category_slug]));
   const always = new Map();
   const fallback = new Map();
   for (const row of db.prepare('SELECT seller_inn, category_slug, mode FROM seller_rules').all()) {
     (row.mode === 'always' ? always : fallback).set(row.seller_inn, row.category_slug);
   }
-  return { dict, manual, gtin, always, fallback };
+  const sysFallback = new Map(
+    db.prepare('SELECT slug, fallback_slug FROM sys_categories WHERE fallback_slug IS NOT NULL').all().map((r) => [r.slug, r.fallback_slug]),
+  );
+  return { dict, gtin, always, fallback, sysFallback };
 }
 
-/** Одна позиция → категория и то, чем она определилась. */
-export function resolve(item, tables, nearest) {
-  const manual = tables.manual.get(item.name_norm);
-  if (manual) return { category: manual, source: 'manual', confidence: 1 };
+/** Личное: ручные правки владельца и куда у него ведут системные категории. */
+export function loadUserTables(db, userId) {
+  return {
+    overrides: new Map(
+      db.prepare('SELECT name_norm, category_slug FROM user_dictionary WHERE user_id = ?').all(userId).map((r) => [r.name_norm, r.category_slug]),
+    ),
+    links: new Map(
+      db.prepare('SELECT sys_slug, slug FROM category_links WHERE user_id = ?').all(userId).map((r) => [r.sys_slug, r.slug]),
+    ),
+  };
+}
 
-  const byGtin = item.gtin && tables.gtin.get(item.gtin);
-  if (byGtin) return { category: byGtin, source: 'gtin', confidence: 1 };
-
-  const byRule = tables.always.get(item.seller_inn);
-  if (byRule) return { category: byRule, source: 'rule', confidence: 0.95 };
-
-  const byDict = tables.dict.get(item.name_norm);
-  if (byDict) return { category: byDict, source: 'dictionary', confidence: 0.9 };
-
-  const similar = nearest(item.name_norm);
-  if (similar) return { category: similar.category, source: 'ngram', confidence: similar.similarity };
-
-  const byFallback = tables.fallback.get(item.seller_inn);
-  if (byFallback) return { category: byFallback, source: 'rule-fallback', confidence: 0.5 };
-
-  return { category: null, source: 'unknown', confidence: 0 };
+/** Системная категория → личная. Цепочка запасных короткая, ограничение — от циклов. */
+function toPersonal(sysSlug, tables, user) {
+  let slug = sysSlug;
+  for (let hop = 0; slug && hop < 8; hop += 1) {
+    const own = user.links.get(slug);
+    if (own) return own;
+    slug = tables.sysFallback.get(slug);
+  }
+  return null;
 }
 
 /**
- * Пересчёт разметки всех позиций. Таблица item_labels производная, её не жалко —
- * кроме закреплённых меток: у ручных трат категория пришла из данных, а не выведена
- * из названия, и восстановить её пересчётом невозможно.
+ * Одна позиция → категория и то, чем она определилась.
+ * Без user — в системных кодах: так --fill выясняет, чего не знает общее знание.
  */
-function apply(db) {
+export function resolve(item, tables, nearest, user = null) {
+  if (user) {
+    const own = user.overrides.get(item.name_norm);
+    if (own) return { category: own, source: 'manual', confidence: 1 };
+  }
+
+  // Ступень общего знания срабатывает, только если её ответ есть и у владельца
+  const hit = (sys, source, confidence) => {
+    if (!sys) return null;
+    const category = user ? toPersonal(sys, tables, user) : sys;
+    return category ? { category, source, confidence } : null;
+  };
+
+  return (
+    hit(item.gtin && tables.gtin.get(item.gtin), 'gtin', 1) ??
+    hit(tables.always.get(item.seller_inn), 'rule', 0.95) ??
+    hit(tables.dict.get(item.name_norm), 'dictionary', 0.9) ??
+    (() => {
+      const similar = nearest(item.name_norm);
+      return similar ? hit(similar.category, 'ngram', similar.similarity) : null;
+    })() ??
+    hit(tables.fallback.get(item.seller_inn), 'rule-fallback', 0.5) ?? { category: null, source: 'unknown', confidence: 0 }
+  );
+}
+
+const UPSERT_LABEL = `
+  INSERT INTO item_labels (item_id, user_id, category_slug, source, confidence, updated_at)
+  VALUES (:id, :user_id, :category, :source, :confidence, :now)
+  ON CONFLICT (item_id) DO UPDATE SET
+    category_slug = :category, source = :source, confidence = :confidence, updated_at = :now`;
+
+/**
+ * Разметка набора позиций. Позиции разных владельцев размечаются каждая по своей
+ * лестнице; закреплённые метки (ручные траты) не трогаем — их категория пришла
+ * из данных, а не выведена из названия, и восстановить её пересчётом невозможно.
+ */
+function label(db, items) {
   const tables = loadTables(db);
   const nearest = buildNeighbourIndex(db);
-  const items = db
-    .prepare(
-      `SELECT v.id, v.name_norm, v.gtin, v.seller_inn
-         FROM v_item_categories v
-         LEFT JOIN item_labels l ON l.item_id = v.id
-        WHERE l.source IS NULL OR l.source <> 'pinned'`,
-    )
-    .all();
-
-  const upsert = db.prepare(`
-    INSERT INTO item_labels (item_id, category_slug, source, confidence, updated_at)
-    VALUES (:id, :category, :source, :confidence, :now)
-    ON CONFLICT (item_id) DO UPDATE SET
-      category_slug = :category, source = :source, confidence = :confidence, updated_at = :now`);
-
+  const users = new Map();
+  const upsert = db.prepare(UPSERT_LABEL);
   const now = new Date().toISOString();
   const counts = {};
+
+  for (const item of items) {
+    let user = users.get(item.user_id);
+    if (!user) users.set(item.user_id, (user = loadUserTables(db, item.user_id)));
+    const { category, source, confidence } = resolve(item, tables, nearest, user);
+    upsert.run({ id: item.id, user_id: item.user_id, category, source, confidence, now });
+    counts[source] = (counts[source] ?? 0) + 1;
+  }
+  return counts;
+}
+
+const ITEMS_TO_LABEL = `
+  SELECT v.id, v.user_id, v.name_norm, v.gtin, v.seller_inn
+    FROM v_item_categories v
+    LEFT JOIN item_labels l ON l.item_id = v.id
+   WHERE (l.source IS NULL OR l.source <> 'pinned')`;
+
+/** Пересчёт разметки всех позиций всех пользователей. */
+function apply(db) {
+  const items = db.prepare(ITEMS_TO_LABEL).all();
+  let counts;
   db.exec('BEGIN');
   try {
-    for (const item of items) {
-      const { category, source, confidence } = resolve(item, tables, nearest);
-      upsert.run({ id: item.id, category, source, confidence, now });
-      counts[source] = (counts[source] ?? 0) + 1;
-    }
+    counts = label(db, items);
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
@@ -152,42 +195,21 @@ function apply(db) {
 }
 
 /**
- * Разметка нескольких позиций — для только что отсканированного чека.
- * Полный пересчёт тут не нужен: он строит индекс по всему словарю ради десяти строк.
- * Закреплённые метки (ручные траты) не трогаем, как и в общем пересчёте.
+ * Разметка нескольких позиций — для только что отсканированного чека или после
+ * правки справочника. Полный пересчёт тут не нужен: он строит индекс по всему
+ * словарю ради десяти строк.
  */
 export function classifyItems(db, itemIds) {
   if (!itemIds?.length) return {};
-  const tables = loadTables(db);
-  const nearest = buildNeighbourIndex(db);
   const placeholders = itemIds.map(() => '?').join(',');
-
-  const items = db
-    .prepare(
-      `SELECT v.id, v.name_norm, v.gtin, v.seller_inn
-         FROM v_item_categories v
-         LEFT JOIN item_labels l ON l.item_id = v.id
-        WHERE v.id IN (${placeholders}) AND (l.source IS NULL OR l.source <> 'pinned')`,
-    )
-    .all(...itemIds);
-
-  const upsert = db.prepare(`
-    INSERT INTO item_labels (item_id, category_slug, source, confidence, updated_at)
-    VALUES (:id, :category, :source, :confidence, :now)
-    ON CONFLICT (item_id) DO UPDATE SET
-      category_slug = :category, source = :source, confidence = :confidence, updated_at = :now`);
-
-  const now = new Date().toISOString();
-  const counts = {};
-  for (const item of items) {
-    const { category, source, confidence } = resolve(item, tables, nearest);
-    upsert.run({ id: item.id, category, source, confidence, now });
-    counts[source] = (counts[source] ?? 0) + 1;
-  }
-  return counts;
+  const items = db.prepare(`${ITEMS_TO_LABEL} AND v.id IN (${placeholders})`).all(...itemIds);
+  return label(db, items);
 }
 
-/** Названия, которые не берёт ни одна дешёвая ступень — их и отдаём модели. */
+/**
+ * Названия, которые не берёт ни одна дешёвая ступень общего знания, — их и отдаём модели.
+ * Смотрим в системных кодах: модель пополняет общий словарь, личные правки ей не помеха.
+ */
 function unknownNames(db, limit) {
   const tables = loadTables(db);
   const nearest = buildNeighbourIndex(db);
@@ -225,7 +247,8 @@ function unknownNames(db, limit) {
 export async function fillNames(db, names, { model = 'lite', onBatch = null } = {}) {
   if (!names.length) return { written: 0 };
 
-  const catalog = loadCategories();
+  // Системный справочник из базы: модель пишет в общий словарь, а он живёт в системных кодах
+  const catalog = dumpCatalog(db);
   const slugs = flatten(catalog).map((c) => c.slug);
   const system = buildPrompt(catalog);
   const schema = {
@@ -339,16 +362,18 @@ function stats(db) {
   }
 
   const dict = db.prepare('SELECT COUNT(*) c FROM dictionary').get().c;
-  console.log(`\nв словаре ${dict} названий`);
+  const own = db.prepare('SELECT COUNT(*) c, COUNT(DISTINCT user_id) u FROM user_dictionary').get();
+  console.log(`\nв общем словаре ${dict} названий; личных правок ${own.c} у ${own.u} польз.`);
 
+  // Группы у каждого свои, поэтому складываем по названию группы
   const top = db
     .prepare(
       `SELECT g.name AS group_name, COUNT(*) n, SUM(i.sum) s
          FROM item_labels l
          JOIN items i      ON i.id = l.item_id
-         JOIN categories c ON c.slug = l.category_slug
-         JOIN groups g     ON g.slug = c.group_slug
-        GROUP BY c.group_slug ORDER BY s DESC LIMIT 12`,
+         JOIN categories c ON c.user_id = l.user_id AND c.slug = l.category_slug
+         JOIN groups g     ON g.user_id = c.user_id AND g.slug = c.group_slug
+        GROUP BY g.name ORDER BY s DESC LIMIT 12`,
     )
     .all();
   if (top.length) {

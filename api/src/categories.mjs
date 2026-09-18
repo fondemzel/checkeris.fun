@@ -1,14 +1,17 @@
-// Справочник категорий: файл ↔ база.
+// Системный справочник категорий: файл ↔ база. Инструмент администратора.
 //
-// ИСТОЧНИК ПРАВДЫ — БАЗА. Справочник правится в кабинете, разделе «Категории».
-// categories.json — начальное наполнение для пустой базы и способ держать справочник
-// в истории git. Сервер при старте заливает файл, только если таблица пуста, — иначе
-// перезапуск затирал бы правки из интерфейса.
+// Системный справочник — язык общего знания (словарь, штрихкоды, правила продавцов,
+// промпт модели) и шаблон, который копируется каждому новому пользователю. Личные
+// справочники пользователей живут отдельно (taxonomy.mjs) и отсюда не меняются.
 //
-//   node api/src/categories.mjs --show    — что сейчас в базе
-//   node api/src/categories.mjs --check   — проверить файл, ничего не меняя
-//   node api/src/categories.mjs --export  — база → файл, чтобы закоммитить правки
-//   node api/src/categories.mjs --sync    — файл → база, ПЕРЕЗАПИШЕТ правки из кабинета
+// ИСТОЧНИК ПРАВДЫ — БАЗА (sys_groups, sys_categories). categories.json — начальное
+// наполнение пустой базы и способ держать справочник в истории git.
+//
+//   node api/src/categories.mjs --show              — что сейчас в системном справочнике
+//   node api/src/categories.mjs --check             — проверить файл, ничего не меняя
+//   node api/src/categories.mjs --export            — база → файл, чтобы закоммитить
+//   node api/src/categories.mjs --sync              — файл → база
+//   node api/src/categories.mjs --from-user <логин> — личный справочник → системный
 //
 // Про поля:
 //   name — подпись в интерфейсе, меняется свободно: разметка держится на slug.
@@ -34,7 +37,7 @@ export function loadSellerRules(file = SELLER_RULES_PATH) {
 
 /** Правила по ИНН продавца. Ссылки на несуществующие категории — ошибка файла, не молчим. */
 export function syncSellerRules(db, catalog) {
-  const known = new Set(db.prepare('SELECT slug FROM categories').all().map((r) => r.slug));
+  const known = new Set(db.prepare('SELECT slug FROM sys_categories').all().map((r) => r.slug));
   const bad = catalog.rules.filter((r) => !known.has(r.category));
   if (bad.length) {
     throw new Error(`неизвестные категории в seller_rules.json: ${bad.map((r) => `${r.inn}→${r.category}`).join(', ')}`);
@@ -93,8 +96,8 @@ export function flattenGroups(catalog) {
 
 /** Справочник из базы в том же виде, в каком лежит в файле — для --export. */
 export function dumpCatalog(db) {
-  const groups = db.prepare('SELECT slug, name, icon, color FROM groups ORDER BY sort, slug').all();
-  const cats = db.prepare('SELECT slug, group_slug, name, hint FROM categories ORDER BY sort, slug').all();
+  const groups = db.prepare('SELECT slug, name, icon, color FROM sys_groups ORDER BY sort, slug').all();
+  const cats = db.prepare('SELECT slug, group_slug, name, hint FROM sys_categories ORDER BY sort, slug').all();
   return {
     groups: groups.map((g) => ({
       slug: g.slug,
@@ -159,7 +162,7 @@ export function orphanUsage(db, slug) {
   const count = (sql) => db.prepare(sql).get(slug).c;
   return {
     dictionary: count('SELECT COUNT(*) c FROM dictionary WHERE category_slug = ?'),
-    items: count('SELECT COUNT(*) c FROM item_labels WHERE category_slug = ?'),
+    users: count('SELECT COUNT(*) c FROM category_links WHERE sys_slug = ?'),
     sellers: count('SELECT COUNT(*) c FROM seller_rules WHERE category_slug = ?'),
     gtin: count('SELECT COUNT(*) c FROM gtin_map WHERE category_slug = ?'),
   };
@@ -173,13 +176,13 @@ export function syncCategories(db, catalog) {
 
   const rows = flatten(catalog);
   const upsertGroup = db.prepare(`
-    INSERT INTO groups (slug, name, icon, color, sort)
+    INSERT INTO sys_groups (slug, name, icon, color, sort)
     VALUES (:slug, :name, :icon, :color, :sort)
     ON CONFLICT (slug) DO UPDATE SET
       name = :name, icon = :icon, color = :color, sort = :sort`);
 
   const upsert = db.prepare(`
-    INSERT INTO categories (slug, group_slug, name, hint, sort)
+    INSERT INTO sys_categories (slug, group_slug, name, hint, sort)
     VALUES (:slug, :group_slug, :name, :hint, :sort)
     ON CONFLICT (slug) DO UPDATE SET
       group_slug = :group_slug, name = :name, hint = :hint, sort = :sort`);
@@ -196,7 +199,7 @@ export function syncCategories(db, catalog) {
 
   const known = new Set(rows.map((r) => r.slug));
   const orphans = db
-    .prepare('SELECT slug FROM categories')
+    .prepare('SELECT slug FROM sys_categories')
     .all()
     .map((r) => r.slug)
     .filter((slug) => !known.has(slug));
@@ -207,10 +210,10 @@ export function syncCategories(db, catalog) {
 function show(db) {
   const rows = db
     .prepare(
-      `SELECT g.name AS group_name, c.name, c.slug,
+      `SELECT g.name AS group_name, c.name, c.slug, c.fallback_slug,
               (SELECT COUNT(*) FROM dictionary d WHERE d.category_slug = c.slug) AS dict,
-              (SELECT COUNT(*) FROM item_labels l WHERE l.category_slug = c.slug) AS items
-         FROM categories c JOIN groups g ON g.slug = c.group_slug
+              (SELECT COUNT(*) FROM category_links k WHERE k.sys_slug = c.slug) AS users
+         FROM sys_categories c JOIN sys_groups g ON g.slug = c.group_slug
         ORDER BY g.sort, c.sort`,
     )
     .all();
@@ -221,20 +224,80 @@ function show(db) {
       group = r.group_name;
       console.log(`\n${group}`);
     }
-    const stats = r.dict || r.items ? `  словарь: ${r.dict}, позиций: ${r.items}` : '';
+    const stats = `  словарь: ${r.dict}, пользователей: ${r.users}${r.fallback_slug ? `, запасная: ${r.fallback_slug}` : ''}`;
     console.log(`  ${r.name.padEnd(38)} ${r.slug.padEnd(26)}${stats}`);
   }
   console.log(`\nвсего подкатегорий: ${rows.length}`);
 }
 
+/**
+ * Личный справочник → системный. Так администратор улучшает шаблон и язык модели,
+ * работая в обычном разделе «Категории» кабинета.
+ *
+ * Что переносится: названия, значки, цвета, порядок, группа категорий — для категорий,
+ * связанных с системными один к одному. Категории, созданные пользователем, становятся
+ * системными с тем же кодом, и связь у этого пользователя проставляется сразу.
+ * Что не переносится: удаления. Системную категорию убрать нельзя — на неё ссылается
+ * общее знание и справочники других пользователей; такие случаи печатаются.
+ */
+export function publishFromUser(db, userId) {
+  const groups = db.prepare('SELECT slug, name, icon, color, shade_from, shade_to, sort FROM groups WHERE user_id = ?').all(userId);
+  const cats = db.prepare('SELECT slug, group_slug, name, hint, sort FROM categories WHERE user_id = ?').all(userId);
+  const linkedTo = new Map(
+    db.prepare('SELECT sys_slug, slug FROM category_links WHERE user_id = ?').all(userId).map((r) => [r.sys_slug, r.slug]),
+  );
+  const sysSlugs = new Set(db.prepare('SELECT slug FROM sys_categories').all().map((r) => r.slug));
+
+  const report = { groups: 0, updated: 0, added: [], merged: [], skipped: [] };
+  const upsertGroup = db.prepare(`
+    INSERT INTO sys_groups (slug, name, icon, color, shade_from, shade_to, sort)
+    VALUES (:slug, :name, :icon, :color, :shade_from, :shade_to, :sort)
+    ON CONFLICT (slug) DO UPDATE SET name = :name, icon = :icon, color = :color,
+      shade_from = :shade_from, shade_to = :shade_to, sort = :sort`);
+  const updateCat = db.prepare('UPDATE sys_categories SET group_slug = ?, name = ?, hint = ?, sort = ? WHERE slug = ?');
+  const insertCat = db.prepare('INSERT INTO sys_categories (slug, group_slug, name, hint, sort) VALUES (?, ?, ?, ?, ?)');
+  const link = db.prepare('INSERT OR REPLACE INTO category_links (user_id, sys_slug, slug) VALUES (?, ?, ?)');
+
+  db.exec('BEGIN');
+  try {
+    for (const g of groups) {
+      upsertGroup.run(g);
+      report.groups += 1;
+    }
+    for (const c of cats) {
+      if (linkedTo.get(c.slug) === c.slug) {
+        updateCat.run(c.group_slug, c.name, c.hint, c.sort, c.slug);
+        report.updated += 1;
+      } else if (!sysSlugs.has(c.slug)) {
+        insertCat.run(c.slug, c.group_slug, c.name, c.hint, c.sort);
+        link.run(userId, c.slug, c.slug);
+        report.added.push(c.name);
+      } else {
+        // Код занят системной категорией, которая у пользователя ведёт в другое место
+        report.skipped.push(`${c.name} (${c.slug})`);
+      }
+    }
+    // Системные категории, которые пользователь слил в другие
+    for (const [sys, slug] of linkedTo) {
+      if (sys !== slug) report.merged.push(`${sys} → ${slug}`);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return report;
+}
+
 const usage = () =>
   [
-    'Справочник категорий: источник правды — база, правится в кабинете.',
+    'Системный справочник категорий — шаблон для новых пользователей и язык модели.',
     '',
-    '  --show     что сейчас в базе',
-    '  --check    проверить categories.json, ничего не меняя',
-    '  --export   база → файл (закоммитить правки из кабинета)',
-    '  --sync     файл → база, ПЕРЕЗАПИШЕТ правки из кабинета',
+    '  --show               что сейчас в базе',
+    '  --check              проверить categories.json, ничего не меняя',
+    '  --export             база → файл (закоммитить)',
+    '  --sync               файл → база',
+    '  --from-user <логин>  личный справочник пользователя → системный',
   ].join('\n');
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -255,7 +318,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       // Что в базе есть, а в файле уже нет — покажем цену удаления
       const known = new Set(rows.map((r) => r.slug));
       const orphans = db
-        .prepare('SELECT slug, name FROM categories')
+        .prepare('SELECT slug, name FROM sys_categories')
         .all()
         .filter((r) => !known.has(r.slug));
       if (orphans.length) {
@@ -263,7 +326,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         for (const o of orphans) {
           const use = orphanUsage(db, o.slug);
           console.log(
-            `  ${o.slug} («${o.name}»): словарь ${use.dictionary}, позиций ${use.items},` +
+            `  ${o.slug} («${o.name}»): словарь ${use.dictionary}, пользователей ${use.users},` +
               ` правил ${use.sellers}, штрихкодов ${use.gtin}`,
           );
         }
@@ -272,6 +335,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
   } else if (process.argv.includes('--show')) {
     show(db);
+  } else if (process.argv.includes('--from-user')) {
+    const login = process.argv[process.argv.indexOf('--from-user') + 1];
+    const user = db.prepare('SELECT id, login FROM users WHERE login = ?').get(String(login ?? ''));
+    if (!user) {
+      console.log(`нет пользователя «${login ?? ''}»`);
+      process.exitCode = 1;
+    } else {
+      const r = publishFromUser(db, user.id);
+      console.log(`из справочника «${user.login}» в системный: групп ${r.groups}, категорий обновлено ${r.updated}`);
+      if (r.added.length) console.log(`  новые системные категории: ${r.added.join(', ')}`);
+      if (r.merged.length) console.log(`  у пользователя слиты (в системном остались): ${r.merged.join(', ')}`);
+      if (r.skipped.length) console.log(`  пропущены — код занят другой системной категорией: ${r.skipped.join(', ')}`);
+      console.log('новые пользователи получат этот справочник; модель размечает уже в нём');
+    }
   } else if (process.argv.includes('--export')) {
     // База → файл. Правки из кабинета живут в базе, в репозиторий их приносит эта команда.
     const catalog = dumpCatalog(db);

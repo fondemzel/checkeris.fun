@@ -162,28 +162,23 @@ fi
 # (ваши выгрузки), это безопасно; когда чеки начнут добавляться на сервере,
 # заливать словарь нужно будет отдельно, а не всей базой.
 if [[ $DB -eq 1 ]]; then
-  # Справочник категорий правится в кабинете, то есть в серверной базе. Заливка снимка
-  # затрёт эти правки локальными. Сначала забрать их: categories.mjs --export на сервере.
+  # На сервере живут данные всех пользователей: их чеки, сканы, справочники и правки.
+  # Снимок локальной базы затрёт всё это разом, поэтому показываем, что именно пропадёт.
   # API закрыт токеном, поэтому считаем прямо в серверной базе
-  REMOTE_CATS="$(ssh "$HOST" "cd $TARGET && sudo -u checker /usr/bin/node -e \"
+  COUNT_JS="
     const { DatabaseSync } = require('node:sqlite');
     const db = new DatabaseSync('api/data/checker.db', { readOnly: true });
-    console.log(db.prepare('SELECT COUNT(*) c FROM categories').get().c + ' в ' +
-                db.prepare('SELECT COUNT(*) c FROM groups').get().c + ' группах');
-  \" 2>/dev/null | tail -1")"
-  LOCAL_CATS="$(node -e "
-    const { DatabaseSync } = require('node:sqlite');
-    const db = new DatabaseSync('api/data/checker.db', { readOnly: true });
-    const c = db.prepare('SELECT COUNT(*) c FROM categories').get().c;
-    const g = db.prepare('SELECT COUNT(*) c FROM groups').get().c;
-    console.log(c + ' в ' + g + ' группах');
-  " 2>/dev/null | tail -1)"
+    const n = (sql) => { try { return db.prepare(sql).get().c; } catch { return '?'; } };
+    console.log(n('SELECT COUNT(*) c FROM users') + ' польз., ' + n('SELECT COUNT(*) c FROM receipts') + ' чеков, ' +
+                n('SELECT COUNT(*) c FROM user_dictionary') + ' ручных правок');
+  "
+  REMOTE_STATE="$(ssh "$HOST" "cd $TARGET && sudo -u checker /usr/bin/node -e \"$COUNT_JS\" 2>/dev/null | tail -1")"
+  LOCAL_STATE="$(node -e "$COUNT_JS" 2>/dev/null | tail -1)"
 
-  echo "ВНИМАНИЕ: --db перезаписывает серверную базу целиком, вместе со справочником категорий." >&2
-  echo "  на сервере: $REMOTE_CATS" >&2
-  echo "  зальётся:   $LOCAL_CATS" >&2
-  echo "  правки справочника с сервера сначала забираются так:" >&2
-  echo "    ssh $HOST 'cd $TARGET && node api/src/categories.mjs --export'" >&2
+  echo "ВНИМАНИЕ: --db перезаписывает серверную базу целиком — данные ВСЕХ пользователей." >&2
+  echo "  на сервере: $REMOTE_STATE" >&2
+  echo "  зальётся:   $LOCAL_STATE" >&2
+  echo "  всё, что появилось на сервере после снимка (сканы, ручные траты, правки), пропадёт" >&2
   read -r -p "продолжить? [y/N] " ANSWER < /dev/tty
   [[ "$ANSWER" == [yY]* ]] || { echo "отменено"; exit 1; }
 

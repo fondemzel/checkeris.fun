@@ -66,7 +66,7 @@ function coverage(db) {
 
 /** Проверки файла правил: битые ссылки, дубли, правила на продавцов, которых нет в базе. */
 function check(db, rules) {
-  const categories = new Set(db.prepare('SELECT slug FROM categories').all().map((r) => r.slug));
+  const categories = new Set(db.prepare('SELECT slug FROM sys_categories').all().map((r) => r.slug));
   const problems = [];
 
   const seen = new Set();

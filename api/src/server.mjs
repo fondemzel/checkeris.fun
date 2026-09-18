@@ -33,6 +33,7 @@ import {
   updateCategory,
   deleteCategory,
   reorder,
+  provisionTaxonomy,
 } from './taxonomy.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -66,16 +67,22 @@ if (!hasUsers(db)) {
   console.error('  заведите первого: node api/src/users.mjs --add <логин> <пароль>');
 }
 
-// Справочник живёт в базе и правится в кабинете. Файл categories.json — начальное
-// наполнение: заливаем его только в пустую базу, иначе перезапуск затирал бы правки
-// из интерфейса. Осознанный переимпорт — categories.mjs --sync.
-if (!db.prepare('SELECT COUNT(*) c FROM categories').get().c) {
+// Системный справочник живёт в базе. Файл categories.json — начальное наполнение:
+// заливаем его только в пустую базу, иначе перезапуск затирал бы правки администратора.
+// Осознанный переимпорт — categories.mjs --sync.
+if (!db.prepare('SELECT COUNT(*) c FROM sys_categories').get().c) {
   try {
     const { total, groups } = syncCategories(db, loadCategories());
-    console.log(`справочник категорий залит из файла: ${groups} групп, ${total} подкатегорий`);
+    console.log(`системный справочник залит из файла: ${groups} групп, ${total} подкатегорий`);
   } catch (err) {
-    console.error('начальный справочник категорий не залит:', err.message);
+    console.error('системный справочник не залит:', err.message);
   }
+}
+
+// У каждого пользователя свой справочник. Если кого-то завели, когда системного ещё
+// не было, — выдаём сейчас, иначе у него не будет ни одной категории
+for (const { id } of db.prepare('SELECT id FROM users').all()) {
+  if (provisionTaxonomy(db, id)) console.log(`пользователю #${id} выдан справочник категорий`);
 }
 
 function sendJson(res, status, payload) {
@@ -199,7 +206,7 @@ async function handleApi(req, res, url) {
 
   // ── справочник категорий: правится из раздела «Категории» ──
   if (pathname === '/api/taxonomy') {
-    if (req.method === 'GET') return sendJson(res, 200, getTaxonomy(db));
+    if (req.method === 'GET') return sendJson(res, 200, getTaxonomy(db, user.id));
     return sendJson(res, 405, { error: 'method not allowed' });
   }
 
@@ -212,7 +219,7 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = reorder(db, body);
+    const result = reorder(db, user.id, body);
     return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
   }
 
@@ -232,10 +239,10 @@ async function handleApi(req, res, url) {
     }
 
     let result;
-    if (req.method === 'POST' && !slug) result = (isGroup ? createGroup : createCategory)(db, body);
-    else if (req.method === 'PATCH' && slug) result = (isGroup ? updateGroup : updateCategory)(db, slug, body);
+    if (req.method === 'POST' && !slug) result = (isGroup ? createGroup : createCategory)(db, user.id, body);
+    else if (req.method === 'PATCH' && slug) result = (isGroup ? updateGroup : updateCategory)(db, user.id, slug, body);
     else if (req.method === 'DELETE' && slug) {
-      result = isGroup ? deleteGroup(db, slug) : deleteCategory(db, slug, searchParams.get('move_to'));
+      result = isGroup ? deleteGroup(db, user.id, slug) : deleteCategory(db, user.id, slug, searchParams.get('move_to'));
     } else return sendJson(res, 405, { error: 'method not allowed' });
 
     return result.error
@@ -253,13 +260,13 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = setItemCategory(db, Number(categoryMatch[1]), String(body.category ?? '').trim());
+    const result = setItemCategory(db, user.id, Number(categoryMatch[1]), String(body.category ?? '').trim());
     return result.error
       ? sendJson(res, result.status ?? 400, { error: result.error })
       : sendJson(res, 200, result);
   }
 
-  if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db) });
+  if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db, user.id) });
 
   // ── сканирование чеков ──
   // Приём скана: строка QR кладётся в очередь, ответ ФНС приезжает фоном.
@@ -273,7 +280,7 @@ async function handleApi(req, res, url) {
       }
       if (!fnsReady()) return sendJson(res, 503, { error: 'доступ к ФНС не настроен' });
 
-      const result = addScan(db, body.qr);
+      const result = addScan(db, user.id, body.qr);
       if (result.error) return sendJson(res, result.status ?? 400, { error: result.error });
 
       runScanQueue(db); // не ждём: клиент опрашивает состояние сам
@@ -281,7 +288,7 @@ async function handleApi(req, res, url) {
     }
     // Сканы без чека: ?state=failed | pending, без него — и те и другие
     if (req.method === 'GET') {
-      return sendJson(res, 200, { ...listScans(db, searchParams.get('state') ?? ''), usage: fnsUsage(db) });
+      return sendJson(res, 200, { ...listScans(db, user.id, searchParams.get('state') ?? ''), usage: fnsUsage(db) });
     }
     return sendJson(res, 405, { error: 'method not allowed' });
   }
@@ -292,12 +299,12 @@ async function handleApi(req, res, url) {
     let result;
     if (scanMatch[2]) {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
-      result = retryScan(db, id);
+      result = retryScan(db, user.id, id);
       if (!result.error) runScanQueue(db);
     } else if (req.method === 'DELETE') {
-      result = deleteScan(db, id);
+      result = deleteScan(db, user.id, id);
     } else {
-      const job = getScan(db, id);
+      const job = getScan(db, user.id, id);
       return job ? sendJson(res, 200, { job }) : sendJson(res, 404, { error: 'скан не найден' });
     }
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
@@ -312,34 +319,34 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = addManual(db, body);
+    const result = addManual(db, user.id, body);
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
   }
 
   // Сводка: сколько и на что. Главный запрос телефона — один вместо выкачивания строк
-  if (pathname === '/api/summary') return sendJson(res, 200, summary(db, searchParams));
+  if (pathname === '/api/summary') return sendJson(res, 200, summary(db, user.id, searchParams));
 
-  if (pathname === '/api/receipts') return sendJson(res, 200, listReceipts(db, searchParams));
+  if (pathname === '/api/receipts') return sendJson(res, 200, listReceipts(db, user.id, searchParams));
 
   const receiptMatch = pathname.match(/^\/api\/receipts\/(\d+)$/);
   if (receiptMatch && req.method === 'DELETE') {
-    const result = deleteManual(db, Number(receiptMatch[1]));
+    const result = deleteManual(db, user.id, Number(receiptMatch[1]));
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
   }
   if (receiptMatch) {
-    const receipt = getReceipt(db, Number(receiptMatch[1]));
+    const receipt = getReceipt(db, user.id, Number(receiptMatch[1]));
     return receipt ? sendJson(res, 200, receipt) : sendJson(res, 404, { error: 'receipt not found' });
   }
 
   // collapse=1 — одна строка на название; раскрытие группы идёт обычным списком с name_norm
   if (pathname === '/api/items') {
     const collapse = searchParams.get('collapse') === '1' && !searchParams.get('name_norm');
-    return sendJson(res, 200, (collapse ? listItemGroups : listItems)(db, searchParams));
+    return sendJson(res, 200, (collapse ? listItemGroups : listItems)(db, user.id, searchParams));
   }
 
   const itemMatch = pathname.match(/^\/api\/items\/(\d+)$/);
   if (itemMatch) {
-    const item = getItem(db, Number(itemMatch[1]));
+    const item = getItem(db, user.id, Number(itemMatch[1]));
     return item ? sendJson(res, 200, item) : sendJson(res, 404, { error: 'item not found' });
   }
 
@@ -351,7 +358,7 @@ async function handleApi(req, res, url) {
       const rows = [];
       for (let page = 1; ; page += 1) {
         params.set('page', String(page));
-        const chunk = listReceipts(db, params).rows;
+        const chunk = listReceipts(db, user.id, params).rows;
         rows.push(...chunk);
         if (chunk.length < 500 || rows.length >= 50000) break;
       }
@@ -376,7 +383,7 @@ async function handleApi(req, res, url) {
     const rows = [];
     for (let page = 1; ; page += 1) {
       params.set('page', String(page));
-      const chunk = listItems(db, params).rows;
+      const chunk = listItems(db, user.id, params).rows;
       rows.push(...chunk);
       if (chunk.length < 500 || rows.length >= 50000) break;
     }
@@ -433,11 +440,20 @@ if (fnsReady()) {
 }
 
 server.listen(PORT, HOST, () => {
-  const { stats } = getMeta(db);
+  // Сводка по всей базе, без владельца: это журнал сервера, а не экран пользователя
+  const stats = db
+    .prepare(
+      `SELECT COUNT(*) AS receipts, (SELECT COUNT(*) FROM items) AS items, (SELECT COUNT(*) FROM users) AS users,
+              MIN(purchased_date) AS date_from, MAX(purchased_date) AS date_to FROM receipts`,
+    )
+    .get();
   console.log(`Кабинет:  http://${HOST}:${PORT}/cabinet`);
   console.log(`API:      http://${HOST}:${PORT}/api/meta`);
   console.log(`База:     ${DB_PATH}`);
   console.log(`Статика:  ${SITE_ROOT}`);
-  console.log(`Данные:   чеков ${stats.receipts}, позиций ${stats.items}, период ${stats.date_from ?? '—'} — ${stats.date_to ?? '—'}`);
+  console.log(
+    `Данные:   пользователей ${stats.users}, чеков ${stats.receipts}, позиций ${stats.items}, ` +
+      `период ${stats.date_from ?? '—'} — ${stats.date_to ?? '—'}`,
+  );
   if (!stats.receipts) console.log('\nБаза пустая — запустите: node api/src/import.mjs');
 });
