@@ -5,10 +5,14 @@
 // подписанными запросами. Сам сервер в Telegram не ходит никогда.
 //
 //   1. Браузер: POST /api/auth/telegram/start → одноразовый код и ссылка t.me/<бот>?start=<код>
-//   2. Человек открывает ссылку, бот спрашивает здесь, что за запрос (describe),
-//      и показывает устройство: «Войти в Чекер с iPhone · Safari?» — [Войти] [Это не я]
-//   3. Нажал «Войти» — бот присылает подтверждение (confirm), аккаунт находится или создаётся
-//   4. Браузер, опрашивающий GET /api/auth/telegram/poll, получает токен — один раз
+//   2. Человек открывает ссылку, бот готовит подтверждение (prepare): узнаёт устройство
+//      и получает код для ссылки. Сообщение: «Войти в Чекер с iPhone · Safari?» —
+//      [Войти] — ссылка на /tg.html?c=<код>, [Это не я] — кнопка
+//   3. «Войти» открывает страницу в браузере, её скрипт подтверждает вход (confirm-link),
+//      аккаунт находится или создаётся. Скрипт, а не сам переход: ссылки заранее открывают
+//      антивирусы и почтовые фильтры, и вход не должен подтверждаться без человека
+//   4. Браузер, опрашивающий GET /api/auth/telegram/poll, получает токен — один раз.
+//      Если ссылка открылась в том же браузере, где начат вход, это делает сама страница
 //
 // Шаг 2 — защита от подмены входа: иначе чужой человек мог бы начать вход у себя,
 // прислать ссылку жертве, и её «Start» впустил бы его в её аккаунт.
@@ -58,14 +62,14 @@ export function deviceOf(ua = '') {
  * Начало входа. Код — 32 символа base64url: столько и таких символов пропускает
  * параметр start в ссылке на бота. Хранится хеш: утечка базы не даёт перехватить вход.
  */
-export function startLogin(db, { ua, ip, linkUserId = null }) {
+export function startLogin(db, { ua, ip, linkUserId = null, client = null }) {
   const nonce = randomBytes(24).toString('base64url');
   const now = Date.now();
   db.prepare('DELETE FROM tg_logins WHERE expires_at < ?').run(iso(now - 86_400_000));
   db.prepare(
-    `INSERT INTO tg_logins (nonce_hash, status, device, ip, link_user_id, created_at, expires_at)
-     VALUES (?, 'pending', ?, ?, ?, ?, ?)`,
-  ).run(sha(nonce), deviceOf(ua), ip ?? null, linkUserId, iso(now), iso(now + TTL_MS));
+    `INSERT INTO tg_logins (nonce_hash, status, device, ip, link_user_id, client, created_at, expires_at)
+     VALUES (?, 'pending', ?, ?, ?, ?, ?, ?)`,
+  ).run(sha(nonce), deviceOf(ua), ip ?? null, linkUserId, client === 'cabinet' ? 'cabinet' : 'm', iso(now), iso(now + TTL_MS));
 
   // Две ссылки на одного бота: tg:// открывает приложение сразу, без страницы t.me
   // с кнопкой «Open in Telegram»; https://t.me — запасная, если приложения нет
@@ -90,6 +94,50 @@ export function describeLogin(db, nonce) {
   return { ok: true, device: row.device, link: Boolean(row.link_user_id), created_at: row.created_at };
 }
 
+/**
+ * Бот показывает запрос человеку: запоминаем, кому именно, и выдаём код для ссылки
+ * «Войти». Ссылкой подтвердить можно только за этого человека — его id записан здесь,
+ * а не приходит со страницы.
+ */
+export function prepareLogin(db, { nonce, telegram }) {
+  const row = find(db, nonce);
+  if (!alive(row)) return { ok: false, reply: EXPIRED };
+  const tgId = Number(telegram?.id);
+  if (!Number.isSafeInteger(tgId) || tgId <= 0) return { ok: false, reply: 'Не удалось опознать аккаунт Telegram.' };
+
+  const code = randomBytes(24).toString('base64url');
+  const identity = {
+    id: tgId,
+    first_name: telegram.first_name ?? null,
+    last_name: telegram.last_name ?? null,
+    username: telegram.username ?? null,
+  };
+  db.prepare('UPDATE tg_logins SET confirm_hash = ?, tg_identity = ? WHERE nonce_hash = ?')
+    .run(sha(code), JSON.stringify(identity), row.nonce_hash);
+  return { ok: true, code, device: row.device, link: Boolean(row.link_user_id), created_at: row.created_at };
+}
+
+/**
+ * Подтверждение со страницы, открытой ссылкой «Войти». nonce — код входа, если эта
+ * страница открылась в том же браузере, где вход начат: тогда она сама заберёт токен.
+ */
+export function confirmLink(db, { code, nonce }) {
+  const row = db.prepare('SELECT * FROM tg_logins WHERE confirm_hash = ?').get(sha(code ?? ''));
+  if (!row?.tg_identity) return { ok: false, reply: EXPIRED };
+  if (row.status === 'confirmed' || row.status === 'used') {
+    return { ok: false, reply: 'Этот вход уже подтверждён. Вернитесь в приложение.', done: true, client: row.client };
+  }
+  if (!alive(row)) return { ok: false, reply: EXPIRED };
+
+  const result = settle(db, row, JSON.parse(row.tg_identity), true);
+  return {
+    ...result,
+    same: Boolean(nonce) && sha(nonce) === row.nonce_hash,
+    client: row.client ?? 'm',
+    link: Boolean(row.link_user_id),
+  };
+}
+
 /** Имя для обращения: как человек подписан в Telegram. */
 function nameOf(tg) {
   const full = [tg.first_name, tg.last_name].filter(Boolean).join(' ').trim().slice(0, 80);
@@ -103,7 +151,11 @@ function nameOf(tg) {
 export function confirmLogin(db, { nonce, telegram, approve }) {
   const row = find(db, nonce);
   if (!alive(row)) return { ok: false, reply: EXPIRED };
+  return settle(db, row, telegram, approve);
+}
 
+/** Решение по запросу: вход, регистрация, привязка или отказ. */
+function settle(db, row, telegram, approve) {
   const now = new Date().toISOString();
   const close = (status, reply, extra = {}) => {
     db.prepare('UPDATE tg_logins SET status = ?, confirmed_at = ? WHERE nonce_hash = ?').run(status, now, row.nonce_hash);

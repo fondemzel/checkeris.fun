@@ -1493,6 +1493,7 @@ function showLogin(note) {
 
   stopLinkRefresh?.();
   stopLinkRefresh = keepLinkReady($('tg-login'), {
+    client: 'm',
     onError: (err) => {
       // Вход через Telegram не настроен или сервер недоступен — остаётся пароль
       $('tg-login').hidden = err.status === 503;
@@ -1524,7 +1525,8 @@ function awaitTelegram(login) {
       await start();
       if (data.created) toast(`Добро пожаловать, ${data.login}!`);
     },
-    onFail: (message) => showLogin(message),
+    // Токен забрала страница подтверждения в соседней вкладке — он уже у нас
+    onFail: (message, status) => (status === 'used' && token.get() ? start() : showLogin(message)),
   });
 }
 

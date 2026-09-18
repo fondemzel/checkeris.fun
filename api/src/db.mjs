@@ -42,6 +42,9 @@ function addUserColumns(db) {
   addColumn(db, 'users', 'tg_username', 'TEXT');
   addColumn(db, 'users', 'name', 'TEXT');
   addColumn(db, 'users', 'role', "TEXT NOT NULL DEFAULT 'user'");
+  addColumn(db, 'tg_logins', 'client', 'TEXT');
+  addColumn(db, 'tg_logins', 'confirm_hash', 'TEXT');
+  addColumn(db, 'tg_logins', 'tg_identity', 'TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');
   // Первый пользователь — владелец проекта: без квот и с правом на системный справочник
   db.exec(`UPDATE users SET role = 'admin'

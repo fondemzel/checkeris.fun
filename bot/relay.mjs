@@ -5,9 +5,12 @@
 // ни сертификат, ни открытые порты — только исходящие соединения к Telegram и к Чекеру.
 //
 // Что он делает — ровно одно: подтверждает вход.
-//   /start <код>  → спрашивает Чекер, что за запрос (describe), и показывает устройство:
+//   /start <код>  → готовит подтверждение в Чекере (prepare): тот запоминает, кому
+//                   показан запрос, и отдаёт код для ссылки. Сообщение с устройством:
 //                   «Войти в Чекер? Запрос с iPhone · Safari» — [Войти] [Это не я]
-//   нажатие       → передаёт решение и того, кто нажал, в Чекер (confirm)
+//   «Войти»       → ссылка на страницу Чекера: она открывается в браузере и подтверждает
+//                   вход там же, откуда человек вернётся в приложение
+//   «Это не я»    → кнопка: отказ уходит в Чекер (confirm)
 // Запросы к Чекеру подписаны общим секретом (HMAC): без него подделать вход нельзя.
 //
 //   node relay.mjs           — работать
@@ -94,7 +97,10 @@ async function onMessage(msg) {
 
   let info;
   try {
-    info = await checker('/api/telegram/describe', { nonce });
+    info = await checker('/api/telegram/prepare', {
+      nonce,
+      telegram: { id: msg.from.id, first_name: msg.from.first_name, last_name: msg.from.last_name, username: msg.from.username },
+    });
   } catch (err) {
     console.error(err.message);
     return tg('sendMessage', { chat_id, text: TROUBLE });
@@ -110,7 +116,8 @@ async function onMessage(msg) {
     text,
     reply_markup: {
       inline_keyboard: [[
-        { text: info.link ? 'Привязать' : 'Войти', callback_data: `ok:${nonce}` },
+        // Ссылка, а не кнопка-ответ: сразу открывает Чекер в браузере
+        { text: info.link ? 'Привязать' : 'Войти', url: `${CHECKER}/tg.html?c=${info.code}` },
         { text: 'Это не я', callback_data: `no:${nonce}` },
       ]],
     },

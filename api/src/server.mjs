@@ -24,7 +24,16 @@ import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer,
 import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
-import { telegramReady, startLogin, pollLogin, describeLogin, confirmLogin, verifyRelay } from './telegram.mjs';
+import {
+  telegramReady,
+  startLogin,
+  pollLogin,
+  describeLogin,
+  prepareLogin,
+  confirmLogin,
+  confirmLink,
+  verifyRelay,
+} from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
 import {
   getTaxonomy,
@@ -237,7 +246,24 @@ async function handleApi(req, res, url) {
       if (!me) return sendJson(res, 401, { error: 'нужен вход' });
       linkUserId = me.id;
     }
-    return sendJson(res, 200, startLogin(db, { ua: req.headers['user-agent'], ip: clientIp(req), linkUserId }));
+    return sendJson(
+      res,
+      200,
+      startLogin(db, { ua: req.headers['user-agent'], ip: clientIp(req), linkUserId, client: body.client }),
+    );
+  }
+
+  // Подтверждение со страницы, открытой ссылкой «Войти» в сообщении бота
+  if (pathname === '/api/auth/telegram/confirm-link') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    if (tooOften(`tgc:${clientIp(req)}`, 30, 10 * 60_000)) return sendJson(res, 429, { error: 'слишком много попыток, подождите' });
+    let body = {};
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    return sendJson(res, 200, confirmLink(db, body));
   }
 
   // Опрос: пока человек не подтвердил в боте — pending, потом один раз токен
@@ -247,7 +273,7 @@ async function handleApi(req, res, url) {
   }
 
   // Бот с зарубежного сервера. Открыто наружу, но без верной подписи не принимается
-  if (pathname === '/api/telegram/describe' || pathname === '/api/telegram/confirm') {
+  if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm'].includes(pathname)) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     let raw;
     let body;
@@ -263,7 +289,11 @@ async function handleApi(req, res, url) {
     return sendJson(
       res,
       200,
-      pathname.endsWith('/describe') ? describeLogin(db, body.nonce) : confirmLogin(db, body),
+      pathname.endsWith('/describe')
+        ? describeLogin(db, body.nonce)
+        : pathname.endsWith('/prepare')
+          ? prepareLogin(db, body)
+          : confirmLogin(db, body),
     );
   }
 

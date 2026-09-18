@@ -47,12 +47,15 @@ function remember(value) {
   }
 }
 
-/** Новый код входа. С токеном и link=true — привязка Telegram к вошедшему аккаунту. */
-export async function requestLogin({ token = null, link = false } = {}) {
+/**
+ * Новый код входа. С токеном и link=true — привязка Telegram к вошедшему аккаунту.
+ * client — m или cabinet: куда вернёт страница подтверждения, открытая из бота.
+ */
+export async function requestLogin({ token = null, link = false, client = 'm' } = {}) {
   const res = await fetch('/api/auth/telegram/start', {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ link }),
+    body: JSON.stringify({ link, client }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(data.error ?? `HTTP ${res.status}`), { status: res.status });
@@ -63,13 +66,13 @@ export async function requestLogin({ token = null, link = false } = {}) {
  * Держит ссылку на бота готовой: получает код и обновляет его до истечения.
  * Возвращает функцию, которая останавливает обновление.
  */
-export function keepLinkReady(anchor, { onError } = {}) {
+export function keepLinkReady(anchor, { onError, client = 'm' } = {}) {
   let timer = null;
   let stopped = false;
   const refresh = async () => {
     if (stopped) return;
     try {
-      const login = await requestLogin();
+      const login = await requestLogin({ client });
       anchor.href = login.app_url ?? login.url;
       anchor.dataset.web = login.url;
       anchor.dataset.nonce = login.nonce;
@@ -105,7 +108,9 @@ export const forgetLogin = () => remember(null);
 
 /**
  * Ждём подтверждения в боте: опрос раз в 2 секунды и сразу, как только человек
- * вернулся на страницу. onDone получает { token, login, created } или { status: 'linked' }.
+ * вернулся на страницу. onDone получает { token, login, created } или { status: 'linked' },
+ * onFail — текст и статус. Статус used значит, что токен забрала другая вкладка этого же
+ * браузера (страница подтверждения из бота) — тогда он уже лежит в localStorage.
  */
 export function waitLogin(nonce, { onDone, onFail }) {
   let stopped = false;
@@ -131,7 +136,7 @@ export function waitLogin(nonce, { onDone, onFail }) {
       stop();
       forgetLogin();
       if (data.status === 'ok' || data.status === 'linked') onDone(data);
-      else onFail(FAIL[data.status] ?? 'Вход не состоялся — попробуйте ещё раз');
+      else onFail(FAIL[data.status] ?? 'Вход не состоялся — попробуйте ещё раз', data.status);
     } catch {
       timer = setTimeout(tick, 4000); // сеть моргнула — не сдаёмся
     }

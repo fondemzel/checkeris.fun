@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#131a26" />
+  <title>Вход в Чекер</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      box-sizing: border-box;
+      background: #f4f5f7;
+      color: #1f2328;
+      font: 15px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    main { width: 100%; max-width: 340px; padding: 26px 22px; border-radius: 14px; background: #fff; text-align: center; }
+    .ic { width: 52px; height: 52px; margin: 0 auto 12px; color: #2aabee; }
+    .ic.ok { color: #1baf7a; }
+    .ic.bad { color: #b42318; }
+    h1 { margin: 0 0 6px; font-size: 19px; }
+    p { margin: 0; color: #6b7280; }
+    a.btn {
+      display: block;
+      margin-top: 18px;
+      padding: 13px;
+      border-radius: 10px;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    a[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <!-- Сюда ведёт кнопка «Войти» в сообщении бота. Подтверждает вход скрипт, а не сам
+       переход: ссылки заранее открывают антивирусы и фильтры, и без человека вход
+       подтверждаться не должен. -->
+  <main>
+    <svg class="ic" id="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+    </svg>
+    <h1 id="title">Подтверждаем вход…</h1>
+    <p id="note">Секунду</p>
+    <a class="btn" id="go" href="/m/" hidden>Открыть Чекер</a>
+  </main>
+
+  <script type="module">
+    import { pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
+
+    const $ = (id) => document.getElementById(id);
+    const ICONS = {
+      ok: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+      bad: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+    };
+
+    function show(kind, title, note, href = null) {
+      $('ic').innerHTML = ICONS[kind] ?? ICONS.ok;
+      $('ic').setAttribute('class', `ic ${kind}`);
+      $('title').textContent = title;
+      $('note').textContent = note;
+      $('go').hidden = !href;
+      if (href) $('go').href = href;
+    }
+
+    const appOf = (client) => (client === 'cabinet' ? '/cabinet/' : '/m/');
+    const code = new URLSearchParams(location.search).get('c');
+    // Вход начат в этом же браузере — страница сама заберёт токен и откроет Чекер
+    const pending = pendingLogin();
+
+    try {
+      if (!code) throw new Error('В ссылке нет кода подтверждения');
+      const res = await fetch('/api/auth/telegram/confirm-link', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code, nonce: pending?.nonce ?? null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+
+      if (!data.ok) {
+        show(data.done ? 'ok' : 'bad', data.done ? 'Уже готово' : 'Не получилось', data.reply, appOf(data.client));
+      } else if (data.link) {
+        show('ok', 'Telegram привязан', 'Теперь в Чекер можно входить через Telegram.', appOf(data.client));
+      } else if (data.same && pending) {
+        show('ok', 'Входим…', 'Вход подтверждён');
+        waitLogin(pending.nonce, {
+          onDone: (login) => {
+            localStorage.setItem('checker.token', login.token);
+            location.replace(appOf(data.client));
+          },
+          // Токен успела забрать вкладка, где начат вход, — она уже внутри
+          onFail: () => show('ok', 'Вход выполнен', 'Вернитесь во вкладку Чекера.', appOf(data.client)),
+        });
+      } else {
+        forgetLogin();
+        show('ok', 'Вход подтверждён', 'Вернитесь в приложение или вкладку, где начинали вход, — вы уже внутри.', null);
+      }
+    } catch (err) {
+      show('bad', 'Не получилось', err.message, '/m/');
+    }
+  </script>
+</body>
+</html>

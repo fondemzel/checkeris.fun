@@ -1752,6 +1752,7 @@ function showLogin(note) {
 
   stopLinkRefresh?.();
   stopLinkRefresh = keepLinkReady($('tg-login'), {
+    client: 'cabinet',
     onError: (err) => {
       $('tg-login').hidden = err.status === 503;
       if (err.status === 503) $('login-pass-block').open = true;
@@ -1779,7 +1780,7 @@ function awaitTelegram(login) {
       token.set(data.token);
       await start();
     },
-    onFail: (message) => showLogin(message),
+    onFail: (message, status) => (status === 'used' && token.get() ? start() : showLogin(message)),
   });
 }
 
@@ -1811,7 +1812,7 @@ $('tg-link').addEventListener('click', async () => {
   const tab = window.open('about:blank', '_blank');
   button.textContent = 'Ждём подтверждения в Telegram…';
   try {
-    const login = await requestLogin({ token: token.get(), link: true });
+    const login = await requestLogin({ token: token.get(), link: true, client: 'cabinet' });
     if (tab) tab.location = login.url;
     else window.open(login.url, '_blank');
     waitLogin(login.nonce, {

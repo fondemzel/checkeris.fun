@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS tg_logins (
   link_user_id INTEGER REFERENCES users (id) ON DELETE CASCADE,
   user_id      INTEGER REFERENCES users (id) ON DELETE CASCADE,
   created      INTEGER NOT NULL DEFAULT 0, -- этим входом аккаунт был создан
+  client       TEXT,                   -- m | cabinet: куда вернуть после подтверждения
+  confirm_hash TEXT,                   -- код из ссылки «Войти» в сообщении бота (хеш)
+  tg_identity  TEXT,                   -- кому бот показал запрос: id и имя из Telegram, JSON
   created_at   TEXT NOT NULL,
   expires_at   TEXT NOT NULL,
   confirmed_at TEXT
