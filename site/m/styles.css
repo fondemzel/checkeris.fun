@@ -532,7 +532,19 @@ button, input, select { font: inherit; color: inherit; }
   pointer-events: none;
 }
 
-.scanner.caught .scanner-frame { border-color: #4ade80; }
+.scanner-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  text-align: center;
+}
+
+/* Код пойман: рамка зеленеет и становится табло для ответа ФНС */
+.scanner.caught .scanner-frame { border-color: #4ade80; background: rgba(0, 0, 0, 0.62); }
+.scanner-frame-status { margin: 0; color: #fff; font-size: 17px; font-weight: 500; line-height: 1.35; }
+.scanner-frame-status.error { color: #ffb4ab; }
+.scanner-frame-status:empty, .scanner-status:empty { display: none; }
 
 .scanner-close {
   position: absolute;
@@ -568,7 +580,7 @@ button, input, select { font: inherit; color: inherit; }
 .scanner-status.error { color: #ffb4ab; }
 .scanner-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .scanner-actions:empty { display: none; }
-.scanner-actions .btn { padding: 0 16px; }
+.scanner-actions .btn { padding: 0 16px; color: var(--text); } /* панель красит текст в белый — кнопкам свой цвет */
 
 .scanner-link { border: none; background: none; color: rgba(255, 255, 255, 0.75); font-size: 13px; text-decoration: underline; cursor: pointer; }
 .scanner-link[hidden] { display: none; }

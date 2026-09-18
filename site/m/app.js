@@ -812,7 +812,7 @@ async function screenAdded() {
     <p class="note list-hint">${
       unknown
         ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — нажмите и выберите`
-        : 'Нажмите на строку, если категория неверная'
+        : 'Нажмите на строку, чтобы поменять категорию'
     }</p>
     <div class="list sheet-list">${receipt.items.map(sheetRow).join('')}</div>`;
 }
@@ -843,7 +843,7 @@ function openScanner() {
   el.className = 'scanner';
   el.innerHTML = `
     <video playsinline muted autoplay></video>
-    <span class="scanner-frame"></span>
+    <div class="scanner-frame"><p class="scanner-frame-status" id="scanner-frame-status"></p></div>
     <button class="scanner-close" type="button" data-close aria-label="Закрыть">×</button>
     <div class="scanner-bottom">
       <p class="scanner-status" id="scanner-status">Включаем камеру…</p>
@@ -881,12 +881,19 @@ function openScanner() {
   startCamera(current);
 }
 
-/** Статус и кнопки внизу камеры. Сканер могли закрыть, пока шёл запрос, — тогда молчим. */
+/**
+ * Статус и кнопки камеры. Пока ищем код, подсказка внизу — рамка должна быть прозрачной.
+ * Когда код пойман, всё, что дальше говорит ФНС, пишется прямо в рамке: взгляд
+ * и так там. Кнопки остаются внизу, под большим пальцем.
+ * Сканер могли закрыть, пока шёл запрос, — тогда молчим.
+ */
 function scannerSay(current, text, { error = false, actions = '' } = {}) {
   if (scanner !== current) return;
-  const status = current.el.querySelector('#scanner-status');
-  status.innerHTML = text;
-  status.classList.toggle('error', error);
+  const caught = current.el.classList.contains('caught');
+  const target = current.el.querySelector(caught ? '#scanner-frame-status' : '#scanner-status');
+  current.el.querySelector(caught ? '#scanner-status' : '#scanner-frame-status').textContent = '';
+  target.innerHTML = text;
+  target.classList.toggle('error', error);
   current.el.querySelector('#scanner-actions').innerHTML = actions;
 }
 
@@ -950,6 +957,7 @@ async function followScan(job, onUpdate) {
 
 /** Отправка распознанной строки и слежение за заданием до готовности. */
 async function submitScan(current, qr) {
+  current.el.classList.add('caught');
   const again = '<button class="btn" type="button" data-again>Сканировать ещё</button>';
   scannerSay(current, 'Код прочитан, отправляем…');
 
@@ -963,7 +971,7 @@ async function submitScan(current, qr) {
       return openReceiptSheet(job.receipt_id);
     }
   } catch (err) {
-    return scannerSay(current, esc(err.message), { error: true, actions: again });
+    return scannerSay(current, esc(cap(err.message)), { error: true, actions: again });
   }
 
   job = await followScan(job, (j) => scannerSay(current, `${esc(cap(jobNote(j)))}…`));
@@ -1315,6 +1323,10 @@ async function render() {
 // ── события ──────────────────────────────────────────────
 
 function onScreenClick(e) {
+  // Строка позиции с выбором категории — экран «Добавлено»
+  const pick = e.target.closest('[data-pick]');
+  if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
+
   const shift = e.target.closest('[data-shift]');
   if (shift) return go(shiftPeriod(state.from, state.to, Number(shift.dataset.shift)), true);
 
