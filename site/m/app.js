@@ -1508,7 +1508,10 @@ function showLogin(note) {
 function setWaiting(login) {
   $('tg-wait').hidden = !login;
   $('tg-login').hidden = Boolean(login);
-  if (login) $('tg-again').href = login.url;
+  if (login) {
+    $('tg-again').href = login.url;
+    $('tg-web').href = login.web ?? login.url;
+  }
 }
 
 function awaitTelegram(login) {

@@ -5,6 +5,10 @@
 // выполненного после ожидания ответа. Поэтому код берётся, как только показан экран
 // входа, и обновляется незадолго до истечения.
 //
+// Кнопка ведёт на tg://…: так Telegram открывается сразу, без промежуточной страницы
+// t.me. Если приложения нет, tg:// молча не сработает — поэтому на экране ожидания
+// есть запасная ссылка на t.me, где и веб-версия, и предложение установить приложение.
+//
 // Пока человек в Telegram, страница опрашивает сервер. Если она перезагрузилась
 // (ярлык на экране телефона так делает), код лежит в localStorage и опрос продолжается.
 
@@ -66,7 +70,8 @@ export function keepLinkReady(anchor, { onError } = {}) {
     if (stopped) return;
     try {
       const login = await requestLogin();
-      anchor.href = login.url;
+      anchor.href = login.app_url ?? login.url;
+      anchor.dataset.web = login.url;
       anchor.dataset.nonce = login.nonce;
       anchor.dataset.expires = login.expires_at;
       anchor.classList.remove('disabled');
@@ -85,7 +90,13 @@ export function keepLinkReady(anchor, { onError } = {}) {
 
 /** Человек нажал ссылку: запоминаем код, чтобы дождаться подтверждения даже после перезагрузки. */
 export function markWaiting(anchor) {
-  const value = { nonce: anchor.dataset.nonce, url: anchor.href, expires_at: anchor.dataset.expires, waiting: true };
+  const value = {
+    nonce: anchor.dataset.nonce,
+    url: anchor.href,
+    web: anchor.dataset.web,
+    expires_at: anchor.dataset.expires,
+    waiting: true,
+  };
   remember(value);
   return value;
 }

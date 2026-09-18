@@ -67,9 +67,13 @@ export function startLogin(db, { ua, ip, linkUserId = null }) {
      VALUES (?, 'pending', ?, ?, ?, ?, ?)`,
   ).run(sha(nonce), deviceOf(ua), ip ?? null, linkUserId, iso(now), iso(now + TTL_MS));
 
+  // Две ссылки на одного бота: tg:// открывает приложение сразу, без страницы t.me
+  // с кнопкой «Open in Telegram»; https://t.me — запасная, если приложения нет
+  const { bot } = telegramConfig();
   return {
     nonce,
-    url: `https://t.me/${telegramConfig().bot}?start=${nonce}`,
+    app_url: `tg://resolve?domain=${bot}&start=${nonce}`,
+    url: `https://t.me/${bot}?start=${nonce}`,
     expires_at: iso(now + TTL_MS),
   };
 }

@@ -66,6 +66,7 @@ button, input, select { font: inherit; color: inherit; }
 
 .tg-wait { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; background: #eef7fd; }
 .tg-wait[hidden] { display: none; }
+.tg-web { align-self: center; color: var(--muted); font-size: 13px; }
 .tg-wait-title { margin: 0; font-weight: 600; }
 .tg-wait .btn { display: flex; align-items: center; justify-content: center; color: var(--text); text-decoration: none; }
 
