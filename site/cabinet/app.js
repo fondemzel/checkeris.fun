@@ -2,6 +2,7 @@
 import { groupIcon, searchIcons, GROUP_ICONS } from '/shared/icons.js';
 import { hexToHsl, hslToHex, tint, shades, readableText, edge, hexToRgb } from '/shared/colors.js';
 import { columns, bars, sunburst, bindTooltip } from '/cabinet/charts.js';
+import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin, requestLogin } from '/shared/tglogin.js';
 
 const CHART_COLOR = '#2563eb'; // один ряд — один цвет; величину несёт длина марки
 
@@ -1737,18 +1738,100 @@ function bind() {
 
 // ── запуск ───────────────────────────────────────────────
 
+// Вход: главный способ — Telegram, пароль спрятан ниже для аккаунтов, заведённых до него.
+let stopLinkRefresh = null;
+let stopWaiting = null;
+
 function showLogin(note) {
   $('login').hidden = false;
   $('app').hidden = true;
-  $('login-note').textContent = note ?? 'Кабинет закрыт: внутри личные чеки';
+  $('login-note').textContent = note ?? 'Учёт расходов по чекам';
   $('login-note').classList.toggle('error', Boolean(note));
-  $('login-name').focus();
+  $('tg-ic').innerHTML = TG_ICON;
+  setWaiting(null);
+
+  stopLinkRefresh?.();
+  stopLinkRefresh = keepLinkReady($('tg-login'), {
+    onError: (err) => {
+      $('tg-login').hidden = err.status === 503;
+      if (err.status === 503) $('login-pass-block').open = true;
+    },
+  });
+
+  const pending = pendingLogin();
+  if (pending) awaitTelegram(pending);
 }
+
+function setWaiting(login) {
+  $('tg-wait').hidden = !login;
+  $('tg-login').hidden = Boolean(login);
+  if (login) $('tg-again').href = login.url;
+}
+
+function awaitTelegram(login) {
+  setWaiting(login);
+  stopWaiting?.();
+  stopWaiting = waitLogin(login.nonce, {
+    onDone: async (data) => {
+      token.set(data.token);
+      await start();
+    },
+    onFail: (message) => showLogin(message),
+  });
+}
+
+$('tg-login').addEventListener('click', (e) => {
+  if ($('tg-login').classList.contains('disabled')) return e.preventDefault();
+  awaitTelegram(markWaiting($('tg-login')));
+});
+
+$('tg-cancel').addEventListener('click', () => {
+  stopWaiting?.();
+  forgetLogin();
+  showLogin();
+});
+
+/** Кто вошёл и привязан ли Telegram — в подвале боковой панели. */
+async function renderMe() {
+  const me = await apiJson('/api/session').catch(() => null);
+  if (!me) return;
+  $('me').textContent = me.name + (me.telegram ? ' · Telegram' : '');
+  $('tg-link').hidden = me.telegram || !me.telegram_login;
+}
+
+/**
+ * Привязка Telegram к аккаунту с паролем. Кнопка обычная, не ссылка: код берётся
+ * по нажатию, а Telegram открывается следом — десктопные браузеры это пропускают.
+ */
+$('tg-link').addEventListener('click', async () => {
+  const button = $('tg-link');
+  const tab = window.open('about:blank', '_blank');
+  button.textContent = 'Ждём подтверждения в Telegram…';
+  try {
+    const login = await requestLogin({ token: token.get(), link: true });
+    if (tab) tab.location = login.url;
+    else window.open(login.url, '_blank');
+    waitLogin(login.nonce, {
+      onDone: () => {
+        button.textContent = 'Привязать Telegram';
+        renderMe();
+      },
+      onFail: (message) => {
+        button.textContent = `${message}. Привязать Telegram`;
+      },
+    });
+  } catch (err) {
+    tab?.close();
+    button.textContent = `Не вышло: ${err.message}`;
+  }
+});
 
 /** Первая загрузка данных. Отсюда же кабинет показывается после входа. */
 async function start() {
+  stopLinkRefresh?.();
   $('login').hidden = true;
   $('app').hidden = false;
+  renderMe();
 
   await loadMeta(); // справочник категорий нужен карточке для выпадающих списков
   if (state.view === 'taxonomy') {

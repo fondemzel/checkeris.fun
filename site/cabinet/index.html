@@ -9,13 +9,33 @@
 </head>
 <body>
   <div class="login" id="login" hidden>
-    <form class="login-box" id="login-form">
+    <div class="login-box">
       <div class="login-title">Чекер</div>
-      <p class="dim" id="login-note">Кабинет закрыт: внутри личные чеки</p>
-      <input id="login-name" type="text" placeholder="Логин" autocomplete="username" required />
-      <input id="login-pass" type="password" placeholder="Пароль" autocomplete="current-password" required />
-      <button class="btn" id="login-submit" type="submit">Войти</button>
-    </form>
+      <p class="dim" id="login-note">Учёт расходов по чекам</p>
+
+      <!-- Готовая ссылка на бота: код входа получен заранее, см. shared/tglogin.js -->
+      <a class="btn tg disabled" id="tg-login" target="_blank" rel="noopener">
+        <span class="tg-ic" id="tg-ic"></span>Войти через Telegram
+      </a>
+      <div class="tg-wait" id="tg-wait" hidden>
+        <p><b>Подтвердите вход в Telegram</b></p>
+        <p class="dim">Бот покажет, с какого устройства запрошен вход, — нажмите «Войти».
+          Telegram можно открыть и на телефоне: вход придёт сюда.</p>
+        <a class="btn" id="tg-again" target="_blank" rel="noopener">Открыть Telegram ещё раз</a>
+        <button class="btn" id="tg-cancel" type="button">Отмена</button>
+      </div>
+
+      <p class="dim consent">Входя, вы соглашаетесь на <a href="/privacy.html">обработку данных</a>.</p>
+
+      <details class="login-pass" id="login-pass-block">
+        <summary>Войти по паролю</summary>
+        <form id="login-form">
+          <input id="login-name" type="text" placeholder="Логин" autocomplete="username" required />
+          <input id="login-pass" type="password" placeholder="Пароль" autocomplete="current-password" required />
+          <button class="btn" id="login-submit" type="submit">Войти</button>
+        </form>
+      </details>
+    </div>
   </div>
 
   <div class="app" id="app" hidden>
@@ -28,6 +48,8 @@
       <div class="sidebar-foot">
         <div id="data-period">загрузка данных…</div>
         <div id="last-import"></div>
+        <div class="me" id="me"></div>
+        <button class="nav-logout" id="tg-link" type="button" hidden>Привязать Telegram</button>
         <button class="nav-logout" id="logout" type="button">Выйти</button>
       </div>
     </nav>

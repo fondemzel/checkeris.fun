@@ -32,7 +32,21 @@ export function migrate(db) {
   prepareSplit(db);
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
   finishSplit(db);
+  addUserColumns(db);
   repairScanErrors(db);
+}
+
+/** Вход через Telegram и роли. Индекс — здесь: в старой базе колонки появляются только сейчас. */
+function addUserColumns(db) {
+  addColumn(db, 'users', 'telegram_id', 'INTEGER');
+  addColumn(db, 'users', 'tg_username', 'TEXT');
+  addColumn(db, 'users', 'name', 'TEXT');
+  addColumn(db, 'users', 'role', "TEXT NOT NULL DEFAULT 'user'");
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');
+  // Первый пользователь — владелец проекта: без квот и с правом на системный справочник
+  db.exec(`UPDATE users SET role = 'admin'
+            WHERE id = (SELECT MIN(id) FROM users)
+              AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')`);
 }
 
 const tableExists = (db, name) =>

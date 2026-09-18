@@ -12,20 +12,41 @@
 </head>
 <body>
   <div class="login" id="login" hidden>
-    <form class="login-box" id="login-form">
+    <div class="login-box">
       <div class="login-title">Чекер</div>
-      <p class="note" id="login-note">Внутри личные чеки</p>
-      <input id="login-name" type="text" placeholder="Логин" autocomplete="username" required />
-      <input id="login-pass" type="password" placeholder="Пароль" autocomplete="current-password" required />
-      <button class="btn primary" id="login-submit" type="submit">Войти</button>
-    </form>
+      <p class="note" id="login-note">Учёт расходов по чекам</p>
+
+      <!-- Готовая ссылка на бота: код входа получен заранее, см. shared/tglogin.js -->
+      <a class="btn tg disabled" id="tg-login" target="_blank" rel="noopener">
+        <span class="tg-ic" id="tg-ic"></span>Войти через Telegram
+      </a>
+
+      <div class="tg-wait" id="tg-wait" hidden>
+        <p class="tg-wait-title">Подтвердите вход в Telegram</p>
+        <p class="note">Бот покажет, с какого устройства запрошен вход, — нажмите «Войти» и вернитесь сюда.</p>
+        <a class="btn" id="tg-again" target="_blank" rel="noopener">Открыть Telegram ещё раз</a>
+        <button class="link" id="tg-cancel" type="button">Отмена</button>
+      </div>
+
+      <p class="note consent">Входя, вы соглашаетесь на <a href="/privacy.html">обработку данных</a>:
+        храним имя и id из Telegram и чеки, которые вы добавите.</p>
+
+      <details class="login-pass" id="login-pass-block">
+        <summary>Войти по паролю</summary>
+        <form id="login-form">
+          <input id="login-name" type="text" placeholder="Логин" autocomplete="username" required />
+          <input id="login-pass" type="password" placeholder="Пароль" autocomplete="current-password" required />
+          <button class="btn primary" id="login-submit" type="submit">Войти</button>
+        </form>
+      </details>
+    </div>
   </div>
 
   <div class="app" id="app" hidden>
     <header class="bar">
       <button class="bar-back" id="back" type="button" hidden aria-label="Назад">‹</button>
       <div class="bar-title" id="title">Расходы</div>
-      <button class="bar-action" id="logout" type="button" aria-label="Выйти" title="Выйти"></button>
+      <button class="bar-action" id="logout" type="button" aria-label="Аккаунт" title="Аккаунт"></button>
     </header>
 
     <main class="screen" id="screen"></main>

@@ -44,7 +44,36 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .login-title { font-size: 20px; font-weight: 600; }
-.login-box input { height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; }
+.login-box input { height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 16px; }
+
+/* Telegram — главный вход: фирменный цвет, чтобы узнавался без чтения */
+.btn.tg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 50px;
+  border: none;
+  background: #2aabee;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.btn.tg.disabled { opacity: 0.55; pointer-events: none; }
+.btn.tg[hidden] { display: none; }
+.tg-ic svg { display: block; width: 20px; height: 20px; }
+
+.tg-wait { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; background: #eef7fd; }
+.tg-wait[hidden] { display: none; }
+.tg-wait-title { margin: 0; font-weight: 600; }
+.tg-wait .btn { display: flex; align-items: center; justify-content: center; color: var(--text); text-decoration: none; }
+
+.consent { font-size: 12px; }
+.consent a { color: inherit; }
+
+.login-pass summary { cursor: pointer; font-size: 14px; color: var(--muted); }
+.login-pass form { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 
 .btn {
   height: 44px;
@@ -311,6 +340,11 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* ── первый вход ───────────────────────────────────────── */
+
+.welcome { padding: 18px 16px; margin-bottom: 4px; border-radius: 14px; background: var(--surface); }
+.welcome-title { margin-bottom: 6px; font-size: 18px; font-weight: 600; }
 
 /* ── добавление ────────────────────────────────────────── */
 

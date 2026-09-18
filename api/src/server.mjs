@@ -24,6 +24,8 @@ import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer,
 import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
+import { telegramReady, startLogin, pollLogin, describeLogin, confirmLogin, verifyRelay } from './telegram.mjs';
+import { scanQuota } from './quota.mjs';
 import {
   getTaxonomy,
   createGroup,
@@ -114,8 +116,8 @@ function sendCsv(res, filename, header, rows) {
 
 const money = (kopecks) => (Number(kopecks ?? 0) / 100).toFixed(2).replace('.', ',');
 
-/** Тело запроса как JSON; лимит защищает от бесконечного потока. */
-async function readJson(req, limit = 64 * 1024) {
+/** Тело запроса как текст; лимит защищает от бесконечного потока. */
+async function readRaw(req, limit = 64 * 1024) {
   let size = 0;
   const chunks = [];
   for await (const chunk of req) {
@@ -123,8 +125,30 @@ async function readJson(req, limit = 64 * 1024) {
     if (size > limit) throw new Error('body too large');
     chunks.push(chunk);
   }
-  if (!size) return {};
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/** Тело запроса как JSON. */
+async function readJson(req, limit) {
+  const raw = await readRaw(req, limit);
+  return raw ? JSON.parse(raw) : {};
+}
+
+// Адрес клиента: сервер стоит за nginx, настоящий адрес приходит в X-Real-IP
+const clientIp = (req) => String(req.headers['x-real-ip'] ?? req.socket.remoteAddress ?? '');
+
+/**
+ * Ограничение частоты по адресу для открытых ручек. В памяти: процесс один,
+ * а сброс при перезапуске не страшен — это защита от перебора, не учёт.
+ */
+const hits = new Map();
+function tooOften(key, limit, windowMs) {
+  const now = Date.now();
+  const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  recent.push(now);
+  hits.set(key, recent);
+  if (hits.size > 5000) for (const [k, v] of hits) if (!v.some((t) => now - t < windowMs)) hits.delete(k);
+  return recent.length > limit;
 }
 
 // коды ставок НДС из ФФД
@@ -189,14 +213,84 @@ async function handleApi(req, res, url) {
   // Данных здесь нет — только номер и есть ли кому входить.
   if (pathname === '/api/version') return sendJson(res, 200, { version: VERSION, users: hasUsers(db) });
 
-  if (pathname === '/api/token') return handleToken(req, res);
+  if (pathname === '/api/token') {
+    if (tooOften(`token:${clientIp(req)}`, 20, 10 * 60_000)) return sendJson(res, 429, { error: 'слишком много попыток, подождите' });
+    return handleToken(req, res);
+  }
+
+  // ── вход через Telegram ──
+  // Начало: браузер получает одноразовый код. С токеном и link=true — привязка
+  // Telegram к уже вошедшему аккаунту, а не вход
+  if (pathname === '/api/auth/telegram/start') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    if (!telegramReady()) return sendJson(res, 503, { error: 'вход через Telegram не настроен' });
+    if (tooOften(`tg:${clientIp(req)}`, 20, 10 * 60_000)) return sendJson(res, 429, { error: 'слишком много попыток, подождите' });
+    let body = {};
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    let linkUserId = null;
+    if (body.link) {
+      const me = userByToken(db, bearer(req));
+      if (!me) return sendJson(res, 401, { error: 'нужен вход' });
+      linkUserId = me.id;
+    }
+    return sendJson(res, 200, startLogin(db, { ua: req.headers['user-agent'], ip: clientIp(req), linkUserId }));
+  }
+
+  // Опрос: пока человек не подтвердил в боте — pending, потом один раз токен
+  if (pathname === '/api/auth/telegram/poll') {
+    const result = pollLogin(db, searchParams.get('nonce'));
+    return sendJson(res, result.status === 'unknown' ? 404 : 200, result);
+  }
+
+  // Бот с зарубежного сервера. Открыто наружу, но без верной подписи не принимается
+  if (pathname === '/api/telegram/describe' || pathname === '/api/telegram/confirm') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    let raw;
+    let body;
+    try {
+      raw = await readRaw(req);
+      body = JSON.parse(raw || '{}');
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    if (!verifyRelay(req.headers['x-checker-ts'], req.headers['x-checker-signature'], raw)) {
+      return sendJson(res, 401, { error: 'bad signature' });
+    }
+    return sendJson(
+      res,
+      200,
+      pathname.endsWith('/describe') ? describeLogin(db, body.nonce) : confirmLogin(db, body),
+    );
+  }
 
   // Всё остальное — только по токену. Кабинет и телефон ходят одинаково.
   const user = userByToken(db, bearer(req));
   if (!user) return sendJson(res, 401, { error: 'нужен вход' });
 
   // Кабинет спрашивает при загрузке, жив ли сохранённый токен
-  if (pathname === '/api/session') return sendJson(res, 200, { login: user.login });
+  if (pathname === '/api/session') {
+    return sendJson(res, 200, {
+      login: user.login,
+      name: user.name ?? user.login,
+      role: user.role,
+      telegram: user.telegram,
+      telegram_login: telegramReady(),
+    });
+  }
+
+  // Удаление аккаунта самим пользователем. Всё его — чеки, сканы, справочник, правки,
+  // токены — уходит каскадом внешних ключей одним запросом. Администратора так не удалить:
+  // одно неосторожное нажатие не должно стирать владельца проекта
+  if (pathname === '/api/account') {
+    if (req.method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
+    if (user.role === 'admin') return sendJson(res, 403, { error: 'аккаунт администратора удаляется только из консоли' });
+    const removed = db.prepare('DELETE FROM users WHERE id = ?').run(user.id).changes;
+    return sendJson(res, 200, { deleted: removed === 1 });
+  }
 
   if (pathname === '/api/logout') {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
@@ -279,6 +373,10 @@ async function handleApi(req, res, url) {
         return sendJson(res, 400, { error: 'bad request body' });
       }
       if (!fnsReady()) return sendJson(res, 503, { error: 'доступ к ФНС не настроен' });
+      const quota = scanQuota(db, user);
+      if (quota.left <= 0) {
+        return sendJson(res, 429, { error: `на сегодня сканов больше нет (${quota.limit} в сутки) — завтра снова можно` });
+      }
 
       const result = addScan(db, user.id, body.qr);
       if (result.error) return sendJson(res, result.status ?? 400, { error: result.error });

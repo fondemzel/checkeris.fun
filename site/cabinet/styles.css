@@ -62,6 +62,36 @@ a { color: inherit; text-decoration: none; }
 .login-box input { height: 30px; }
 .login-box .btn { height: 30px; }
 
+/* Telegram — главный вход: фирменный цвет, узнаётся без чтения */
+.btn.tg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  border: none;
+  background: #2aabee;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.btn.tg:hover { background: #229ed9; }
+.btn.tg.disabled { opacity: 0.55; pointer-events: none; }
+.btn.tg[hidden] { display: none; }
+.tg-ic svg { display: block; width: 16px; height: 16px; }
+
+.tg-wait { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 6px; background: #eef7fd; }
+.tg-wait[hidden] { display: none; }
+.tg-wait .btn { display: flex; align-items: center; justify-content: center; color: var(--text); text-decoration: none; }
+
+.consent a { color: inherit; }
+.login-pass summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.login-pass form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+
+.me { margin-top: 10px; color: #c4c9d2; }
+.me:empty { display: none; }
+#tg-link[hidden] { display: none; }
+
 .nav-logout {
   margin-top: 10px;
   padding: 0;

@@ -17,11 +17,44 @@ PRAGMA foreign_keys = ON;
 -- ── доступ ──────────────────────────────────────────────────────────────────
 -- Проверка входа живёт в приложении, а не в nginx: телефону нужен токен, а не
 -- basic auth. Пароль хранится хешем scrypt с солью, сам пароль нигде не лежит.
+-- Пользователь входит паролем или через Telegram. У пришедшего из Telegram логин
+-- служебный («tg:<id>»), а пароль — «!»: такой хеш не совпадёт ни с одним паролем.
 CREATE TABLE IF NOT EXISTS users (
-  id         INTEGER PRIMARY KEY,
-  login      TEXT NOT NULL UNIQUE,
-  password   TEXT NOT NULL,            -- scrypt: <соль в hex>:<хеш в hex>
-  created_at TEXT NOT NULL
+  id          INTEGER PRIMARY KEY,
+  login       TEXT NOT NULL UNIQUE,
+  password    TEXT NOT NULL,           -- scrypt: <соль в hex>:<хеш в hex>
+  created_at  TEXT NOT NULL,
+  telegram_id INTEGER,                 -- id в Telegram; уникален (индекс заводит migrate)
+  tg_username TEXT,
+  name        TEXT,                    -- как обращаться: имя из Telegram
+  role        TEXT NOT NULL DEFAULT 'user' -- user | admin: админ без квот, правит системный справочник
+);
+
+-- Вход через Telegram. Браузер получает одноразовый код, человек подтверждает его
+-- в боте, браузер забирает токен. Код хранится хешем, живёт 10 минут и гасится
+-- при первой выдаче токена. link_user_id — не вход, а привязка Telegram к уже
+-- вошедшему аккаунту.
+CREATE TABLE IF NOT EXISTS tg_logins (
+  nonce_hash   TEXT PRIMARY KEY,
+  status       TEXT NOT NULL,          -- pending | confirmed | rejected | used
+  device       TEXT,                   -- «iPhone · Safari»: показывается в боте перед подтверждением
+  ip           TEXT,
+  link_user_id INTEGER REFERENCES users (id) ON DELETE CASCADE,
+  user_id      INTEGER REFERENCES users (id) ON DELETE CASCADE,
+  created      INTEGER NOT NULL DEFAULT 0, -- этим входом аккаунт был создан
+  created_at   TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  confirmed_at TEXT
+);
+
+-- Личные суточные квоты: лимит ФНС и модель общие на всё приложение, и один активный
+-- пользователь не должен выбрать их за всех.
+CREATE TABLE IF NOT EXISTS usage_daily (
+  user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  day     TEXT NOT NULL,
+  kind    TEXT NOT NULL,                -- llm_names
+  n       INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, day, kind)
 );
 
 -- Токен хранится хешем: если база утечёт, войти по ней будет нельзя.

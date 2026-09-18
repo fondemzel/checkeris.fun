@@ -48,7 +48,7 @@ export function userByToken(db, token) {
   if (!token) return null;
   const row = db
     .prepare(
-      `SELECT t.hash, t.expires_at, u.id, u.login
+      `SELECT t.hash, t.expires_at, u.id, u.login, u.name, u.role, u.telegram_id
          FROM tokens t JOIN users u ON u.id = t.user_id
         WHERE t.hash = ?`,
     )
@@ -62,7 +62,7 @@ export function userByToken(db, token) {
 
   // Отметка последнего использования: по ней видно живые устройства в списке токенов
   db.prepare('UPDATE tokens SET used_at = ? WHERE hash = ?').run(new Date().toISOString(), row.hash);
-  return { id: row.id, login: row.login };
+  return { id: row.id, login: row.login, name: row.name, role: row.role, telegram: Boolean(row.telegram_id) };
 }
 
 export const revokeToken = (db, token) =>

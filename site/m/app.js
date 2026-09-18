@@ -10,6 +10,7 @@
 // посчитать в базе, считает сервер (/api/summary).
 import { groupIcon } from '/shared/icons.js';
 import { shades, edge, readableText } from '/shared/colors.js';
+import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 
 const $ = (id) => document.getElementById(id);
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
@@ -273,7 +274,13 @@ async function screenSummary() {
         ${int.format(data.totals.count)} ${plural(data.totals.count, 'позиция', 'позиции', 'позиций')}</span>
     </div>`;
 
-  if (!data.rows.length) return `${head}<div class="empty">За этот период трат нет</div>`;
+  if (!data.rows.length) {
+    // Совсем новый аккаунт — не «трат нет», а с чего начать. Сводку в meta освежаем:
+    // она берётся при входе и не знает о первом добавленном чеке
+    if (!meta.stats.receipts) meta = await api('/api/meta');
+    if (!meta.stats.receipts) return welcome();
+    return `${head}<div class="empty">За этот период трат нет</div>`;
+  }
 
   const rows = data.rows
     .map((r) =>
@@ -766,6 +773,17 @@ async function openScanSheet(jobId) {
 }
 
 // ── добавление ───────────────────────────────────────────
+
+/** Первый вход: пусто не потому, что период такой, а потому что чеков ещё нет. */
+function welcome() {
+  return `
+    <div class="welcome">
+      <div class="welcome-title">Здесь будут ваши расходы</div>
+      <p class="note">Отсканируйте QR-код с любого кассового чека — позиции придут из ФНС
+        и сами разложатся по категориям. Покупку без чека можно вбить вручную.</p>
+    </div>
+    ${screenAdd()}`;
+}
 
 function screenAdd() {
   return `
@@ -1406,23 +1424,121 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   if (tab) go({ screen: tab.dataset.tab, group: '', category: '', item: '' });
 });
 
-$('logout').addEventListener('click', async () => {
-  if (!confirm('Выйти из аккаунта на этом устройстве?')) return;
-  await api('/api/logout', { method: 'POST' }).catch(() => {});
-  token.clear();
-  location.reload();
-});
+/**
+ * Аккаунт: кто вошёл, выход и удаление. Удаление — насовсем и со всеми данными,
+ * поэтому спрашиваем дважды и говорим, что именно пропадёт.
+ */
+async function openAccount() {
+  const me = await api('/api/session').catch(() => null);
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  sheet.innerHTML = `
+    <div class="sheet-box" role="dialog" aria-label="Аккаунт">
+      <div class="sheet-top">
+        <div>
+          <div class="sheet-sum-total">${esc(me?.name ?? 'Аккаунт')}</div>
+          <div class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</div>
+        </div>
+        <button class="btn" data-close type="button">Закрыть</button>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn primary" type="button" data-logout>Выйти на этом устройстве</button>
+        ${me?.role === 'admin' ? '' : '<button class="btn danger" type="button" data-delete-account>Удалить аккаунт и все данные</button>'}
+      </div>
+      <p class="note sheet-hint"><a href="/privacy.html">Какие данные хранит Чекер</a></p>
+    </div>`;
+  document.body.appendChild(sheet);
+
+  sheet.addEventListener('click', async (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) return sheet.remove();
+
+    if (e.target.closest('[data-logout]')) {
+      await api('/api/logout', { method: 'POST' }).catch(() => {});
+      token.clear();
+      location.reload();
+    }
+
+    if (e.target.closest('[data-delete-account]')) {
+      if (!confirm('Удалить аккаунт? Пропадут все чеки, ручные траты, категории и правки.')) return;
+      if (!confirm('Точно? Восстановить аккаунт будет нельзя.')) return;
+      try {
+        await api('/api/account', { method: 'DELETE' });
+        token.clear();
+        location.reload();
+      } catch (err) {
+        toast(`Не удалилось: ${err.message}`);
+      }
+    }
+  });
+}
+
+$('logout').addEventListener('click', openAccount);
 
 // ── запуск ───────────────────────────────────────────────
+
+// ── вход ─────────────────────────────────────────────────
+// Главный способ — Telegram, пароль спрятан ниже: он остался для тех, кто завёл
+// аккаунт до Telegram.
+
+let stopLinkRefresh = null;
+let stopWaiting = null;
 
 function showLogin(note) {
   $('login').hidden = false;
   $('app').hidden = true;
-  $('login-note').textContent = note ?? 'Внутри личные чеки';
+  $('login-note').textContent = note ?? 'Учёт расходов по чекам';
   $('login-note').classList.toggle('error', Boolean(note));
+  $('tg-ic').innerHTML = TG_ICON;
+  setWaiting(null);
+
+  stopLinkRefresh?.();
+  stopLinkRefresh = keepLinkReady($('tg-login'), {
+    onError: (err) => {
+      // Вход через Telegram не настроен или сервер недоступен — остаётся пароль
+      $('tg-login').hidden = err.status === 503;
+      if (err.status === 503) $('login-pass-block').open = true;
+    },
+  });
+
+  // Вернулись из Telegram, а страница перезагрузилась — продолжаем ждать тот же вход
+  const pending = pendingLogin();
+  if (pending) awaitTelegram(pending);
 }
 
+function setWaiting(login) {
+  $('tg-wait').hidden = !login;
+  $('tg-login').hidden = Boolean(login);
+  if (login) $('tg-again').href = login.url;
+}
+
+function awaitTelegram(login) {
+  setWaiting(login);
+  stopWaiting?.();
+  stopWaiting = waitLogin(login.nonce, {
+    onDone: async (data) => {
+      token.set(data.token);
+      stopLinkRefresh?.();
+      await start();
+      if (data.created) toast(`Добро пожаловать, ${data.login}!`);
+    },
+    onFail: (message) => showLogin(message),
+  });
+}
+
+$('tg-login').addEventListener('click', (e) => {
+  if ($('tg-login').classList.contains('disabled')) return e.preventDefault();
+  // Ссылка открывает Telegram сама; здесь только начинаем ждать подтверждения
+  awaitTelegram(markWaiting($('tg-login')));
+});
+
+$('tg-cancel').addEventListener('click', () => {
+  stopWaiting?.();
+  forgetLogin();
+  showLogin();
+});
+
 async function start() {
+  stopLinkRefresh?.();
   $('login').hidden = true;
   $('app').hidden = false;
   $('logout').innerHTML = UI.logout;

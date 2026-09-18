@@ -15,6 +15,7 @@
 import { parseQr, requestTicket, fetchTicket, fnsReady, fnsUsage } from './fns.mjs';
 import { saveReceipt, importStatements } from './import.mjs';
 import { classifyItems, fillNames } from './classify.mjs';
+import { takeModelQuota } from './quota.mjs';
 
 // Через сколько секунд после отправки спрашивать ответ: сначала часто, дальше реже
 const BACKOFF = [3, 5, 10, 20, 40, 60, 120, 300];
@@ -189,7 +190,7 @@ async function step(db, job) {
   }
 
   classifyItems(db, saved.itemIds);
-  await askModel(db, saved.itemIds);
+  await askModel(db, saved.itemIds, job.user_id);
 
   db.prepare(
     "UPDATE scan_jobs SET status = 'done', receipt_id = ?, error = NULL, error_code = NULL, next_at = NULL, updated_at = ? WHERE id = ?",
@@ -216,7 +217,7 @@ const MAX_ASK = 25;
  * Ошибка модели не проваливает задание: чек уже сохранён и размечен лестницей,
  * а без категории позиция просто попросит выбрать её руками.
  */
-async function askModel(db, itemIds) {
+async function askModel(db, itemIds, userId) {
   if (!itemIds.length) return;
 
   const placeholders = itemIds.map(() => '?').join(',');
@@ -232,8 +233,13 @@ async function askModel(db, itemIds) {
 
   if (!names.length) return;
 
+  // Модель платная: у каждого своя суточная квота. Не хватило — позиции останутся
+  // без категории, и человек выберет её сам на экране разбора
+  const allowed = takeModelQuota(db, userId, names.length);
+  if (!allowed) return;
+
   try {
-    const { written } = await fillNames(db, names);
+    const { written } = await fillNames(db, names.slice(0, allowed));
     if (written) classifyItems(db, itemIds); // словарь пополнился — перечитываем метки
   } catch (err) {
     console.error('модель не разметила новые названия:', err.message);

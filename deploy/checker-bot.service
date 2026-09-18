@@ -1,0 +1,27 @@
+# /etc/systemd/system/checker-bot.service — на зарубежном сервере (vps3)
+#
+# Бот входа в Чекер. Отдельный пользователь и папка: на этом сервере работают
+# и другие службы, и бот не должен ни видеть их, ни мешать им.
+[Unit]
+Description=Checker login bot (Telegram relay for checkeris.fun)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=checkerbot
+Group=checkerbot
+WorkingDirectory=/opt/checker-bot
+EnvironmentFile=/opt/checker-bot/.env
+ExecStart=/opt/node/bin/node /opt/checker-bot/relay.mjs
+Restart=always
+RestartSec=5
+
+# Боту нужно только читать свой код и ходить в сеть
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target
