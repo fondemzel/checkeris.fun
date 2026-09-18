@@ -98,14 +98,36 @@ Certbot сам добавит TLS-блок и редирект с 80 на 443 в
 
 ## Доступ
 
-Кабинет закрыт basic-аутентификацией на уровне nginx: внутри личные чеки с адресами
-и фискальными реквизитами. Лендинг (`/`) открыт всем.
+Вход проверяет приложение, а не nginx: basic-аутентификация снята, вёрстка открыта,
+данные закрыты токеном (подробно — в [cabinet.md](cabinet.md), раздел «Доступ»).
+Основной способ входа — Telegram, пароль остался у аккаунтов, заведённых до него.
 
-Сменить пароль:
+## Бот входа через Telegram
+
+С основного сервера (vps2, REG.RU) до `api.telegram.org` не достучаться — хостинг режет
+соединения. Поэтому бот `@checker_costs_bot` живёт на зарубежном сервере **vps3**
+(37.46.19.120, Франкфурт) и ходит оттуда в Telegram и в Чекер. Основной сервер в Telegram
+не обращается никогда: бот приходит к нему запросами, подписанными общим секретом.
+
+На vps3 работают и чужие службы (например, `kpp-bot`) — бот отгорожен от них:
+
+| Что | Где |
+| --- | --- |
+| Node.js | `/opt/node` → `/opt/node-v24.21.0-linux-x64`, официальная сборка; системного node нет |
+| код | `/opt/checker-bot/relay.mjs`, владелец root, без зависимостей |
+| настройки | `/opt/checker-bot/.env`, `600 root`: `TG_BOT_TOKEN`, `TG_RELAY_SECRET`, `CHECKER_URL` |
+| служба | `checker-bot.service` ([deploy/checker-bot.service](../deploy/checker-bot.service)), пользователь `checkerbot` |
+
+`TG_RELAY_SECRET` один и тот же в `.env` бота и в `api/.env` Чекера — без совпадения
+бот получает 401 на каждый запрос. Поменять секрет — поменять в обоих местах и перезапустить обе службы.
 
 ```bash
-ssh vps "printf 'checker:%s\n' \"\$(openssl passwd -apr1 'НОВЫЙ')\" > /etc/nginx/.htpasswd-checker && systemctl reload nginx"
+scripts/deploy_bot.sh            # выложить bot/relay.mjs и перезапустить
+scripts/deploy_bot.sh --setup    # ещё и описание и меню бота в Telegram
+ssh vps3 'journalctl -u checker-bot -f'
 ```
 
-Basic auth — временная мера на период, пока база одна и общая. Полноценную авторизацию
-имеет смысл делать вместе с личными кабинетами пользователей.
+Первичная установка на новом сервере: Node в `/opt` (архив с nodejs.org, сверка по
+`SHASUMS256.txt`), `useradd --system --shell /usr/sbin/nologin checkerbot`, папка
+`/opt/checker-bot` с `relay.mjs` и `.env`, юнит в `/etc/systemd/system/`,
+`systemctl enable --now checker-bot`, затем `relay.mjs --setup` с загруженным `.env`.
