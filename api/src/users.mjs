@@ -12,7 +12,7 @@
 import { pathToFileURL } from 'node:url';
 import { openDb, migrate } from './db.mjs';
 import { hashPassword, hasUsers } from './auth.mjs';
-import { provisionTaxonomy } from './taxonomy.mjs';
+import { createBudget, deleteAccount } from './budgets.mjs';
 
 export function addUser(db, login, password) {
   const name = String(login ?? '').trim();
@@ -25,8 +25,8 @@ export function addUser(db, login, password) {
     hashPassword(password),
     new Date().toISOString(),
   );
-  // Без справочника у пользователя не будет ни одной категории: выдаём копию системного
-  provisionTaxonomy(db, Number(lastInsertRowid));
+  // Свой бюджет с копией системного справочника: без него нет ни одной категории
+  createBudget(db, Number(lastInsertRowid));
   return name;
 }
 
@@ -52,7 +52,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     } else if (flag === '--password') {
       console.log(`пароль изменён, отозвано токенов: ${setPassword(db, rest[0], rest[1])}`);
     } else if (flag === '--remove') {
-      const n = db.prepare('DELETE FROM users WHERE login = ?').run(String(rest[0] ?? '').trim()).changes;
+      const target = db.prepare('SELECT id FROM users WHERE login = ?').get(String(rest[0] ?? '').trim());
+      // Как удаление из приложения: общий бюджет переходит к оставшимся, пустой удаляется
+      const n = target && !deleteAccount(db, target.id).error ? 1 : 0;
       console.log(n ? `удалён: ${rest[0]}` : `нет пользователя «${rest[0]}»`);
     } else if (flag === '--revoke') {
       const user = db.prepare('SELECT id FROM users WHERE login = ?').get(String(rest[0] ?? '').trim());

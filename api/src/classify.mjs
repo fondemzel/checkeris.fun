@@ -7,16 +7,16 @@
 // Ступени идут от самого надёжного к самому дорогому. Первая сработавшая
 // побеждает — это и есть весь алгоритм:
 //
-//   1. ручная правка   — решение владельца позиции, отменить его не может ничто
+//   1. ручная правка   — решение участников бюджета, отменить его не может ничто
 //   2. GTIN            — штрихкод: тот же код = тот же товар, ошибок не бывает
 //   3. жёсткое правило — продавец торгует одним («Тариф по билету» у авиаагентства)
 //   4. словарь         — точное совпадение нормализованного названия
 //   5. похожее         — символьные триграммы: «мандарины абхаз вес» ~ «мандарины вес»
 //   6. запасное правило— супермаркет: если иначе не определилось, это еда
 //
-// Ступень 1 — личная, в кодах справочника владельца. Ступени 2–6 — общее знание,
-// оно отвечает кодом системного справочника, а в личную категорию его переводят
-// связи владельца (category_links). Если системная категория у человека ни с чем
+// Ступень 1 — бюджетная, в кодах справочника бюджета. Ступени 2–6 — общее знание,
+// оно отвечает кодом системного справочника, а в категорию бюджета его переводят
+// связи бюджета (category_links). Если системная категория у человека ни с чем
 // не связана, идём по цепочке запасных (fallback_slug); не нашлось и там — ступень
 // считается несработавшей, и разметка спускается ниже.
 //
@@ -89,23 +89,23 @@ function loadTables(db) {
   return { dict, gtin, always, fallback, sysFallback };
 }
 
-/** Личное: ручные правки владельца и куда у него ведут системные категории. */
-export function loadUserTables(db, userId) {
+/** Бюджетное: ручные правки участников и куда в этом бюджете ведут системные категории. */
+export function loadBudgetTables(db, budgetId) {
   return {
     overrides: new Map(
-      db.prepare('SELECT name_norm, category_slug FROM user_dictionary WHERE user_id = ?').all(userId).map((r) => [r.name_norm, r.category_slug]),
+      db.prepare('SELECT name_norm, category_slug FROM budget_dictionary WHERE budget_id = ?').all(budgetId).map((r) => [r.name_norm, r.category_slug]),
     ),
     links: new Map(
-      db.prepare('SELECT sys_slug, slug FROM category_links WHERE user_id = ?').all(userId).map((r) => [r.sys_slug, r.slug]),
+      db.prepare('SELECT sys_slug, slug FROM category_links WHERE budget_id = ?').all(budgetId).map((r) => [r.sys_slug, r.slug]),
     ),
   };
 }
 
-/** Системная категория → личная. Цепочка запасных короткая, ограничение — от циклов. */
-function toPersonal(sysSlug, tables, user) {
+/** Системная категория → категория бюджета. Цепочка запасных короткая, ограничение — от циклов. */
+function toBudget(sysSlug, tables, budget) {
   let slug = sysSlug;
   for (let hop = 0; slug && hop < 8; hop += 1) {
-    const own = user.links.get(slug);
+    const own = budget.links.get(slug);
     if (own) return own;
     slug = tables.sysFallback.get(slug);
   }
@@ -114,18 +114,18 @@ function toPersonal(sysSlug, tables, user) {
 
 /**
  * Одна позиция → категория и то, чем она определилась.
- * Без user — в системных кодах: так --fill выясняет, чего не знает общее знание.
+ * Без бюджета — в системных кодах: так --fill выясняет, чего не знает общее знание.
  */
-export function resolve(item, tables, nearest, user = null) {
-  if (user) {
-    const own = user.overrides.get(item.name_norm);
+export function resolve(item, tables, nearest, budget = null) {
+  if (budget) {
+    const own = budget.overrides.get(item.name_norm);
     if (own) return { category: own, source: 'manual', confidence: 1 };
   }
 
-  // Ступень общего знания срабатывает, только если её ответ есть и у владельца
+  // Ступень общего знания срабатывает, только если её ответ есть и в этом бюджете
   const hit = (sys, source, confidence) => {
     if (!sys) return null;
-    const category = user ? toPersonal(sys, tables, user) : sys;
+    const category = budget ? toBudget(sys, tables, budget) : sys;
     return category ? { category, source, confidence } : null;
   };
 
@@ -142,36 +142,36 @@ export function resolve(item, tables, nearest, user = null) {
 }
 
 const UPSERT_LABEL = `
-  INSERT INTO item_labels (item_id, user_id, category_slug, source, confidence, updated_at)
-  VALUES (:id, :user_id, :category, :source, :confidence, :now)
+  INSERT INTO item_labels (item_id, budget_id, category_slug, source, confidence, updated_at)
+  VALUES (:id, :budget_id, :category, :source, :confidence, :now)
   ON CONFLICT (item_id) DO UPDATE SET
     category_slug = :category, source = :source, confidence = :confidence, updated_at = :now`;
 
 /**
- * Разметка набора позиций. Позиции разных владельцев размечаются каждая по своей
+ * Разметка набора позиций. Позиции разных бюджетов размечаются каждая по своей
  * лестнице; закреплённые метки (ручные траты) не трогаем — их категория пришла
  * из данных, а не выведена из названия, и восстановить её пересчётом невозможно.
  */
 function label(db, items) {
   const tables = loadTables(db);
   const nearest = buildNeighbourIndex(db);
-  const users = new Map();
+  const budgets = new Map();
   const upsert = db.prepare(UPSERT_LABEL);
   const now = new Date().toISOString();
   const counts = {};
 
   for (const item of items) {
-    let user = users.get(item.user_id);
-    if (!user) users.set(item.user_id, (user = loadUserTables(db, item.user_id)));
-    const { category, source, confidence } = resolve(item, tables, nearest, user);
-    upsert.run({ id: item.id, user_id: item.user_id, category, source, confidence, now });
+    let budget = budgets.get(item.budget_id);
+    if (!budget) budgets.set(item.budget_id, (budget = loadBudgetTables(db, item.budget_id)));
+    const { category, source, confidence } = resolve(item, tables, nearest, budget);
+    upsert.run({ id: item.id, budget_id: item.budget_id, category, source, confidence, now });
     counts[source] = (counts[source] ?? 0) + 1;
   }
   return counts;
 }
 
 const ITEMS_TO_LABEL = `
-  SELECT v.id, v.user_id, v.name_norm, v.gtin, v.seller_inn
+  SELECT v.id, v.budget_id, v.name_norm, v.gtin, v.seller_inn
     FROM v_item_categories v
     LEFT JOIN item_labels l ON l.item_id = v.id
    WHERE (l.source IS NULL OR l.source <> 'pinned')`;
@@ -362,7 +362,7 @@ function stats(db) {
   }
 
   const dict = db.prepare('SELECT COUNT(*) c FROM dictionary').get().c;
-  const own = db.prepare('SELECT COUNT(*) c, COUNT(DISTINCT user_id) u FROM user_dictionary').get();
+  const own = db.prepare('SELECT COUNT(*) c, COUNT(DISTINCT budget_id) u FROM budget_dictionary').get();
   console.log(`\nв общем словаре ${dict} названий; личных правок ${own.c} у ${own.u} польз.`);
 
   // Группы у каждого свои, поэтому складываем по названию группы
@@ -371,8 +371,8 @@ function stats(db) {
       `SELECT g.name AS group_name, COUNT(*) n, SUM(i.sum) s
          FROM item_labels l
          JOIN items i      ON i.id = l.item_id
-         JOIN categories c ON c.user_id = l.user_id AND c.slug = l.category_slug
-         JOIN groups g     ON g.user_id = c.user_id AND g.slug = c.group_slug
+         JOIN categories c ON c.budget_id = l.budget_id AND c.slug = l.category_slug
+         JOIN groups g     ON g.budget_id = c.budget_id AND g.slug = c.group_slug
         GROUP BY g.name ORDER BY s DESC LIMIT 12`,
     )
     .all();

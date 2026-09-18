@@ -32,8 +32,9 @@ export function scanQuota(db, user) {
  * Не хватило квоты — позиции останутся без категории, человек выберет её сам.
  */
 export function takeModelQuota(db, userId, wanted) {
-  const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId);
-  if (!user || user.role === 'admin') return wanted;
+  const user = userId ? db.prepare('SELECT role FROM users WHERE id = ?').get(userId) : null;
+  if (!user) return 0; // сканировавший удалил аккаунт — платить за него некому
+  if (user.role === 'admin') return wanted;
 
   const limit = limitOf('USER_DAILY_MODEL_NAMES', 100);
   const day = today();

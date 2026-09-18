@@ -18,7 +18,7 @@
 // прислать ссылку жертве, и её «Start» впустил бы его в её аккаунт.
 import { randomBytes, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { issueToken } from './auth.mjs';
-import { provisionTaxonomy } from './taxonomy.mjs';
+import { createBudget } from './budgets.mjs';
 import { loadEnv } from './llm.mjs';
 
 const TTL_MS = 10 * 60 * 1000; // сколько живёт код входа
@@ -198,7 +198,7 @@ function settle(db, row, telegram, approve) {
         )
         .run(`tg:${tgId}`, now, tgId, username, name);
       userId = Number(res.lastInsertRowid);
-      provisionTaxonomy(db, userId);
+      createBudget(db, userId); // свой бюджет с копией системного справочника
       created = true;
     }
     db.prepare('UPDATE tg_logins SET user_id = ?, created = ? WHERE nonce_hash = ?').run(userId, created ? 1 : 0, row.nonce_hash);

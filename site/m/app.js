@@ -569,6 +569,7 @@ function receiptRows(rows) {
         `${int.format(r.item_count)} ${plural(r.item_count, 'позиция', 'позиции', 'позиций')}`,
         r.manual ? 'вручную' : '',
         r.operation_type === 2 ? 'возврат' : '',
+        shared() && r.author ? r.author : '', // в общем бюджете видно, чья трата
       ].filter(Boolean);
       return `${heading}
         <button class="row" type="button" data-receipt="${r.id}">
@@ -1202,7 +1203,9 @@ async function openReceiptSheet(receiptId) {
       <div class="sheet-top">
         <div>
           <div class="sheet-sum-total">${money(receipt.total_sum, true)}</div>
-          <div class="note">${esc(manual ? 'Записано вручную' : sellerName(receipt))} · ${dateRu(receipt.purchased_at)} ${esc(timeRu(receipt.purchased_at))}</div>
+          <div class="note">${esc(manual ? 'Записано вручную' : sellerName(receipt))} · ${dateRu(receipt.purchased_at)} ${esc(timeRu(receipt.purchased_at))}${
+            shared() && receipt.author ? ` · ${esc(receipt.author)}` : ''
+          }</div>
         </div>
         <button class="btn" data-close type="button">Готово</button>
       </div>
@@ -1428,8 +1431,66 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
  * Аккаунт: кто вошёл, выход и удаление. Удаление — насовсем и со всеми данными,
  * поэтому спрашиваем дважды и говорим, что именно пропадёт.
  */
+const DEFAULT_BUDGET = 'Мой бюджет';
+
+/** Общий ли бюджет: тогда у чеков показывается автор. */
+const shared = () => (meta?.budget?.members ?? 1) > 1;
+
+/** Раздел «Бюджет» в листе аккаунта: состав, приглашение, выход. */
+function budgetSection(budget) {
+  if (!budget) return '';
+  const members = budget.members
+    .map(
+      (m) => `
+      <div class="member">
+        <span class="member-name">${esc(m.name)}${m.is_me ? ' <span class="note">(вы)</span>' : ''}</span>
+        <span class="note">${m.is_owner ? 'владелец' : `${int.format(m.receipts)} ${plural(m.receipts, 'чек', 'чека', 'чеков')}`}</span>
+        ${budget.is_owner && !m.is_me ? `<button class="link" type="button" data-remove-member="${m.id}">Исключить</button>` : ''}
+      </div>`,
+    )
+    .join('');
+
+  return `
+    <div class="card sheet-card budget">
+      <div class="card-label budget-title">Бюджет «${esc(budget.name)}»${
+        budget.is_owner ? ' <button class="link" type="button" data-rename-budget>переименовать</button>' : ''
+      }</div>
+      ${members}
+      <p class="note budget-hint">${
+        budget.members.length > 1
+          ? 'Все участники видят и добавляют траты в этот бюджет.'
+          : 'Пригласите семью — будете вести один бюджет на всех.'
+      }</p>
+      ${budget.is_owner ? '<button class="btn" type="button" data-invite>Пригласить в бюджет</button>' : ''}
+      ${!budget.is_home ? '<button class="btn" type="button" data-leave>Выйти из общего бюджета</button>' : ''}
+    </div>`;
+}
+
+/** Ссылка-приглашение: через системное «Поделиться», а если его нет — в буфер обмена. */
+async function shareInvite(button) {
+  button.disabled = true;
+  try {
+    const invite = await api('/api/budget/invites', { method: 'POST' });
+    const text = 'Присоединяйся к нашему бюджету в Чекере';
+    if (navigator.share) {
+      await navigator.share({ title: 'Чекер', text, url: invite.url }).catch(() => {});
+    } else {
+      await navigator.clipboard?.writeText(invite.url);
+      toast('Ссылка скопирована — отправьте её тому, кого приглашаете');
+    }
+    button.insertAdjacentHTML('afterend', `<p class="note invite-url">Ссылка на неделю, одна на человека:<br>${esc(invite.url)}</p>`);
+  } catch (err) {
+    toast(`Не вышло: ${err.message}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function openAccount() {
-  const me = await api('/api/session').catch(() => null);
+  const [me, budget] = await Promise.all([
+    api('/api/session').catch(() => null),
+    api('/api/budget').catch(() => null),
+  ]);
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
   sheet.innerHTML = `
@@ -1441,6 +1502,7 @@ async function openAccount() {
         </div>
         <button class="btn" data-close type="button">Закрыть</button>
       </div>
+      <div class="sheet-scroll">${budgetSection(budget)}</div>
       <div class="sheet-actions">
         <button class="btn primary" type="button" data-logout>Выйти на этом устройстве</button>
         ${me?.role === 'admin' ? '' : '<button class="btn danger" type="button" data-delete-account>Удалить аккаунт и все данные</button>'}
@@ -1451,6 +1513,47 @@ async function openAccount() {
 
   sheet.addEventListener('click', async (e) => {
     if (e.target === sheet || e.target.closest('[data-close]')) return sheet.remove();
+
+    const invite = e.target.closest('[data-invite]');
+    if (invite) return shareInvite(invite);
+
+    if (e.target.closest('[data-rename-budget]')) {
+      const name = prompt('Название бюджета — его видят приглашённые', budget?.name ?? '');
+      if (!name?.trim()) return;
+      try {
+        await api('/api/budget', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+        sheet.remove();
+        openAccount();
+      } catch (err) {
+        toast(`Не вышло: ${err.message}`);
+      }
+      return;
+    }
+
+    if (e.target.closest('[data-leave]')) {
+      if (!confirm('Выйти из общего бюджета? Вы вернётесь в свой. Ваши траты останутся в общем.')) return;
+      try {
+        await api('/api/budget/leave', { method: 'POST' });
+        location.reload();
+      } catch (err) {
+        toast(`Не вышло: ${err.message}`);
+      }
+      return;
+    }
+
+    const remove = e.target.closest('[data-remove-member]');
+    if (remove) {
+      if (!confirm('Исключить из бюджета? Человек вернётся в свой бюджет, его траты останутся здесь.')) return;
+      try {
+        await api(`/api/budget/members/${remove.dataset.removeMember}`, { method: 'DELETE' });
+        sheet.remove();
+        meta = await api('/api/meta');
+        openAccount();
+      } catch (err) {
+        toast(`Не вышло: ${err.message}`);
+      }
+      return;
+    }
 
     if (e.target.closest('[data-logout]')) {
       await api('/api/logout', { method: 'POST' }).catch(() => {});
@@ -1486,7 +1589,8 @@ let stopWaiting = null;
 function showLogin(note) {
   $('login').hidden = false;
   $('app').hidden = true;
-  $('login-note').textContent = note ?? 'Учёт расходов по чекам';
+  $('login-note').textContent =
+    note ?? (pendingInvite.get() ? 'Войдите, чтобы принять приглашение в общий бюджет' : 'Учёт расходов по чекам');
   $('login-note').classList.toggle('error', Boolean(note));
   $('tg-ic').innerHTML = TG_ICON;
   setWaiting(null);
@@ -1558,6 +1662,7 @@ async function start() {
     Object.assign(state, monthPeriod(last.getFullYear(), last.getMonth()));
   }
   go({}, true);
+  offerInvite();
 
   // Бейдж ошибок виден с любого экрана — застрявший скан не должен теряться
   api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
@@ -1584,6 +1689,110 @@ $('login-form').addEventListener('submit', async (e) => {
   }
 });
 
+// ── приглашение в бюджет ─────────────────────────────────
+// Ссылка /m/?invite=<код>. Код запоминается до входа: новый человек сначала входит
+// через Telegram, и только потом ему показывают, куда его зовут.
+
+const INVITE_KEY = 'checker.invite';
+const pendingInvite = {
+  get: () => {
+    try {
+      return localStorage.getItem(INVITE_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set: (v) => {
+    try {
+      if (v) localStorage.setItem(INVITE_KEY, v);
+      else localStorage.removeItem(INVITE_KEY);
+    } catch {
+      /* без хранилища приглашение переживёт только эту страницу */
+    }
+  },
+};
+
+function takeInviteFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const code = params.get('invite');
+  if (!code) return;
+  pendingInvite.set(code);
+  params.delete('invite');
+  const rest = params.toString();
+  history.replaceState(history.state, '', `${location.pathname}${rest ? `?${rest}` : ''}`);
+}
+
+/** Показать приглашение и дать решить: перенести свои чеки или начать с общего. */
+async function offerInvite() {
+  const code = pendingInvite.get();
+  if (!code) return;
+
+  let info;
+  try {
+    info = await api(`/api/invites/${encodeURIComponent(code)}`);
+  } catch (err) {
+    pendingInvite.set(null);
+    return toast(`Приглашение не сработало: ${err.message}`);
+  }
+  if (info.already) {
+    pendingInvite.set(null);
+    return toast(`Вы уже в бюджете «${info.budget}»`);
+  }
+
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  const who = info.owner ? `${esc(info.owner)} приглашает вас` : 'Вас приглашают';
+  // «Мой бюджет» — имя по умолчанию, со стороны приглашённого оно звучит странно
+  const where = info.budget === DEFAULT_BUDGET ? 'в общий бюджет' : `в бюджет «${esc(info.budget)}»`;
+  sheet.innerHTML = `
+    <div class="sheet-box" role="dialog" aria-label="Приглашение в бюджет">
+      <div class="sheet-top">
+        <div>
+          <div class="sheet-sum-total">Общий бюджет</div>
+          <div class="note">${who} ${where} · ${int.format(info.members)} ${plural(info.members, 'участник', 'участника', 'участников')}</div>
+        </div>
+      </div>
+      <p class="note sheet-hint">Вы будете видеть и добавлять траты вместе. Выйти можно в любой момент — вы вернётесь в свой бюджет.</p>
+      ${info.blocked ? `<p class="note error">${esc(info.blocked)}</p>` : ''}
+      <div class="sheet-actions">
+        ${info.blocked ? '' : info.own_receipts
+          ? `<button class="btn primary" type="button" data-join="move">Перенести мои чеки (${int.format(info.own_receipts)})</button>
+             <button class="btn" type="button" data-join="fresh">Начать с общего — мои останутся у меня</button>`
+          : '<button class="btn primary" type="button" data-join="fresh">Присоединиться</button>'}
+        <button class="btn" type="button" data-decline>Отказаться</button>
+      </div>
+    </div>`;
+  document.body.appendChild(sheet);
+
+  sheet.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-decline]')) {
+      pendingInvite.set(null);
+      return sheet.remove();
+    }
+    const join = e.target.closest('[data-join]');
+    if (!join) return;
+    sheet.querySelectorAll('button').forEach((b) => (b.disabled = true));
+    try {
+      const res = await api(`/api/invites/${encodeURIComponent(code)}/accept`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ move: join.dataset.join === 'move' }),
+      });
+      pendingInvite.set(null);
+      sheet.remove();
+      meta = await api('/api/meta');
+      // Новый бюджет — новые данные: показываем его последний месяц с тратами
+      const last = meta.stats.date_to ? parseDay(meta.stats.date_to.slice(0, 10)) : new Date();
+      go({ screen: 'summary', ...monthPeriod(last.getFullYear(), last.getMonth()) }, true);
+      toast(res.moved ? `Вы в общем бюджете, перенесено чеков: ${res.moved}` : 'Вы в общем бюджете');
+    } catch (err) {
+      sheet.querySelectorAll('button').forEach((b) => (b.disabled = false));
+      toast(`Не вышло: ${err.message}`);
+    }
+  });
+}
+
+takeInviteFromUrl();
 readUrl();
 if (token.get()) {
   try {

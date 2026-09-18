@@ -4,7 +4,7 @@
 //   node api/src/import_manual.mjs                       — залить api/data/fns_out/manual_data.csv
 //   node api/src/import_manual.mjs путь/к/файлу.csv
 //   node api/src/import_manual.mjs --check               — только разобрать и проверить
-//   node api/src/import_manual.mjs --user <логин> ...    — чьи это траты (по умолчанию первый пользователь)
+//   node api/src/import_manual.mjs --user <логин> ...    — в чей бюджет (по умолчанию первого пользователя)
 //
 // Формат строки, без заголовка:
 //   название,сумма в рублях,количество,дата YYYY-MM-DD,,категория
@@ -82,10 +82,10 @@ export function parseCsv(text) {
   return { rows, problems, skipped };
 }
 
-/** Названия категорий из файла → slug'и справочника владельца. Несовпадение — ошибка файла, не молчим. */
-function resolveCategories(db, rows, userId) {
+/** Названия категорий из файла → slug'и справочника бюджета. Несовпадение — ошибка файла, не молчим. */
+function resolveCategories(db, rows, budgetId) {
   const known = new Map(
-    db.prepare('SELECT slug, name FROM categories WHERE user_id = ?').all(userId).map((r) => [normalizeName(r.name), r.slug]),
+    db.prepare('SELECT slug, name FROM categories WHERE budget_id = ?').all(budgetId).map((r) => [normalizeName(r.name), r.slug]),
   );
   const problems = [];
   for (const row of rows) {
@@ -103,20 +103,20 @@ function reportSkipped(skipped) {
   console.log();
 }
 
-export function importManual(db, userId, file = DEFAULT_FILE) {
+export function importManual(db, budgetId, file = DEFAULT_FILE, addedBy = null) {
   const { rows, problems, skipped } = parseCsv(readFileSync(file, 'utf8'));
-  problems.push(...resolveCategories(db, rows, userId));
+  problems.push(...resolveCategories(db, rows, budgetId));
   if (problems.length) throw new Error(`файл не прошёл проверку:\n  ${problems.join('\n  ')}`);
 
   const findReceipt = db.prepare(
-    'SELECT id FROM receipts WHERE user_id = ? AND fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?',
+    'SELECT id FROM receipts WHERE budget_id = ? AND fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?',
   );
   const insertReceipt = db.prepare(`
     INSERT INTO receipts (
-      user_id, source_id, fiscal_drive, fiscal_doc, fiscal_sign, purchased_at, purchased_date,
+      budget_id, added_by, source_id, fiscal_drive, fiscal_doc, fiscal_sign, purchased_at, purchased_date,
       seller, operation_type, total_sum, cash_sum, item_count, items_sum
     ) VALUES (
-      :user_id, :source_id, :fiscal_drive, :fiscal_doc, :fiscal_sign, :purchased_at, :purchased_date,
+      :budget_id, :added_by, :source_id, :fiscal_drive, :fiscal_doc, :fiscal_sign, :purchased_at, :purchased_date,
       :seller, 1, :sum, :sum, 1, :sum
     )`);
   const updateReceipt = db.prepare(`
@@ -131,8 +131,8 @@ export function importManual(db, userId, file = DEFAULT_FILE) {
     VALUES (:receipt_id, 1, :name, :name_norm, :quantity, :price, :sum)`);
   // Категория здесь не догадка, а данные: закрепляем за позицией, чтобы пересчёт её не трогал
   const pinLabel = db.prepare(`
-    INSERT INTO item_labels (item_id, user_id, category_slug, source, confidence, updated_at)
-    VALUES (:item_id, :user_id, :slug, 'pinned', 1, :now)
+    INSERT INTO item_labels (item_id, budget_id, category_slug, source, confidence, updated_at)
+    VALUES (:item_id, :budget_id, :slug, 'pinned', 1, :now)
     ON CONFLICT (item_id) DO UPDATE SET category_slug = :slug, source = 'pinned', confidence = 1, updated_at = :now`);
 
   const now = new Date().toISOString();
@@ -146,7 +146,8 @@ export function importManual(db, userId, file = DEFAULT_FILE) {
       const key = rowKey(row, seen);
       const args = {
         ...key,
-        user_id: userId,
+        budget_id: budgetId,
+        added_by: addedBy,
         source_id: `manual:${key.fiscal_doc}`,
         purchased_at: `${row.date}T12:00:00`,
         purchased_date: row.date,
@@ -154,7 +155,7 @@ export function importManual(db, userId, file = DEFAULT_FILE) {
         sum: row.sum,
       };
 
-      const existing = findReceipt.get(userId, key.fiscal_drive, key.fiscal_doc, key.fiscal_sign);
+      const existing = findReceipt.get(budgetId, key.fiscal_drive, key.fiscal_doc, key.fiscal_sign);
       let receiptId;
       if (existing) {
         updateReceipt.run({ ...args, id: existing.id });
@@ -178,7 +179,7 @@ export function importManual(db, userId, file = DEFAULT_FILE) {
         sum: row.sum,
       });
       const itemId = db.prepare('SELECT last_insert_rowid() AS id').get().id;
-      pinLabel.run({ item_id: itemId, user_id: userId, slug: row.slug, now });
+      pinLabel.run({ item_id: itemId, budget_id: budgetId, slug: row.slug, now });
     }
 
     db.prepare(
@@ -202,7 +203,7 @@ export function importManual(db, userId, file = DEFAULT_FILE) {
 
 const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
 
-export function addManual(db, userId, body) {
+export function addManual(db, budgetId, body, addedBy = null) {
   const rubles = Number(String(body.sum ?? '').replace(/\s/g, '').replace(',', '.'));
   if (!Number.isFinite(rubles) || rubles <= 0 || rubles > 100_000_000) return { error: 'укажите сумму', status: 400 };
   const sum = Math.round(rubles * 100);
@@ -212,21 +213,21 @@ export function addManual(db, userId, body) {
   const time = /^\d{2}:\d{2}$/.test(body.time ?? '') ? body.time : '12:00';
 
   const category = db
-    .prepare('SELECT slug, name FROM categories WHERE user_id = ? AND slug = ?')
-    .get(userId, String(body.category ?? ''));
+    .prepare('SELECT slug, name FROM categories WHERE budget_id = ? AND slug = ?')
+    .get(budgetId, String(body.category ?? ''));
   if (!category) return { error: 'выберите категорию', status: 400 };
 
   const quantity = Number(body.quantity) > 0 ? Number(body.quantity) : 1;
   const name = String(body.name ?? '').trim().slice(0, 200) || category.name;
 
   const taken = db.prepare(
-    "SELECT 1 FROM receipts WHERE user_id = ? AND fiscal_drive = 'manual' AND fiscal_doc = ? AND fiscal_sign = ?",
+    "SELECT 1 FROM receipts WHERE budget_id = ? AND fiscal_drive = 'manual' AND fiscal_doc = ? AND fiscal_sign = ?",
   );
   let key;
   do {
     const bytes = randomBytes(8);
     key = { doc: bytes.readUInt32BE(0) % 1_000_000_000, sign: bytes.readUInt32BE(4) % 1_000_000_000 };
-  } while (taken.get(userId, key.doc, key.sign));
+  } while (taken.get(budgetId, key.doc, key.sign));
 
   const now = new Date().toISOString();
   db.exec('BEGIN');
@@ -234,11 +235,11 @@ export function addManual(db, userId, body) {
     const receipt = db
       .prepare(
         `INSERT INTO receipts (
-           user_id, source_id, fiscal_drive, fiscal_doc, fiscal_sign, purchased_at, purchased_date,
+           budget_id, added_by, source_id, fiscal_drive, fiscal_doc, fiscal_sign, purchased_at, purchased_date,
            seller, operation_type, total_sum, cash_sum, item_count, items_sum
-         ) VALUES (?, ?, 'manual', ?, ?, ?, ?, ?, 1, ?, ?, 1, ?)`,
+         ) VALUES (?, ?, ?, 'manual', ?, ?, ?, ?, ?, 1, ?, ?, 1, ?)`,
       )
-      .run(userId, `manual:app:${key.doc}`, key.doc, key.sign, `${date}T${time}:00`, date, SELLER, sum, sum, sum);
+      .run(budgetId, addedBy, `manual:app:${key.doc}`, key.doc, key.sign, `${date}T${time}:00`, date, SELLER, sum, sum, sum);
     const receiptId = Number(receipt.lastInsertRowid);
 
     const item = db
@@ -250,9 +251,9 @@ export function addManual(db, userId, body) {
     const itemId = Number(item.lastInsertRowid);
 
     db.prepare(
-      `INSERT INTO item_labels (item_id, user_id, category_slug, source, confidence, updated_at)
+      `INSERT INTO item_labels (item_id, budget_id, category_slug, source, confidence, updated_at)
        VALUES (?, ?, ?, 'pinned', 1, ?)`,
-    ).run(itemId, userId, category.slug, now);
+    ).run(itemId, budgetId, category.slug, now);
 
     db.exec('COMMIT');
     return { id: receiptId, item_id: itemId };
@@ -266,8 +267,8 @@ export function addManual(db, userId, body) {
  * Удаление ручной траты — только ручной: чек ФНС удалять незачем, он настоящий.
  * Строка из manual_data.csv после удаления вернётся при следующем импорте файла.
  */
-export function deleteManual(db, userId, id) {
-  const receipt = db.prepare('SELECT fiscal_drive FROM receipts WHERE id = ? AND user_id = ?').get(id, userId);
+export function deleteManual(db, budgetId, id) {
+  const receipt = db.prepare('SELECT fiscal_drive FROM receipts WHERE id = ? AND budget_id = ?').get(id, budgetId);
   if (!receipt) return { error: 'чек не найден', status: 404 };
   if (receipt.fiscal_drive !== 'manual') return { error: 'удалить можно только ручную запись', status: 409 };
   db.prepare('DELETE FROM receipts WHERE id = ?').run(id); // позиции и метки уходят каскадом
@@ -282,13 +283,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const db = openDb();
   migrate(db);
   const user = login
-    ? db.prepare('SELECT id, login FROM users WHERE login = ?').get(login)
-    : db.prepare('SELECT id, login FROM users ORDER BY id LIMIT 1').get();
+    ? db.prepare('SELECT id, login, budget_id FROM users WHERE login = ?').get(login)
+    : db.prepare('SELECT id, login, budget_id FROM users ORDER BY id LIMIT 1').get();
   if (!user) throw new Error(login ? `нет пользователя «${login}»` : 'нет ни одного пользователя — заведите: users.mjs --add');
 
   if (argv.includes('--check')) {
     const { rows, problems, skipped } = parseCsv(readFileSync(file, 'utf8'));
-    problems.push(...resolveCategories(db, rows, user.id));
+    problems.push(...resolveCategories(db, rows, user.budget_id));
     reportSkipped(skipped);
     if (problems.length) {
       console.log('ошибки в файле:');
@@ -303,7 +304,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       );
     }
   } else {
-    const r = importManual(db, user.id, file);
+    const r = importManual(db, user.budget_id, file, user.id);
     reportSkipped(r.skipped);
     console.log(
       `ручные траты: строк ${r.rows} (новых ${r.created}, обновлено ${r.updated}), ` +

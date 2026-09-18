@@ -52,7 +52,7 @@ function collectFiles(args) {
  *
  * Возвращает null, если в записи нет чека (например, служебная строка выгрузки).
  */
-export function saveReceipt(db, row, stmts, userId) {
+export function saveReceipt(db, row, stmts, budgetId, addedBy = null) {
   // БСО (бланк строгой отчётности, code 4) лежит под ключом bso — структура та же, что у чека
   const doc = row?.ticket?.document ?? row?.document ?? row;
   const receipt = doc?.receipt ?? doc?.bso ?? row?.receipt;
@@ -64,7 +64,8 @@ export function saveReceipt(db, row, stmts, userId) {
   const itemsSum = items.reduce((acc, it) => acc + int(it?.sum), 0);
 
   const values = {
-    user_id: userId,
+    budget_id: budgetId,
+    added_by: addedBy,
     source_id: str(row?._id) ?? null,
     fiscal_drive: fiscalDrive,
     fiscal_doc: int(receipt.fiscalDocumentNumber),
@@ -100,7 +101,7 @@ export function saveReceipt(db, row, stmts, userId) {
     raw: JSON.stringify(receipt),
   };
 
-  const existing = stmts.findReceipt.get(userId, values.fiscal_drive, values.fiscal_doc, values.fiscal_sign);
+  const existing = stmts.findReceipt.get(budgetId, values.fiscal_drive, values.fiscal_doc, values.fiscal_sign);
   let receiptId;
   let created = false;
   if (existing) {
@@ -137,7 +138,7 @@ export function saveReceipt(db, row, stmts, userId) {
   return { id: receiptId, itemIds, created };
 }
 
-function importFile(db, file, stmts, userId) {
+function importFile(db, file, stmts, budgetId, addedBy) {
   const parsed = JSON.parse(readFileSync(file, 'utf8'));
   const rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : [parsed];
 
@@ -150,7 +151,7 @@ function importFile(db, file, stmts, userId) {
   db.exec('BEGIN');
   try {
     for (const row of rows) {
-      const saved = saveReceipt(db, row, stmts, userId);
+      const saved = saveReceipt(db, row, stmts, budgetId, addedBy);
       if (!saved) {
         skipped += 1;
         continue;
@@ -175,17 +176,17 @@ function importFile(db, file, stmts, userId) {
 export function importStatements(db) {
   const stmts = {
     findReceipt: db.prepare(
-      'SELECT id FROM receipts WHERE user_id = ? AND fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?',
+      'SELECT id FROM receipts WHERE budget_id = ? AND fiscal_drive = ? AND fiscal_doc = ? AND fiscal_sign = ?',
     ),
     insertReceipt: db.prepare(`
       INSERT INTO receipts (
-        user_id, source_id, fiscal_drive, fiscal_doc, fiscal_sign, created_at, purchased_at, purchased_date,
+        budget_id, added_by, source_id, fiscal_drive, fiscal_doc, fiscal_sign, created_at, purchased_at, purchased_date,
         seller, seller_inn, retail_place, retail_address, kkt_reg_id, operation_type, taxation_type,
         total_sum, cash_sum, ecash_sum, prepaid_sum, credit_sum, provision_sum,
         nds_18, nds_10, nds_0, nds_no, shift_number, request_number, operator, buyer, internet_sign,
         item_count, items_sum, raw
       ) VALUES (
-        :user_id, :source_id, :fiscal_drive, :fiscal_doc, :fiscal_sign, :created_at, :purchased_at, :purchased_date,
+        :budget_id, :added_by, :source_id, :fiscal_drive, :fiscal_doc, :fiscal_sign, :created_at, :purchased_at, :purchased_date,
         :seller, :seller_inn, :retail_place, :retail_address, :kkt_reg_id, :operation_type, :taxation_type,
         :total_sum, :cash_sum, :ecash_sum, :prepaid_sum, :credit_sum, :provision_sum,
         :nds_18, :nds_10, :nds_0, :nds_no, :shift_number, :request_number, :operator, :buyer, :internet_sign,
@@ -226,16 +227,16 @@ export function runImport(files, login = null) {
   const db = openDb();
   migrate(db);
   const user = login
-    ? db.prepare('SELECT id, login FROM users WHERE login = ?').get(login)
-    : db.prepare('SELECT id, login FROM users ORDER BY id LIMIT 1').get();
+    ? db.prepare('SELECT id, login, budget_id FROM users WHERE login = ?').get(login)
+    : db.prepare('SELECT id, login, budget_id FROM users ORDER BY id LIMIT 1').get();
   if (!user) throw new Error(login ? `нет пользователя «${login}»` : 'нет ни одного пользователя — заведите: users.mjs --add');
-  console.log(`чеки пользователя «${user.login}»`);
+  console.log(`чеки пользователя «${user.login}» — в его бюджет #${user.budget_id}`);
   const stmts = importStatements(db);
 
   const totals = { seen: 0, created: 0, updated: 0, itemsTotal: 0, skipped: 0 };
   for (const file of files) {
     if (!statSync(file).isFile()) continue;
-    const res = importFile(db, file, stmts, user.id);
+    const res = importFile(db, file, stmts, user.budget_id, user.id);
     console.log(
       `${basename(file)}: чеков ${res.seen} (новых ${res.created}, обновлено ${res.updated}), ` +
         `позиций ${res.itemsTotal}${res.skipped ? `, пропущено записей ${res.skipped}` : ''}`,
@@ -244,13 +245,13 @@ export function runImport(files, login = null) {
   }
 
   const stats = db
-    .prepare('SELECT COUNT(*) c, MIN(purchased_date) a, MAX(purchased_date) b FROM receipts WHERE user_id = ?')
-    .get(user.id);
+    .prepare('SELECT COUNT(*) c, MIN(purchased_date) a, MAX(purchased_date) b FROM receipts WHERE budget_id = ?')
+    .get(user.budget_id);
   const itemCount = db
-    .prepare('SELECT COUNT(*) c FROM items i JOIN receipts r ON r.id = i.receipt_id WHERE r.user_id = ?')
-    .get(user.id).c;
+    .prepare('SELECT COUNT(*) c FROM items i JOIN receipts r ON r.id = i.receipt_id WHERE r.budget_id = ?')
+    .get(user.budget_id).c;
   console.log(`\nБаза: ${DB_PATH}`);
-  console.log(`У пользователя: чеков ${stats.c}, позиций ${itemCount}, период ${stats.a} — ${stats.b}`);
+  console.log(`В бюджете: чеков ${stats.c}, позиций ${itemCount}, период ${stats.a} — ${stats.b}`);
   db.close();
   return totals;
 }

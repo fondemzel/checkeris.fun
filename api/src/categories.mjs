@@ -162,7 +162,7 @@ export function orphanUsage(db, slug) {
   const count = (sql) => db.prepare(sql).get(slug).c;
   return {
     dictionary: count('SELECT COUNT(*) c FROM dictionary WHERE category_slug = ?'),
-    users: count('SELECT COUNT(*) c FROM category_links WHERE sys_slug = ?'),
+    users: count('SELECT COUNT(*) c FROM category_links WHERE sys_slug = ?'), // бюджетов, куда она ведёт
     sellers: count('SELECT COUNT(*) c FROM seller_rules WHERE category_slug = ?'),
     gtin: count('SELECT COUNT(*) c FROM gtin_map WHERE category_slug = ?'),
   };
@@ -231,7 +231,7 @@ function show(db) {
 }
 
 /**
- * Личный справочник → системный. Так администратор улучшает шаблон и язык модели,
+ * Справочник бюджета → системный. Так администратор улучшает шаблон и язык модели,
  * работая в обычном разделе «Категории» кабинета.
  *
  * Что переносится: названия, значки, цвета, порядок, группа категорий — для категорий,
@@ -240,11 +240,11 @@ function show(db) {
  * Что не переносится: удаления. Системную категорию убрать нельзя — на неё ссылается
  * общее знание и справочники других пользователей; такие случаи печатаются.
  */
-export function publishFromUser(db, userId) {
-  const groups = db.prepare('SELECT slug, name, icon, color, shade_from, shade_to, sort FROM groups WHERE user_id = ?').all(userId);
-  const cats = db.prepare('SELECT slug, group_slug, name, hint, sort FROM categories WHERE user_id = ?').all(userId);
+export function publishFromUser(db, budgetId) {
+  const groups = db.prepare('SELECT slug, name, icon, color, shade_from, shade_to, sort FROM groups WHERE budget_id = ?').all(budgetId);
+  const cats = db.prepare('SELECT slug, group_slug, name, hint, sort FROM categories WHERE budget_id = ?').all(budgetId);
   const linkedTo = new Map(
-    db.prepare('SELECT sys_slug, slug FROM category_links WHERE user_id = ?').all(userId).map((r) => [r.sys_slug, r.slug]),
+    db.prepare('SELECT sys_slug, slug FROM category_links WHERE budget_id = ?').all(budgetId).map((r) => [r.sys_slug, r.slug]),
   );
   const sysSlugs = new Set(db.prepare('SELECT slug FROM sys_categories').all().map((r) => r.slug));
 
@@ -256,7 +256,7 @@ export function publishFromUser(db, userId) {
       shade_from = :shade_from, shade_to = :shade_to, sort = :sort`);
   const updateCat = db.prepare('UPDATE sys_categories SET group_slug = ?, name = ?, hint = ?, sort = ? WHERE slug = ?');
   const insertCat = db.prepare('INSERT INTO sys_categories (slug, group_slug, name, hint, sort) VALUES (?, ?, ?, ?, ?)');
-  const link = db.prepare('INSERT OR REPLACE INTO category_links (user_id, sys_slug, slug) VALUES (?, ?, ?)');
+  const link = db.prepare('INSERT OR REPLACE INTO category_links (budget_id, sys_slug, slug) VALUES (?, ?, ?)');
 
   db.exec('BEGIN');
   try {
@@ -270,7 +270,7 @@ export function publishFromUser(db, userId) {
         report.updated += 1;
       } else if (!sysSlugs.has(c.slug)) {
         insertCat.run(c.slug, c.group_slug, c.name, c.hint, c.sort);
-        link.run(userId, c.slug, c.slug);
+        link.run(budgetId, c.slug, c.slug);
         report.added.push(c.name);
       } else {
         // Код занят системной категорией, которая у пользователя ведёт в другое место
@@ -337,12 +337,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     show(db);
   } else if (process.argv.includes('--from-user')) {
     const login = process.argv[process.argv.indexOf('--from-user') + 1];
-    const user = db.prepare('SELECT id, login FROM users WHERE login = ?').get(String(login ?? ''));
+    const user = db.prepare('SELECT id, login, budget_id FROM users WHERE login = ?').get(String(login ?? ''));
     if (!user) {
       console.log(`нет пользователя «${login ?? ''}»`);
       process.exitCode = 1;
     } else {
-      const r = publishFromUser(db, user.id);
+      const r = publishFromUser(db, user.budget_id);
       console.log(`из справочника «${user.login}» в системный: групп ${r.groups}, категорий обновлено ${r.updated}`);
       if (r.added.length) console.log(`  новые системные категории: ${r.added.join(', ')}`);
       if (r.merged.length) console.log(`  у пользователя слиты (в системном остались): ${r.merged.join(', ')}`);

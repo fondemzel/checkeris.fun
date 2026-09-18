@@ -2,8 +2,9 @@
 -- Все денежные поля хранятся в копейках (целые), как приходят из ФНС.
 --
 -- Данные делятся на два вида:
---   личные — чеки, позиции, их разметка, сканы, справочник категорий пользователя;
---            у каждой такой записи есть владелец, и чужие записи не видны;
+--   бюджетные — чеки, позиции, их разметка, сканы, справочник категорий и ручные правки;
+--            хозяин у них — бюджет, а не человек. У человека один текущий бюджет:
+--            свой или общий семейный, куда его пригласили. Чужие бюджеты не видны;
 --   общие  — знание о товарах: словарь названий, штрихкоды, правила продавцов.
 --            Оно пишется в кодах системного справочника (sys_*) и через связи
 --            (category_links) попадает в личные категории каждого.
@@ -27,8 +28,36 @@ CREATE TABLE IF NOT EXISTS users (
   telegram_id INTEGER,                 -- id в Telegram; уникален (индекс заводит migrate)
   tg_username TEXT,
   name        TEXT,                    -- как обращаться: имя из Telegram
-  role        TEXT NOT NULL DEFAULT 'user' -- user | admin: админ без квот, правит системный справочник
+  role        TEXT NOT NULL DEFAULT 'user', -- user | admin: админ без квот, правит системный справочник
+  budget_id      INTEGER REFERENCES budgets (id), -- текущий бюджет: его данные человек видит и правит
+  home_budget_id INTEGER REFERENCES budgets (id)  -- свой бюджет: в него человек вернётся, выйдя из общего
 );
+
+-- Бюджет — хозяин данных. Обычно в нём один человек; семья — несколько человек
+-- в одном бюджете. Владелец приглашает и исключает, участники добавляют траты
+-- и правят категории. Удаление аккаунта участника общие траты не трогает:
+-- данные держатся за бюджет, а не за человека.
+CREATE TABLE IF NOT EXISTS budgets (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL,
+  owner_id   INTEGER REFERENCES users (id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+
+-- Приглашение в бюджет: одноразовая ссылка со сроком жизни, в базе — хеш кода.
+CREATE TABLE IF NOT EXISTS invites (
+  id         INTEGER PRIMARY KEY,
+  code_hash  TEXT NOT NULL UNIQUE,
+  budget_id  INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
+  created_by INTEGER REFERENCES users (id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_by    INTEGER REFERENCES users (id) ON DELETE SET NULL,
+  used_at    TEXT,
+  revoked    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_invites_budget ON invites (budget_id);
 
 -- Вход через Telegram. Браузер получает одноразовый код, человек подтверждает его
 -- в боте, браузер забирает токен. Код хранится хешем, живёт 10 минут и гасится
@@ -73,11 +102,13 @@ CREATE TABLE IF NOT EXISTS tokens (
 CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens (user_id);
 
 -- ── чеки ────────────────────────────────────────────────────────────────────
--- Чек принадлежит пользователю. Один и тот же чек (общий ужин) могут принести двое,
--- поэтому тройка ФН/ФД/ФП уникальна в пределах владельца, а не на всю базу.
+-- Чек принадлежит бюджету. Один и тот же чек (общий ужин) могут принести в разные
+-- бюджеты, поэтому тройка ФН/ФД/ФП уникальна в пределах бюджета, а не на всю базу.
+-- added_by — кто добавил: в семейном бюджете видно, чья это трата.
 CREATE TABLE IF NOT EXISTS receipts (
   id              INTEGER PRIMARY KEY,
-  user_id         INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  budget_id       INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
+  added_by        INTEGER REFERENCES users (id) ON DELETE SET NULL,
   source_id       TEXT,                     -- _id из выгрузки
   fiscal_drive    TEXT NOT NULL,            -- fiscalDriveNumber (ФН)
   fiscal_doc      INTEGER NOT NULL,         -- fiscalDocumentNumber (ФД)
@@ -110,10 +141,10 @@ CREATE TABLE IF NOT EXISTS receipts (
   item_count      INTEGER NOT NULL DEFAULT 0,
   items_sum       INTEGER NOT NULL DEFAULT 0, -- сумма позиций, для сверки с total_sum
   raw             TEXT,                     -- исходный receipt целиком
-  UNIQUE (user_id, fiscal_drive, fiscal_doc, fiscal_sign)
+  UNIQUE (budget_id, fiscal_drive, fiscal_doc, fiscal_sign)
 );
 
-CREATE INDEX IF NOT EXISTS idx_receipts_user_date ON receipts (user_id, purchased_date);
+CREATE INDEX IF NOT EXISTS idx_receipts_budget_date ON receipts (budget_id, purchased_date);
 CREATE INDEX IF NOT EXISTS idx_receipts_at        ON receipts (purchased_at);
 CREATE INDEX IF NOT EXISTS idx_receipts_inn       ON receipts (seller_inn);
 CREATE INDEX IF NOT EXISTS idx_receipts_source    ON receipts (source_id);
@@ -203,12 +234,12 @@ CREATE TABLE IF NOT EXISTS seller_rules (
   updated_at    TEXT NOT NULL
 );
 
--- ── личный справочник ───────────────────────────────────────────────────────
--- Копия системного при регистрации, дальше пользователь правит его как хочет.
--- slug уникален в пределах владельца и неизменен: переименование и перенос между
+-- ── справочник бюджета ──────────────────────────────────────────────────────
+-- Копия системного при создании бюджета, дальше участники правят его как хотят.
+-- slug уникален в пределах бюджета и неизменен: переименование и перенос между
 -- группами — правка name и group_slug, разметку они не трогают.
 CREATE TABLE IF NOT EXISTS groups (
-  user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  budget_id  INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
   slug       TEXT NOT NULL,
   name       TEXT NOT NULL,
   icon       TEXT,
@@ -216,64 +247,64 @@ CREATE TABLE IF NOT EXISTS groups (
   shade_from INTEGER NOT NULL DEFAULT 25,
   shade_to   INTEGER NOT NULL DEFAULT 85,
   sort       INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (user_id, slug)
+  PRIMARY KEY (budget_id, slug)
 );
 
 CREATE TABLE IF NOT EXISTS categories (
-  user_id    INTEGER NOT NULL,
+  budget_id  INTEGER NOT NULL,
   slug       TEXT NOT NULL,
   group_slug TEXT NOT NULL,
   name       TEXT NOT NULL,
   hint       TEXT,
   sort       INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (user_id, slug),
-  FOREIGN KEY (user_id, group_slug) REFERENCES groups (user_id, slug) ON DELETE CASCADE
+  PRIMARY KEY (budget_id, slug),
+  FOREIGN KEY (budget_id, group_slug) REFERENCES groups (budget_id, slug) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_categories_group ON categories (user_id, group_slug, sort);
+CREATE INDEX IF NOT EXISTS idx_categories_group ON categories (budget_id, group_slug, sort);
 
--- Куда у этого пользователя ведёт каждая системная категория. Сразу после регистрации —
+-- Куда в этом бюджете ведёт каждая системная категория. Сразу после создания —
 -- в свою копию; удалил «Доставку еды» с переносом в «Рестораны» — связь переезжает туда же,
 -- и общее знание продолжает раскладывать доставку правильно. Категории, созданные самим
 -- пользователем, ни с чем системным не связаны: туда ведут только его ручные правки.
 CREATE TABLE IF NOT EXISTS category_links (
-  user_id  INTEGER NOT NULL,
-  sys_slug TEXT NOT NULL REFERENCES sys_categories (slug) ON DELETE CASCADE,
-  slug     TEXT NOT NULL,
-  PRIMARY KEY (user_id, sys_slug),
-  FOREIGN KEY (user_id, slug) REFERENCES categories (user_id, slug) ON DELETE CASCADE
+  budget_id INTEGER NOT NULL,
+  sys_slug  TEXT NOT NULL REFERENCES sys_categories (slug) ON DELETE CASCADE,
+  slug      TEXT NOT NULL,
+  PRIMARY KEY (budget_id, sys_slug),
+  FOREIGN KEY (budget_id, slug) REFERENCES categories (budget_id, slug) ON DELETE CASCADE
 );
 
--- Ручная правка категории — решение одного человека о названии товара. Верхняя
--- ступень его лестницы разметки; на других пользователей не влияет.
-CREATE TABLE IF NOT EXISTS user_dictionary (
-  user_id       INTEGER NOT NULL,
+-- Ручная правка категории — решение участников бюджета о названии товара. Верхняя
+-- ступень лестницы разметки этого бюджета; на другие бюджеты не влияет.
+CREATE TABLE IF NOT EXISTS budget_dictionary (
+  budget_id     INTEGER NOT NULL,
   name_norm     TEXT NOT NULL,
   category_slug TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
-  PRIMARY KEY (user_id, name_norm),
-  FOREIGN KEY (user_id, category_slug) REFERENCES categories (user_id, slug) ON DELETE CASCADE
+  PRIMARY KEY (budget_id, name_norm),
+  FOREIGN KEY (budget_id, category_slug) REFERENCES categories (budget_id, slug) ON DELETE CASCADE
 );
 
--- Результат классификации позиции, в кодах личного справочника владельца.
+-- Результат классификации позиции, в кодах справочника её бюджета.
 -- Производная таблица: пересчитывается, знания живут в словарях и правилах.
--- user_id здесь ради внешнего ключа: метка не может сослаться на чужую категорию.
+-- budget_id здесь ради внешнего ключа: метка не может сослаться на чужую категорию.
 CREATE TABLE IF NOT EXISTS item_labels (
   item_id       INTEGER PRIMARY KEY REFERENCES items (id) ON DELETE CASCADE,
-  user_id       INTEGER NOT NULL,
+  budget_id     INTEGER NOT NULL,
   category_slug TEXT,
   source        TEXT NOT NULL,           -- manual | pinned | gtin | rule | dictionary | ngram | rule-fallback | unknown
   confidence    REAL,
   updated_at    TEXT NOT NULL,
-  FOREIGN KEY (user_id, category_slug) REFERENCES categories (user_id, slug)
+  FOREIGN KEY (budget_id, category_slug) REFERENCES categories (budget_id, slug)
 );
 
-CREATE INDEX IF NOT EXISTS idx_item_labels_category ON item_labels (user_id, category_slug);
+CREATE INDEX IF NOT EXISTS idx_item_labels_category ON item_labels (budget_id, category_slug);
 CREATE INDEX IF NOT EXISTS idx_item_labels_source   ON item_labels (source);
 
 -- ── представления ───────────────────────────────────────────────────────────
 -- Пересоздаются при каждом запуске — так изменения схемы доезжают без ручной миграции.
--- Категория и группа берутся из справочника владельца чека, а не из общего.
+-- Категория и группа берутся из справочника бюджета, которому принадлежит чек.
 
 -- Позиции вместе с контекстом чека и категорией: на этом представлении строится
 -- вкладка «Товары», сводка и мобильная версия.
@@ -282,7 +313,8 @@ CREATE VIEW v_items AS
 SELECT
   i.id,
   i.receipt_id,
-  r.user_id,
+  r.budget_id,
+  r.added_by,
   i.pos,
   i.name,
   i.name_norm,
@@ -317,8 +349,8 @@ SELECT
 FROM items i
 JOIN receipts r ON r.id = i.receipt_id
 LEFT JOIN item_labels l ON l.item_id = i.id
-LEFT JOIN categories c ON c.user_id = r.user_id AND c.slug = l.category_slug
-LEFT JOIN groups g ON g.user_id = c.user_id AND g.slug = c.group_slug;
+LEFT JOIN categories c ON c.budget_id = r.budget_id AND c.slug = l.category_slug
+LEFT JOIN groups g ON g.budget_id = c.budget_id AND g.slug = c.group_slug;
 
 -- Позиция с категорией: на ней работает классификатор.
 DROP VIEW IF EXISTS v_item_categories;
@@ -326,7 +358,8 @@ CREATE VIEW v_item_categories AS
 SELECT
   i.id,
   i.receipt_id,
-  r.user_id,
+  r.budget_id,
+  r.added_by,
   i.name,
   i.name_norm,
   i.sum,
@@ -342,16 +375,18 @@ SELECT
 FROM items i
 JOIN receipts r      ON r.id = i.receipt_id
 LEFT JOIN item_labels l ON l.item_id = i.id
-LEFT JOIN categories c  ON c.user_id = r.user_id AND c.slug = l.category_slug
-LEFT JOIN groups g      ON g.user_id = c.user_id AND g.slug = c.group_slug;
+LEFT JOIN categories c  ON c.budget_id = r.budget_id AND c.slug = l.category_slug
+LEFT JOIN groups g      ON g.budget_id = c.budget_id AND g.slug = c.group_slug;
 
 -- ── сканирование чеков ──────────────────────────────────────────────────────
 -- Обмен с ФНС асинхронный: запрос кладётся в очередь, воркер отправляет его,
 -- опрашивает ответ и передаёт готовый чек обычному импорту. Состояние задания
 -- живёт здесь, чтобы перезапуск сервиса ничего не терял.
+-- budget_id — куда ляжет чек, user_id — кто сканировал: по нему считается личная квота.
 CREATE TABLE IF NOT EXISTS scan_jobs (
   id           INTEGER PRIMARY KEY,
-  user_id      INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  budget_id    INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
+  user_id      INTEGER REFERENCES users (id) ON DELETE SET NULL,
   qr           TEXT NOT NULL,           -- строка из QR как есть, для разбора и разбора ошибок
   fiscal_drive TEXT NOT NULL,           -- ФН/ФД/ФП: тот же ключ, что у импорта выгрузок
   fiscal_doc   INTEGER NOT NULL,
@@ -369,11 +404,12 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
   next_at      TEXT,                    -- когда воркеру можно взяться снова (и у ошибки — повтор)
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL,
-  UNIQUE (user_id, fiscal_drive, fiscal_doc, fiscal_sign)
+  UNIQUE (budget_id, fiscal_drive, fiscal_doc, fiscal_sign)
 );
 
 CREATE INDEX IF NOT EXISTS idx_scan_jobs_status ON scan_jobs (status, next_at);
-CREATE INDEX IF NOT EXISTS idx_scan_jobs_user   ON scan_jobs (user_id, status);
+CREATE INDEX IF NOT EXISTS idx_scan_jobs_budget ON scan_jobs (budget_id, status);
+CREATE INDEX IF NOT EXISTS idx_scan_jobs_user   ON scan_jobs (user_id, created_at);
 
 -- Расход суточного лимита обращений к ФНС (1000 в сутки на всё приложение).
 CREATE TABLE IF NOT EXISTS fns_usage (

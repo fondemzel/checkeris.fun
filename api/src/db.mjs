@@ -22,26 +22,30 @@ export function openDb({ readonly = false } = {}) {
 /**
  * Создаёт таблицы, если их ещё нет, и доводит старые базы до текущей схемы. Идемпотентно.
  *
- * Разделение по пользователям не укладывается в ADD COLUMN: у чека и скана меняется
- * ключ уникальности, у разметки — внешний ключ, а справочник становится системным.
- * Поэтому старые таблицы сначала отодвигаются в сторону (*_old), схема создаёт новые,
+ * Хозяин данных — бюджет. Базы прошлых версий устроены иначе:
+ *   single — однопользовательская: у данных нет владельца вовсе (до 0.26);
+ *   users  — хозяин данных пользователь, user_id (0.26–0.28).
+ * Перестройка не укладывается в ADD COLUMN: меняются ключи уникальности и внешние
+ * ключи. Поэтому старые таблицы отодвигаются в сторону (*_old), схема создаёт новые,
  * и данные переносятся. Если перенос оборвётся, *_old останутся на месте и следующий
  * запуск продолжит с того же места.
  */
 export function migrate(db) {
-  prepareSplit(db);
+  prepareMove(db);
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
-  finishSplit(db);
   addUserColumns(db);
+  finishMove(db);
   repairScanErrors(db);
 }
 
-/** Вход через Telegram и роли. Индекс — здесь: в старой базе колонки появляются только сейчас. */
+/** Вход через Telegram, роли и бюджеты. Индекс — здесь: в старой базе колонки появляются только сейчас. */
 function addUserColumns(db) {
   addColumn(db, 'users', 'telegram_id', 'INTEGER');
   addColumn(db, 'users', 'tg_username', 'TEXT');
   addColumn(db, 'users', 'name', 'TEXT');
   addColumn(db, 'users', 'role', "TEXT NOT NULL DEFAULT 'user'");
+  addColumn(db, 'users', 'budget_id', 'INTEGER REFERENCES budgets (id)');
+  addColumn(db, 'users', 'home_budget_id', 'INTEGER REFERENCES budgets (id)');
   addColumn(db, 'tg_logins', 'client', 'TEXT');
   addColumn(db, 'tg_logins', 'confirm_hash', 'TEXT');
   addColumn(db, 'tg_logins', 'tg_identity', 'TEXT');
@@ -70,13 +74,26 @@ function addColumn(db, table, column, definition) {
 // Индексы уезжают вместе с таблицей под прежними именами, и CREATE INDEX IF NOT EXISTS
 // из схемы решил бы, что они уже есть. Убираем, схема создаст их на новых таблицах.
 const OLD_INDEXES = [
-  'idx_receipts_date', 'idx_receipts_at', 'idx_receipts_inn', 'idx_receipts_source',
-  'idx_scan_jobs_status', 'idx_item_labels_category', 'idx_item_labels_source', 'idx_categories_group',
+  'idx_receipts_date', 'idx_receipts_user_date', 'idx_receipts_at', 'idx_receipts_inn', 'idx_receipts_source',
+  'idx_scan_jobs_status', 'idx_scan_jobs_user', 'idx_item_labels_category', 'idx_item_labels_source',
+  'idx_categories_group',
 ];
 
-/** Шаг 1, до схемы: база однопользовательская — отодвигаем то, что будет перестроено. */
-function prepareSplit(db) {
-  if (!tableExists(db, 'receipts') || hasColumn(db, 'receipts', 'user_id')) return;
+// Что перестраивается. Справочник однопользовательской базы не перестраивается,
+// а становится системным — это отдельный путь ниже.
+const DATA_TABLES = ['receipts', 'scan_jobs', 'item_labels'];
+const BUDGET_TABLES = ['groups', 'categories', 'category_links', 'user_dictionary'];
+
+/** Какая перед нами база: текущая (null), однопользовательская или с хозяином-пользователем. */
+function layoutOf(db, table = 'receipts') {
+  if (!tableExists(db, table) || hasColumn(db, table, 'budget_id')) return null;
+  return hasColumn(db, table, 'user_id') ? 'users' : 'single';
+}
+
+/** Шаг 1, до схемы: отодвигаем то, что будет перестроено. */
+function prepareMove(db) {
+  const layout = layoutOf(db);
+  if (!layout) return;
 
   // Колонки из прошлых миграций: без них перенос не найдёт, что копировать
   addColumn(db, 'groups', 'shade_from', 'INTEGER NOT NULL DEFAULT 25');
@@ -89,19 +106,22 @@ function prepareSplit(db) {
   try {
     db.exec('DROP VIEW IF EXISTS v_items; DROP VIEW IF EXISTS v_item_categories;');
 
-    // Эти таблицы перестраиваются. Ссылки на них из других таблиц переписывать нельзя:
+    // Перестраиваемые таблицы. Ссылки на них из других таблиц переписывать нельзя:
     // items должна и дальше ссылаться на «receipts» — то есть на новую таблицу
     db.exec('PRAGMA legacy_alter_table = ON');
-    for (const table of ['receipts', 'scan_jobs', 'item_labels']) {
+    const moving = layout === 'users' ? [...DATA_TABLES, ...BUDGET_TABLES] : DATA_TABLES;
+    for (const table of moving) {
       if (tableExists(db, table)) db.exec(`ALTER TABLE ${table} RENAME TO ${table}_old`);
     }
 
-    // А справочник становится системным целиком, и ссылки словаря, штрихкодов
-    // и правил продавцов должны уехать вслед за ним — здесь переписывание нужно
-    db.exec('PRAGMA legacy_alter_table = OFF');
-    db.exec('ALTER TABLE groups RENAME TO sys_groups');
-    db.exec('ALTER TABLE categories RENAME TO sys_categories');
-    db.exec('ALTER TABLE sys_categories ADD COLUMN fallback_slug TEXT REFERENCES sys_categories (slug)');
+    if (layout === 'single') {
+      // Справочник становится системным целиком, и ссылки словаря, штрихкодов
+      // и правил продавцов должны уехать вслед за ним — здесь переписывание нужно
+      db.exec('PRAGMA legacy_alter_table = OFF');
+      db.exec('ALTER TABLE groups RENAME TO sys_groups');
+      db.exec('ALTER TABLE categories RENAME TO sys_categories');
+      db.exec('ALTER TABLE sys_categories ADD COLUMN fallback_slug TEXT REFERENCES sys_categories (slug)');
+    }
 
     for (const index of OLD_INDEXES) db.exec(`DROP INDEX IF EXISTS ${index}`);
     db.exec('COMMIT');
@@ -112,64 +132,84 @@ function prepareSplit(db) {
     db.exec('PRAGMA legacy_alter_table = OFF');
     db.exec('PRAGMA foreign_keys = ON');
   }
-  console.error('схема: база переводится на нескольких пользователей…');
+  console.error(`схема: данные переводятся на бюджеты (была база «${layout}»)…`);
 }
 
 /**
- * Владелец существующих данных — первый пользователь. Если пользователей нет вовсе,
- * заводим служебного без пароля: данные не должны остаться ничьими.
+ * Перенос строк: колонки, которые есть в обеих таблицах, плюс заданные выражения
+ * для новых (budget_id = прежний user_id и т. п.). Выражения — наши, не ввод.
  */
-function ownerId(db) {
-  const first = db.prepare('SELECT MIN(id) AS id FROM users').get().id;
-  if (first) return first;
-  const res = db
-    .prepare("INSERT INTO users (login, password, created_at) VALUES ('owner', '!', ?)")
-    .run(new Date().toISOString());
-  console.error('схема: пользователей не было — данные отданы служебному «owner», задайте ему пароль');
-  return Number(res.lastInsertRowid);
+function copyRows(db, from, to, mapping = {}) {
+  const source = new Set(columnsOf(db, from));
+  const pairs = columnsOf(db, to)
+    .map((col) => [col, mapping[col] ?? (source.has(col) ? col : null)])
+    .filter(([, expr]) => expr !== null);
+  const cols = pairs.map(([col]) => col).join(', ');
+  const exprs = pairs.map(([, expr]) => expr).join(', ');
+  return db.prepare(`INSERT INTO ${to} (${cols}) SELECT ${exprs} FROM ${from}`).run().changes;
 }
 
-/** Перенос строк: только колонки, которые есть и там и там, плюс владелец. */
-function copyRows(db, from, to, owner) {
-  const target = new Set(columnsOf(db, to));
-  const cols = columnsOf(db, from).filter((c) => target.has(c) && c !== 'user_id');
-  const list = cols.join(', ');
-  return db.prepare(`INSERT INTO ${to} (${list}, user_id) SELECT ${list}, ? FROM ${from}`).run(owner).changes;
+/** У каждого пользователя без бюджета появляется свой, с тем же номером, что у него самого. */
+function giveBudgets(db) {
+  if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
+    // Данные не должны остаться ничьими: заводим служебного пользователя без пароля
+    db.prepare("INSERT INTO users (login, password, created_at) VALUES ('owner', '!', ?)").run(new Date().toISOString());
+    console.error('схема: пользователей не было — данные отданы служебному «owner», задайте ему пароль');
+  }
+  db.exec(`INSERT INTO budgets (id, name, owner_id, created_at)
+           SELECT id, 'Мой бюджет', id, created_at FROM users
+            WHERE budget_id IS NULL AND id NOT IN (SELECT id FROM budgets)`);
+  db.exec('UPDATE users SET budget_id = id, home_budget_id = id WHERE budget_id IS NULL');
 }
 
 /** Шаг 2, после схемы: новые таблицы созданы — переносим данные и проверяем связи. */
-function finishSplit(db) {
-  if (!tableExists(db, 'receipts_old')) return;
+function finishMove(db) {
+  const layout = layoutOf(db, 'receipts_old');
+  if (!layout) return;
 
-  const owner = ownerId(db);
   db.exec('PRAGMA foreign_keys = OFF');
   db.exec('BEGIN');
   try {
-    const receipts = copyRows(db, 'receipts_old', 'receipts', owner);
-    const scans = tableExists(db, 'scan_jobs_old') ? copyRows(db, 'scan_jobs_old', 'scan_jobs', owner) : 0;
+    giveBudgets(db);
+    let report;
 
-    // Справочник владельца — копия системного: коды совпадают, разметка остаётся верной
-    provisionTaxonomy(db, owner);
-
-    const labels = tableExists(db, 'item_labels_old')
-      ? db
+    if (layout === 'users') {
+      // Номер бюджета совпадает с номером пользователя: прежний user_id и есть budget_id
+      report = {
+        receipts: copyRows(db, 'receipts_old', 'receipts', { budget_id: 'user_id', added_by: 'user_id' }),
+        scans: copyRows(db, 'scan_jobs_old', 'scan_jobs', { budget_id: 'user_id', user_id: 'user_id' }),
+        groups: copyRows(db, 'groups_old', 'groups', { budget_id: 'user_id' }),
+        categories: copyRows(db, 'categories_old', 'categories', { budget_id: 'user_id' }),
+        links: copyRows(db, 'category_links_old', 'category_links', { budget_id: 'user_id' }),
+        edits: copyRows(db, 'user_dictionary_old', 'budget_dictionary', { budget_id: 'user_id' }),
+        labels: copyRows(db, 'item_labels_old', 'item_labels', { budget_id: 'user_id' }),
+      };
+    } else {
+      // Однопользовательская база: всё — первому пользователю, справочник — копия системного
+      const owner = String(db.prepare('SELECT MIN(id) AS id FROM users').get().id);
+      provisionTaxonomy(db, Number(owner));
+      report = {
+        receipts: copyRows(db, 'receipts_old', 'receipts', { budget_id: owner, added_by: owner }),
+        scans: tableExists(db, 'scan_jobs_old')
+          ? copyRows(db, 'scan_jobs_old', 'scan_jobs', { budget_id: owner, user_id: owner })
+          : 0,
+        labels: tableExists(db, 'item_labels_old')
+          ? copyRows(db, 'item_labels_old', 'item_labels', { budget_id: owner })
+          : 0,
+        // Ручные правки были решениями владельца — становятся правками его бюджета.
+        // В общем словаре они остаются как выверенное знание
+        edits: db
           .prepare(
-            `INSERT INTO item_labels (item_id, user_id, category_slug, source, confidence, updated_at)
-             SELECT item_id, ?, category_slug, source, confidence, updated_at FROM item_labels_old`,
+            `INSERT INTO budget_dictionary (budget_id, name_norm, category_slug, updated_at)
+             SELECT ?, name_norm, category_slug, updated_at FROM dictionary WHERE source = 'manual'`,
           )
-          .run(owner).changes
-      : 0;
+          .run(Number(owner)).changes,
+      };
+    }
 
-    // Ручные правки были решениями владельца — становятся его личными. В общем словаре
-    // они остаются как выверенное знание: иначе новые пользователи потеряли бы эти названия
-    const manual = db
-      .prepare(
-        `INSERT INTO user_dictionary (user_id, name_norm, category_slug, updated_at)
-         SELECT ?, name_norm, category_slug, updated_at FROM dictionary WHERE source = 'manual'`,
-      )
-      .run(owner).changes;
-
-    for (const table of ['item_labels_old', 'scan_jobs_old', 'receipts_old']) {
+    // Дети раньше родителей: так порядок удаления не спотыкается о ссылки
+    for (const table of ['item_labels_old', 'user_dictionary_old', 'category_links_old', 'categories_old',
+      'groups_old', 'scan_jobs_old', 'receipts_old']) {
       if (tableExists(db, table)) db.exec(`DROP TABLE ${table}`);
     }
 
@@ -184,10 +224,7 @@ function finishSplit(db) {
     }
 
     db.exec('COMMIT');
-    console.error(
-      `схема: данные отданы пользователю #${owner} — чеков ${receipts}, сканов ${scans}, ` +
-        `меток ${labels}, ручных правок ${manual}`,
-    );
+    console.error(`схема: данные переведены на бюджеты — ${Object.entries(report).map(([k, v]) => `${k} ${v}`).join(', ')}`);
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;

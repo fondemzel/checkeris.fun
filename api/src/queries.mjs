@@ -2,8 +2,8 @@
 // Все значения передаются параметрами — конкатенации пользовательского ввода нет,
 // сортировка берётся только из белого списка колонок.
 //
-// Каждая функция получает владельца данных. Условие по нему ставит buildFilters,
-// и без владельца он не работает вовсе: забытый фильтр — это чужие чеки на экране,
+// Каждая функция получает бюджет — хозяина данных. Условие по нему ставит buildFilters,
+// и без бюджета он не работает вовсе: забытый фильтр — это чужие чеки на экране,
 // поэтому такой запрос должен падать, а не молча отдавать всё.
 import { classifyItems } from './classify.mjs';
 
@@ -45,13 +45,13 @@ const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v ?? '');
 
 /**
  * Общие фильтры для чеков и позиций.
- * @param userId владелец — обязателен
+ * @param budgetId бюджет — обязателен
  * @param prefix префикс колонок: 'r.' для таблицы receipts, '' для представления v_items
  */
-export function buildFilters(params, { userId, prefix = '', searchItems = false } = {}) {
-  if (!Number.isInteger(userId)) throw new Error('buildFilters: не указан владелец данных');
-  const where = [`${prefix}user_id = :uid`];
-  const args = { uid: userId };
+export function buildFilters(params, { budgetId, prefix = '', searchItems = false } = {}) {
+  if (!Number.isInteger(budgetId)) throw new Error('buildFilters: не указан бюджет');
+  const where = [`${prefix}budget_id = :uid`];
+  const args = { uid: budgetId };
 
   const from = params.get('from');
   const to = params.get('to');
@@ -148,8 +148,8 @@ export function buildFilters(params, { userId, prefix = '', searchItems = false 
  */
 const COUNTED = '(r.operation_type <> 2 AND r.prepaid_sum = 0)';
 
-export function listReceipts(db, userId, params) {
-  const { sql: whereSql, args } = buildFilters(params, { userId, prefix: 'r.' });
+export function listReceipts(db, budgetId, params) {
+  const { sql: whereSql, args } = buildFilters(params, { budgetId, prefix: 'r.' });
   const { sort, dir, column } = parseSort(params, RECEIPT_SORTS, 'date');
   const { page, per, offset } = parsePaging(params);
 
@@ -158,7 +158,8 @@ export function listReceipts(db, userId, params) {
       `SELECT r.id, r.purchased_at, r.purchased_date, r.seller, r.seller_inn, r.retail_place,
               r.retail_address, r.operation_type, r.total_sum, r.cash_sum, r.ecash_sum,
               r.prepaid_sum, r.item_count, r.items_sum, r.internet_sign,
-              ${COUNTED} AS counted, r.fiscal_drive = 'manual' AS manual,
+              ${COUNTED} AS counted, r.fiscal_drive = 'manual' AS manual, r.added_by,
+              (SELECT COALESCE(u.name, u.login) FROM users u WHERE u.id = r.added_by) AS author,
               -- у ручной записи продавца нет, её имя — то, что купили
               CASE WHEN r.fiscal_drive = 'manual'
                    THEN (SELECT i.name FROM items i WHERE i.receipt_id = r.id ORDER BY i.pos LIMIT 1) END AS title
@@ -184,8 +185,8 @@ export function listReceipts(db, userId, params) {
   return { rows, totals, page, per, sort, dir: dir.toLowerCase() };
 }
 
-export function listItems(db, userId, params) {
-  const { sql: whereSql, args } = buildFilters(params, { userId, searchItems: true });
+export function listItems(db, budgetId, params) {
+  const { sql: whereSql, args } = buildFilters(params, { budgetId, searchItems: true });
   const { sort, dir, column } = parseSort(params, ITEM_SORTS, 'date');
   const { page, per, offset } = parsePaging(params);
 
@@ -236,8 +237,8 @@ const GROUP_SORTS = {
  * `first_id` — позиция, чью карточку открывает клик по строке. SQLite при MAX() отдаёт
  * значения остальных колонок из той же строки, поэтому это ровно верхняя позиция группы.
  */
-export function listItemGroups(db, userId, params) {
-  const { sql: whereSql, args } = buildFilters(params, { userId, searchItems: true });
+export function listItemGroups(db, budgetId, params) {
+  const { sql: whereSql, args } = buildFilters(params, { budgetId, searchItems: true });
   const { sort, dir } = parseSort(params, GROUP_SORTS, 'date');
   const { page, per, offset } = parsePaging(params);
 
@@ -304,9 +305,9 @@ const SUMMARY_BY = {
  * Фильтры те же, что у списков, поэтому сводка и список всегда об одном и том же.
  * Названия и цвета отдаются вместе с числами: клиенту не нужен второй запрос.
  */
-export function summary(db, userId, params) {
+export function summary(db, budgetId, params) {
   // prefix: колонки берутся из v_items под псевдонимом v — иначе они спорят с groups
-  const { sql: whereSql, args } = buildFilters(params, { userId, searchItems: true, prefix: 'v.' });
+  const { sql: whereSql, args } = buildFilters(params, { budgetId, searchItems: true, prefix: 'v.' });
   const by = Object.hasOwn(SUMMARY_BY, params.get('by')) ? params.get('by') : 'group';
   const { key, order } = SUMMARY_BY[by];
 
@@ -317,7 +318,7 @@ export function summary(db, userId, params) {
     seller: ', MIN(v.seller) AS name',
   }[by];
 
-  const join = by === 'group' ? 'LEFT JOIN groups g ON g.user_id = v.user_id AND g.slug = v.group_slug' : '';
+  const join = by === 'group' ? 'LEFT JOIN groups g ON g.budget_id = v.budget_id AND g.slug = v.group_slug' : '';
 
   const rows = db
     .prepare(
@@ -349,16 +350,17 @@ export function summary(db, userId, params) {
   return { by, rows, totals };
 }
 
-export function getReceipt(db, userId, id) {
+export function getReceipt(db, budgetId, id) {
   const receipt = db
     .prepare(
       `SELECT id, purchased_at, purchased_date, seller, seller_inn, retail_place, retail_address,
               kkt_reg_id, fiscal_drive, fiscal_doc, fiscal_sign, operation_type, taxation_type,
               total_sum, cash_sum, ecash_sum, prepaid_sum, credit_sum, nds_18, nds_10, nds_0, nds_no,
-              shift_number, operator, buyer, internet_sign, item_count, items_sum
-         FROM receipts WHERE id = ? AND user_id = ?`,
+              shift_number, operator, buyer, internet_sign, item_count, items_sum, added_by,
+              (SELECT COALESCE(u.name, u.login) FROM users u WHERE u.id = receipts.added_by) AS author
+         FROM receipts WHERE id = ? AND budget_id = ?`,
     )
-    .get(id, userId);
+    .get(id, budgetId);
   if (!receipt) return null;
   // Категория идёт вместе с позицией: после сканирования её сразу показывают на правку
   receipt.items = db
@@ -372,18 +374,18 @@ export function getReceipt(db, userId, id) {
 }
 
 /** Позиция со всеми реквизитами — для карточки товара в правой панели. */
-export function getItem(db, userId, id) {
+export function getItem(db, budgetId, id) {
   return (
     db
       .prepare(
         `SELECT v.*, i.nds_sum, i.provider_inn,
                 (SELECT COUNT(*) FROM items x JOIN receipts rx ON rx.id = x.receipt_id
-                  WHERE x.name_norm = v.name_norm AND rx.user_id = v.user_id) AS same_name_count
+                  WHERE x.name_norm = v.name_norm AND rx.budget_id = v.budget_id) AS same_name_count
            FROM v_items v
            JOIN items i ON i.id = v.id
-          WHERE v.id = ? AND v.user_id = ?`,
+          WHERE v.id = ? AND v.budget_id = ?`,
       )
-      .get(id, userId) ?? null
+      .get(id, budgetId) ?? null
   );
 }
 
@@ -392,38 +394,39 @@ export function getItem(db, userId, id) {
  *
  * Правка делается не по одной позиции, а по нормализованному названию: пользователь
  * решает, что значит «Сыр Российский 45%», а не что значит эта конкретная строка чека.
- * Решение личное — пишется в user_dictionary владельца, верхнюю ступень его лестницы
- * в classify.mjs, и на других пользователей не влияет. Метки всех его позиций с этим
- * названием обновляются здесь же, чтобы экран не ждал пересчёта.
+ * Решение принадлежит бюджету — пишется в budget_dictionary, верхнюю ступень его лестницы
+ * в classify.mjs; в семейном бюджете оно общее для всех участников, на другие бюджеты
+ * не влияет. Метки всех позиций бюджета с этим названием обновляются здесь же,
+ * чтобы экран не ждал пересчёта.
  *
  * Пустой slug снимает ручное решение: позиции заново проходят лестницу.
  */
-export function setItemCategory(db, userId, id, slug) {
+export function setItemCategory(db, budgetId, id, slug) {
   const item = db
     .prepare(
       `SELECT i.id, i.name, i.name_norm FROM items i JOIN receipts r ON r.id = i.receipt_id
-        WHERE i.id = ? AND r.user_id = ?`,
+        WHERE i.id = ? AND r.budget_id = ?`,
     )
-    .get(id, userId);
+    .get(id, budgetId);
   if (!item) return { error: 'item not found', status: 404 };
 
   const category = slug
     ? db
         .prepare(
           `SELECT c.slug, c.name, c.group_slug, g.name AS group_name
-             FROM categories c JOIN groups g ON g.user_id = c.user_id AND g.slug = c.group_slug
-            WHERE c.user_id = ? AND c.slug = ?`,
+             FROM categories c JOIN groups g ON g.budget_id = c.budget_id AND g.slug = c.group_slug
+            WHERE c.budget_id = ? AND c.slug = ?`,
         )
-        .get(userId, slug)
+        .get(budgetId, slug)
     : null;
   if (slug && !category) return { error: 'unknown category', status: 400 };
 
   const sameName = db
     .prepare(
       `SELECT i.id FROM items i JOIN receipts r ON r.id = i.receipt_id
-        WHERE r.user_id = ? AND i.name_norm = ?`,
+        WHERE r.budget_id = ? AND i.name_norm = ?`,
     )
-    .all(userId, item.name_norm)
+    .all(budgetId, item.name_norm)
     .map((r) => r.id);
 
   const now = new Date().toISOString();
@@ -431,20 +434,20 @@ export function setItemCategory(db, userId, id, slug) {
   try {
     if (category) {
       db.prepare(
-        `INSERT INTO user_dictionary (user_id, name_norm, category_slug, updated_at)
+        `INSERT INTO budget_dictionary (budget_id, name_norm, category_slug, updated_at)
          VALUES (:uid, :name_norm, :slug, :now)
-         ON CONFLICT (user_id, name_norm) DO UPDATE SET category_slug = :slug, updated_at = :now`,
-      ).run({ uid: userId, name_norm: item.name_norm, slug: category.slug, now });
+         ON CONFLICT (budget_id, name_norm) DO UPDATE SET category_slug = :slug, updated_at = :now`,
+      ).run({ uid: budgetId, name_norm: item.name_norm, slug: category.slug, now });
 
       const label = db.prepare(
-        `INSERT INTO item_labels (item_id, user_id, category_slug, source, confidence, updated_at)
+        `INSERT INTO item_labels (item_id, budget_id, category_slug, source, confidence, updated_at)
          VALUES (?, ?, ?, 'manual', 1, ?)
          ON CONFLICT (item_id) DO UPDATE SET
            category_slug = excluded.category_slug, source = 'manual', confidence = 1, updated_at = excluded.updated_at`,
       );
-      for (const itemId of sameName) label.run(itemId, userId, category.slug, now);
+      for (const itemId of sameName) label.run(itemId, budgetId, category.slug, now);
     } else {
-      db.prepare('DELETE FROM user_dictionary WHERE user_id = ? AND name_norm = ?').run(userId, item.name_norm);
+      db.prepare('DELETE FROM budget_dictionary WHERE budget_id = ? AND name_norm = ?').run(budgetId, item.name_norm);
       classifyItems(db, sameName);
     }
     db.exec('COMMIT');
@@ -457,7 +460,7 @@ export function setItemCategory(db, userId, id, slug) {
 }
 
 /** Справочные данные для фильтров и шапки кабинета. */
-export function getMeta(db, userId) {
+export function getMeta(db, budgetId) {
   const stats = db
     .prepare(
       `SELECT COUNT(*) AS receipts,
@@ -465,29 +468,29 @@ export function getMeta(db, userId) {
               COALESCE(SUM(r.item_count), 0) AS items,
               MIN(r.purchased_date) AS date_from,
               MAX(r.purchased_date) AS date_to
-         FROM receipts r WHERE r.user_id = ?`,
+         FROM receipts r WHERE r.budget_id = ?`,
     )
-    .get(userId);
+    .get(budgetId);
 
   const sellers = db
     .prepare(
       `SELECT seller_inn, MIN(seller) AS seller, COUNT(*) AS receipts, SUM(total_sum) AS sum
          FROM receipts
-        WHERE user_id = ? AND seller_inn IS NOT NULL AND seller_inn <> ''
+        WHERE budget_id = ? AND seller_inn IS NOT NULL AND seller_inn <> ''
         GROUP BY seller_inn
         ORDER BY sum DESC`,
     )
-    .all(userId);
+    .all(budgetId);
 
   const months = db
     .prepare(
       `SELECT substr(purchased_date, 1, 7) AS month, COUNT(*) AS receipts, SUM(total_sum) AS sum
          FROM receipts
-        WHERE user_id = ?
+        WHERE budget_id = ?
         GROUP BY month
         ORDER BY month`,
     )
-    .all(userId);
+    .all(budgetId);
 
   // Журнал импортов общий и ведётся из консоли: путь к файлу пользователю не нужен
   const lastImport = db.prepare('SELECT imported_at FROM imports ORDER BY id DESC LIMIT 1').get() ?? null;
@@ -496,12 +499,12 @@ export function getMeta(db, userId) {
   const rows = db
     .prepare(
       `SELECT c.slug, c.name, c.group_slug, g.name AS group_name, g.icon, g.color, g.shade_from, g.shade_to,
-              (SELECT COUNT(*) FROM item_labels l WHERE l.user_id = c.user_id AND l.category_slug = c.slug) AS items
-         FROM categories c JOIN groups g ON g.user_id = c.user_id AND g.slug = c.group_slug
-        WHERE c.user_id = ?
+              (SELECT COUNT(*) FROM item_labels l WHERE l.budget_id = c.budget_id AND l.category_slug = c.slug) AS items
+         FROM categories c JOIN groups g ON g.budget_id = c.budget_id AND g.slug = c.group_slug
+        WHERE c.budget_id = ?
         ORDER BY g.sort, g.slug, c.sort`,
     )
-    .all(userId);
+    .all(budgetId);
 
   const groups = [];
   for (const row of rows) {
@@ -525,8 +528,16 @@ export function getMeta(db, userId) {
   }
 
   const uncategorized = db
-    .prepare('SELECT COUNT(*) c FROM v_items WHERE user_id = ? AND category_slug IS NULL')
-    .get(userId).c;
+    .prepare('SELECT COUNT(*) c FROM v_items WHERE budget_id = ? AND category_slug IS NULL')
+    .get(budgetId).c;
 
-  return { stats, sellers, months, lastImport, categories: groups, uncategorized };
+  // Бюджет: клиенту нужно знать, общий ли он, — тогда у чеков показывается автор
+  const budget = db
+    .prepare(
+      `SELECT b.id, b.name, (SELECT COUNT(*) FROM users u WHERE u.budget_id = b.id) AS members
+         FROM budgets b WHERE b.id = ?`,
+    )
+    .get(budgetId);
+
+  return { stats, sellers, months, lastImport, categories: groups, uncategorized, budget };
 }

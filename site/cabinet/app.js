@@ -1799,7 +1799,10 @@ $('tg-cancel').addEventListener('click', () => {
 async function renderMe() {
   const me = await apiJson('/api/session').catch(() => null);
   if (!me) return;
-  $('me').textContent = me.name + (me.telegram ? ' · Telegram' : '');
+  // Общий бюджет стоит назвать: иначе непонятно, почему в списке чужие траты
+  const budget = meta?.budget;
+  const shared = budget && budget.members > 1 ? ` · бюджет «${budget.name}», ${budget.members} уч.` : '';
+  $('me').textContent = me.name + (me.telegram ? ' · Telegram' : '') + shared;
   $('tg-link').hidden = me.telegram || !me.telegram_login;
 }
 
@@ -1835,9 +1838,9 @@ async function start() {
   stopLinkRefresh?.();
   $('login').hidden = true;
   $('app').hidden = false;
-  renderMe();
 
   await loadMeta(); // справочник категорий нужен карточке для выпадающих списков
+  renderMe(); // после сводки: в ней название бюджета
   if (state.view === 'taxonomy') {
     await loadTaxonomy();
     renderNode();

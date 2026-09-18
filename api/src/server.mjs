@@ -44,8 +44,19 @@ import {
   updateCategory,
   deleteCategory,
   reorder,
-  provisionTaxonomy,
 } from './taxonomy.mjs';
+import {
+  ensureBudget,
+  getBudget,
+  renameBudget,
+  createInvite,
+  revokeInvite,
+  describeInvite,
+  acceptInvite,
+  leaveBudget,
+  removeMember,
+  deleteAccount,
+} from './budgets.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -90,10 +101,10 @@ if (!db.prepare('SELECT COUNT(*) c FROM sys_categories').get().c) {
   }
 }
 
-// У каждого пользователя свой справочник. Если кого-то завели, когда системного ещё
-// не было, — выдаём сейчас, иначе у него не будет ни одной категории
-for (const { id } of db.prepare('SELECT id FROM users').all()) {
-  if (provisionTaxonomy(db, id)) console.log(`пользователю #${id} выдан справочник категорий`);
+// У каждого пользователя есть бюджет со справочником. Если кого-то завели без него
+// (раньше бюджетов или когда системного справочника ещё не было) — выдаём сейчас
+for (const { id } of db.prepare('SELECT id FROM users WHERE budget_id IS NULL').all()) {
+  console.log(`пользователю #${id} выдан бюджет #${ensureBudget(db, id)}`);
 }
 
 function sendJson(res, status, payload) {
@@ -300,6 +311,8 @@ async function handleApi(req, res, url) {
   // Всё остальное — только по токену. Кабинет и телефон ходят одинаково.
   const user = userByToken(db, bearer(req));
   if (!user) return sendJson(res, 401, { error: 'нужен вход' });
+  // Бюджет мог пропасть (удалён вместе с последним участником) — выдаём свой
+  if (!user.budget_id) user.budget_id = ensureBudget(db, user.id);
 
   // Кабинет спрашивает при загрузке, жив ли сохранённый токен
   if (pathname === '/api/session') {
@@ -318,8 +331,8 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/account') {
     if (req.method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
     if (user.role === 'admin') return sendJson(res, 403, { error: 'аккаунт администратора удаляется только из консоли' });
-    const removed = db.prepare('DELETE FROM users WHERE id = ?').run(user.id).changes;
-    return sendJson(res, 200, { deleted: removed === 1 });
+    const result = deleteAccount(db, user.id);
+    return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
   }
 
   if (pathname === '/api/logout') {
@@ -328,9 +341,40 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true });
   }
 
+  // ── бюджет: состав, приглашения, выход ──
+  if (pathname.startsWith('/api/budget') || pathname.startsWith('/api/invites/')) {
+    let body = {};
+    if (req.method === 'POST' || req.method === 'PATCH') {
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+    }
+    // Адрес для ссылки приглашения: за nginx настоящий хост приходит в Host
+    const origin = `${req.headers['x-forwarded-proto'] ?? 'http'}://${req.headers.host}`;
+    const inviteMatch = pathname.match(/^\/api\/invites\/([\w-]{10,64})(\/accept)?$/);
+    const memberMatch = pathname.match(/^\/api\/budget\/members\/(\d+)$/);
+    const revokeMatch = pathname.match(/^\/api\/budget\/invites\/(\d+)$/);
+
+    let result;
+    if (pathname === '/api/budget' && req.method === 'GET') result = getBudget(db, user);
+    else if (pathname === '/api/budget' && req.method === 'PATCH') result = renameBudget(db, user, body.name);
+    else if (pathname === '/api/budget/invites' && req.method === 'POST') result = createInvite(db, user, origin);
+    else if (revokeMatch && req.method === 'DELETE') result = revokeInvite(db, user, Number(revokeMatch[1]));
+    else if (pathname === '/api/budget/leave' && req.method === 'POST') result = leaveBudget(db, user);
+    else if (memberMatch && req.method === 'DELETE') result = removeMember(db, user, Number(memberMatch[1]));
+    else if (inviteMatch && !inviteMatch[2] && req.method === 'GET') result = describeInvite(db, user, inviteMatch[1]);
+    else if (inviteMatch && inviteMatch[2] && req.method === 'POST') {
+      result = acceptInvite(db, user, inviteMatch[1], { move: Boolean(body.move) });
+    } else return sendJson(res, 404, { error: 'unknown endpoint' });
+
+    return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
+  }
+
   // ── справочник категорий: правится из раздела «Категории» ──
   if (pathname === '/api/taxonomy') {
-    if (req.method === 'GET') return sendJson(res, 200, getTaxonomy(db, user.id));
+    if (req.method === 'GET') return sendJson(res, 200, getTaxonomy(db, user.budget_id));
     return sendJson(res, 405, { error: 'method not allowed' });
   }
 
@@ -343,7 +387,7 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = reorder(db, user.id, body);
+    const result = reorder(db, user.budget_id, body);
     return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
   }
 
@@ -363,10 +407,10 @@ async function handleApi(req, res, url) {
     }
 
     let result;
-    if (req.method === 'POST' && !slug) result = (isGroup ? createGroup : createCategory)(db, user.id, body);
-    else if (req.method === 'PATCH' && slug) result = (isGroup ? updateGroup : updateCategory)(db, user.id, slug, body);
+    if (req.method === 'POST' && !slug) result = (isGroup ? createGroup : createCategory)(db, user.budget_id, body);
+    else if (req.method === 'PATCH' && slug) result = (isGroup ? updateGroup : updateCategory)(db, user.budget_id, slug, body);
     else if (req.method === 'DELETE' && slug) {
-      result = isGroup ? deleteGroup(db, user.id, slug) : deleteCategory(db, user.id, slug, searchParams.get('move_to'));
+      result = isGroup ? deleteGroup(db, user.budget_id, slug) : deleteCategory(db, user.budget_id, slug, searchParams.get('move_to'));
     } else return sendJson(res, 405, { error: 'method not allowed' });
 
     return result.error
@@ -384,13 +428,13 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = setItemCategory(db, user.id, Number(categoryMatch[1]), String(body.category ?? '').trim());
+    const result = setItemCategory(db, user.budget_id, Number(categoryMatch[1]), String(body.category ?? '').trim());
     return result.error
       ? sendJson(res, result.status ?? 400, { error: result.error })
       : sendJson(res, 200, result);
   }
 
-  if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db, user.id) });
+  if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db, user.budget_id) });
 
   // ── сканирование чеков ──
   // Приём скана: строка QR кладётся в очередь, ответ ФНС приезжает фоном.
@@ -408,7 +452,7 @@ async function handleApi(req, res, url) {
         return sendJson(res, 429, { error: `на сегодня сканов больше нет (${quota.limit} в сутки) — завтра снова можно` });
       }
 
-      const result = addScan(db, user.id, body.qr);
+      const result = addScan(db, user.budget_id, user.id, body.qr);
       if (result.error) return sendJson(res, result.status ?? 400, { error: result.error });
 
       runScanQueue(db); // не ждём: клиент опрашивает состояние сам
@@ -416,7 +460,7 @@ async function handleApi(req, res, url) {
     }
     // Сканы без чека: ?state=failed | pending, без него — и те и другие
     if (req.method === 'GET') {
-      return sendJson(res, 200, { ...listScans(db, user.id, searchParams.get('state') ?? ''), usage: fnsUsage(db) });
+      return sendJson(res, 200, { ...listScans(db, user.budget_id, searchParams.get('state') ?? ''), usage: fnsUsage(db) });
     }
     return sendJson(res, 405, { error: 'method not allowed' });
   }
@@ -427,12 +471,12 @@ async function handleApi(req, res, url) {
     let result;
     if (scanMatch[2]) {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
-      result = retryScan(db, user.id, id);
+      result = retryScan(db, user.budget_id, id);
       if (!result.error) runScanQueue(db);
     } else if (req.method === 'DELETE') {
-      result = deleteScan(db, user.id, id);
+      result = deleteScan(db, user.budget_id, id);
     } else {
-      const job = getScan(db, user.id, id);
+      const job = getScan(db, user.budget_id, id);
       return job ? sendJson(res, 200, { job }) : sendJson(res, 404, { error: 'скан не найден' });
     }
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
@@ -447,34 +491,34 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = addManual(db, user.id, body);
+    const result = addManual(db, user.budget_id, body, user.id);
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
   }
 
   // Сводка: сколько и на что. Главный запрос телефона — один вместо выкачивания строк
-  if (pathname === '/api/summary') return sendJson(res, 200, summary(db, user.id, searchParams));
+  if (pathname === '/api/summary') return sendJson(res, 200, summary(db, user.budget_id, searchParams));
 
-  if (pathname === '/api/receipts') return sendJson(res, 200, listReceipts(db, user.id, searchParams));
+  if (pathname === '/api/receipts') return sendJson(res, 200, listReceipts(db, user.budget_id, searchParams));
 
   const receiptMatch = pathname.match(/^\/api\/receipts\/(\d+)$/);
   if (receiptMatch && req.method === 'DELETE') {
-    const result = deleteManual(db, user.id, Number(receiptMatch[1]));
+    const result = deleteManual(db, user.budget_id, Number(receiptMatch[1]));
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
   }
   if (receiptMatch) {
-    const receipt = getReceipt(db, user.id, Number(receiptMatch[1]));
+    const receipt = getReceipt(db, user.budget_id, Number(receiptMatch[1]));
     return receipt ? sendJson(res, 200, receipt) : sendJson(res, 404, { error: 'receipt not found' });
   }
 
   // collapse=1 — одна строка на название; раскрытие группы идёт обычным списком с name_norm
   if (pathname === '/api/items') {
     const collapse = searchParams.get('collapse') === '1' && !searchParams.get('name_norm');
-    return sendJson(res, 200, (collapse ? listItemGroups : listItems)(db, user.id, searchParams));
+    return sendJson(res, 200, (collapse ? listItemGroups : listItems)(db, user.budget_id, searchParams));
   }
 
   const itemMatch = pathname.match(/^\/api\/items\/(\d+)$/);
   if (itemMatch) {
-    const item = getItem(db, user.id, Number(itemMatch[1]));
+    const item = getItem(db, user.budget_id, Number(itemMatch[1]));
     return item ? sendJson(res, 200, item) : sendJson(res, 404, { error: 'item not found' });
   }
 
@@ -486,7 +530,7 @@ async function handleApi(req, res, url) {
       const rows = [];
       for (let page = 1; ; page += 1) {
         params.set('page', String(page));
-        const chunk = listReceipts(db, user.id, params).rows;
+        const chunk = listReceipts(db, user.budget_id, params).rows;
         rows.push(...chunk);
         if (chunk.length < 500 || rows.length >= 50000) break;
       }
@@ -511,7 +555,7 @@ async function handleApi(req, res, url) {
     const rows = [];
     for (let page = 1; ; page += 1) {
       params.set('page', String(page));
-      const chunk = listItems(db, user.id, params).rows;
+      const chunk = listItems(db, user.budget_id, params).rows;
       rows.push(...chunk);
       if (chunk.length < 500 || rows.length >= 50000) break;
     }
