@@ -367,10 +367,6 @@ async function screenCategory() {
 
 async function screenItem() {
   const it = await api(`/api/items/${state.item}`);
-  const groups = meta?.categories ?? [];
-  const subs = groups.find((g) => g.slug === it.group_slug)?.subcategories ?? [];
-  const option = (slug, label, selected) =>
-    `<option value="${esc(slug)}"${slug === selected ? ' selected' : ''}>${esc(label)}</option>`;
 
   const kv = (rows) =>
     rows
@@ -390,14 +386,9 @@ async function screenItem() {
       ])}
     </div>
 
-    <div class="card" data-item-card="${it.id}">
+    <div class="card">
       <div class="card-label">Категория</div>
-      <select id="pick-group">${option('', '— не выбрана —', it.group_slug ?? '')}${groups
-        .map((g) => option(g.slug, g.name, it.group_slug ?? ''))
-        .join('')}</select>
-      <select id="pick-category">${option('', '— не выбрана —', it.category_slug ?? '')}${subs
-        .map((s) => option(s.slug, s.name, it.category_slug ?? ''))
-        .join('')}</select>
+      <button class="cat-pick" id="item-cat" type="button" data-item-cat="${it.id}">${categoryButton(it.category_slug)}</button>
       <p class="note" id="pick-note">${
         it.same_name_count > 1
           ? `Выбор применится к ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позиции', 'позициям', 'позициям')} с таким же названием`
@@ -1327,6 +1318,10 @@ function onScreenClick(e) {
   const pick = e.target.closest('[data-pick]');
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
+  // Категория в карточке товара
+  const itemCat = e.target.closest('[data-item-cat]');
+  if (itemCat) return openCategoryPicker(Number(itemCat.dataset.itemCat), saveItemCategory);
+
   const shift = e.target.closest('[data-shift]');
   if (shift) return go(shiftPeriod(state.from, state.to, Number(shift.dataset.shift)), true);
 
@@ -1380,24 +1375,16 @@ $('screen').addEventListener('submit', (e) => {
   saveManual();
 });
 
-// Смена категории: группа перезаполняет второй список, выбор категории сохраняет
-$('screen').addEventListener('change', async (e) => {
-  const card = e.target.closest('[data-item-card]');
-  if (!card) return;
-
-  if (e.target.id === 'pick-group') {
-    const subs = findGroup(e.target.value)?.subcategories ?? [];
-    $('pick-category').innerHTML =
-      '<option value="">— не выбрана —</option>' +
-      subs.map((s) => `<option value="${esc(s.slug)}">${esc(s.name)}</option>`).join('');
-    return;
-  }
-
-  if (e.target.id !== 'pick-category') return;
+/** Категория из карточки товара: выбор тот же, что в разборе чека, итог — под кнопкой. */
+async function saveItemCategory(itemId, slug) {
   const note = $('pick-note');
+  const button = $('item-cat');
+  note.classList.remove('error');
   note.textContent = 'Сохранение…';
+  button.disabled = true;
   try {
-    const data = await post(`/api/items/${card.dataset.itemCard}/category`, { category: e.target.value });
+    const data = await post(`/api/items/${itemId}/category`, { category: slug });
+    button.innerHTML = categoryButton(slug);
     note.textContent = data.category
       ? `«${data.category.name}» — обновлено ${int.format(data.affected)} ${plural(data.affected, 'позиция', 'позиции', 'позиций')}`
       : `Категория снята, затронуто ${int.format(data.affected)}`;
@@ -1405,8 +1392,10 @@ $('screen').addEventListener('change', async (e) => {
   } catch (err) {
     note.textContent = `Не удалось сохранить: ${err.message}`;
     note.classList.add('error');
+  } finally {
+    button.disabled = false;
   }
-});
+}
 
 $('back').addEventListener('click', () => history.back());
 $('fab').addEventListener('click', () => go({ screen: 'add' }));
