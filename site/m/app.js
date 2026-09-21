@@ -1318,7 +1318,6 @@ async function render() {
 
   $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
   $('back').hidden = top;
-  $('fab').hidden = !top;
 
   const actions = screen.actions?.() ?? '';
   $('actions').innerHTML = actions;

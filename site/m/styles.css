@@ -131,7 +131,7 @@ button, input, select { font: inherit; color: inherit; }
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 12px 12px 88px; /* снизу — место под «+», чтобы он не закрывал последнюю строку */
+  padding: 12px 12px 22px; /* снизу — место под выступ кнопки «+» над панелью */
 }
 
 /* ── вкладки ───────────────────────────────────────────── */
@@ -139,6 +139,7 @@ button, input, select { font: inherit; color: inherit; }
 .tabs {
   flex: none;
   display: flex;
+  align-items: flex-start;
   padding-bottom: env(safe-area-inset-bottom);
   border-top: 1px solid var(--border);
   background: var(--surface);
@@ -161,6 +162,24 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .tab.on { color: var(--accent); font-weight: 600; }
+
+/* Главное действие — посередине панели. Выступает над её краем, а белое кольцо
+   вокруг будто вырезает место в панели */
+.tab-add {
+  flex: none;
+  width: 58px;
+  height: 58px;
+  margin: -18px 12px 0;
+  border: 4px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 30px;
+  line-height: 1;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.35);
+  cursor: pointer;
+}
+.tab-add:active { transform: scale(0.95); }
 .tab-ic svg { display: block; width: 22px; height: 22px; }
 
 .badge {
@@ -299,26 +318,6 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ── сканирование ──────────────────────────────────────── */
 
-/* Кнопка добавления висит над списком: это главное действие на телефоне */
-.fab {
-  position: fixed;
-  z-index: 5;
-  right: 18px;
-  bottom: calc(54px + 16px + env(safe-area-inset-bottom)); /* над вкладками */
-  width: 58px;
-  height: 58px;
-  border: none;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-size: 30px;
-  line-height: 1;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
-  cursor: pointer;
-}
-
-.fab[hidden] { display: none; }
-
 .btn.big { width: 100%; height: 52px; font-size: 16px; }
 .btn.danger { border-color: #f1c4c0; color: var(--danger); }
 .btn.more { display: block; width: 100%; margin-top: 12px; }
@@ -405,7 +404,7 @@ button, input, select { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 10px 12px 24px; /* снизу — под выступ кнопки «+» из панели */
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
