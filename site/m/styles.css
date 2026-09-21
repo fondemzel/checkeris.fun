@@ -330,6 +330,9 @@ button, input, select { font: inherit; color: inherit; }
   background: #eef1f5;
 }
 
+/* Пока API карт грузится, на пустом месте — подпись, а не серый прямоугольник */
+.map-wait { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 13px; color: var(--muted); }
+
 /* ── сканирование ──────────────────────────────────────── */
 
 .btn.big { width: 100%; height: 52px; font-size: 16px; }

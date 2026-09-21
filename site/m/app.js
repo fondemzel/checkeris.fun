@@ -427,7 +427,7 @@ async function screenItem() {
     ${onMap ? `
     <div class="card place-card">
       <div class="card-label">Где куплено</div>
-      <div class="map" id="item-map"></div>
+      <div class="map" id="item-map"><span class="map-wait">Загружаем карту…</span></div>
       <p class="note">${esc(it.place_address ?? it.retail_address ?? '')}${it.place_qc > 1 ? ' · место примерное' : ''}</p>
     </div>` : ''}`;
 }

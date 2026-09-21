@@ -31,6 +31,7 @@ function loadApi(key) {
  */
 export async function showPlace(element, { key, lat, lon, qc = 0, title = '' }) {
   const ymaps = await loadApi(key);
+  element.textContent = ''; // убираем «Загружаем карту…»
   const exact = qc <= 1;
   const map = new ymaps.Map(element, {
     center: [lat, lon],

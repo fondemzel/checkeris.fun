@@ -1332,7 +1332,7 @@ function itemCard(it) {
     ${categorySection(it)}
     ${mappable(it) && meta?.maps?.key ? `
     <div class="card-section">Где куплено${it.place_qc > 1 ? ' <span class="dim">· примерно</span>' : ''}</div>
-    <div class="card-map" id="card-map"></div>
+    <div class="card-map" id="card-map"><span class="map-wait">Загружаем карту…</span></div>
     <p class="dim card-map-note">${esc(it.place_address ?? '')}</p>` : ''}
     <div class="card-section">Чек</div>
     <div class="card-actions">
