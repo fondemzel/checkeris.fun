@@ -58,6 +58,8 @@ const UI = {
   ),
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
+  letters: svg('<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>'),
+  ruble: svg('<path d="M6 11h8a4 4 0 0 0 0-8H9v18"/><path d="M6 15h8"/>'),
   tag: svg(
     '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>' +
       '<circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
@@ -173,7 +175,11 @@ const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списка товаров и направление, с которого каждая начинается:
 // свежие и дорогие — сверху, названия — по алфавиту
-const ITEM_SORTS = { date: ['По дате', 'desc'], name: ['По названию', 'asc'], sum: ['По цене', 'desc'] };
+const ITEM_SORTS = {
+  date: ['По дате', 'desc', 'calendar'],
+  name: ['По названию', 'asc', 'letters'],
+  sum: ['По цене', 'desc', 'ruble'],
+};
 const TOP = ['summary', 'receipts']; // корневые экраны: у них нет «назад», зато есть «+»
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;
@@ -369,22 +375,27 @@ async function screenCategory() {
     ? findGroup(state.group)?.subcategories.find((s) => s.slug === state.category)?.name
     : findGroup(state.group)?.name;
 
+  // Сортировка — значками: подписи не помещаются в закреплённую шапку. Повторное нажатие
+  // на выбранную разворачивает порядок, стрелка показывает какой
+  const sorts = Object.entries(ITEM_SORTS)
+    .map(([key, [label, , icon]]) => {
+      const on = state.sort === key;
+      const arrow = on ? `<span class="sort-dir">${state.dir === 'asc' ? '↑' : '↓'}</span>` : '';
+      return `<button class="sort-chip${on ? ' on' : ''}" type="button" data-sort="${key}" aria-label="${label}" title="${label}">${UI[icon]}${arrow}</button>`;
+    })
+    .join('');
+
+  // Шапка закреплена: при листании длинного списка итог и порядок остаются на виду
   const head = `
-    <div class="total">
-      <span class="total-sum">${money(data.totals.sum)}</span>
-      <span class="total-note">${esc(periodTitle(state.from, state.to))} · ${esc(name ?? '')}</span>
+    <div class="stuck-head">
+      <div class="total compact">
+        <span class="total-sum">${money(data.totals.sum)}</span>
+        <span class="total-note">${esc(periodTitle(state.from, state.to))} · ${esc(name ?? '')}</span>
+        ${data.rows.length ? `<div class="sorts">${sorts}</div>` : ''}
+      </div>
     </div>`;
 
   if (!data.rows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
-
-  // Чипсы сортировки. Повторное нажатие на выбранную разворачивает порядок — стрелка показывает какой
-  const sorts = `<div class="chips">${Object.entries(ITEM_SORTS)
-    .map(([key, [label]]) => {
-      const on = state.sort === key;
-      const arrow = on ? ` <span class="chip-dir">${state.dir === 'asc' ? '↑' : '↓'}</span>` : '';
-      return `<button class="chip${on ? ' on' : ''}" type="button" data-sort="${key}">${label}${arrow}</button>`;
-    })
-    .join('')}</div>`;
 
   const rows = data.rows
     .map((r) => {
@@ -404,7 +415,7 @@ async function screenCategory() {
     })
     .join('');
 
-  return `${head}${sorts}<div class="list">${rows}</div>`;
+  return `${head}<div class="list">${rows}</div>`;
 }
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
