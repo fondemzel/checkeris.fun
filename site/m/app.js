@@ -58,6 +58,7 @@ const UI = {
   ),
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
+  close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   letters: svg('<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>'),
   ruble: svg('<path d="M6 11h8a4 4 0 0 0 0-8H9v18"/><path d="M6 15h8"/>'),
   tag: svg(
@@ -1226,10 +1227,19 @@ function openCategoryPicker(itemId, onPick) {
 
   const close = () => picker.remove();
 
+  // Для чего выбираем: строка чека, карточка товара или новая ручная трата
+  const name =
+    (itemId && document.querySelector(`.sheet-row[data-row="${itemId}"] .sheet-name`)?.textContent) ||
+    (itemId && itemShown?.id === itemId ? itemShown.name : '') ||
+    (!itemId ? document.getElementById('m-name')?.value.trim() : '') ||
+    '';
+  const subtitle = name ? `<small class="picker-for">Поменяйте категорию для расхода «${esc(name)}»</small>` : '';
+  const closeBtn = `<button class="icon-btn soft" data-close type="button" aria-label="Отмена" title="Отмена">${UI.close}</button>`;
+
   const showGroups = () => {
     picker.innerHTML = `
       <div class="picker-box" role="dialog" aria-label="Выбор группы">
-        <div class="picker-top"><span>Группа</span><button class="btn" data-close type="button">Отмена</button></div>
+        <div class="picker-top"><div class="picker-title">Группа${subtitle}</div>${closeBtn}</div>
         <div class="picker-grid">
           ${groups
             .map(
@@ -1250,8 +1260,8 @@ function openCategoryPicker(itemId, onPick) {
       <div class="picker-box" role="dialog" aria-label="Выбор категории">
         <div class="picker-top">
           <button class="picker-back" data-back type="button" aria-label="Назад">‹</button>
-          <span>${esc(group.name)}</span>
-          <button class="btn" data-close type="button">Отмена</button>
+          <div class="picker-title">${esc(group.name)}${subtitle}</div>
+          ${closeBtn}
         </div>
         <div class="picker-list">
           ${group.subcategories
