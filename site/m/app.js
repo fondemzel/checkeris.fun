@@ -420,7 +420,7 @@ async function screenItem() {
       <p class="note" id="pick-note">${
         it.same_name_count > 1
           ? `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позицию', 'позиции', 'позиций')} с таким же названием`
-          : 'Это название встречается только здесь'
+          : ''
       }</p>
     </div>
 

@@ -855,3 +855,6 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .picker-item:active { background: #eef2f9; }
 .picker-item .dot { width: 14px; height: 14px; margin: 0; }
 
+
+/* Подпись под категорией в карточке: пустая — без отступа */
+#pick-note:empty { display: none; }

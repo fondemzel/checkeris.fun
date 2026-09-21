@@ -1241,7 +1241,7 @@ function categorySection(it) {
   const scope =
     n > 1
       ? ` Изменение категории затронет ${int.format(n)} ${plural(n, 'позицию', 'позиции', 'позиций')} с таким же названием.`
-      : ' Это название встречается только здесь.';
+      : '';
 
   return `
     <div class="card-section">Категория</div>
