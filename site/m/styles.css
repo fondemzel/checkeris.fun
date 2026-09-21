@@ -497,6 +497,54 @@ button, input, select { font: inherit; color: inherit; }
 .chip.on { border-color: var(--bar); background: var(--bar); color: #fff; }
 .chip.on.alert b { color: #ffb4ab; }
 
+/* «Категории | Чеки» внутри «Расхода» */
+.segments { display: flex; gap: 2px; padding: 2px; margin-bottom: 8px; border-radius: 10px; background: #e4e7ec; }
+
+.segment {
+  position: relative;
+  flex: 1;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.segment.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+
+.seg-badge {
+  display: inline-block;
+  min-width: 17px;
+  height: 17px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 17px;
+  vertical-align: 1px;
+}
+
+/* Раздел, которого ещё нет */
+.soon { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 60px 24px; text-align: center; }
+.soon-ic { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; background: #e4e7ec; color: var(--muted); }
+.soon-ic svg { width: 30px; height: 30px; }
+.soon-title { font-size: 17px; font-weight: 600; }
+
+/* Настройки */
+.profile { margin-bottom: 12px; }
+.profile-name { font-size: 18px; font-weight: 600; }
+.settings-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.settings-actions .note { margin-top: 4px; text-align: center; }
+.settings-actions .note a { color: inherit; }
+.btn.with-ic { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.btn.with-ic svg { width: 18px; height: 18px; }
+
 /* Закреплённая шапка списка: прилипает под верхнюю панель. Фон страницы вокруг
    карточки закрывает строки, которые уезжают под неё */
 .stuck-head {

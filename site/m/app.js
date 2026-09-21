@@ -59,6 +59,12 @@ const UI = {
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+  income: svg('<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>'),
+  settings: svg(
+    '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>' +
+      '<circle cx="12" cy="12" r="3"/>',
+  ),
+  stats: svg('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'),
   letters: svg('<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>'),
   ruble: svg('<path d="M6 11h8a4 4 0 0 0 0-8H9v18"/><path d="M6 15h8"/>'),
   tag: svg(
@@ -171,7 +177,7 @@ const state = {
   dir: 'desc',
 };
 
-const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added'];
+const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income', 'settings', 'stats'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списка товаров и направление, с которого каждая начинается:
@@ -181,7 +187,7 @@ const ITEM_SORTS = {
   name: ['По названию', 'asc', 'letters'],
   sum: ['По цене', 'desc', 'ruble'],
 };
-const TOP = ['summary', 'receipts']; // корневые экраны: у них нет «назад», зато есть «+»
+const TOP = ['summary', 'receipts', 'income', 'settings', 'stats']; // корневые экраны: у них нет «назад», зато есть «+»
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;
 const findCategory = (slug) => {
@@ -267,6 +273,20 @@ const periodNav = (compact = false) => `
     <button class="month-arrow" type="button" data-shift="1" aria-label="Позже">›</button>
   </div>`;
 
+/**
+ * «Расход» — два взгляда на одни траты: по категориям и списком чеков. Переключатель
+ * стоит в шапке обоих экранов, счётчик сканов с ошибкой — на «Чеках»
+ */
+const expenseSwitch = () => `
+  <div class="segments">
+    <button class="segment${state.screen === 'summary' ? ' on' : ''}" type="button" data-segment="summary">Категории</button>
+    <button class="segment${state.screen === 'receipts' ? ' on' : ''}" type="button" data-segment="receipts">Чеки${
+      failedCount ? `<i class="seg-badge">${failedCount > 99 ? '99+' : failedCount}</i>` : ''
+    }</button>
+  </div>`;
+
+let failedCount = 0; // сканы с ошибкой: значок на вкладке «Расход» и на «Чеках»
+
 /** Строка списка: иконка или кружок цвета, название, сумма и доля от итога. */
 function row({ href, color, icon, title, note, sum, share }) {
   const swatch = icon
@@ -302,6 +322,7 @@ async function screenSummary() {
   // Период и итог закреплены: листая группы, видно, за что и сколько
   const head = `
     <div class="stuck-head">
+      ${expenseSwitch()}
       <div class="total compact">
         <span class="total-sum">${money(data.totals.sum)}</span>
         <span class="total-note">${int.format(data.totals.receipts)} ${plural(data.totals.receipts, 'чек', 'чека', 'чеков')} ·
@@ -705,8 +726,8 @@ async function screenReceipts() {
       ? '<p class="note list-hint">Обычно это чек, который касса ещё не передала в ФНС. Мы переспрашиваем сами — через час, 6 часов, сутки и трое суток.</p>'
       : '';
     return scans.jobs.length
-      ? `${chips}${hint}<div class="list">${scans.jobs.map(jobRow).join('')}</div>`
-      : `${chips}<div class="empty">${f === 'failed' ? 'Сканов с ошибкой нет' : 'Очередь пуста'}</div>`;
+      ? `${expenseSwitch()}${chips}${hint}<div class="list">${scans.jobs.map(jobRow).join('')}</div>`
+      : `${expenseSwitch()}${chips}<div class="empty">${f === 'failed' ? 'Сканов с ошибкой нет' : 'Очередь пуста'}</div>`;
   }
 
   receiptsPage = 1;
@@ -718,14 +739,17 @@ async function screenReceipts() {
     : [];
 
   const head = `
-    ${chips}
-    ${periodNav()}
-    <div class="total">
-      <span class="total-sum">${money(data.totals.sum)}</span>
-      <span class="total-note">${int.format(data.totals.count)} ${plural(data.totals.count, 'чек', 'чека', 'чеков')}${
-        data.totals.excluded_count ? ` · ${int.format(data.totals.excluded_count)} вне суммы` : ''
-      }</span>
-    </div>`;
+    <div class="stuck-head">
+      ${expenseSwitch()}
+      <div class="total compact">
+        <span class="total-sum">${money(data.totals.sum)}</span>
+        <span class="total-note">${int.format(data.totals.count)} ${plural(data.totals.count, 'чек', 'чека', 'чеков')}${
+          data.totals.excluded_count ? ` · ${int.format(data.totals.excluded_count)} вне суммы` : ''
+        }</span>
+        ${periodNav(true)}
+      </div>
+    </div>
+    ${chips}`;
 
   if (!data.rows.length && !stuck.length) {
     return `${head}<div class="empty">${f === 'manual' ? 'Ручных записей за период нет' : 'Чеков за период нет'}</div>`;
@@ -762,9 +786,15 @@ async function loadMoreReceipts(button) {
 }
 
 function updateBadge(count) {
+  failedCount = count ?? 0;
   const badge = $('tab-badge');
   badge.hidden = !count;
   badge.textContent = count > 99 ? '99+' : String(count ?? '');
+  // Число пришло после отрисовки шапки — обновляем и переключатель «Категории | Чеки»
+  const segment = document.querySelector('[data-segment="receipts"]');
+  if (segment) {
+    segment.innerHTML = `Чеки${count ? `<i class="seg-badge">${count > 99 ? '99+' : count}</i>` : ''}`;
+  }
 }
 
 /** Застрявший скан: что случилось, когда повтор, и что можно сделать самому. */
@@ -1419,10 +1449,30 @@ const SCREENS = {
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem, after: mountItemMap },
+  income: {
+    title: 'Доход',
+    render: () => soon(UI.income, 'Доходы', 'Здесь будут зарплата, переводы и другие поступления — чтобы видеть, сколько остаётся.'),
+  },
+  stats: {
+    title: 'Статистика',
+    render: () => soon(UI.stats, 'Статистика', 'Здесь будут графики: как меняются траты по месяцам и категориям.'),
+  },
+  settings: { title: 'Настройки', render: screenSettings },
 };
 
+/** Раздела ещё нет, а вкладка уже на месте: навигация не будет меняться потом. */
+const soon = (icon, title, text) => `
+  <div class="soon">
+    <span class="soon-ic">${icon}</span>
+    <div class="soon-title">${title} — скоро</div>
+    <p class="note">${text}</p>
+  </div>`;
+
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
-const TAB_OF = { summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'receipts' };
+const TAB_OF = {
+  summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary',
+  income: 'income', settings: 'settings', stats: 'stats',
+};
 
 /**
  * Сколько места внизу занимают закреплённые панели — вкладки и полоса кнопок. Столько
@@ -1497,6 +1547,10 @@ function onScreenClick(e) {
 
   const filter = e.target.closest('[data-filter]');
   if (filter) return go({ filter: filter.dataset.filter }, true);
+
+  // «Категории | Чеки» — замена экрана на месте: «назад» по переключателю не ходит
+  const segment = e.target.closest('[data-segment]');
+  if (segment) return go({ screen: segment.dataset.segment }, true);
 
   const sort = e.target.closest('[data-sort]');
   if (sort) {
@@ -1608,8 +1662,8 @@ function budgetSection(budget) {
     .join('');
 
   return `
-    <div class="card sheet-card budget">
-      <div class="card-label budget-title">Бюджет «${esc(budget.name)}»${
+    <div class="card budget">
+      <div class="card-label budget-title">Бюджет «<span id="budget-name">${esc(budget.name)}</span>»${
         budget.is_owner ? ' <button class="link" type="button" data-rename-budget>переименовать</button>' : ''
       }</div>
       ${members}
@@ -1643,44 +1697,35 @@ async function shareInvite(button) {
   }
 }
 
-async function openAccount() {
+/** Настройки: кто вошёл, бюджет, выход и удаление аккаунта. */
+async function screenSettings() {
   const [me, budget] = await Promise.all([
     api('/api/session').catch(() => null),
     api('/api/budget').catch(() => null),
   ]);
-  const sheet = document.createElement('div');
-  sheet.className = 'sheet';
-  sheet.innerHTML = `
-    <div class="sheet-box" role="dialog" aria-label="Аккаунт">
-      <div class="sheet-top">
-        <div>
-          <div class="sheet-sum-total">${esc(me?.name ?? 'Аккаунт')}</div>
-          <div class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</div>
-        </div>
-        <button class="btn" data-close type="button">Закрыть</button>
-      </div>
-      <div class="sheet-scroll">${budgetSection(budget)}</div>
-      <div class="sheet-actions">
-        <button class="btn primary" type="button" data-logout>Выйти на этом устройстве</button>
-        ${me?.role === 'admin' ? '' : '<button class="btn danger" type="button" data-delete-account>Удалить аккаунт и все данные</button>'}
-      </div>
-      <p class="note sheet-hint"><a href="/privacy.html">Какие данные хранит Чекер</a></p>
+  return `
+    <div class="card profile">
+      <div class="profile-name">${esc(me?.name ?? 'Аккаунт')}</div>
+      <div class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</div>
+    </div>
+    ${budgetSection(budget)}
+    <div class="settings-actions">
+      <button class="btn with-ic" type="button" data-logout>${UI.logout}<span>Выйти на этом устройстве</span></button>
+      ${me?.role === 'admin' ? '' : '<button class="btn danger" type="button" data-delete-account>Удалить аккаунт и все данные</button>'}
+      <p class="note"><a href="/privacy.html">Какие данные хранит Чекер</a></p>
     </div>`;
-  document.body.appendChild(sheet);
+}
 
-  sheet.addEventListener('click', async (e) => {
-    if (e.target === sheet || e.target.closest('[data-close]')) return sheet.remove();
-
+async function onSettingsClick(e) {
     const invite = e.target.closest('[data-invite]');
     if (invite) return shareInvite(invite);
 
     if (e.target.closest('[data-rename-budget]')) {
-      const name = prompt('Название бюджета — его видят приглашённые', budget?.name ?? '');
+      const name = prompt('Название бюджета — его видят приглашённые', $('budget-name')?.textContent ?? '');
       if (!name?.trim()) return;
       try {
         await api('/api/budget', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
-        sheet.remove();
-        openAccount();
+        render();
       } catch (err) {
         toast(`Не вышло: ${err.message}`);
       }
@@ -1703,9 +1748,8 @@ async function openAccount() {
       if (!confirm('Исключить из бюджета? Человек вернётся в свой бюджет, его траты останутся здесь.')) return;
       try {
         await api(`/api/budget/members/${remove.dataset.removeMember}`, { method: 'DELETE' });
-        sheet.remove();
         meta = await api('/api/meta');
-        openAccount();
+        render();
       } catch (err) {
         toast(`Не вышло: ${err.message}`);
       }
@@ -1729,10 +1773,11 @@ async function openAccount() {
         toast(`Не удалилось: ${err.message}`);
       }
     }
-  });
 }
 
-$('logout').addEventListener('click', openAccount);
+$('screen').addEventListener('click', (e) => {
+  if (state.screen === 'settings') onSettingsClick(e);
+});
 
 // ── запуск ───────────────────────────────────────────────
 
@@ -1807,9 +1852,10 @@ async function start() {
   stopLinkRefresh?.();
   $('login').hidden = true;
   $('app').hidden = false;
-  $('logout').innerHTML = UI.logout;
   $('tab-summary-ic').innerHTML = UI.wallet;
-  $('tab-receipts-ic').innerHTML = UI.receipt;
+  $('tab-income-ic').innerHTML = UI.income;
+  $('tab-settings-ic').innerHTML = UI.settings;
+  $('tab-stats-ic').innerHTML = UI.stats;
   meta = await api('/api/meta');
 
   // Пустой месяц на старте — не повод показывать ноль: открываем последний с данными

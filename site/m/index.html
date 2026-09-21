@@ -47,7 +47,7 @@
     <header class="bar">
       <button class="bar-back" id="back" type="button" hidden aria-label="Назад">‹</button>
       <div class="bar-title" id="title">Расходы</div>
-      <button class="bar-action" id="logout" type="button" aria-label="Аккаунт" title="Аккаунт"></button>
+      <span class="bar-action" aria-hidden="true"></span><!-- держит заголовок по центру -->
     </header>
 
     <main class="screen" id="screen"></main>
@@ -55,12 +55,14 @@
     <div class="actions" id="actions" hidden></div>
 
     <nav class="tabs" aria-label="Разделы">
-      <button class="tab" type="button" data-tab="summary"><span class="tab-ic" id="tab-summary-ic"></span>Расходы</button>
+      <button class="tab" type="button" data-tab="summary">
+        <span class="tab-ic" id="tab-summary-ic"></span>Расход<i class="badge" id="tab-badge" hidden></i>
+      </button>
+      <button class="tab" type="button" data-tab="income"><span class="tab-ic" id="tab-income-ic"></span>Доход</button>
       <!-- Добавление — посередине панели, чуть выступает над её краем -->
       <button class="tab-add" id="fab" type="button" aria-label="Добавить трату">+</button>
-      <button class="tab" type="button" data-tab="receipts">
-        <span class="tab-ic" id="tab-receipts-ic"></span>Чеки<i class="badge" id="tab-badge" hidden></i>
-      </button>
+      <button class="tab" type="button" data-tab="settings"><span class="tab-ic" id="tab-settings-ic"></span>Настройки</button>
+      <button class="tab" type="button" data-tab="stats"><span class="tab-ic" id="tab-stats-ic"></span>Статистика</button>
     </nav>
   </div>
 
