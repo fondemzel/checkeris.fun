@@ -739,6 +739,10 @@ button, input, select { font: inherit; color: inherit; }
   background: var(--surface);
 }
 
+/* Тот же список на экране «Добавлено» — часть страницы: своей прокрутки у него нет,
+   и жест по нему должен листать страницу, а не упираться в список */
+.screen .sheet-list { flex: none; overflow: hidden; overscroll-behavior: auto; }
+
 /* ── выбор категории ───────────────────────────────────── */
 
 .picker {

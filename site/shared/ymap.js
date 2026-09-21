@@ -38,10 +38,9 @@ export async function showPlace(element, { key, lat, lon, qc = 0, title = '' }) 
     controls: ['zoomControl'],
   });
 
-  // Колесо мыши и один палец прокручивают страницу, а не карту: иначе, листая
-  // карточку, «застреваешь» в карте. Для подробностей есть «Открыть в Картах»
+  // Колесо мыши прокручивает страницу, а не масштаб карты: иначе, листая карточку,
+  // «застреваешь» в карте. Двигать карту пальцем и мышью можно
   map.behaviors.disable('scrollZoom');
-  if (window.matchMedia('(pointer: coarse)').matches) map.behaviors.disable('drag');
 
   if (exact) {
     map.geoObjects.add(new ymaps.Placemark([lat, lon], { hintContent: title }, { preset: 'islands#redDotIcon' }));
