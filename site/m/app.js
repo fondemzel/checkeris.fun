@@ -299,12 +299,15 @@ async function screenSummary() {
   const data = await api(`/api/summary?by=group&from=${state.from}&to=${state.to}`);
   const max = Math.max(1, ...data.rows.map((r) => r.sum));
 
+  // Период и итог закреплены: листая группы, видно, за что и сколько
   const head = `
-    ${periodNav()}
-    <div class="total">
-      <span class="total-sum">${money(data.totals.sum)}</span>
-      <span class="total-note">${int.format(data.totals.receipts)} ${plural(data.totals.receipts, 'чек', 'чека', 'чеков')} ·
-        ${int.format(data.totals.count)} ${plural(data.totals.count, 'позиция', 'позиции', 'позиций')}</span>
+    <div class="stuck-head">
+      ${periodNav()}
+      <div class="total compact">
+        <span class="total-sum">${money(data.totals.sum)}</span>
+        <span class="total-note">${int.format(data.totals.receipts)} ${plural(data.totals.receipts, 'чек', 'чека', 'чеков')} ·
+          ${int.format(data.totals.count)} ${plural(data.totals.count, 'позиция', 'позиции', 'позиций')}</span>
+      </div>
     </div>`;
 
   if (!data.rows.length) {
