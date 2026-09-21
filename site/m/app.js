@@ -1233,7 +1233,7 @@ function openCategoryPicker(itemId, onPick) {
     (itemId && itemShown?.id === itemId ? itemShown.name : '') ||
     (!itemId ? document.getElementById('m-name')?.value.trim() : '') ||
     '';
-  const subtitle = name ? `<small class="picker-for">Поменяйте категорию для расхода «${esc(name)}»</small>` : '';
+  const subtitle = name ? `<small class="picker-for">Выберите категорию для расхода «${esc(name)}»</small>` : '';
   const closeBtn = `<button class="icon-btn soft" data-close type="button" aria-label="Отмена" title="Отмена">${UI.close}</button>`;
 
   const showGroups = () => {
