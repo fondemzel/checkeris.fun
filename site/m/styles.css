@@ -513,6 +513,20 @@ button, input, select { font: inherit; color: inherit; }
 .total.compact .total-sum { font-size: 24px; }
 .total.compact .total-note { margin-top: 2px; font-size: 12px; }
 
+/* Период внутри шапки — строкой помельче, как чипсы сортировки */
+.month.compact { justify-content: center; gap: 6px; margin: 8px 0 0; }
+.month.compact .month-arrow { width: 32px; height: 28px; border-radius: 14px; font-size: 16px; color: var(--muted); }
+.month.compact .month-name {
+  min-height: 28px;
+  gap: 5px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.month.compact .month-name svg { width: 14px; height: 14px; }
+
 .sorts { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
 
 .sort-chip {

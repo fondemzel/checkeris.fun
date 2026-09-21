@@ -260,8 +260,8 @@ const loading = () => '<div class="empty">Загрузка…</div>';
 const failed = (err) => `<div class="empty error">${esc(err.message)}</div>`;
 
 /** Строка периода: стрелки листают, нажатие на даты открывает календарь. */
-const periodNav = () => `
-  <div class="month">
+const periodNav = (compact = false) => `
+  <div class="month${compact ? ' compact' : ''}">
     <button class="month-arrow" type="button" data-shift="-1" aria-label="Раньше">‹</button>
     <button class="month-name" type="button" data-period>${UI.calendar}<span>${esc(periodTitle(state.from, state.to))}</span></button>
     <button class="month-arrow" type="button" data-shift="1" aria-label="Позже">›</button>
@@ -302,11 +302,11 @@ async function screenSummary() {
   // Период и итог закреплены: листая группы, видно, за что и сколько
   const head = `
     <div class="stuck-head">
-      ${periodNav()}
       <div class="total compact">
         <span class="total-sum">${money(data.totals.sum)}</span>
         <span class="total-note">${int.format(data.totals.receipts)} ${plural(data.totals.receipts, 'чек', 'чека', 'чеков')} ·
           ${int.format(data.totals.count)} ${plural(data.totals.count, 'позиция', 'позиции', 'позиций')}</span>
+        ${periodNav(true)}
       </div>
     </div>`;
 
