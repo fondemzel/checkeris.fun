@@ -14,9 +14,13 @@
 
 * { box-sizing: border-box; }
 
+/* Прокручивается сама страница, а не блок внутри неё: только тогда Safari и Chrome
+   сворачивают адресную строку при листании вниз. Шапка прилипает сверху, панели
+   внизу закреплены, а место под ними оставляет отступ ленты (--dock, считает app.js) */
+html { height: 100%; }
+
 html, body {
   margin: 0;
-  height: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
@@ -29,7 +33,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ── вход ──────────────────────────────────────────────── */
 
-.login { display: flex; align-items: center; justify-content: center; height: 100%; padding: 20px; }
+.login { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh; padding: 20px; }
 .login[hidden] { display: none; }
 
 .login-box {
@@ -92,12 +96,14 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ── каркас ────────────────────────────────────────────── */
 
-.app { display: flex; flex-direction: column; height: 100%; }
+.app { min-height: 100%; }
 .app[hidden] { display: none; }
 
-/* Шапка закреплена: на телефоне «назад» должен быть под большим пальцем всегда */
+/* Шапка прилипает сверху: на телефоне «назад» должен быть под рукой всегда */
 .bar {
-  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -126,18 +132,17 @@ button, input, select { font: inherit; color: inherit; }
 .bar-action { display: flex; align-items: center; justify-content: center; opacity: 0.75; }
 .bar-action svg { width: 21px; height: 21px; }
 
-.screen {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 12px 12px 22px; /* снизу — место под выступ кнопки «+» над панелью */
-}
+/* Снизу — место под закреплённые панели и выступ кнопки «+» над ними */
+.screen { padding: 12px 12px calc(var(--dock, 76px) + 22px); }
 
 /* ── вкладки ───────────────────────────────────────────── */
 
 .tabs {
-  flex: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
   display: flex;
   align-items: flex-start;
   padding-bottom: env(safe-area-inset-bottom);
@@ -400,7 +405,11 @@ button, input, select { font: inherit; color: inherit; }
 /* Полоса главных кнопок: часть каркаса, поэтому список прокручивается под ней,
    а кнопки всегда на виду */
 .actions {
-  flex: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--tabs, 55px); /* прямо над нижней панелью */
+  z-index: 9;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -411,8 +420,6 @@ button, input, select { font: inherit; color: inherit; }
 
 .actions[hidden] { display: none; }
 
-/* Запас снизу нужен под кнопку «+»; когда внизу полоса кнопок, он лишний */
-.app:has(.actions:not([hidden])) .screen { padding-bottom: 14px; }
 .actions .btn.big { height: 48px; }
 .actions .more-link { align-self: center; padding: 4px 12px; color: var(--muted); font-size: 14px; text-decoration: none; }
 
@@ -494,13 +501,13 @@ button, input, select { font: inherit; color: inherit; }
 .scan-dot.waiting { background: #eda100; box-shadow: 0 0 0 3px #fbe7bd; }
 
 /* Прокручивается середина листа, а кнопки под ней остаются на виду */
-.sheet-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; margin: 12px 0 0; }
+.sheet-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 12px 0 0; }
 .scan-explain { margin: 0 0 10px; font-size: 14px; }
 .sheet-actions { flex: none; display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 
 /* ── бюджет ─────────────────────────────────────────────── */
 
-.sheet-scroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.sheet-scroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .budget { display: flex; flex-direction: column; gap: 2px; }
 .member { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-top: 1px solid #f0f1f3; }
 .member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -715,6 +722,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Список позиций теперь сплошной, поэтому карточка одна на весь чек */
 .sheet-list {
+  overscroll-behavior: contain;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -734,6 +742,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .picker-box {
+  overscroll-behavior: contain;
   width: 100%;
   max-height: 82vh;
   overflow-y: auto;

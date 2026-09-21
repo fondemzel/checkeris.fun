@@ -1308,6 +1308,27 @@ const SCREENS = {
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
 const TAB_OF = { summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'receipts' };
 
+/**
+ * Сколько места внизу занимают закреплённые панели — вкладки и полоса кнопок. Столько
+ * же отступа нужно ленте, иначе последние строки уйдут под панели. Высота разная:
+ * полоса кнопок есть не на всех экранах, а у телефонов разная безопасная зона снизу.
+ */
+function updateDock() {
+  const tabs = document.querySelector('.tabs').offsetHeight;
+  const actions = $('actions').hidden ? 0 : $('actions').offsetHeight;
+  const root = document.documentElement.style;
+  root.setProperty('--tabs', `${tabs}px`);
+  root.setProperty('--dock', `${tabs + actions}px`);
+}
+
+if ('ResizeObserver' in window) {
+  const watch = new ResizeObserver(updateDock);
+  watch.observe(document.querySelector('.tabs'));
+  watch.observe($('actions'));
+} else {
+  window.addEventListener('resize', updateDock);
+}
+
 let renderSeq = 0;
 
 async function render() {
@@ -1322,11 +1343,12 @@ async function render() {
   const actions = screen.actions?.() ?? '';
   $('actions').innerHTML = actions;
   $('actions').hidden = !actions;
+  updateDock();
   for (const tab of document.querySelectorAll('[data-tab]')) {
     tab.classList.toggle('on', tab.dataset.tab === TAB_OF[state.screen]);
   }
   $('screen').innerHTML = loading();
-  $('screen').scrollTop = 0;
+  window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
 
   try {
     const html = await screen.render();
