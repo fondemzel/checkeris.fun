@@ -456,6 +456,15 @@ async function screenItem() {
       }</p>
     </div>
 
+    ${it.receipt_drive !== 'manual' ? `
+    <div class="card">
+      <div class="card-label">Чек</div>
+      <button class="cat-pick" type="button" data-item-receipt="${it.receipt_id}">
+        <span class="pick-ic" style="background:#eef1f5;color:#4b5563">${UI.receipt}</span>
+        <span class="cat-name">${money(it.receipt_total, true)}<small>${int.format(it.receipt_items)} ${plural(it.receipt_items, 'позиция', 'позиции', 'позиций')} · ${dateRu(it.purchased_at)}</small></span>
+      </button>
+    </div>` : ''}
+
     ${onMap ? `
     <div class="card place-card">
       <div class="card-label">Где куплено</div>
@@ -1275,7 +1284,7 @@ function openCategoryPicker(itemId, onPick) {
   showGroups();
 }
 
-async function openReceiptSheet(receiptId) {
+async function openReceiptSheet(receiptId, { current = null } = {}) {
   let receipt;
   try {
     receipt = await api(`/api/receipts/${receiptId}`);
@@ -1298,18 +1307,19 @@ async function openReceiptSheet(receiptId) {
         </div>
         <button class="icon-btn primary" data-close type="button" aria-label="Готово" title="Готово">${UI.ok}</button>
       </div>
-      <p class="note sheet-hint">${
-        unknown
-          ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — выберите значком справа`
-          : manual
-            ? 'Поменять категорию — значком справа'
-            : 'Категории проставлены автоматически. Если ошиблись — поправьте значком справа'
-      }</p>
+      ${unknown ? `<p class="note sheet-hint">${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — выберите значком справа</p>` : ''}
       <div class="sheet-list">${receipt.items.map((i) => sheetRow(i, { open: true })).join('')}</div>
       ${manual ? '<div class="sheet-actions"><button class="btn danger" type="button" data-remove>Удалить запись</button></div>' : ''}
     </div>`;
 
   document.body.appendChild(sheet);
+
+  // Открыли из карточки товара — эту позицию подсвечиваем и показываем
+  const row = current && sheet.querySelector(`.sheet-row[data-row="${current}"]`);
+  if (row) {
+    row.classList.add('current');
+    row.scrollIntoView({ block: 'nearest' });
+  }
 
   const close = () => {
     sheet.remove();
@@ -1461,6 +1471,9 @@ function onScreenClick(e) {
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
   // Категория в карточке товара
+  const itemReceipt = e.target.closest('[data-item-receipt]');
+  if (itemReceipt) return openReceiptSheet(Number(itemReceipt.dataset.itemReceipt), { current: state.item });
+
   const itemCat = e.target.closest('[data-item-cat]');
   if (itemCat) return openCategoryPicker(Number(itemCat.dataset.itemCat), saveItemCategory);
 

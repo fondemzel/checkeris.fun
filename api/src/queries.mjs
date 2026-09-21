@@ -385,7 +385,9 @@ export function getItem(db, budgetId, id) {
                 (CASE WHEN r.internet_sign = 0 AND p.status = 'ok' THEN p.lon END) AS place_lon,
                 (CASE WHEN r.internet_sign = 0 AND p.status = 'ok' THEN p.qc_geo END) AS place_qc,
                 (CASE WHEN r.internet_sign = 0 AND p.status = 'ok' THEN p.result END) AS place_address,
-                r.internet_sign
+                r.internet_sign,
+                r.fiscal_drive AS receipt_drive,
+                r.item_count AS receipt_items
            FROM v_items v
            JOIN items i ON i.id = v.id
            JOIN receipts r ON r.id = v.receipt_id

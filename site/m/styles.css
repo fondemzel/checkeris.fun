@@ -475,6 +475,7 @@ button, input, select { font: inherit; color: inherit; }
 .cat-pick:active { background: #eef2f9; }
 .cat-pick:disabled { opacity: 0.6; }
 .card .cat-pick { margin-bottom: 8px; }
+.card .cat-pick:last-child { margin-bottom: 0; }
 
 /* ── чеки ──────────────────────────────────────────────── */
 
@@ -721,6 +722,10 @@ button, input, select { font: inherit; color: inherit; }
 .sheet-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .sheet-sum-total { font-size: 22px; font-weight: 600; }
 .sheet-hint { margin: 8px 0 10px; }
+.sheet-top + .sheet-list { margin-top: 12px; }
+
+/* Позиция, из карточки которой открыли чек */
+.sheet-row.current { background: #eef4ff; }
 
 /* Одна позиция — одна строка: значок, название с подстрочником категории, сумма */
 .sheet-row {
