@@ -164,10 +164,16 @@ const state = {
   item: '',
   filter: 'all', // список чеков: all | failed | pending | manual
   added: '', // чек, только что добавленный сканом или руками
+  sort: 'sum', // список товаров: date | name | sum
+  dir: 'desc',
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
+
+// Сортировки списка товаров и направление, с которого каждая начинается:
+// свежие и дорогие — сверху, названия — по алфавиту
+const ITEM_SORTS = { date: ['По дате', 'desc'], name: ['По названию', 'asc'], sum: ['По цене', 'desc'] };
 const TOP = ['summary', 'receipts']; // корневые экраны: у них нет «назад», зато есть «+»
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;
@@ -199,6 +205,10 @@ function go(patch, replace = false) {
   if (state.item) params.set('item', state.item);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
+  if (state.screen === 'category' && (state.sort !== 'sum' || state.dir !== 'desc')) {
+    params.set('sort', state.sort);
+    params.set('dir', state.dir);
+  }
   history[replace ? 'replaceState' : 'pushState']({ ...state }, '', `?${params}`);
   render();
 }
@@ -219,6 +229,8 @@ function readUrl() {
   state.item = p.get('item') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
+  state.sort = Object.hasOwn(ITEM_SORTS, p.get('sort') ?? '') ? p.get('sort') : 'sum';
+  state.dir = p.get('dir') === 'asc' ? 'asc' : 'desc';
 }
 
 window.addEventListener('popstate', (e) => {
@@ -347,7 +359,7 @@ async function screenGroup() {
 
 async function screenCategory() {
   const params = new URLSearchParams({
-    from: state.from, to: state.to, collapse: '1', sort: 'sum', dir: 'desc', per: '100',
+    from: state.from, to: state.to, collapse: '1', sort: state.sort, dir: state.dir, per: '100',
   });
   if (state.category) params.set('category', state.category);
   else params.set('group', state.group);
@@ -364,6 +376,15 @@ async function screenCategory() {
     </div>`;
 
   if (!data.rows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
+
+  // Чипсы сортировки. Повторное нажатие на выбранную разворачивает порядок — стрелка показывает какой
+  const sorts = `<div class="chips">${Object.entries(ITEM_SORTS)
+    .map(([key, [label]]) => {
+      const on = state.sort === key;
+      const arrow = on ? ` <span class="chip-dir">${state.dir === 'asc' ? '↑' : '↓'}</span>` : '';
+      return `<button class="chip${on ? ' on' : ''}" type="button" data-sort="${key}">${label}${arrow}</button>`;
+    })
+    .join('')}</div>`;
 
   const rows = data.rows
     .map((r) => {
@@ -383,7 +404,7 @@ async function screenCategory() {
     })
     .join('');
 
-  return `${head}<div class="list">${rows}</div>`;
+  return `${head}${sorts}<div class="list">${rows}</div>`;
 }
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
@@ -1439,6 +1460,13 @@ function onScreenClick(e) {
 
   const filter = e.target.closest('[data-filter]');
   if (filter) return go({ filter: filter.dataset.filter }, true);
+
+  const sort = e.target.closest('[data-sort]');
+  if (sort) {
+    const key = sort.dataset.sort;
+    const dir = key === state.sort ? (state.dir === 'asc' ? 'desc' : 'asc') : ITEM_SORTS[key][1];
+    return go({ sort: key, dir }, true);
+  }
 
   const group = e.target.closest('[data-group]');
   if (group) return go({ screen: 'group', group: group.dataset.group, category: '' });
