@@ -406,7 +406,7 @@ async function screenItem() {
       <button class="cat-pick" id="item-cat" type="button" data-item-cat="${it.id}">${categoryButton(it.category_slug)}</button>
       <p class="note" id="pick-note">${
         it.same_name_count > 1
-          ? `Выбор применится к ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позиции', 'позициям', 'позициям')} с таким же названием`
+          ? `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позицию', 'позиции', 'позиций')} с таким же названием`
           : 'Это название встречается только здесь'
       }</p>
     </div>
