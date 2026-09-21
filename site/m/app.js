@@ -57,6 +57,11 @@ const UI = {
       '<path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>',
   ),
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
+  ok: svg('<path d="M20 6 9 17l-5-5"/>'),
+  tag: svg(
+    '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>' +
+      '<circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
+  ),
   calendar: svg('<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>'),
   wallet: groupIcon('card'),
   receipt: groupIcon('receipt'),
@@ -219,7 +224,15 @@ function readUrl() {
 window.addEventListener('popstate', (e) => {
   if (e.state) Object.assign(state, e.state);
   else readUrl();
+  document.querySelector('.sheet')?.remove(); // «назад» телефона закрывает и открытый попап
   render();
+  // Вернулись из карточки товара, открытой из попапа чека, — показываем чек снова
+  if (state.sheet) {
+    const id = state.sheet;
+    state.sheet = '';
+    history.replaceState({ ...state }, '', location.href);
+    openReceiptSheet(id);
+  }
 });
 
 // ── общие куски экранов ──────────────────────────────────
@@ -1130,24 +1143,33 @@ async function saveManual() {
  * Строка разбора: значок группы, название в одну строку и категория подстрочником.
  * Названия в чеках длинные («ЧЕРКИЗОВО Колбас По-домаш с чесн рубл катБ0,4»), поэтому
  * обрезаются: важнее видеть весь чек целиком, чем каждое слово в позиции.
- * Нажатие на строку открывает выбор — цель шире, чем один значок.
+ * На экране «Добавлено» нажатие на строку открывает выбор — цель шире, чем один значок.
+ * В попапе чека ({ open: true }) строка ведёт в карточку товара, а категорию
+ * меняет отдельная кнопка-значок справа.
  */
-function sheetRow(item) {
+function sheetRow(item, { open = false } = {}) {
   const group = findGroup(item.group_slug);
   const color = group?.color ?? '#eef1f5';
   // Значок в кольце — категорию предложила модель, сплошной — выбрал человек
   const human = item.category_source === 'manual' || item.category_source === 'pinned';
   const guess = item.category_slug && !human ? ' guess' : '';
 
-  return `
-    <button class="sheet-row${guess}" type="button" data-row="${item.id}" data-pick="${item.id}">
+  const body = `
       <span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(group?.icon ?? 'none')}</span>
       <span class="sheet-main">
         <span class="sheet-name">${esc(item.name)}</span>
         <span class="sheet-cat">${esc(item.category_name ?? 'выбрать категорию')}</span>
       </span>
-      <span class="sheet-sum">${money(item.sum, true)}</span>
-    </button>`;
+      <span class="sheet-sum">${money(item.sum, true)}</span>`;
+
+  if (!open) {
+    return `<button class="sheet-row${guess}" type="button" data-row="${item.id}" data-pick="${item.id}">${body}</button>`;
+  }
+  return `
+    <div class="sheet-row${guess}" data-row="${item.id}">
+      <button class="sheet-open" type="button" data-open-item="${item.id}">${body}</button>
+      <button class="sheet-edit" type="button" data-pick="${item.id}" aria-label="Поменять категорию" title="Поменять категорию">${UI.tag}</button>
+    </div>`;
 }
 
 /**
@@ -1242,16 +1264,16 @@ async function openReceiptSheet(receiptId) {
             shared() && receipt.author ? ` · ${esc(receipt.author)}` : ''
           }</div>
         </div>
-        <button class="btn" data-close type="button">Готово</button>
+        <button class="icon-btn primary" data-close type="button" aria-label="Готово" title="Готово">${UI.ok}</button>
       </div>
       <p class="note sheet-hint">${
         unknown
-          ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — выберите вручную`
+          ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — выберите значком справа`
           : manual
-            ? 'Нажмите на строку, чтобы сменить категорию'
-            : 'Категории проставлены автоматически. Если ошиблись — поправьте'
+            ? 'Поменять категорию — значком справа'
+            : 'Категории проставлены автоматически. Если ошиблись — поправьте значком справа'
       }</p>
-      <div class="sheet-list">${receipt.items.map(sheetRow).join('')}</div>
+      <div class="sheet-list">${receipt.items.map((i) => sheetRow(i, { open: true })).join('')}</div>
       ${manual ? '<div class="sheet-actions"><button class="btn danger" type="button" data-remove>Удалить запись</button></div>' : ''}
     </div>`;
 
@@ -1277,9 +1299,18 @@ async function openReceiptSheet(receiptId) {
       return;
     }
 
-    // Нажатие на строку открывает выбор; сохранение — уже по возврату
+    // Значок справа открывает выбор категории; сохранение — уже по возврату
     const pick = e.target.closest('[data-pick]');
-    if (pick) openCategoryPicker(Number(pick.dataset.pick), saveCategory);
+    if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
+
+    // Строка — в карточку товара. Чек запоминаем в текущей записи истории:
+    // «назад» из карточки откроет его снова
+    const open = e.target.closest('[data-open-item]');
+    if (open) {
+      history.replaceState({ ...state, sheet: receipt.id }, '', location.href);
+      sheet.remove();
+      go({ screen: 'item', item: open.dataset.openItem, sheet: '' });
+    }
   });
 }
 
