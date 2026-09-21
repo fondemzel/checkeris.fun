@@ -380,9 +380,16 @@ export function getItem(db, budgetId, id) {
       .prepare(
         `SELECT v.*, i.nds_sum, i.provider_inn,
                 (SELECT COUNT(*) FROM items x JOIN receipts rx ON rx.id = x.receipt_id
-                  WHERE x.name_norm = v.name_norm AND rx.budget_id = v.budget_id) AS same_name_count
+                  WHERE x.name_norm = v.name_norm AND rx.budget_id = v.budget_id) AS same_name_count,
+                (CASE WHEN r.internet_sign = 0 AND p.status = 'ok' THEN p.lat END) AS place_lat,
+                (CASE WHEN r.internet_sign = 0 AND p.status = 'ok' THEN p.lon END) AS place_lon,
+                (CASE WHEN r.internet_sign = 0 AND p.status = 'ok' THEN p.qc_geo END) AS place_qc,
+                (CASE WHEN r.internet_sign = 0 AND p.status = 'ok' THEN p.result END) AS place_address,
+                r.internet_sign
            FROM v_items v
            JOIN items i ON i.id = v.id
+           JOIN receipts r ON r.id = v.receipt_id
+           LEFT JOIN places p ON p.key = r.place_key
           WHERE v.id = ? AND v.budget_id = ?`,
       )
       .get(id, budgetId) ?? null

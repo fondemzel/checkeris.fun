@@ -3,6 +3,7 @@ import { groupIcon, searchIcons, GROUP_ICONS } from '/shared/icons.js';
 import { hexToHsl, hslToHex, tint, shades, readableText, edge, hexToRgb } from '/shared/colors.js';
 import { columns, bars, sunburst, bindTooltip } from '/cabinet/charts.js';
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin, requestLogin } from '/shared/tglogin.js';
+import { showPlace, mappable } from '/shared/ymap.js';
 
 const CHART_COLOR = '#2563eb'; // один ряд — один цвет; величину несёт длина марки
 
@@ -1325,9 +1326,14 @@ function itemCard(it) {
       ['ИНН', esc(it.seller_inn ?? '—')],
       ['Точка', esc(it.retail_place ?? '—')],
       ['Адрес', esc(it.retail_address ?? '')],
+      ['Покупка', it.internet_sign ? 'в интернете — в чеке адрес продавца' : ''],
     ])}
     </div>
     ${categorySection(it)}
+    ${mappable(it) && meta?.maps?.key ? `
+    <div class="card-section">Где куплено${it.place_qc > 1 ? ' <span class="dim">· примерно</span>' : ''}</div>
+    <div class="card-map" id="card-map"></div>
+    <p class="dim card-map-note">${esc(it.place_address ?? '')}</p>` : ''}
     <div class="card-section">Чек</div>
     <div class="card-actions">
       <button class="btn" type="button" data-receipt="${it.receipt_id}">Открыть чек на ${money(it.receipt_total)}</button>
@@ -1353,6 +1359,18 @@ async function renderCard() {
     const data = await res.json();
     if (seq !== cardSeq) return;
     pane.innerHTML = kind === 'r' ? receiptCard(data) : itemCard(data);
+    const box = $('card-map');
+    if (box) {
+      showPlace(box, {
+        key: meta.maps.key,
+        lat: data.place_lat,
+        lon: data.place_lon,
+        qc: data.place_qc,
+        title: data.retail_place ?? data.seller ?? '',
+      }).catch((err) => {
+        box.outerHTML = `<p class="dim card-map-error">${esc(err.message)}</p>`;
+      });
+    }
   } catch (err) {
     if (seq !== cardSeq) return;
     pane.innerHTML = `<div class="card-empty error">Не удалось загрузить карточку: ${esc(err.message)}</div>`;

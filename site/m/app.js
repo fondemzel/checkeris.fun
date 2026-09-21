@@ -11,6 +11,7 @@
 import { groupIcon } from '/shared/icons.js';
 import { shades, edge, readableText } from '/shared/colors.js';
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
+import { showPlace, mappable } from '/shared/ymap.js';
 
 const $ = (id) => document.getElementById(id);
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
@@ -372,8 +373,12 @@ async function screenCategory() {
   return `${head}<div class="list">${rows}</div>`;
 }
 
+let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
+
 async function screenItem() {
   const it = await api(`/api/items/${state.item}`);
+  itemShown = it;
+  const onMap = mappable(it) && meta?.maps?.key;
 
   const kv = (rows) =>
     rows
@@ -390,6 +395,9 @@ async function screenItem() {
         ['Количество', it.quantity !== 1 ? `${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''],
         ['Продавец', esc(it.seller ?? '')],
         ['Точка', esc(it.retail_place ?? '')],
+        // Адрес текстом — когда карты нет. У интернет-покупки это адрес продавца, а не магазина
+        ['Адрес', !onMap && !it.internet_sign ? esc(it.retail_address ?? '') : ''],
+        ['Покупка', it.internet_sign ? 'в интернете' : ''],
       ])}
     </div>
 
@@ -401,7 +409,29 @@ async function screenItem() {
           ? `Выбор применится к ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позиции', 'позициям', 'позициям')} с таким же названием`
           : 'Это название встречается только здесь'
       }</p>
-    </div>`;
+    </div>
+
+    ${onMap ? `
+    <div class="card place-card">
+      <div class="card-label">Где куплено</div>
+      <div class="map" id="item-map"></div>
+      <p class="note">${esc(it.place_address ?? it.retail_address ?? '')}${it.place_qc > 1 ? ' · место примерное' : ''}</p>
+    </div>` : ''}`;
+}
+
+/** Карта рисуется в уже вставленный блок — после того, как экран оказался на странице. */
+function mountItemMap() {
+  const box = $('item-map');
+  if (!box || !itemShown) return;
+  showPlace(box, {
+    key: meta.maps.key,
+    lat: itemShown.place_lat,
+    lon: itemShown.place_lon,
+    qc: itemShown.place_qc,
+    title: itemShown.retail_place ?? itemShown.seller ?? '',
+  }).catch((err) => {
+    box.outerHTML = `<p class="note error">${esc(err.message)}</p>`;
+  });
 }
 
 // ── календарь ────────────────────────────────────────────
@@ -1302,7 +1332,7 @@ const SCREENS = {
   },
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
-  item: { title: 'Товар', render: screenItem },
+  item: { title: 'Товар', render: screenItem, after: mountItemMap },
 };
 
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна

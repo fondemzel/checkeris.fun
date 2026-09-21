@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS receipts (
   item_count      INTEGER NOT NULL DEFAULT 0,
   items_sum       INTEGER NOT NULL DEFAULT 0, -- сумма позиций, для сверки с total_sum
   raw             TEXT,                     -- исходный receipt целиком
+  place_key       TEXT,                     -- адрес расчётов, приведённый к ключу places (geo.mjs)
   UNIQUE (budget_id, fiscal_drive, fiscal_doc, fiscal_sign)
 );
 
@@ -415,6 +416,34 @@ CREATE INDEX IF NOT EXISTS idx_scan_jobs_user   ON scan_jobs (user_id, created_a
 CREATE TABLE IF NOT EXISTS fns_usage (
   day   TEXT PRIMARY KEY,
   calls INTEGER NOT NULL DEFAULT 0
+);
+
+-- ── места покупок ───────────────────────────────────────────────────────────
+-- Адрес из чека → координаты. Общая таблица: адрес кассы магазина — не личные данные,
+-- и один «Магнит» незачем искать дважды. Ключ — адрес, приведённый к общему виду
+-- (geo.mjs, placeKey), поэтому «пом. 2н» и «помещение 2н» — разные ключи, но
+-- «Москва, ул. Бутлерова, 17Б» с разными пробелами и запятыми — один.
+CREATE TABLE IF NOT EXISTS places (
+  key        TEXT PRIMARY KEY,
+  address    TEXT NOT NULL,           -- как написано в чеке (первое встреченное)
+  result     TEXT,                    -- как понял геокодер: «г Москва, ул Андерсена, д 2»
+  lat        REAL,
+  lon        REAL,
+  qc_geo     INTEGER,                 -- точность DaData: 0–1 дом, 2 улица, 3 посёлок, 4 город, 5 нет
+  source     TEXT,                    -- suggest | clean — какой метод DaData нашёл
+  status     TEXT NOT NULL,           -- pending | ok | miss | wait: ждёт суточной квоты
+  tries      INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_places_status ON places (status);
+
+-- Расход бесплатных суточных квот внешних сервисов (кроме ФНС — у неё своя таблица).
+CREATE TABLE IF NOT EXISTS api_usage (
+  day     TEXT NOT NULL,
+  service TEXT NOT NULL,              -- dadata_suggest | dadata_clean
+  calls   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, service)
 );
 
 -- Журнал импортов: видно, какие выгрузки уже залиты.

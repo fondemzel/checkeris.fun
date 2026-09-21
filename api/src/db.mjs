@@ -4,6 +4,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { provisionTaxonomy } from './taxonomy.mjs';
+import { placeKey } from './geo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -35,6 +36,7 @@ export function migrate(db) {
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
   addUserColumns(db);
   finishMove(db);
+  fillPlaceKeys(db); // после переноса: иначе у перенесённых чеков ключей не будет до следующего запуска
   repairScanErrors(db);
 }
 
@@ -49,11 +51,30 @@ function addUserColumns(db) {
   addColumn(db, 'tg_logins', 'client', 'TEXT');
   addColumn(db, 'tg_logins', 'confirm_hash', 'TEXT');
   addColumn(db, 'tg_logins', 'tg_identity', 'TEXT');
+  addColumn(db, 'receipts', 'place_key', 'TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');
   // Первый пользователь — владелец проекта: без квот и с правом на системный справочник
   db.exec(`UPDATE users SET role = 'admin'
             WHERE id = (SELECT MIN(id) FROM users)
               AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')`);
+}
+
+/** Ключ места у чеков, пришедших раньше, чем появились места. Идемпотентно. */
+function fillPlaceKeys(db) {
+  db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_place ON receipts (place_key)');
+  const rows = db
+    .prepare("SELECT id, retail_address FROM receipts WHERE place_key IS NULL AND retail_address IS NOT NULL AND retail_address <> ''")
+    .all();
+  if (!rows.length) return;
+  const set = db.prepare('UPDATE receipts SET place_key = ? WHERE id = ?');
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) set.run(placeKey(r.retail_address), r.id);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 const tableExists = (db, name) =>

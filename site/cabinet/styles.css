@@ -707,6 +707,8 @@ tbody tr.child-more td { padding-left: 24px; }
 
 /* Кнопка секции «Чек» — своя строка внизу карточки, сжиматься ей нечем */
 .card-actions { flex: none; padding: 8px 10px; }
+.card-map { flex: none; height: 220px; margin: 0 10px 8px; border-radius: 6px; overflow: hidden; background: #eef1f5; }
+.card-map-error, .card-map-note { padding: 0 10px; margin: 0 0 8px; }
 
 .kv {
   display: grid;

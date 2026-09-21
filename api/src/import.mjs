@@ -10,6 +10,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { openDb, migrate, API_ROOT, DB_PATH } from './db.mjs';
+import { placeKey } from './geo.mjs';
 
 const DEFAULT_DIR = resolve(API_ROOT, 'data', 'fns_out');
 
@@ -77,6 +78,7 @@ export function saveReceipt(db, row, stmts, budgetId, addedBy = null) {
     seller_inn: str(receipt.userInn) ?? null,
     retail_place: str(receipt.retailPlace) ?? null,
     retail_address: str(receipt.retailPlaceAddress) ?? null,
+    place_key: placeKey(receipt.retailPlaceAddress),
     kkt_reg_id: str(receipt.kktRegId) ?? null,
     operation_type: int(receipt.operationType) || 1,
     taxation_type: int(receipt.appliedTaxationType ?? receipt.taxationType),
@@ -181,13 +183,13 @@ export function importStatements(db) {
     insertReceipt: db.prepare(`
       INSERT INTO receipts (
         budget_id, added_by, source_id, fiscal_drive, fiscal_doc, fiscal_sign, created_at, purchased_at, purchased_date,
-        seller, seller_inn, retail_place, retail_address, kkt_reg_id, operation_type, taxation_type,
+        seller, seller_inn, retail_place, retail_address, place_key, kkt_reg_id, operation_type, taxation_type,
         total_sum, cash_sum, ecash_sum, prepaid_sum, credit_sum, provision_sum,
         nds_18, nds_10, nds_0, nds_no, shift_number, request_number, operator, buyer, internet_sign,
         item_count, items_sum, raw
       ) VALUES (
         :budget_id, :added_by, :source_id, :fiscal_drive, :fiscal_doc, :fiscal_sign, :created_at, :purchased_at, :purchased_date,
-        :seller, :seller_inn, :retail_place, :retail_address, :kkt_reg_id, :operation_type, :taxation_type,
+        :seller, :seller_inn, :retail_place, :retail_address, :place_key, :kkt_reg_id, :operation_type, :taxation_type,
         :total_sum, :cash_sum, :ecash_sum, :prepaid_sum, :credit_sum, :provision_sum,
         :nds_18, :nds_10, :nds_0, :nds_no, :shift_number, :request_number, :operator, :buyer, :internet_sign,
         :item_count, :items_sum, :raw
@@ -196,7 +198,7 @@ export function importStatements(db) {
       UPDATE receipts SET
         source_id = :source_id, created_at = :created_at, purchased_at = :purchased_at,
         purchased_date = :purchased_date, seller = :seller, seller_inn = :seller_inn,
-        retail_place = :retail_place, retail_address = :retail_address, kkt_reg_id = :kkt_reg_id,
+        retail_place = :retail_place, retail_address = :retail_address, place_key = :place_key, kkt_reg_id = :kkt_reg_id,
         operation_type = :operation_type, taxation_type = :taxation_type, total_sum = :total_sum,
         cash_sum = :cash_sum, ecash_sum = :ecash_sum, prepaid_sum = :prepaid_sum,
         credit_sum = :credit_sum, provision_sum = :provision_sum, nds_18 = :nds_18, nds_10 = :nds_10,

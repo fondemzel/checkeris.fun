@@ -24,6 +24,8 @@ import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer,
 import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
+import { geocoderReady, runGeocoder } from './geocoder.mjs';
+import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
   startLogin,
@@ -434,7 +436,13 @@ async function handleApi(req, res, url) {
       : sendJson(res, 200, result);
   }
 
-  if (pathname === '/api/meta') return sendJson(res, 200, { version: VERSION, ...getMeta(db, user.budget_id) });
+  if (pathname === '/api/meta') {
+    // Ключ карт — браузерный, он и так виден в запросах к Яндексу; ограничен адресом сайта
+    // в кабинете разработчика Яндекса
+    loadEnv();
+    const maps = process.env.YANDEX_JAVASCRIPT_API_KEY ? { key: process.env.YANDEX_JAVASCRIPT_API_KEY } : null;
+    return sendJson(res, 200, { version: VERSION, ...getMeta(db, user.budget_id), maps });
+  }
 
   // ── сканирование чеков ──
   // Приём скана: строка QR кладётся в очередь, ответ ФНС приезжает фоном.
@@ -609,6 +617,16 @@ if (fnsReady()) {
   }, 5000).unref();
 } else {
   console.error('ФНС: доступ не настроен (нужны FNS_MASTER_TOKEN, FNS_AUTH_URL, FNS_KKT_URL) — сканирование выключено');
+}
+
+// Места покупок: адреса из новых чеков — в координаты. Раз в минуту по несколько адресов,
+// поэтому первая разметка всей базы (сотни адресов) займёт десяток-другой минут
+if (geocoderReady()) {
+  const tick = () => runGeocoder(db).catch((err) => console.error('геокодер:', err.message));
+  setTimeout(tick, 10_000).unref();
+  setInterval(tick, 60_000).unref();
+} else {
+  console.error('DaData: ключ не задан (DADATA_API_KEY) — адреса покупок на карту не попадут');
 }
 
 server.listen(PORT, HOST, () => {
