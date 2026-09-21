@@ -806,9 +806,14 @@ function screenAdd() {
  * и здесь же решается, добавлять ли дальше. Категории правятся прямо тут —
  * строки те же, что в разборе чека, поэтому и правка работает так же.
  */
+let addedManual = false; // что добавили последним: от этого зависит, куда ведёт «ещё»
+
 async function screenAdded() {
   const receipt = await api(`/api/receipts/${state.added}`);
   const manual = receipt.fiscal_drive === 'manual';
+  addedManual = manual;
+  const again = $('actions').querySelector('[data-again]');
+  if (again) again.textContent = manual ? 'Вбить ещё' : 'Сканировать ещё';
   const unknown = receipt.items.filter((i) => !i.category_slug).length;
 
   return `
@@ -1289,9 +1294,11 @@ const SCREENS = {
     render: screenAdded,
     // Главные кнопки живут в каркасе, а не в содержимом: длинный чек не должен
     // уводить их за край экрана
+    // Одна главная кнопка и под ней неприметная ссылка «ещё»: чаще всего человек
+    // закончил, а следующий чек — сразу сканер, без промежуточного экрана
     actions: () => `
-      <button class="btn primary big" type="button" data-screen="add">Добавить ещё</button>
-      <button class="btn big" type="button" data-back-home>Вернуться</button>`,
+      <button class="btn primary big" type="button" data-back-home>ОК</button>
+      <button class="link more-link" type="button" data-again>Сканировать ещё</button>`,
   },
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
@@ -1361,6 +1368,9 @@ function onScreenClick(e) {
   if (item) return go({ screen: 'item', item: item.dataset.item });
 
   if (e.target.closest('[data-scanner]')) return openScanner();
+
+  // «Сканировать ещё» — сразу камера; после ручной траты — снова форма
+  if (e.target.closest('[data-again]')) return addedManual ? go({ screen: 'manual' }) : openScanner();
 
   // «Вернуться» ведёт к расходам, а не на шаг назад: позади форма или камера
   if (e.target.closest('[data-back-home]')) return go({ screen: 'summary', added: '' });

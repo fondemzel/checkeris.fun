@@ -415,6 +415,7 @@ button, input, select { font: inherit; color: inherit; }
 /* Запас снизу нужен под кнопку «+»; когда внизу полоса кнопок, он лишний */
 .app:has(.actions:not([hidden])) .screen { padding-bottom: 14px; }
 .actions .btn.big { height: 48px; }
+.actions .more-link { align-self: center; padding: 4px 12px; color: var(--muted); font-size: 14px; text-decoration: none; }
 
 /* ── ручная трата ──────────────────────────────────────── */
 
@@ -567,7 +568,7 @@ button, input, select { font: inherit; color: inherit; }
   aspect-ratio: 1;
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 16px;
-  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.7); /* вне рамки темно: взгляд сразу в рамку */
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
