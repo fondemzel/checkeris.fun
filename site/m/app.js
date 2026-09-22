@@ -58,7 +58,6 @@ const UI = {
   ),
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
-  plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   income: svg('<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>'),
   settings: svg(
@@ -1718,10 +1717,9 @@ function budgetSection(budget) {
         : `<div class="budget-name">${esc(budget.name)}</div>`}
       ${members}
       ${budget.is_owner ? `
-        <div class="member member-new">
-          <span class="member-name">Новый пользователь</span>
-          <button class="row-icon" type="button" data-invite aria-label="Пригласить пользователя" title="Пригласить пользователя">${UI.plus}</button>
-        </div>` : ''}
+        <button class="member member-invite" type="button" data-invite>
+          <span class="member-name">Пригласить пользователя</span>
+        </button>` : ''}
       <p class="note budget-hint">${
         budget.members.length > 1
           ? 'Все участники видят и добавляют траты в этот бюджет.'

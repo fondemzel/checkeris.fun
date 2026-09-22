@@ -658,7 +658,19 @@ button, input, select { font: inherit; color: inherit; }
 .budget { display: flex; flex-direction: column; gap: 2px; }
 .member { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-top: 1px solid #f0f1f3; }
 .member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.member-new { align-items: center; padding: 4px 0; color: var(--muted); }
+/* «Пригласить пользователя» — такая же строка списка, только нажимается */
+.member-invite {
+  width: 100%;
+  border: none;
+  border-top: 1px solid #f0f1f3;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.member-invite:active { background: #eef2f9; }
 .budget-hint { margin: 8px 0; }
 .budget .btn { width: 100%; margin-top: 6px; }
 
