@@ -197,18 +197,15 @@ const SORTS = {
   * Шапка списка: сумма и подпись слева, сортировка справа от них, ниже период и фильтры.
   * Всё выровнено по левому краю — так в двух строках помещается больше, чем по центру.
   */
-const listHead = ({ sum, note, sorts = true, filters = '' }) => `
+const listHead = ({ sum, note, sorts = true }) => `
   <div class="total compact">
-    <div class="head-line">
-      <div class="head-sum">
-        <span class="total-sum">${sum}</span>
-        <span class="total-note">${note}</span>
-      </div>
-      ${sorts ? sortChips() : ''}
+    <div class="head-sum">
+      <span class="total-sum">${sum}</span>
+      <span class="total-note">${note}</span>
     </div>
     <div class="head-line">
       ${periodNav(true)}
-      ${filters}
+      ${sorts ? sortChips() : ''}
     </div>
   </div>`;
 
@@ -806,25 +803,15 @@ async function screenReceipts() {
   const scans = await api(`/api/scan${scanState}`);
   updateBadge(scans.counts.failed);
 
-  const chip = (key, label, count) =>
-    `<button class="chip${f === key ? ' on' : ''}${key === 'failed' && count ? ' alert' : ''}" type="button" data-filter="${key}">` +
-    `${label}${count ? ` <b>${int.format(count)}</b>` : ''}</button>`;
-
-  const chips = `<div class="chips">
-    ${chip('all', 'Все')}
-    ${chip('failed', 'С ошибкой', scans.counts.failed)}
-    ${scans.counts.pending || f === 'pending' ? chip('pending', 'В очереди', scans.counts.pending) : ''}
-    ${chip('manual', 'Вручную')}
-  </div>`;
-
   // Ошибки и очередь живут вне периода: застрявший скан важен, когда бы ни была покупка
   if (f === 'failed' || f === 'pending') {
+    const back = '<button class="link" type="button" data-filter="all">Ко всем чекам</button>';
     const hint = f === 'failed'
-      ? '<p class="note list-hint">Обычно это чек, который касса ещё не передала в ФНС. Мы переспрашиваем сами — через час, 6 часов, сутки и трое суток.</p>'
-      : '';
+      ? `<p class="note list-hint">Обычно это чек, который касса ещё не передала в ФНС. Мы переспрашиваем сами — через час, 6 часов, сутки и трое суток. ${back}</p>`
+      : `<p class="note list-hint">${back}</p>`;
     return scans.jobs.length
-      ? `${expenseSwitch()}${chips}${hint}<div class="list">${scans.jobs.map(jobRow).join('')}</div>`
-      : `${expenseSwitch()}${chips}<div class="empty">${f === 'failed' ? 'Сканов с ошибкой нет' : 'Очередь пуста'}</div>`;
+      ? `${expenseSwitch()}${hint}<div class="list">${scans.jobs.map(jobRow).join('')}</div>`
+      : `${expenseSwitch()}${hint}<div class="empty">${f === 'failed' ? 'Сканов с ошибкой нет' : 'Очередь пуста'}</div>`;
   }
 
   receiptsPage = 1;
@@ -842,7 +829,6 @@ async function screenReceipts() {
         sum: money(data.totals.sum),
         note: `${int.format(data.totals.count)} ${plural(data.totals.count, 'чек', 'чека', 'чеков')}${
           data.totals.excluded_count ? ` · ${int.format(data.totals.excluded_count)} вне суммы` : ''}`,
-        filters: chips,
       })}
     </div>`;
 
@@ -855,6 +841,9 @@ async function screenReceipts() {
     : '';
 
   return `${head}
+    ${scans.counts.failed
+      ? `<p class="note list-hint"><button class="link" type="button" data-filter="failed">Сканы с ошибкой: ${int.format(scans.counts.failed)}</button></p>`
+      : ''}
     ${stuck.length ? `<div class="list stuck">${stuck.map(jobRow).join('')}</div>` : ''}
     <div class="list" id="receipt-list">${receiptRows(data.rows)}</div>
     ${more}`;

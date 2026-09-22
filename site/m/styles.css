@@ -504,7 +504,7 @@ button, input, select { font: inherit; color: inherit; }
 .chip.on { border-color: var(--bar); background: var(--bar); color: #fff; }
 .chip.on.alert b { color: #ffb4ab; }
 
-/* «Категории | Чеки» внутри «Расхода» */
+/* «Категории | Чеки | Банк» внутри «Расхода» */
 .segments { display: flex; gap: 2px; padding: 2px; margin-bottom: 8px; border-radius: 10px; background: #e4e7ec; }
 
 .segment {
@@ -606,9 +606,9 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Шапка списка: две строки, всё прижато к левому краю; справа — сортировка и фильтры */
 .total.compact { text-align: left; }
-.head-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.head-line + .head-line { margin-top: 8px; }
+.head-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .head-sum { min-width: 0; }
+.head-line .sorts { margin-left: auto; } /* сортировка прижата к правому краю строки периода */
 .total.compact .total-sum,
 .total.compact .total-note { display: block; }
 /* Фильтры — одной строкой: не помещаются, значит листаются вбок, а не растут вниз */
@@ -626,11 +626,13 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Период внутри шапки — строкой помельче, как чипсы сортировки */
 .month.compact { flex: none; justify-content: flex-start; gap: 6px; margin: 0; }
-.month.compact .month-arrow { width: 32px; height: 28px; border-radius: 14px; font-size: 16px; color: var(--muted); }
+/* Период и сортировка делят одну строку — обоим нужно быть компактными */
+.month.compact { gap: 4px; }
+.month.compact .month-arrow { width: 26px; height: 28px; border-radius: 14px; font-size: 15px; color: var(--muted); }
 .month.compact .month-name {
   min-height: 28px;
   gap: 5px;
-  padding: 0 12px;
+  padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
@@ -638,14 +640,14 @@ button, input, select { font: inherit; color: inherit; }
 }
 .month.compact .month-name svg { width: 14px; height: 14px; }
 
-.sorts { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+.sorts { display: flex; flex: none; gap: 4px; }
 
 .sort-chip {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 7px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
@@ -654,7 +656,7 @@ button, input, select { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-.sort-chip svg { width: 15px; height: 15px; }
+.sort-chip svg { width: 14px; height: 14px; }
 .sort-chip.on { border-color: var(--bar); background: var(--bar); color: #fff; }
 .sort-dir { font-size: 12px; line-height: 1; }
 
