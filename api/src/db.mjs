@@ -45,6 +45,7 @@ function addUserColumns(db) {
   addColumn(db, 'users', 'telegram_id', 'INTEGER');
   addColumn(db, 'users', 'tg_username', 'TEXT');
   addColumn(db, 'users', 'name', 'TEXT');
+  addColumn(db, 'users', 'name_set', 'INTEGER NOT NULL DEFAULT 0');
   addColumn(db, 'users', 'role', "TEXT NOT NULL DEFAULT 'user'");
   addColumn(db, 'users', 'budget_id', 'INTEGER REFERENCES budgets (id)');
   addColumn(db, 'users', 'home_budget_id', 'INTEGER REFERENCES budgets (id)');

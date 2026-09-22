@@ -538,7 +538,19 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Настройки */
 .profile { margin-bottom: 12px; }
-.profile-name { font-size: 18px; font-weight: 600; }
+.profile-name {
+  display: block;
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  background: none;
+  font-size: 18px;
+  font-weight: 600;
+  outline: none;
+}
+
+.profile-name:focus { border-bottom-color: var(--accent); }
 .settings-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .settings-actions .note { margin-top: 4px; text-align: center; }
 .settings-actions .note a { color: inherit; }

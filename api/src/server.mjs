@@ -318,6 +318,19 @@ async function handleApi(req, res, url) {
 
   // Кабинет спрашивает при загрузке, жив ли сохранённый токен
   if (pathname === '/api/session') {
+    // Своё имя вместо имени из Telegram: его видят участники общего бюджета
+    if (req.method === 'PATCH') {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const name = String(body.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (!name) return sendJson(res, 400, { error: 'нужно имя' });
+      db.prepare('UPDATE users SET name = ?, name_set = 1 WHERE id = ?').run(name, user.id);
+      return sendJson(res, 200, { name });
+    }
     return sendJson(res, 200, {
       login: user.login,
       name: user.name ?? user.login,

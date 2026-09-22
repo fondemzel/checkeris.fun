@@ -1710,7 +1710,8 @@ async function screenSettings() {
   ]);
   return `
     <div class="card profile">
-      <div class="profile-name">${esc(me?.name ?? 'Аккаунт')}</div>
+      <input class="profile-name" id="profile-name" type="text" maxlength="60" enterkeyhint="done"
+        autocomplete="name" value="${esc(me?.name ?? '')}" placeholder="Ваше имя" aria-label="Имя" />
       <div class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</div>
     </div>
     ${budgetSection(budget)}
@@ -1782,6 +1783,37 @@ async function onSettingsClick(e) {
 
 $('screen').addEventListener('click', (e) => {
   if (state.screen === 'settings') onSettingsClick(e);
+});
+
+/**
+ * Имя в настройках — поле ввода, похожее на текст: нажатие сразу открывает клавиатуру.
+ * Сохраняется, когда человек закончил: «Готово» на клавиатуре или уход из поля.
+ */
+$('screen').addEventListener('keydown', (e) => {
+  if (e.target.id === 'profile-name' && e.key === 'Enter') e.target.blur();
+});
+
+$('screen').addEventListener('focusout', async (e) => {
+  const input = e.target;
+  if (input.id !== 'profile-name') return;
+  const name = input.value.replace(/\s+/g, ' ').trim();
+  if (!name || name === input.defaultValue) {
+    input.value = input.defaultValue; // пустое имя не сохраняем — возвращаем прежнее
+    return;
+  }
+  try {
+    const data = await api('/api/session', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    input.value = input.defaultValue = data.name;
+    toast('Имя сохранено');
+    meta = await api('/api/meta'); // у чеков общего бюджета автор — это имя
+  } catch (err) {
+    input.value = input.defaultValue;
+    toast(`Не сохранилось: ${err.message}`);
+  }
 });
 
 // ── запуск ───────────────────────────────────────────────

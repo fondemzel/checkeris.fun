@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at  TEXT NOT NULL,
   telegram_id INTEGER,                 -- id в Telegram; уникален (индекс заводит migrate)
   tg_username TEXT,
-  name        TEXT,                    -- как обращаться: имя из Telegram
+  name        TEXT,                    -- как обращаться: имя из Telegram или заданное в настройках
+  name_set    INTEGER NOT NULL DEFAULT 0, -- 1 — имя задал сам человек: вход через Telegram его не трогает
   role        TEXT NOT NULL DEFAULT 'user', -- user | admin: админ без квот, правит системный справочник
   budget_id      INTEGER REFERENCES budgets (id), -- текущий бюджет: его данные человек видит и правит
   home_budget_id INTEGER REFERENCES budgets (id)  -- свой бюджет: в него человек вернётся, выйдя из общего

@@ -189,7 +189,9 @@ function settle(db, row, telegram, approve) {
   db.exec('BEGIN');
   try {
     if (userId) {
-      db.prepare('UPDATE users SET tg_username = ?, name = ? WHERE id = ?').run(username, name, userId);
+      // Имя из Telegram освежаем при каждом входе — если человек не задал своё в настройках
+      db.prepare('UPDATE users SET tg_username = ?, name = CASE WHEN name_set = 1 THEN name ELSE ? END WHERE id = ?')
+        .run(username, name, userId);
     } else {
       const res = db
         .prepare(
