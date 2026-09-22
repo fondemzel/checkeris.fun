@@ -1809,10 +1809,12 @@ async function saveItemCategory(itemId, slug) {
 $('back').addEventListener('click', () => history.back());
 $('fab').addEventListener('click', () => go({ screen: 'add' }));
 
-// Вкладка сбрасывает глубину, но не период: переключение не должно терять выбор дат
+// Вкладка сбрасывает глубину, но не период: переключение не должно терять выбор дат.
+// В историю переходы по вкладкам не пишем: иначе «назад» из карточки товара возвращает
+// не к списку, а туда, где человек был до переключения — например, в настройки
 document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
-  if (tab) go({ screen: tab.dataset.tab, group: '', category: '', item: '' });
+  if (tab) go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '' }, true);
 });
 
 /**
