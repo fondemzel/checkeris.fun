@@ -43,6 +43,9 @@ export function parseSort(params, allowed, fallback) {
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v ?? '');
 
+/** Код «без группы» и «без категории»: у неразмеченного своего slug нет. */
+export const NONE = '-';
+
 /**
  * Общие фильтры для чеков и позиций.
  * @param budgetId бюджет — обязателен
@@ -96,13 +99,16 @@ export function buildFilters(params, { budgetId, prefix = '', searchItems = fals
 
   // Категории есть только у позиций: у чека их столько же, сколько строк.
   if (searchItems) {
+    // «-» — неразмеченное: у такой группы нет кода, а показать её содержимое нужно
     const group = (params.get('group') ?? '').trim();
-    if (group) {
+    if (group === NONE) where.push(`${prefix}group_slug IS NULL`);
+    else if (group) {
       where.push(`${prefix}group_slug = :group`);
       args.group = group;
     }
     const category = (params.get('category') ?? '').trim();
-    if (category) {
+    if (category === NONE) where.push(`${prefix}category_slug IS NULL`);
+    else if (category) {
       where.push(`${prefix}category_slug = :category`);
       args.category = category;
     }

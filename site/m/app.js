@@ -379,7 +379,7 @@ async function screenSummary() {
   const rows = data.rows
     .map((r) =>
       row({
-        href: `data-group="${esc(r.key ?? '')}"`,
+        href: `data-group="${esc(r.key ?? NONE)}"`,
         color: r.color,
         icon: r.icon ?? 'none',
         title: r.name ?? 'Без категории',
@@ -397,7 +397,7 @@ async function screenGroup() {
   const data = await api(
     `/api/summary?by=category&group=${encodeURIComponent(state.group)}&from=${state.from}&to=${state.to}`,
   );
-  const g = findGroup(state.group);
+  const g = state.group === NONE ? { name: 'Без категории' } : findGroup(state.group);
   const max = Math.max(1, ...data.rows.map((r) => r.sum));
 
   // Шапка как в «Расходе»: итог и период закреплены, период меняется прямо здесь
@@ -411,7 +411,7 @@ async function screenGroup() {
   const rows = data.rows
     .map((r) =>
       row({
-        href: `data-category="${esc(r.key ?? '')}"`,
+        href: `data-category="${esc(r.key ?? NONE)}"`,
         color: categoryColor(state.group, r.key),
         icon: null,
         title: r.name ?? 'Без категории',
@@ -433,9 +433,11 @@ async function screenCategory() {
   else params.set('group', state.group);
 
   const data = await api(`/api/items?${params}`);
-  const name = state.category
-    ? findGroup(state.group)?.subcategories.find((s) => s.slug === state.category)?.name
-    : findGroup(state.group)?.name;
+  const name = state.category === NONE || state.group === NONE
+    ? 'Без категории'
+    : state.category
+      ? findGroup(state.group)?.subcategories.find((s) => s.slug === state.category)?.name
+      : findGroup(state.group)?.name;
 
   // Шапка закреплена: при листании длинного списка итог и порядок остаются на виду
   const head = `
@@ -1557,7 +1559,10 @@ const SCREENS = {
       <button class="btn primary big" type="button" data-back-home>ОК</button>
       <button class="link more-link" type="button" data-again>Сканировать ещё</button>`,
   },
-  group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
+  group: {
+    title: () => (state.group === NONE ? 'Без категории' : findGroup(state.group)?.name ?? 'Группа'),
+    render: screenGroup,
+  },
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem, after: mountItemMap },
   bank: { title: 'Операции банка', render: screenBank },
@@ -1610,6 +1615,7 @@ if ('ResizeObserver' in window) {
 let renderSeq = 0;
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
 const EXPENSE = ['summary', 'receipts', 'bank']; // один раздел: переключатель в шапке, общая шапка
+const NONE = '-'; // «Без категории»: у неразмеченного нет кода, но открывать его список нужно
 
 async function render() {
   const seq = ++renderSeq;
