@@ -283,17 +283,34 @@ function readUrl() {
   state.dir = p.get('dir') === 'asc' ? 'asc' : 'desc';
 }
 
+/**
+ * Попап живёт одной записью в истории: «назад» закрывает его и остаётся на том же экране.
+ * Повторно запись не добавляем — иначе после возврата из карточки товара их станет две.
+ */
+function openPopup(el) {
+  document.body.appendChild(el);
+  if (!history.state?.popup) history.pushState({ ...state, popup: true }, '', location.href);
+}
+
+/** Закрыть попап: снимаем его запись из истории, экран перерисует обработчик «назад». */
+function closePopup(el) {
+  el.remove();
+  if (history.state?.popup) history.back();
+  else render();
+}
+
 window.addEventListener('popstate', (e) => {
-  if (e.state) Object.assign(state, e.state);
+  // popup и sheet — пометки самой записи истории, в состоянии экрана им делать нечего
+  const { popup, sheet, ...screenState } = e.state ?? {};
+  if (e.state) Object.assign(state, screenState);
   else readUrl();
-  document.querySelector('.sheet')?.remove(); // «назад» телефона закрывает и открытый попап
+  // «Назад» закрывает открытый попап — и лист, и выбор категории, и календарь
+  for (const el of document.querySelectorAll('.sheet, .picker')) el.remove();
   render();
   // Вернулись из карточки товара, открытой из попапа чека, — показываем чек снова
-  if (state.sheet) {
-    const id = state.sheet;
-    state.sheet = '';
-    history.replaceState({ ...state }, '', location.href);
-    openReceiptSheet(id);
+  if (sheet) {
+    history.replaceState({ ...state, popup: true }, '', location.href);
+    openReceiptSheet(sheet);
   }
 });
 
@@ -623,8 +640,8 @@ function openPeriodPicker() {
 
   const el = document.createElement('div');
   el.className = 'picker';
-  document.body.appendChild(el);
-  const close = () => el.remove();
+  openPopup(el);
+  const close = () => closePopup(el);
 
   const draw = () => {
     const y = view.getFullYear();
@@ -902,11 +919,8 @@ async function openScanSheet(jobId) {
 
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
-  document.body.appendChild(sheet);
-  const close = () => {
-    sheet.remove();
-    render();
-  };
+  openPopup(sheet);
+  const close = () => closePopup(sheet);
 
   const explain = () => {
     if (job.status !== 'failed') return jobNote(job);
@@ -963,7 +977,7 @@ async function openScanSheet(jobId) {
         left: job.total_sum,
       };
       sheet.remove();
-      return go({ screen: 'manual' });
+      return go({ screen: 'manual' }, true); // попап уступает место форме, в истории — одна запись
     }
 
     if (e.target.closest('[data-delete]')) {
@@ -1386,9 +1400,9 @@ function openCategoryPicker(itemId, onPick) {
   const groups = meta?.categories ?? [];
   const picker = document.createElement('div');
   picker.className = 'picker';
-  document.body.appendChild(picker);
+  openPopup(picker);
 
-  const close = () => picker.remove();
+  const close = () => closePopup(picker);
 
   // Для чего выбираем: строка чека, карточка товара или новая ручная трата
   const name =
@@ -1484,7 +1498,7 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
       <div class="sheet-list">${receipt.items.map((i) => sheetRow(i, { open: true })).join('')}</div>
     </div>`;
 
-  document.body.appendChild(sheet);
+  openPopup(sheet);
 
   // Открыли из карточки товара — эту позицию подсвечиваем и показываем
   const row = current && sheet.querySelector(`.sheet-row[data-row="${current}"]`);
@@ -1493,10 +1507,7 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
     row.scrollIntoView({ block: 'nearest' });
   }
 
-  const close = () => {
-    sheet.remove();
-    render(); // сводка могла измениться
-  };
+  const close = () => closePopup(sheet); // сводка могла измениться — перерисует обработчик «назад»
 
   sheet.addEventListener('click', async (e) => {
     if (e.target.closest('[data-close]') || e.target === sheet) return close();
@@ -1509,7 +1520,7 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
     // «назад» из карточки откроет его снова
     const open = e.target.closest('[data-open-item]');
     if (open) {
-      history.replaceState({ ...state, sheet: receipt.id }, '', location.href);
+      history.replaceState({ ...state, sheet: receipt.id, popup: true }, '', location.href);
       sheet.remove();
       go({ screen: 'item', item: open.dataset.openItem, sheet: '' });
     }
@@ -1915,18 +1926,18 @@ async function shareInvite(button) {
       </div>
       ${navigator.share ? '<button class="link share-more" type="button" data-more>Другое…</button>' : ''}
     </div>`;
-  document.body.appendChild(sheet);
+  openPopup(sheet);
 
   sheet.addEventListener('click', async (e) => {
-    if (e.target === sheet || e.target.closest('[data-close]')) return sheet.remove();
-    if (e.target.closest('[data-share]')) return setTimeout(() => sheet.remove(), 300); // ссылка уже открывается
+    if (e.target === sheet || e.target.closest('[data-close]')) return closePopup(sheet);
+    if (e.target.closest('[data-share]')) return setTimeout(() => closePopup(sheet), 300); // ссылка уже открывается
     if (e.target.closest('[data-copy]')) {
       await navigator.clipboard?.writeText(invite.url).catch(() => {});
       toast('Ссылка скопирована — отправьте её тому, кого приглашаете');
-      return sheet.remove();
+      return closePopup(sheet);
     }
     if (e.target.closest('[data-more]')) {
-      sheet.remove();
+      closePopup(sheet);
       await navigator.share({ title: 'Чекер', text, url: invite.url }).catch(() => {});
     }
   });
@@ -2424,7 +2435,7 @@ async function offerInvite() {
   sheet.addEventListener('click', async (e) => {
     if (e.target.closest('[data-decline]')) {
       pendingInvite.set(null);
-      return sheet.remove();
+      return closePopup(sheet);
     }
     const join = e.target.closest('[data-join]');
     if (!join) return;
