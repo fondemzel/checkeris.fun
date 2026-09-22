@@ -1711,9 +1711,10 @@ function budgetSection(budget) {
 
   return `
     <div class="card budget">
-      <div class="card-label budget-title">Бюджет «<span id="budget-name">${esc(budget.name)}</span>»${
-        budget.is_owner ? ' <button class="link" type="button" data-rename-budget>переименовать</button>' : ''
-      }</div>
+      <div class="card-label">Бюджет</div>
+      ${budget.is_owner
+        ? inlineEdit('budget', budget.name, { cls: 'budget-name', label: 'Название бюджета', max: 60 })
+        : `<div class="budget-name">${esc(budget.name)}</div>`}
       ${members}
       <p class="note budget-hint">${
         budget.members.length > 1
@@ -1753,11 +1754,7 @@ async function screenSettings() {
   ]);
   return `
     <div class="card profile">
-      <div class="profile-row">
-        <input class="profile-name" id="profile-name" type="text" maxlength="60" enterkeyhint="done" readonly
-          autocomplete="name" value="${esc(me?.name ?? '')}" placeholder="Ваше имя" aria-label="Имя" />
-        <button class="profile-edit" id="profile-edit" type="button" aria-label="Изменить имя" title="Изменить имя">${UI.pen}</button>
-      </div>
+      ${inlineEdit('name', me?.name ?? '', { cls: 'profile-name', label: 'Имя', placeholder: 'Ваше имя', max: 60 })}
       <div class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</div>
     </div>
     ${budgetSection(budget)}
@@ -1771,18 +1768,6 @@ async function screenSettings() {
 async function onSettingsClick(e) {
     const invite = e.target.closest('[data-invite]');
     if (invite) return shareInvite(invite);
-
-    if (e.target.closest('[data-rename-budget]')) {
-      const name = prompt('Название бюджета — его видят приглашённые', $('budget-name')?.textContent ?? '');
-      if (!name?.trim()) return;
-      try {
-        await api('/api/budget', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
-        render();
-      } catch (err) {
-        toast(`Не вышло: ${err.message}`);
-      }
-      return;
-    }
 
     if (e.target.closest('[data-leave]')) {
       if (!confirm('Выйти из общего бюджета? Вы вернётесь в свой. Ваши траты останутся в общем.')) return;
@@ -1832,50 +1817,82 @@ $('screen').addEventListener('click', (e) => {
 });
 
 /**
- * Имя в настройках меняется кнопкой-карандашом: она открывает поле и клавиатуру,
- * а на время правки становится галочкой. Сохраняется, когда человек закончил:
- * галочка, «Готово» на клавиатуре или уход из поля.
+ * Правка на месте: имя в настройках, название бюджета. Текст выглядит как текст, рядом —
+ * неприметный карандаш: он открывает поле и клавиатуру, а на время правки становится
+ * галочкой. Сохраняется, когда человек закончил: галочка, «Готово» на клавиатуре или уход из поля.
  */
-$('screen').addEventListener('pointerdown', (e) => {
-  // Нажатие на галочку не должно уводить фокус из поля раньше, чем сработает клик
-  if (e.target.closest('#profile-edit') && !$('profile-name').readOnly) e.preventDefault();
-});
+function inlineEdit(field, value, { cls = '', label = '', placeholder = '', max = 60 } = {}) {
+  return `
+    <div class="inline-row">
+      <input class="inline-input ${cls}" data-inline="${field}" type="text" maxlength="${max}" enterkeyhint="done"
+        readonly value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(label)}" />
+      <button class="inline-edit" type="button" data-inline-btn aria-label="Изменить: ${esc(label)}" title="Изменить">${UI.pen}</button>
+    </div>`;
+}
 
-$('screen').addEventListener('click', (e) => {
-  if (!e.target.closest('#profile-edit')) return;
-  const input = $('profile-name');
-  if (!input.readOnly) return input.blur(); // галочка — сохранить
-  input.readOnly = false;
-  input.focus(); // в обработчике нажатия, иначе iOS не покажет клавиатуру
-  input.select();
-  e.target.closest('#profile-edit').innerHTML = UI.ok;
-});
-
-$('screen').addEventListener('keydown', (e) => {
-  if (e.target.id === 'profile-name' && e.key === 'Enter') e.target.blur();
-});
-
-$('screen').addEventListener('focusout', async (e) => {
-  const input = e.target;
-  if (input.id !== 'profile-name') return;
-  input.readOnly = true;
-  input.setSelectionRange(0, 0); // снимаем выделение, оставшееся от начала правки
-  window.getSelection()?.removeAllRanges();
-  $('profile-edit').innerHTML = UI.pen;
-  const name = input.value.replace(/\s+/g, ' ').trim();
-  if (!name || name === input.defaultValue) {
-    input.value = input.defaultValue; // пустое имя не сохраняем — возвращаем прежнее
-    return;
-  }
-  try {
+// Куда сохранять каждое поле. Возвращают сохранённое значение — сервер его чистит
+const INLINE_SAVE = {
+  name: async (name) => {
     const data = await api('/api/session', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    input.value = input.defaultValue = data.name;
     toast('Имя сохранено');
     meta = await api('/api/meta'); // у чеков общего бюджета автор — это имя
+    return data.name;
+  },
+  budget: async (name) => {
+    const data = await api('/api/budget', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    toast('Название сохранено');
+    return data.name;
+  },
+};
+
+const inlineParts = (el) => {
+  const row = el.closest('.inline-row');
+  return row && { input: row.querySelector('[data-inline]'), button: row.querySelector('[data-inline-btn]') };
+};
+
+$('screen').addEventListener('pointerdown', (e) => {
+  // Нажатие на галочку не должно уводить фокус из поля раньше, чем сработает клик
+  const parts = e.target.closest('[data-inline-btn]') && inlineParts(e.target);
+  if (parts && !parts.input.readOnly) e.preventDefault();
+});
+
+$('screen').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-inline-btn]')) return;
+  const { input, button } = inlineParts(e.target);
+  if (!input.readOnly) return input.blur(); // галочка — сохранить
+  input.readOnly = false;
+  input.focus(); // в обработчике нажатия, иначе iOS не покажет клавиатуру
+  input.select();
+  button.innerHTML = UI.ok;
+});
+
+$('screen').addEventListener('keydown', (e) => {
+  if (e.target.matches?.('[data-inline]') && e.key === 'Enter') e.target.blur();
+});
+
+$('screen').addEventListener('focusout', async (e) => {
+  const input = e.target;
+  if (!input.matches?.('[data-inline]') || input.readOnly) return;
+  const { button } = inlineParts(input);
+  input.readOnly = true;
+  input.setSelectionRange(0, 0); // снимаем выделение, оставшееся от начала правки
+  window.getSelection()?.removeAllRanges();
+  button.innerHTML = UI.pen;
+  const value = input.value.replace(/\s+/g, ' ').trim();
+  if (!value || value === input.defaultValue) {
+    input.value = input.defaultValue; // пустое не сохраняем — возвращаем прежнее
+    return;
+  }
+  try {
+    input.value = input.defaultValue = await INLINE_SAVE[input.dataset.inline](value);
   } catch (err) {
     input.value = input.defaultValue;
     toast(`Не сохранилось: ${err.message}`);
