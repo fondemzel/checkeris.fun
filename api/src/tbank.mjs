@@ -65,12 +65,28 @@ const PROBE = `(() => {
 })()`;
 
 async function typeInto(page, automationId, value) {
-  await page.evaluate(`(() => {
-    const el = document.querySelector('[automation-id="${automationId}"]');
-    el.focus();
-    el.select?.();
+  // Поля с маской (телефон, код) не принимают вставку целиком — только нажатия клавиш.
+  // Поэтому как человек: клик мышью по полю и ввод по одному символу
+  const box = await page.evaluate(`(() => {
+    const r = document.querySelector('[automation-id="${automationId}"]').getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
-  await page.send('Input.insertText', { text: value });
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await page.send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 });
+  }
+  await sleep(250);
+  for (const ch of String(value)) {
+    const digit = /[0-9]/.test(ch);
+    const key = {
+      key: ch,
+      text: ch,
+      unmodifiedText: ch,
+      ...(digit ? { code: `Digit${ch}`, windowsVirtualKeyCode: 48 + Number(ch) } : {}),
+    };
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...key });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: ch, ...(digit ? { code: `Digit${ch}`, windowsVirtualKeyCode: 48 + Number(ch) } : {}) });
+    await sleep(70 + Math.floor(Math.random() * 60));
+  }
   await sleep(300);
   // Отправка — кнопкой формы, как человек; кнопки нет (код из СМС уходит сам) — Enter
   const clicked = await page.evaluate(`(() => {
