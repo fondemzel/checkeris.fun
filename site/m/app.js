@@ -1738,7 +1738,6 @@ async function shareInvite(button) {
       await navigator.clipboard?.writeText(invite.url);
       toast('Ссылка скопирована — отправьте её тому, кого приглашаете');
     }
-    button.insertAdjacentHTML('afterend', `<p class="note invite-url">Ссылка на неделю, одна на человека:<br>${esc(invite.url)}</p>`);
   } catch (err) {
     toast(`Не вышло: ${err.message}`);
   } finally {
