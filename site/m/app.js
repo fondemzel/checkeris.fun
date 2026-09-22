@@ -58,6 +58,11 @@ const UI = {
   ),
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
+  send: svg('<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>'),
+  chat: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
+  message: svg('<path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/>'),
+  mail: svg('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>'),
+  copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   income: svg('<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>'),
   settings: svg(
@@ -1730,23 +1735,72 @@ function budgetSection(budget) {
     </div>`;
 }
 
-/** Ссылка-приглашение: через системное «Поделиться», а если его нет — в буфер обмена. */
+/**
+ * Приглашение — своим листом, а не системным «Поделиться»: тот показывает всё, что умеет
+ * принимать ссылки (такси, банки, билеты), и настроить его страница не может. Здесь —
+ * только мессенджеры и почта: у каждого есть ссылка, открывающая приложение с готовым текстом.
+ * Системное окно осталось запасным пунктом «Другое…».
+ */
 async function shareInvite(button) {
   button.disabled = true;
+  let invite;
   try {
-    const invite = await api('/api/budget/invites', { method: 'POST' });
-    const text = 'Присоединяйся к нашему бюджету в Чекере';
-    if (navigator.share) {
-      await navigator.share({ title: 'Чекер', text, url: invite.url }).catch(() => {});
-    } else {
-      await navigator.clipboard?.writeText(invite.url);
-      toast('Ссылка скопирована — отправьте её тому, кого приглашаете');
-    }
+    invite = await api('/api/budget/invites', { method: 'POST' });
   } catch (err) {
-    toast(`Не вышло: ${err.message}`);
-  } finally {
     button.disabled = false;
+    return toast(`Не вышло: ${err.message}`);
   }
+  button.disabled = false;
+
+  const text = 'Присоединяйся к нашему бюджету в Чекере';
+  const both = `${text}: ${invite.url}`;
+  const enc = encodeURIComponent;
+  const targets = [
+    ['Telegram', UI.send, `https://t.me/share/url?url=${enc(invite.url)}&text=${enc(text)}`],
+    ['WhatsApp', UI.chat, `https://wa.me/?text=${enc(both)}`],
+    ['Макс', UI.message, `https://max.ru/:share?text=${enc(both)}`],
+    ['Почта', UI.mail, `mailto:?subject=${enc('Приглашение в Чекер')}&body=${enc(`${text}:\n${invite.url}`)}`],
+  ];
+
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  sheet.innerHTML = `
+    <div class="sheet-box" role="dialog" aria-label="Пригласить в бюджет">
+      <div class="sheet-top">
+        <div>
+          <div class="sheet-sum-total">Пригласить</div>
+          <div class="note">Выберите, куда отправить ссылку</div>
+        </div>
+        <button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button>
+      </div>
+      <div class="picker-list share-list">
+        ${targets
+          .map(([name, icon, href]) => `
+            <a class="picker-item share-item" href="${esc(href)}"${href.startsWith('mailto:') ? '' : ' target="_blank" rel="noopener"'} data-share>
+              <span class="share-ic">${icon}</span><span>${name}</span>
+            </a>`)
+          .join('')}
+        <button class="picker-item share-item" type="button" data-copy>
+          <span class="share-ic">${UI.copy}</span><span>Скопировать ссылку</span>
+        </button>
+      </div>
+      ${navigator.share ? '<button class="link share-more" type="button" data-more>Другое…</button>' : ''}
+    </div>`;
+  document.body.appendChild(sheet);
+
+  sheet.addEventListener('click', async (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) return sheet.remove();
+    if (e.target.closest('[data-share]')) return setTimeout(() => sheet.remove(), 300); // ссылка уже открывается
+    if (e.target.closest('[data-copy]')) {
+      await navigator.clipboard?.writeText(invite.url).catch(() => {});
+      toast('Ссылка скопирована — отправьте её тому, кого приглашаете');
+      return sheet.remove();
+    }
+    if (e.target.closest('[data-more]')) {
+      sheet.remove();
+      await navigator.share({ title: 'Чекер', text, url: invite.url }).catch(() => {});
+    }
+  });
 }
 
 /** Настройки: кто вошёл, бюджет, выход и удаление аккаунта. */
