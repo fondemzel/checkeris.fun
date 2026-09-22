@@ -128,7 +128,7 @@ export async function login({ ask, log = () => {}, headless = true, timeoutMs = 
         await typeInto(page, 'phone-input', await ask('phone', 'Телефон, привязанный к Т-Банку'));
       } else if (has('otp-input')) {
         await typeInto(page, 'otp-input', await ask('code', 'Код из СМС от Т-Банка'));
-        await sleep(1500);
+        await sleep(4000); // дать странице принять код, иначе спросим его второй раз
       } else if (has('password-input') && !done.has('password')) {
         done.add('password');
         await typeInto(page, 'password-input', await ask('password', 'Пароль от Т-Банка'));
