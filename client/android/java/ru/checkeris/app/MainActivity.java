@@ -91,10 +91,12 @@ public class MainActivity extends android.app.Activity {
         @JavascriptInterface
         public String info() {
             try {
+                boolean connected = BankSync.connected(MainActivity.this);
                 return new JSONObject()
                         .put("app", "android")
                         .put("version", BuildInfo.VERSION)
-                        .put("bank", BankSync.connected(MainActivity.this) ? "tbank" : JSONObject.NULL)
+                        .put("bank", connected ? "tbank" : JSONObject.NULL)
+                        .put("bankState", connected ? (BankSync.expired(MainActivity.this) ? "expired" : "active") : "off")
                         .toString();
             } catch (Exception e) {
                 return "{}";
@@ -155,7 +157,30 @@ public class MainActivity extends android.app.Activity {
     protected void onResume() {
         super.onResume();
         if (web != null) web.evaluateJavascript("window.dispatchEvent(new Event('checker-resume'))", null);
+        keepAlive.run(); // пока приложение открыто, сессия банка не должна протухнуть
     }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        handler.removeCallbacks(keepAlive);
+    }
+
+    /**
+     * Сессия интернет-банка живёт, пока к банку обращаются. Фоновое задание будит нас лишь
+     * раз в 15 минут, поэтому, пока приложение открыто, пингуем банк каждую минуту — так
+     * человеку реже придётся входить заново.
+     */
+    private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    private final Runnable keepAlive = new Runnable() {
+        @Override
+        public void run() {
+            handler.removeCallbacks(this);
+            new Thread(() -> BankSync.ping(MainActivity.this)).start();
+            handler.postDelayed(this, 60_000);
+        }
+    };
 
     @Override
     protected void onNewIntent(Intent intent) {

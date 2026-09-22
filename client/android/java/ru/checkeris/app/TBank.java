@@ -53,13 +53,27 @@ final class TBank {
         return out.toString("UTF-8");
     }
 
-    /** Жива ли сессия: у вошедшего клиента уровень доступа CLIENT. */
-    static boolean alive(String session) {
+    static final int ALIVE = 1;
+    static final int EXPIRED = 0;
+    static final int OFFLINE = -1;
+
+    /**
+     * Жива ли сессия. Три ответа, а не два: «банк не пустил» и «до банка не достучались» —
+     * разные вещи. Из-за отсутствия сети сессию терять нельзя.
+     */
+    static int check(String session) {
         try {
-            return "CLIENT".equals(((JSONObject) call(session, "ping", null)).optString("accessLevel"));
+            return "CLIENT".equals(((JSONObject) call(session, "ping", null)).optString("accessLevel"))
+                    ? ALIVE : EXPIRED;
+        } catch (IllegalStateException e) {
+            return EXPIRED; // банк ответил, но отказал
         } catch (Exception e) {
-            return false;
+            return OFFLINE; // сеть, таймаут, сбой на стороне банка
         }
+    }
+
+    static boolean alive(String session) {
+        return check(session) == ALIVE;
     }
 
     static JSONArray accounts(String session) throws Exception {

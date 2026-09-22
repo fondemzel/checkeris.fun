@@ -2002,13 +2002,16 @@ function bankSection(bank) {
   const rows = BANKS.map((b) => {
     const link = bank?.links?.find((l) => l.bank === b.id);
     const connected = connectedId === b.id;
+    const expired = connected && appInfo().bankState === 'expired';
     const ops = link?.ops ?? 0;
-    const note = connected
-      ? `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`
-      : b.ready ? 'не подключён' : 'скоро';
+    const note = expired
+      ? 'нужен вход заново'
+      : connected
+        ? `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`
+        : b.ready ? 'не подключён' : 'скоро';
     return `
       <button class="member bank-row" type="button" data-bank-open="${b.id}">
-        ${bankLogo(b, connected)}
+        ${bankLogo(b, connected && !expired)}
         <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
         <span class="row-icon" aria-hidden="true">${UI.plus}</span>
       </button>`;
@@ -2031,6 +2034,7 @@ async function screenBankCard() {
   const data = inApp() ? await api('/api/bank').catch(() => null) : null;
   const link = data?.links?.find((l) => l.bank === b.id);
   const connected = inApp() && appInfo().bank === b.id;
+  const expired = connected && appInfo().bankState === 'expired';
   const ops = link?.ops ?? 0;
 
   return `
@@ -2039,10 +2043,12 @@ async function screenBankCard() {
         ${bankLogo(b, connected)}
         <div>
           <div class="budget-name">${b.name}</div>
-          <p class="note">${
-            connected
-              ? `Подключён · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}${link?.synced_at ? ` · обновлено ${ago(link.synced_at)}` : ''}`
-              : b.ready ? 'Не подключён' : 'Подключение появится позже'
+          <p class="note${expired ? ' error' : ''}">${
+            expired
+              ? 'Банк просит войти заново — сессия живёт несколько часов'
+              : connected
+                ? `Подключён · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}${link?.synced_at ? ` · обновлено ${ago(link.synced_at)}` : ''}`
+                : b.ready ? 'Не подключён' : 'Подключение появится позже'
           }</p>
         </div>
       </div>
@@ -2063,7 +2069,7 @@ async function screenBankCard() {
       ${b.ready
         ? `<button class="btn primary big" type="button" data-bank="login" data-bank-id="${b.id}">${connected ? 'Войти в банк заново' : 'Подключить'}</button>`
         : '<button class="btn big" type="button" disabled>Подключение появится позже</button>'}
-      ${connected ? `<button class="btn" type="button" data-bank="sync" data-bank-id="${b.id}">Обновить операции</button>` : ''}
+      ${connected && !expired ? `<button class="btn" type="button" data-bank="sync" data-bank-id="${b.id}">Обновить операции</button>` : ''}
       ${connected ? `<button class="btn" type="button" data-bank="forget" data-bank-id="${b.id}">Отключить банк</button>` : ''}
       ${ops ? `<button class="btn danger" type="button" data-bank="wipe" data-bank-id="${b.id}">Удалить загруженные операции</button>` : ''}
     </div>`;

@@ -18,6 +18,7 @@ import java.net.URL;
 final class BankSync {
 
     static final String TOKEN = "checker.token"; // токен Чекера: фоновой работе он нужен без открытой страницы
+    static final String EXPIRED = "tbank.expired"; // банк отказал: нужен новый вход руками
 
     private static final String CHECKER = "https://checkeris.fun/api/bank/ops";
     private static final String LAST_SYNC = "tbank.lastSync";
@@ -46,8 +47,25 @@ final class BankSync {
         return new Secrets(context).get(BankLoginActivity.SESSION) != null;
     }
 
+    /** Банк подключён, но просит войти заново: сессию не выбрасываем, чтобы не пугать «не подключён». */
+    static boolean expired(Context context) {
+        return "1".equals(new Secrets(context).get(EXPIRED));
+    }
+
     static void forget(Context context) {
-        new Secrets(context).put(BankLoginActivity.SESSION, null);
+        Secrets secrets = new Secrets(context);
+        secrets.put(BankLoginActivity.SESSION, null);
+        secrets.put(EXPIRED, null);
+    }
+
+    /** Короткое обращение к банку: держит сессию живой. Только в фоновом потоке. */
+    static void ping(Context context) {
+        Secrets secrets = new Secrets(context);
+        String session = secrets.get(BankLoginActivity.SESSION);
+        if (session == null) return;
+        int state = TBank.check(session);
+        if (state == TBank.ALIVE) secrets.put(EXPIRED, null);
+        else if (state == TBank.EXPIRED) secrets.put(EXPIRED, "1");
     }
 
     /** Забрать новые операции и отдать их Чекеру. Вызывать только в фоновом потоке. */
@@ -55,10 +73,16 @@ final class BankSync {
         Secrets secrets = new Secrets(context);
         String session = secrets.get(BankLoginActivity.SESSION);
         if (session == null) return new Result(false, 0, "Т-Банк не подключён");
-        if (!TBank.alive(session)) {
-            secrets.put(BankLoginActivity.SESSION, null);
-            return new Result(false, 0, "Сессия Т-Банка истекла — войдите заново");
+
+        int state = TBank.check(session);
+        if (state == TBank.OFFLINE) return new Result(false, 0, "Банк не отвечает — попробуйте позже");
+        if (state == TBank.EXPIRED) {
+            // Подключение остаётся, но нужен новый вход: стирать сессию и показывать
+            // «не подключён» нечестно — человек-то банк подключал
+            secrets.put(EXPIRED, "1");
+            return new Result(false, 0, "Банк просит войти заново");
         }
+        secrets.put(EXPIRED, null);
 
         long last = secrets.getLong(LAST_SYNC, 0);
         long since = last > 0 ? last - OVERLAP : System.currentTimeMillis() - FIRST_DAYS;

@@ -64,7 +64,9 @@ public class BankLoginActivity extends Activity {
             handler.post(() -> {
                 if (done) return;
                 done = true;
-                new Secrets(this).put(SESSION, session);
+                Secrets secrets = new Secrets(this);
+                secrets.put(SESSION, session);
+                secrets.put(BankSync.EXPIRED, null);
                 Toast.makeText(this, "Т-Банк подключён", Toast.LENGTH_SHORT).show();
                 setResult(RESULT_OK);
                 finish();
