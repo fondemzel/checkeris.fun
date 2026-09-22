@@ -4,10 +4,9 @@
   обновления не требуют переустановки приложения. Родной код нужен для того, чего
   браузер не умеет: вход в банк на устройстве и загрузка операций в фоне.
 -->
+<!-- Номер версии подставляет сборщик из client/android/version.json -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="ru.checkeris.app"
-    android:versionCode="1"
-    android:versionName="0.1">
+    package="ru.checkeris.app">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
 
