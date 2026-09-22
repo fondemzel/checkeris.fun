@@ -1816,6 +1816,8 @@ $('screen').addEventListener('focusout', async (e) => {
   const input = e.target;
   if (input.id !== 'profile-name') return;
   input.readOnly = true;
+  input.setSelectionRange(0, 0); // снимаем выделение, оставшееся от начала правки
+  window.getSelection()?.removeAllRanges();
   $('profile-edit').innerHTML = UI.pen;
   const name = input.value.replace(/\s+/g, ' ').trim();
   if (!name || name === input.defaultValue) {
