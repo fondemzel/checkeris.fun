@@ -21,6 +21,7 @@ final class BankSync {
     private static final String LAST_SYNC = "tbank.lastSync";
     private static final long FIRST_DAYS = 90L * 24 * 3600 * 1000;
     private static final long OVERLAP = 3L * 24 * 3600 * 1000; // операции «в обработке» меняются задним числом
+    private static final int BATCH = 150; // операция с полным ответом банка весит килобайты — шлём пачками
 
     /** Итог для показа человеку. */
     static final class Result {
@@ -74,7 +75,11 @@ final class BankSync {
                     all.put(op);
                 }
             }
-            send(checkerToken, all);
+            for (int from = 0; from < all.length(); from += BATCH) {
+                JSONArray batch = new JSONArray();
+                for (int i = from; i < Math.min(from + BATCH, all.length()); i++) batch.put(all.get(i));
+                send(checkerToken, batch);
+            }
             secrets.putLong(LAST_SYNC, System.currentTimeMillis());
             return new Result(true, all.length(), null);
         } catch (Exception e) {
