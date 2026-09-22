@@ -658,6 +658,7 @@ button, input, select { font: inherit; color: inherit; }
 .budget { display: flex; flex-direction: column; gap: 2px; }
 .member { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-top: 1px solid #f0f1f3; }
 .member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-new { align-items: center; padding: 4px 0; color: var(--muted); }
 .budget-hint { margin: 8px 0; }
 .budget .btn { width: 100%; margin-top: 6px; }
 
