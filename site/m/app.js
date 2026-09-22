@@ -1755,9 +1755,9 @@ async function shareInvite(button) {
   // Логотипы мессенджеров — официальные, файлами: у Макса он градиентный и тяжёлый для кода
   const logo = (name) => `<img class="share-logo" src="/shared/brand/${name}.svg" alt="" />`;
   const targets = [
-    // Сайты Telegram из России открываются не всегда — ссылка сразу в приложение, как у входа
+    // Сайты Telegram и WhatsApp из России открываются не всегда — ссылки сразу в приложения, как у входа
     ['Telegram', logo('telegram'), `tg://msg_url?url=${enc(invite.url)}&text=${enc(text)}`],
-    ['WhatsApp', logo('whatsapp'), `https://wa.me/?text=${enc(both)}`],
+    ['WhatsApp', logo('whatsapp'), `whatsapp://send?text=${enc(both)}`],
     ['Макс', logo('max'), `https://max.ru/:share?text=${enc(both)}`],
     ['Почта', `<span class="share-ic">${UI.mail}</span>`, `mailto:?subject=${enc('Приглашение в Чекер')}&body=${enc(`${text}:\n${invite.url}`)}`],
   ];
