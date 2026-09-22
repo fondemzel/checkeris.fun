@@ -1604,6 +1604,7 @@ if ('ResizeObserver' in window) {
 }
 
 let renderSeq = 0;
+let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
 
 async function render() {
   const seq = ++renderSeq;
@@ -1623,16 +1624,30 @@ async function render() {
   for (const tab of document.querySelectorAll('[data-tab]')) {
     tab.classList.toggle('on', tab.dataset.tab === TAB_OF[state.screen]);
   }
-  $('screen').innerHTML = loading();
-  window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
+  // Пустой экран с «Загрузкой» — только когда идём на другой экран. Листание месяцев и
+  // смена сортировки перерисовывают тот же список: старое содержимое остаётся на месте,
+  // иначе экран мигает на каждое нажатие
+  const sameScreen = state.screen === shownScreen && $('screen').firstChild;
+  if (!sameScreen) {
+    $('screen').innerHTML = loading();
+    window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
+  }
+  // Ответ задерживается — показываем это не пустотой, а приглушением списка
+  const dim = setTimeout(() => seq === renderSeq && $('screen').classList.add('busy'), 250);
 
   try {
     const html = await screen.render();
     if (seq !== renderSeq) return;
+    const keepScroll = sameScreen ? window.scrollY : 0;
     $('screen').innerHTML = html;
+    if (keepScroll) window.scrollTo(0, keepScroll); // остались там же, где листали
+    shownScreen = state.screen;
     screen.after?.();
   } catch (err) {
     if (seq === renderSeq) $('screen').innerHTML = failed(err);
+  } finally {
+    clearTimeout(dim);
+    if (seq === renderSeq) $('screen').classList.remove('busy');
   }
 }
 
