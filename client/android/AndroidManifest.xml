@@ -14,6 +14,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Камера: сканирование QR с чеков идёт в WebView -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Фоновая загрузка операций банка: задание переживает перезагрузку, о потере сессии
+         банка приложение сообщает уведомлением -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Куда приложение умеет отправлять приглашения: мессенджеры и почта -->
@@ -53,6 +57,11 @@
                 <data android:scheme="https" android:host="checkeris.fun" android:pathPrefix="/tg.html" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".BankJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- Окно входа в интернет-банк: обычный браузер, данные вводит человек -->
         <activity
             android:name=".BankLoginActivity"

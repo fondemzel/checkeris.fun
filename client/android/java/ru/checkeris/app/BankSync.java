@@ -17,6 +17,8 @@ import java.net.URL;
  */
 final class BankSync {
 
+    static final String TOKEN = "checker.token"; // токен Чекера: фоновой работе он нужен без открытой страницы
+
     private static final String CHECKER = "https://checkeris.fun/api/bank/ops";
     private static final String LAST_SYNC = "tbank.lastSync";
     private static final long FIRST_DAYS = 90L * 24 * 3600 * 1000;

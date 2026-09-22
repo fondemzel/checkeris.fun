@@ -32,6 +32,7 @@ public class MainActivity extends android.app.Activity {
     private static final String SITE = "https://checkeris.fun/m/";
     private static final String HOST = "checkeris.fun";
     private static final int CAMERA_REQUEST = 1;
+    private static final int NOTIFY_REQUEST = 2;
 
     private WebView web;
     private PermissionRequest pendingCamera;
@@ -77,6 +78,12 @@ public class MainActivity extends android.app.Activity {
             }
         });
 
+        // Уведомления нужны для одного: сказать, что сессия банка истекла
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFY_REQUEST);
+        }
+
         web.addJavascriptInterface(new Bridge(), "Checker");
         web.loadUrl(startUrl(getIntent()));
     }
@@ -109,6 +116,18 @@ public class MainActivity extends android.app.Activity {
         @JavascriptInterface
         public void bankForget() {
             BankSync.forget(MainActivity.this);
+            BankJobService.cancel(MainActivity.this);
+        }
+
+        /**
+         * Токен Чекера — из страницы в защищённое хранилище: фоновая работа идёт без
+         * открытой страницы, а операции нужно отправлять от имени этого же человека.
+         */
+        @JavascriptInterface
+        public void saveToken(String token) {
+            if (token == null || token.isEmpty()) return;
+            new Secrets(MainActivity.this).put(BankSync.TOKEN, token);
+            BankJobService.schedule(MainActivity.this);
         }
 
         /** Долгая работа — в фоновом потоке, итог уходит на страницу событием. */

@@ -2091,6 +2091,9 @@ $('screen').addEventListener('focusout', async (e) => {
   }
 });
 
+// Приложению нужен токен: фоновая загрузка операций идёт без открытой страницы
+if (inApp() && token.get()) window.Checker.saveToken?.(token.get());
+
 // Вернулись в приложение (например, из окна банка) — состояние могло измениться
 window.addEventListener('checker-resume', () => {
   if (state.screen === 'settings') render();
