@@ -218,7 +218,9 @@ const sortChips = () => `
       return `<button class="sort-chip${on ? ' on' : ''}" type="button" data-sort="${key}" aria-label="${label}" title="${label}">${UI[icon]}${arrow}</button>`;
     })
     .join('')}</div>`;
-const TOP = ['summary', 'receipts', 'income', 'settings', 'stats']; // корневые экраны: у них нет «назад», зато есть «+»
+// Корневые экраны: у них нет «назад». «Банк» — такой же вид «Расхода», как чеки,
+// в него приходят переключателем, а не вглубь
+const TOP = ['summary', 'receipts', 'bank', 'income', 'settings', 'stats'];
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;
 const findCategory = (slug) => {
