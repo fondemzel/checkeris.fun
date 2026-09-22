@@ -4,7 +4,8 @@
 // соединения. Бот сам забирает сообщения (long polling), поэтому ему не нужны ни домен,
 // ни сертификат, ни открытые порты — только исходящие соединения к Telegram и к Чекеру.
 //
-// Что он делает — ровно одно: подтверждает вход.
+// Что он делает: подтверждает вход и доставляет сообщения Чекера (например, «Т-Банк
+// отключился — войдите заново»): у основного сервера доступа к Telegram нет.
 //   /start <код>  → готовит подтверждение в Чекере (prepare): тот запоминает, кому
 //                   показан запрос, и отдаёт код для ссылки. Сообщение с устройством:
 //                   «Войти в Чекер? Запрос с iPhone · Safari» — [Войти] [Это не я]
@@ -168,8 +169,23 @@ async function setup() {
   console.log('описание и меню бота обновлены');
 }
 
+/** Сообщения от Чекера людям: забираем раз в 30 секунд и отправляем. */
+async function pumpOutbox() {
+  let messages = [];
+  try {
+    ({ messages = [] } = await checker('/api/telegram/outbox', {}));
+  } catch (err) {
+    return console.error('outbox:', err.message);
+  }
+  for (const m of messages) {
+    await tg('sendMessage', { chat_id: m.chat_id, text: m.text, disable_web_page_preview: true })
+      .catch((err) => console.error('outbox, отправка:', err.message));
+  }
+}
+
 async function run() {
   const me = await tg('getMe');
+  setInterval(pumpOutbox, 30_000);
   // Вебхук и long polling взаимоисключающи: снимаем вебхук, если его кто-то ставил
   await tg('deleteWebhook', { drop_pending_updates: false });
   console.log(`бот @${me.username} слушает; Чекер: ${CHECKER}`);

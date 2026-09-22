@@ -457,3 +457,63 @@ CREATE TABLE IF NOT EXISTS imports (
   receipts_upd  INTEGER NOT NULL DEFAULT 0,
   items_total   INTEGER NOT NULL DEFAULT 0
 );
+
+-- Подключения к банкам. Сессия интернет-банка — это доступ к счетам, поэтому хранится
+-- только зашифрованной (AES-256-GCM, ключ BANK_KEY в api/.env, не в базе). Пароль от
+-- банка не хранится нигде: он нужен лишь во время входа. Сессию держит живой пинг
+-- (banks.mjs); умерла — status = expired, человеку уходит сообщение в Telegram.
+CREATE TABLE IF NOT EXISTS bank_links (
+  id           INTEGER PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  bank         TEXT NOT NULL,           -- tbank
+  session_enc  TEXT,                    -- iv.tag.шифротекст в base64; null — вышли
+  status       TEXT NOT NULL,           -- active | expired
+  login_at     TEXT NOT NULL,           -- когда вошли: от него считаем, сколько живёт сессия
+  last_ok_at   TEXT,                    -- последний удачный пинг
+  fails        INTEGER NOT NULL DEFAULT 0, -- неудачных пингов подряд
+  expired_at   TEXT,
+  synced_at    TEXT,                    -- последняя загрузка операций
+  last_error   TEXT,
+  UNIQUE (user_id, bank)
+);
+
+-- Операции из банка как есть: сопоставление с чеками и траты без чеков строятся поверх.
+-- Суммы — в копейках, как у чеков. Время — московское, как purchased_at у чеков.
+CREATE TABLE IF NOT EXISTS bank_ops (
+  id             INTEGER PRIMARY KEY,
+  link_id        INTEGER NOT NULL REFERENCES bank_links (id) ON DELETE CASCADE,
+  budget_id      INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
+  ext_id         TEXT NOT NULL,         -- id операции в банке
+  account        TEXT NOT NULL,         -- id счёта в банке
+  account_name   TEXT,
+  at             TEXT NOT NULL,         -- время операции, московское: 2026-09-22T14:05:31
+  debited_at     TEXT,                  -- время списания
+  direction      TEXT NOT NULL,         -- debit — расход, credit — поступление
+  amount         INTEGER NOT NULL,      -- в валюте операции, копейки, без знака
+  currency       TEXT NOT NULL,
+  account_amount INTEGER,               -- в валюте счёта
+  status         TEXT,                  -- OK | WAIT | FAILED — как у банка
+  op_group       TEXT,                  -- PAY | TRANSFER | CASH | INCOME …
+  mcc            INTEGER,
+  description    TEXT,
+  merchant       TEXT,
+  bank_category  TEXT,
+  card           TEXT,                  -- последние цифры карты
+  has_receipt    INTEGER NOT NULL DEFAULT 0, -- у банка есть кассовый чек
+  raw            TEXT NOT NULL,         -- ответ банка целиком: разбор можно улучшать задним числом
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  UNIQUE (link_id, ext_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bank_ops_budget_at ON bank_ops (budget_id, at);
+
+-- Сообщения человеку в Telegram. С основного сервера Telegram недоступен, поэтому их
+-- забирает бот на зарубежном сервере (bot/relay.mjs) подписанным запросом и отправляет.
+CREATE TABLE IF NOT EXISTS tg_outbox (
+  id         INTEGER PRIMARY KEY,
+  chat_id    INTEGER NOT NULL,
+  text       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  sent_at    TEXT
+);

@@ -3,7 +3,8 @@
 // GigaChat или Claude, достаточно написать ещё один provider с той же сигнатурой —
 // вызывающий код про провайдера ничего не знает.
 //
-// Доступы читаются из api/.env (в репозиторий не попадает).
+// Доступы читаются из api/.env (в репозиторий не попадает) и api/.env.local — ключей,
+// которые живут только на сервере (выкладка везёт api/.env с компьютера и затёрла бы их).
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { API_ROOT } from './db.mjs';
@@ -12,6 +13,7 @@ const ENV_PATH = resolve(API_ROOT, '.env');
 
 /** Простой .env без зависимостей. Переменные окружения имеют приоритет над файлом. */
 export function loadEnv(file = ENV_PATH) {
+  if (file === ENV_PATH) loadEnv(`${ENV_PATH}.local`); // серверные ключи — первыми: у них приоритет
   if (!existsSync(file)) return;
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     const trimmed = line.trim();

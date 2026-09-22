@@ -25,6 +25,7 @@ import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
+import { banksReady, keepAlive, syncAll, takeOutbox } from './banks.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -286,7 +287,7 @@ async function handleApi(req, res, url) {
   }
 
   // Бот с зарубежного сервера. Открыто наружу, но без верной подписи не принимается
-  if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm'].includes(pathname)) {
+  if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm', '/api/telegram/outbox'].includes(pathname)) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     let raw;
     let body;
@@ -299,6 +300,8 @@ async function handleApi(req, res, url) {
     if (!verifyRelay(req.headers['x-checker-ts'], req.headers['x-checker-signature'], raw)) {
       return sendJson(res, 401, { error: 'bad signature' });
     }
+    // Сообщения, которые Чекер хочет отправить людям: бот забирает их и отправляет сам
+    if (pathname.endsWith('/outbox')) return sendJson(res, 200, { messages: takeOutbox(db) });
     return sendJson(
       res,
       200,
@@ -640,6 +643,16 @@ if (geocoderReady()) {
   setInterval(tick, 60_000).unref();
 } else {
   console.error('DaData: ключ не задан (DADATA_API_KEY) — адреса покупок на карту не попадут');
+}
+
+// Банки: сессию пингуем раз в минуту — иначе банк её сбросит, операции забираем раз в 15 минут
+if (banksReady()) {
+  setInterval(() => keepAlive(db).catch((err) => console.error('банк, пинг:', err.message)), 60_000).unref();
+  const sync = () => syncAll(db).catch((err) => console.error('банк, загрузка:', err.message));
+  setTimeout(sync, 20_000).unref();
+  setInterval(sync, 15 * 60_000).unref();
+} else {
+  console.error('Банки: нет BANK_KEY в api/.env — подключения к банкам выключены');
 }
 
 server.listen(PORT, HOST, () => {
