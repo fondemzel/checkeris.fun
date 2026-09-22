@@ -1718,7 +1718,8 @@ function budgetSection(budget) {
       ${members}
       ${budget.is_owner ? `
         <button class="member member-invite" type="button" data-invite>
-          <span class="member-name">Пригласить пользователя</span>
+          <span class="member-name">Добавить</span>
+          <span class="note">нажмите, чтобы пригласить</span>
         </button>` : ''}
       <p class="note budget-hint">${
         budget.members.length > 1
