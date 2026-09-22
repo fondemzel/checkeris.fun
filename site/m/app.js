@@ -193,6 +193,25 @@ const SORTS = {
   sum: ['По сумме', 'desc', 'ruble'],
 };
 
+/**
+  * Шапка списка: сумма и подпись слева, сортировка справа от них, ниже период и фильтры.
+  * Всё выровнено по левому краю — так в двух строках помещается больше, чем по центру.
+  */
+const listHead = ({ sum, note, sorts = true, filters = '' }) => `
+  <div class="total compact">
+    <div class="head-line">
+      <div class="head-sum">
+        <span class="total-sum">${sum}</span>
+        <span class="total-note">${note}</span>
+      </div>
+      ${sorts ? sortChips() : ''}
+    </div>
+    <div class="head-line">
+      ${periodNav(true)}
+      ${filters}
+    </div>
+  </div>`;
+
 /** Ряд значков сортировки. Повторное нажатие на выбранный разворачивает порядок. */
 const sortChips = () => `
   <div class="sorts">${Object.entries(SORTS)
@@ -342,12 +361,12 @@ async function screenSummary() {
   const head = `
     <div class="stuck-head">
       ${expenseSwitch()}
-      <div class="total compact">
-        <span class="total-sum">${money(data.totals.sum)}</span>
-        <span class="total-note">${int.format(data.totals.receipts)} ${plural(data.totals.receipts, 'чек', 'чека', 'чеков')} ·
-          ${int.format(data.totals.count)} ${plural(data.totals.count, 'позиция', 'позиции', 'позиций')}</span>
-        ${periodNav(true)}
-      </div>
+      ${listHead({
+        sum: money(data.totals.sum),
+        note: `${int.format(data.totals.receipts)} ${plural(data.totals.receipts, 'чек', 'чека', 'чеков')} · ${
+          int.format(data.totals.count)} ${plural(data.totals.count, 'позиция', 'позиции', 'позиций')}`,
+        sorts: false, // группы сортируются по сумме: так видно главное
+      })}
     </div>`;
 
   if (!data.rows.length) {
@@ -385,11 +404,7 @@ async function screenGroup() {
   // Шапка как в «Расходе»: итог и период закреплены, период меняется прямо здесь
   const head = `
     <div class="stuck-head">
-      <div class="total compact">
-        <span class="total-sum">${money(data.totals.sum)}</span>
-        <span class="total-note">${esc(g?.name ?? '')}</span>
-        ${periodNav(true)}
-      </div>
+      ${listHead({ sum: money(data.totals.sum), note: esc(g?.name ?? ''), sorts: false })}
     </div>`;
 
   if (!data.rows.length) return `${head}<div class="empty">В этой группе трат нет</div>`;
@@ -426,12 +441,7 @@ async function screenCategory() {
   // Шапка закреплена: при листании длинного списка итог и порядок остаются на виду
   const head = `
     <div class="stuck-head">
-      <div class="total compact">
-        <span class="total-sum">${money(data.totals.sum)}</span>
-        <span class="total-note">${esc(name ?? '')}</span>
-        ${periodNav(true)}
-        ${data.rows.length ? sortChips() : ''}
-      </div>
+      ${listHead({ sum: money(data.totals.sum), note: esc(name ?? ''), sorts: data.rows.length > 0 })}
     </div>`;
 
   if (!data.rows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
@@ -471,23 +481,25 @@ async function screenBank() {
   const head = `
     <div class="stuck-head">
       ${expenseSwitch()}
-      <div class="total compact">
-        <span class="total-sum">${money(data.totals.sum)}</span>
-        <span class="total-note">${int.format(data.totals.count)} ${plural(data.totals.count, 'операция', 'операции', 'операций')} по картам</span>
-        ${periodNav(true)}
-        ${data.rows.length ? sortChips() : ''}
-      </div>
+      ${listHead({
+        sum: money(data.totals.sum),
+        note: `${int.format(data.totals.count)} ${plural(data.totals.count, 'операция', 'операции', 'операций')} по картам`,
+        sorts: data.rows.length > 0,
+      })}
     </div>`;
 
   if (!data.rows.length) {
     return `${head}<div class="empty">Операций за период нет</div>`;
   }
 
+  const byDate = state.sort === 'date';
   let day = '';
   const rows = data.rows
     .map((op) => {
       const opDay = op.at.slice(0, 10);
-      const header = opDay === day ? '' : `<div class="day">${dateRu(opDay)}</div>`;
+      const header = !byDate || opDay === day
+        ? ''
+        : dayHead(opDay, daySum(data.rows, opDay, (x) => x.at, (x) => x.amount));
       day = opDay;
       const note = [
         timeRu(op.at),
@@ -736,10 +748,27 @@ const jobRow = (job) => `
 
 let lastDay = ''; // последний выведенный день: следующая страница не повторит его заголовок
 
+/**
+ * Заголовок дня с подытогом. Группировка по дням имеет смысл только при сортировке по дате:
+ * в списке по сумме или по названию соседние строки из разных дней, и делить их нечем.
+ */
+const dayHead = (day, sum) => `
+  <div class="day">
+    <span>${esc(dayTitle(day))}</span>
+    <b>${money(sum)}</b>
+  </div>`;
+
+/** Сколько потрачено в этот день среди показанных строк. */
+const daySum = (rows, day, at, amount) =>
+  rows.filter((r) => at(r).slice(0, 10) === day).reduce((sum, r) => sum + amount(r), 0);
+
 function receiptRows(rows) {
+  const byDate = state.sort === 'date';
   return rows
     .map((r) => {
-      const heading = r.purchased_date !== lastDay ? `<div class="day">${esc(dayTitle(r.purchased_date))}</div>` : '';
+      const heading = byDate && r.purchased_date !== lastDay
+        ? dayHead(r.purchased_date, daySum(rows, r.purchased_date, (x) => x.purchased_date, (x) => (x.counted ? x.total_sum : 0)))
+        : '';
       lastDay = r.purchased_date;
       const marks = [
         timeRu(r.purchased_at),
@@ -809,16 +838,13 @@ async function screenReceipts() {
   const head = `
     <div class="stuck-head">
       ${expenseSwitch()}
-      <div class="total compact">
-        <span class="total-sum">${money(data.totals.sum)}</span>
-        <span class="total-note">${int.format(data.totals.count)} ${plural(data.totals.count, 'чек', 'чека', 'чеков')}${
-          data.totals.excluded_count ? ` · ${int.format(data.totals.excluded_count)} вне суммы` : ''
-        }</span>
-        ${periodNav(true)}
-        ${sortChips()}
-      </div>
-    </div>
-    ${chips}`;
+      ${listHead({
+        sum: money(data.totals.sum),
+        note: `${int.format(data.totals.count)} ${plural(data.totals.count, 'чек', 'чека', 'чеков')}${
+          data.totals.excluded_count ? ` · ${int.format(data.totals.excluded_count)} вне суммы` : ''}`,
+        filters: chips,
+      })}
+    </div>`;
 
   if (!data.rows.length && !stuck.length) {
     return `${head}<div class="empty">${f === 'manual' ? 'Ручных записей за период нет' : 'Чеков за период нет'}</div>`;
