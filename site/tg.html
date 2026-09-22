@@ -24,6 +24,14 @@
     .ic.bad { color: #b42318; }
     h1 { margin: 0 0 6px; font-size: 19px; }
     p { margin: 0; color: #6b7280; }
+
+    /* Что дальше: три строки о том, ради чего всё затевалось */
+    .can { margin: 16px 0 0; padding: 0; list-style: none; text-align: left; }
+    .can li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid #f0f1f3; font-size: 14px; }
+    .can li:first-child { border-top: none; }
+    .can b { display: block; font-weight: 600; }
+    .can span { color: #6b7280; }
+    .can[hidden] { display: none; }
     a.btn {
       display: block;
       margin-top: 18px;
@@ -48,6 +56,11 @@
     </svg>
     <h1 id="title">Подтверждаем вход…</h1>
     <p id="note">Секунду</p>
+    <ul class="can" id="can" hidden>
+      <li><b>Сканируйте чеки</b></li>
+      <li><b>Смотрите, куда уходят деньги</b><span>По категориям, магазинам и товарам</span></li>
+      <li><b>Ведите бюджет вместе</b><span>Пригласите семью — траты будут общими</span></li>
+    </ul>
     <a class="btn" id="go" href="/m/" hidden>Открыть Чекер</a>
   </main>
 
@@ -60,14 +73,21 @@
       bad: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
     };
 
-    function show(kind, title, note, href = null) {
+    function show(kind, title, note, href = null, { welcome = false, button = 'Открыть Чекер' } = {}) {
       $('ic').innerHTML = ICONS[kind] ?? ICONS.ok;
       $('ic').setAttribute('class', `ic ${kind}`);
       $('title').textContent = title;
       $('note').textContent = note;
+      $('can').hidden = !welcome;
       $('go').hidden = !href;
+      $('go').textContent = button;
       if (href) $('go').href = href;
     }
+
+    /** Вход состоялся: здороваемся и показываем, что теперь можно. */
+    const welcome = (client) =>
+      show('ok', 'Вы вошли!', 'Чекер запомнит ваши траты и покажет, на что уходят деньги.',
+        appOf(client), { welcome: true, button: 'Начать' });
 
     const appOf = (client) => (client === 'cabinet' ? '/cabinet/' : '/m/');
     const code = new URLSearchParams(location.search).get('c');
@@ -87,20 +107,21 @@
       if (!data.ok) {
         show(data.done ? 'ok' : 'bad', data.done ? 'Уже готово' : 'Не получилось', data.reply, appOf(data.client));
       } else if (data.link) {
-        show('ok', 'Telegram привязан', 'Теперь в Чекер можно входить через Telegram.', appOf(data.client));
+        show('ok', 'Telegram привязан', 'Теперь в Чекер можно входить через Telegram.', appOf(data.client), { button: 'Готово' });
       } else if (data.same && pending) {
         show('ok', 'Входим…', 'Вход подтверждён');
         waitLogin(pending.nonce, {
+          // Токен у нас — дальше человек начинает пользоваться отсюда
           onDone: (login) => {
             localStorage.setItem('checker.token', login.token);
-            location.replace(appOf(data.client));
+            welcome(data.client);
           },
           // Токен успела забрать вкладка, где начат вход, — она уже внутри
-          onFail: () => show('ok', 'Вход выполнен', 'Вернитесь во вкладку Чекера.', appOf(data.client)),
+          onFail: () => welcome(data.client),
         });
       } else {
         forgetLogin();
-        show('ok', 'Вход подтверждён', 'Вернитесь в приложение или вкладку, где начинали вход, — вы уже внутри.', null);
+        welcome(data.client);
       }
     } catch (err) {
       show('bad', 'Не получилось', err.message, '/m/');
