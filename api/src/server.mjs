@@ -25,7 +25,9 @@ import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
-import { banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps } from './banks.mjs';
+import {
+  banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank,
+} from './banks.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -383,6 +385,12 @@ async function handleApi(req, res, url) {
         per: Math.min(500, Number(p.get('per')) || 200),
         page: Math.max(1, Number(p.get('page')) || 1),
       }));
+    }
+
+    // Удалить загруженное из банка: операции уходят вместе с подключением
+    if (pathname === '/api/bank/ops' && req.method === 'DELETE') {
+      const bank = String(url.searchParams.get('bank') ?? 'tbank');
+      return sendJson(res, 200, forgetBank(db, user.id, bank));
     }
 
     if (pathname === '/api/bank/ops' && req.method === 'POST') {

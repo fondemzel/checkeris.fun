@@ -712,8 +712,36 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Банки — только в приложении: в браузере страница до банка не дотянется.
    Строка банка устроена как строка участника бюджета: значок, название, действие */
-.bank-row { align-items: center; gap: 10px; }
-.bank-logo { flex: none; width: 28px; height: 28px; border-radius: 6px; }
+.bank-row { width: 100%; align-items: center; gap: 10px; border: none; border-top: 1px solid #f0f1f3; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.bank-row:active { background: #eef2f9; }
+
+/* Логотип: пока файла нет — кружок с буквой банка */
+.bank-logo {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #eef1f5;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.bank-logo::before { content: attr(data-letter); }
+.bank-logo img { position: absolute; inset: 0; width: 28px; height: 28px; border-radius: 6px; }
+.bank-logo.off img { filter: grayscale(1); opacity: 0.75; } /* не подключён — значок приглушён */
+
+/* Страница банка */
+.bank-head { display: flex; align-items: center; gap: 12px; }
+.bank-head .bank-logo { width: 40px; height: 40px; border-radius: 8px; font-size: 18px; }
+.bank-head .bank-logo img { width: 40px; height: 40px; border-radius: 8px; }
+.bank-facts { margin: 0; padding-left: 18px; font-size: 14px; }
+.bank-facts li { margin: 6px 0; }
+.bank-facts b { font-weight: 600; }
 .bank-row .member-name { display: flex; flex-direction: column; }
 .bank-row .member-name small { font-size: 12px; }
 .bank .member-invite { color: var(--muted); }

@@ -288,3 +288,20 @@ export function listBankOps(db, budgetId, { from, to, direction = 'debit', per =
 
   return { rows, totals, page, per };
 }
+
+/** Забыть банк совсем: операции и само подключение. Чеки и ручные траты не трогаем. */
+export function forgetBank(db, userId, bank) {
+  const link = db.prepare('SELECT id FROM bank_links WHERE user_id = ? AND bank = ?').get(userId, bank);
+  if (!link) return { ops: 0 };
+  const ops = db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE link_id = ?').get(link.id).c;
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM bank_ops WHERE link_id = ?').run(link.id);
+    db.prepare('DELETE FROM bank_links WHERE id = ?').run(link.id);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return { ops };
+}

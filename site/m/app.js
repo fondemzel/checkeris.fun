@@ -176,12 +176,14 @@ const state = {
   category: '',
   item: '',
   filter: 'all', // список чеков: all | failed | pending | manual
+  bank: '', // банк, чья страница открыта
   added: '', // чек, только что добавленный сканом или руками
   sort: 'date', // списки: date | name | sum
   dir: 'desc',
 };
 
-const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income', 'settings', 'stats', 'bank'];
+const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
+  'settings', 'stats', 'bank', 'bank_card'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -249,6 +251,7 @@ function go(patch, replace = false) {
   if (state.group) params.set('group', state.group);
   if (state.category) params.set('category', state.category);
   if (state.item) params.set('item', state.item);
+  if (state.bank) params.set('bank', state.bank);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   if (['category', 'receipts', 'bank'].includes(state.screen) && (state.sort !== 'date' || state.dir !== 'desc')) {
@@ -273,6 +276,7 @@ function readUrl() {
   state.group = p.get('group') ?? '';
   state.category = p.get('category') ?? '';
   state.item = p.get('item') ?? '';
+  state.bank = p.get('bank') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
   state.sort = Object.hasOwn(SORTS, p.get('sort') ?? '') ? p.get('sort') : 'date';
@@ -1575,6 +1579,7 @@ const SCREENS = {
     render: () => soon(UI.stats, 'Статистика', 'Здесь будут графики: как меняются траты по месяцам и категориям.'),
   },
   settings: { title: 'Настройки', render: screenSettings },
+  bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
 };
 
 /** Раздела ещё нет, а вкладка уже на месте: навигация не будет меняться потом. */
@@ -1588,7 +1593,7 @@ const soon = (icon, title, text) => `
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
 const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
-  income: 'income', settings: 'settings', stats: 'stats',
+  income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings',
 };
 
 /**
@@ -1673,6 +1678,34 @@ function onScreenClick(e) {
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
   // Категория в карточке товара
+  const bankOpen = e.target.closest('[data-bank-open]');
+  if (bankOpen) return go({ screen: 'bank_card', bank: bankOpen.dataset.bankOpen });
+
+  const bank = e.target.closest('[data-bank]');
+  if (bank) {
+    const id = bank.dataset.bankId ?? 'tbank';
+    if (bank.dataset.bank === 'login') return window.Checker.bankLogin(); // окно банка открывает приложение
+    if (bank.dataset.bank === 'sync') {
+      bank.disabled = true;
+      bank.classList.add('spin');
+      return window.Checker.bankSync(token.get());
+    }
+    if (bank.dataset.bank === 'forget') {
+      if (!confirm('Отключить банк? Загруженные операции останутся, новые приходить не будут.')) return;
+      window.Checker.bankForget();
+      await api(`/api/bank?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+      return render();
+    }
+    if (bank.dataset.bank === 'wipe') {
+      if (!confirm('Удалить загруженные операции этого банка? Чеки и ручные траты останутся.')) return;
+      window.Checker.bankForget();
+      const res = await api(`/api/bank/ops?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
+      toast(res ? `Операции удалены: ${int.format(res.ops ?? 0)}` : 'Не удалилось');
+      bankLinked = false;
+      return go({ screen: 'settings' });
+    }
+  }
+
   const itemReceipt = e.target.closest('[data-item-receipt]');
   if (itemReceipt) return openReceiptSheet(Number(itemReceipt.dataset.itemReceipt), { current: state.item });
 
@@ -1939,8 +1972,24 @@ const appInfo = () => {
  * Банк в настройках. Вход в интернет-банк человек проходит сам, в окне банка внутри
  * приложения; сессия остаётся на телефоне, в Чекер приезжают только операции.
  */
-// Банки, которые умеет приложение. Логотипы официальные, файлами — как у мессенджеров
-const BANKS = [{ id: 'tbank', name: 'Т-Банк', logo: '/shared/brand/tbank.png' }];
+/**
+ * Банки. Т-Банк уже работает, остальные — на будущее: строка есть, подключение появится.
+ * Логотип лежит файлом в /shared/brand; нет файла — рисуем букву банка.
+ */
+const BANKS = [
+  { id: 'tbank', name: 'Т-Банк', logo: '/shared/brand/tbank.png', ready: true },
+  { id: 'vtb', name: 'ВТБ', logo: '/shared/brand/vtb.svg' },
+  { id: 'alfa', name: 'Альфа-Банк', logo: '/shared/brand/alfa.svg' },
+  { id: 'sber', name: 'Сбербанк', logo: '/shared/brand/sber.svg' },
+];
+
+const bankById = (id) => BANKS.find((b) => b.id === id);
+
+/** Значок банка: официальный логотип, а если файла нет — буква названия. */
+const bankLogo = (b, connected) => `
+  <span class="bank-logo${connected ? '' : ' off'}" data-letter="${esc(b.name[0])}">
+    <img src="${b.logo}" alt="" onerror="this.remove()" />
+  </span>`;
 
 /**
  * Банки в настройках: по строке на банк, как участники бюджета. Слева логотип, внутри
@@ -1956,23 +2005,67 @@ function bankSection(bank) {
     const ops = link?.ops ?? 0;
     const note = connected
       ? `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`
-      : 'не подключён';
+      : b.ready ? 'не подключён' : 'скоро';
     return `
-      <div class="member bank-row">
-        <img class="bank-logo" src="${b.logo}" alt="" />
+      <button class="member bank-row" type="button" data-bank-open="${b.id}">
+        ${bankLogo(b, connected)}
         <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
-        <button class="row-icon" type="button" data-bank="${connected ? 'sync' : 'login'}" data-bank-id="${b.id}"
-          aria-label="${connected ? 'Обновить операции' : 'Подключить'}" title="${connected ? 'Обновить операции' : 'Подключить'}">${
-            connected ? UI.refresh : UI.plus
-          }</button>
-      </div>`;
+        <span class="row-icon" aria-hidden="true">${UI.plus}</span>
+      </button>`;
   }).join('');
 
   return `
     <div class="card bank">
       <div class="card-label">Банки</div>
       ${rows}
-      ${connectedId ? '<button class="member member-invite" type="button" data-bank="forget"><span class="member-name">Отключить банк</span></button>' : ''}
+    </div>`;
+}
+
+/**
+ * Страница банка: что происходит с данными, и все действия по нему. Вход в интернет-банк
+ * проходит на телефоне, поэтому здесь же и объяснение — человек видит его до того,
+ * как вводить что-то в окне банка.
+ */
+async function screenBankCard() {
+  const b = bankById(state.bank) ?? BANKS[0];
+  const data = inApp() ? await api('/api/bank').catch(() => null) : null;
+  const link = data?.links?.find((l) => l.bank === b.id);
+  const connected = inApp() && appInfo().bank === b.id;
+  const ops = link?.ops ?? 0;
+
+  return `
+    <div class="card bank-card">
+      <div class="bank-head">
+        ${bankLogo(b, connected)}
+        <div>
+          <div class="budget-name">${b.name}</div>
+          <p class="note">${
+            connected
+              ? `Подключён · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}${link?.synced_at ? ` · обновлено ${ago(link.synced_at)}` : ''}`
+              : b.ready ? 'Не подключён' : 'Подключение появится позже'
+          }</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Что с данными</div>
+      <ul class="bank-facts">
+        <li><b>Вход в банк — на вашем телефоне.</b> Приложение открывает окно банка, вы вводите телефон, код из СМС и пароль сами.</li>
+        <li><b>Пароль не сохраняется нигде.</b> Сессия банка остаётся на телефоне в зашифрованном виде: ключ не покидает устройство.</li>
+        <li><b>На сервер приходят только операции:</b> дата, сумма, продавец, категория банка и последние четыре цифры карты.</li>
+        <li><b>Никому не передаём.</b> Операции видны только вам и участникам вашего бюджета.</li>
+      </ul>
+      <p class="note"><a href="/privacy.html">Какие данные хранит Чекер</a></p>
+    </div>
+
+    <div class="settings-actions">
+      ${b.ready
+        ? `<button class="btn primary big" type="button" data-bank="login" data-bank-id="${b.id}">${connected ? 'Войти в банк заново' : 'Подключить'}</button>`
+        : '<button class="btn big" type="button" disabled>Подключение появится позже</button>'}
+      ${connected ? `<button class="btn" type="button" data-bank="sync" data-bank-id="${b.id}">Обновить операции</button>` : ''}
+      ${connected ? `<button class="btn" type="button" data-bank="forget" data-bank-id="${b.id}">Отключить банк</button>` : ''}
+      ${ops ? `<button class="btn danger" type="button" data-bank="wipe" data-bank-id="${b.id}">Удалить загруженные операции</button>` : ''}
     </div>`;
 }
 
@@ -2012,23 +2105,6 @@ async function onSettingsClick(e) {
         toast(`Не вышло: ${err.message}`);
       }
       return;
-    }
-
-    const bank = e.target.closest('[data-bank]');
-    if (bank) {
-      const action = bank.dataset.bank;
-      if (action === 'login') return window.Checker.bankLogin(); // окно банка открывает приложение
-      if (action === 'sync') {
-        bank.disabled = true;
-        bank.classList.add('spin');
-        return window.Checker.bankSync(token.get());
-      }
-      if (action === 'forget') {
-        if (!confirm('Отключить Т-Банк? Загруженные операции останутся, новые приходить не будут.')) return;
-        window.Checker.bankForget();
-        await api('/api/bank?bank=tbank', { method: 'DELETE' }).catch(() => {});
-        return render();
-      }
     }
 
     if (e.target.closest('[data-logout]')) {
@@ -2125,14 +2201,14 @@ if (inApp() && token.get()) window.Checker.saveToken?.(token.get());
 
 // Вернулись в приложение (например, из окна банка) — состояние могло измениться
 window.addEventListener('checker-resume', () => {
-  if (state.screen === 'settings') render();
+  if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
 // Итог выгрузки приходит от приложения событием: показываем и обновляем экран
 window.addEventListener('checker-bank', (e) => {
   const r = e.detail ?? {};
   toast(r.ok ? `Операции обновлены: ${int.format(r.ops ?? 0)}` : `Банк: ${r.error ?? 'не вышло'}`);
-  if (state.screen === 'settings') render();
+  if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
 // ── запуск ───────────────────────────────────────────────
