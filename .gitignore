@@ -21,3 +21,6 @@ docs/fns/token/
 
 # локальные настройки Claude Code
 .claude/
+
+# Сборка приложения для Android
+build/
