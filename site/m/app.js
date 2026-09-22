@@ -840,7 +840,7 @@ async function openScanSheet(jobId) {
             <div class="sheet-sum-total">${money(job.total_sum, true)}</div>
             <div class="note">Покупка ${dateRu(job.purchased_at)} в ${esc(timeRu(job.purchased_at))}</div>
           </div>
-          <button class="btn" data-close type="button">Закрыть</button>
+          <button class="icon-btn primary" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.ok}</button>
         </div>
         <div class="card sheet-card">
           <p class="scan-explain">${esc(explain())}</p>
@@ -854,6 +854,7 @@ async function openScanSheet(jobId) {
         ${job.status === 'failed' ? `
           <div class="sheet-actions">
             <button class="btn primary" type="button" data-retry${busy ? ' disabled' : ''}>Спросить ФНС сейчас</button>
+            <button class="btn" type="button" data-manual>Добавить вручную</button>
             <button class="btn danger" type="button" data-delete${busy ? ' disabled' : ''}>Удалить скан</button>
           </div>` : ''}
       </div>`;
@@ -861,6 +862,20 @@ async function openScanSheet(jobId) {
 
   sheet.addEventListener('click', async (e) => {
     if (e.target === sheet || e.target.closest('[data-close]')) return close();
+
+    // ФНС чек так и не отдала — покупки из него можно записать руками:
+    // дата, время и сумма чека уже известны из QR
+    if (e.target.closest('[data-manual]')) {
+      manualPrefill = {
+        sum: rublesInput(job.total_sum),
+        date: job.purchased_at.slice(0, 10),
+        time: job.purchased_at.slice(11, 16) || '12:00',
+        total: job.total_sum,
+        left: job.total_sum,
+      };
+      sheet.remove();
+      return go({ screen: 'manual' });
+    }
 
     if (e.target.closest('[data-delete]')) {
       if (!confirm('Удалить скан? Чек можно будет отсканировать заново.')) return;
@@ -1140,6 +1155,16 @@ async function submitScan(current, qr) {
 
 let manualCategory = ''; // переживает перерисовку: несколько трат подряд обычно из одной категории
 
+// Заготовка из скана, который ФНС не отдала: { sum, date, time, total, left }. Живёт, пока
+// открыт экран ручной траты, — «+» в следующий раз откроет чистую форму. После записи
+// остаток переезжает в manualCarry: «Вбить ещё» продолжит тот же чек
+let manualPrefill = null;
+let manualCarry = null;
+
+/** Копейки → строка для поля суммы: «3300» или «479,94». */
+const rublesInput = (kopecks) =>
+  kopecks % 100 ? (kopecks / 100).toFixed(2).replace('.', ',') : String(kopecks / 100);
+
 function categoryButton(slug) {
   const found = findCategory(slug);
   if (!found) {
@@ -1153,11 +1178,17 @@ function categoryButton(slug) {
 
 function screenManual() {
   const today = isoDay(new Date());
+  const pre = manualPrefill;
   return `
+    ${pre ? `<p class="note list-hint">Чек от ${dateRu(pre.date)} на ${money(pre.total, true)}: ФНС его не отдала. ${
+      pre.left < pre.total
+        ? `Осталось записать ${money(pre.left, true)}.`
+        : 'Запишите покупки из него — одной суммой или по одной.'
+    }</p>` : ''}
     <form class="card form" id="manual-form" novalidate>
       <label class="field">
         <span>Сумма, ₽</span>
-        <input id="m-sum" class="sum-input" inputmode="decimal" autocomplete="off" placeholder="0" required />
+        <input id="m-sum" class="sum-input" inputmode="decimal" autocomplete="off" placeholder="0" required value="${pre ? esc(pre.sum) : ''}" />
       </label>
       <label class="field">
         <span>Что купили</span>
@@ -1165,7 +1196,7 @@ function screenManual() {
       </label>
       <label class="field">
         <span>Дата</span>
-        <input id="m-date" type="date" value="${today}" max="${today}" required />
+        <input id="m-date" type="date" value="${pre?.date ?? today}" max="${today}" required />
       </label>
       <div class="field">
         <span>Категория</span>
@@ -1197,13 +1228,18 @@ async function saveManual() {
 
   // Сегодняшней трате — текущее время, прошлой — полдень: точного времени никто не помнит
   const now = new Date();
-  const time = date === isoDay(now) ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : '12:00';
+  const time = manualPrefill?.date === date
+    ? manualPrefill.time // время покупки из чека
+    : date === isoDay(now) ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : '12:00';
 
   $('m-save').disabled = true;
   note.classList.remove('error');
   note.textContent = 'Записываем…';
   try {
     const saved = await post('/api/manual', { sum, date, time, name: $('m-name').value, category: manualCategory });
+    // Записали часть битого чека — остаток ждёт «Вбить ещё»
+    const left = manualPrefill ? manualPrefill.left - Math.round(Number(sum.replace(/\s/g, '').replace(',', '.')) * 100) : 0;
+    manualCarry = left > 0 ? { ...manualPrefill, left, sum: rublesInput(left) } : null;
     go({ screen: 'added', added: String(saved.id) });
   } catch (err) {
     note.classList.add('error');
@@ -1507,6 +1543,8 @@ async function render() {
   closeScanner(); // уходим с экрана (в том числе кнопкой «назад») — камера гаснет
   const screen = SCREENS[state.screen] ?? SCREENS.summary;
   const top = TOP.includes(state.screen);
+  if (state.screen !== 'manual') manualPrefill = null; // заготовка из скана — только для этого захода
+  if (state.screen !== 'added') manualCarry = null;
 
   $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
   $('back').hidden = top;
@@ -1576,7 +1614,12 @@ function onScreenClick(e) {
   if (e.target.closest('[data-scanner]')) return openScanner();
 
   // «Сканировать ещё» — сразу камера; после ручной траты — снова форма
-  if (e.target.closest('[data-again]')) return addedManual ? go({ screen: 'manual' }) : openScanner();
+  if (e.target.closest('[data-again]')) {
+    if (!addedManual) return openScanner();
+    manualPrefill = manualCarry; // продолжаем битый чек, если он не дописан
+    manualCarry = null;
+    return go({ screen: 'manual' });
+  }
 
   // «Вернуться» ведёт к расходам, а не на шаг назад: позади форма или камера
   if (e.target.closest('[data-back-home]')) return go({ screen: 'summary', added: '' });
