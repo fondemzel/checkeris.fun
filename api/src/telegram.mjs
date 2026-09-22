@@ -136,7 +136,8 @@ export function noteBotMessage(db, { nonce, chat_id, message_id }) {
 /** Сообщение бота с кнопками больше не нужно: пусть бот его удалит. */
 function dropBotMessage(db, row) {
   if (!row?.bot_chat || !row?.bot_msg) return;
-  db.prepare('INSERT INTO tg_outbox (chat_id, text, delete_msg, created_at) VALUES (?, NULL, ?, ?)')
+  // Текст пустой, а не NULL: в базах, заведённых раньше, у столбца стоит NOT NULL
+  db.prepare("INSERT INTO tg_outbox (chat_id, text, delete_msg, created_at) VALUES (?, '', ?, ?)")
     .run(row.bot_chat, row.bot_msg, new Date().toISOString());
 }
 

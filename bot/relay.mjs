@@ -96,9 +96,6 @@ async function onMessage(msg) {
   const nonce = /^\/start(?:@\w+)?\s+(\S+)/.exec(msg.text ?? '')?.[1];
   if (!nonce || !NONCE.test(nonce)) return tg('sendMessage', { chat_id, text: HELP, disable_web_page_preview: true });
 
-  // Команда с кодом — мусор в переписке: убираем сразу
-  tg('deleteMessage', { chat_id, message_id: msg.message_id }).catch(() => {});
-
   let info;
   try {
     info = await checker('/api/telegram/prepare', {

@@ -515,7 +515,7 @@ CREATE INDEX IF NOT EXISTS idx_bank_ops_budget_at ON bank_ops (budget_id, at);
 CREATE TABLE IF NOT EXISTS tg_outbox (
   id         INTEGER PRIMARY KEY,
   chat_id    INTEGER NOT NULL,
-  text       TEXT,                     -- что отправить; NULL — вместо отправки удалить сообщение
+  text       TEXT NOT NULL,            -- что отправить; пусто — вместо отправки удалить сообщение
   delete_msg INTEGER,                  -- номер сообщения, которое надо убрать
   created_at TEXT NOT NULL,
   sent_at    TEXT
