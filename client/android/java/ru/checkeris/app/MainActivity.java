@@ -138,6 +138,13 @@ public class MainActivity extends android.app.Activity {
         pendingCamera = null;
     }
 
+    /** Вернулись из окна банка — страница должна перечитать состояние. */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (web != null) web.evaluateJavascript("window.dispatchEvent(new Event('checker-resume'))", null);
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);

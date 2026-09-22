@@ -2091,6 +2091,11 @@ $('screen').addEventListener('focusout', async (e) => {
   }
 });
 
+// Вернулись в приложение (например, из окна банка) — состояние могло измениться
+window.addEventListener('checker-resume', () => {
+  if (state.screen === 'settings') render();
+});
+
 // Итог выгрузки приходит от приложения событием: показываем и обновляем экран
 window.addEventListener('checker-bank', (e) => {
   const r = e.detail ?? {};
