@@ -679,7 +679,7 @@ button, input, select { font: inherit; color: inherit; }
   color: var(--muted);
 }
 
-.day b { font-size: 13px; color: var(--text); }
+.day b { font: inherit; } /* подытог — тем же стилем, что и дата: это одна строка, а не выделение */
 
 .bank-op { cursor: default; }
 .row .scan-dot { margin: 0 3px; }
