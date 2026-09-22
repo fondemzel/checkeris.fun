@@ -1672,7 +1672,7 @@ async function render() {
 
 // ── события ──────────────────────────────────────────────
 
-function onScreenClick(e) {
+async function onScreenClick(e) {
   // Строка позиции с выбором категории — экран «Добавлено»
   const pick = e.target.closest('[data-pick]');
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
