@@ -363,10 +363,14 @@ async function screenGroup() {
   const g = findGroup(state.group);
   const max = Math.max(1, ...data.rows.map((r) => r.sum));
 
+  // Шапка как в «Расходе»: итог и период закреплены, период меняется прямо здесь
   const head = `
-    <div class="total">
-      <span class="total-sum">${money(data.totals.sum)}</span>
-      <span class="total-note">${esc(periodTitle(state.from, state.to))} · ${esc(g?.name ?? '')}</span>
+    <div class="stuck-head">
+      <div class="total compact">
+        <span class="total-sum">${money(data.totals.sum)}</span>
+        <span class="total-note">${esc(g?.name ?? '')}</span>
+        ${periodNav(true)}
+      </div>
     </div>`;
 
   if (!data.rows.length) return `${head}<div class="empty">В этой группе трат нет</div>`;
@@ -415,7 +419,8 @@ async function screenCategory() {
     <div class="stuck-head">
       <div class="total compact">
         <span class="total-sum">${money(data.totals.sum)}</span>
-        <span class="total-note">${esc(periodTitle(state.from, state.to))} · ${esc(name ?? '')}</span>
+        <span class="total-note">${esc(name ?? '')}</span>
+        ${periodNav(true)}
         ${data.rows.length ? `<div class="sorts">${sorts}</div>` : ''}
       </div>
     </div>`;
