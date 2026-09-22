@@ -96,6 +96,10 @@ export async function openBrowser({ headless = true } = {}) {
   });
   await send('Page.enable');
   await send('Network.enable');
+  // Вкладка создана в фоне, а фоновой вкладке Chrome не отдаёт ввод с клавиатуры:
+  // выводим её вперёд и включаем фокус, как у окна, на которое смотрят
+  await send('Page.bringToFront');
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
 
   /** Выполнить выражение на странице и вернуть значение. */
   const evaluate = async (expression) => {

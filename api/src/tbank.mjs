@@ -88,6 +88,8 @@ async function typeInto(page, automationId, value) {
     await sleep(70 + Math.floor(Math.random() * 60));
   }
   await sleep(300);
+  // Дошёл ли ввод: длина, не само значение — в журнал пароль и телефон не пишем
+  const filled = await page.evaluate(`document.querySelector('[automation-id="${automationId}"]')?.value.length ?? -1`);
   // Отправка — кнопкой формы, как человек; кнопки нет (код из СМС уходит сам) — Enter
   const clicked = await page.evaluate(`(() => {
     const b = document.querySelector('[automation-id="button-submit"]');
@@ -100,6 +102,7 @@ async function typeInto(page, automationId, value) {
       await page.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     }
   }
+  return filled;
 }
 
 async function sessionCookie(page) {
@@ -154,13 +157,16 @@ export async function login({ ask, log = () => {}, headless = true, timeoutMs = 
       const has = (id) => Object.hasOwn(state.ids, id);
       if (has('phone-input') && !done.has('phone')) {
         done.add('phone');
-        await typeInto(page, 'phone-input', phoneDigits(await ask('phone', 'Телефон, привязанный к Т-Банку')));
+        const n = await typeInto(page, 'phone-input', phoneDigits(await ask('phone', 'Телефон, привязанный к Т-Банку')));
+        log(`в поле phone символов: ${n}`);
       } else if (has('otp-input')) {
-        await typeInto(page, 'otp-input', await ask('code', 'Код из СМС от Т-Банка'));
+        const n = await typeInto(page, 'otp-input', await ask('code', 'Код из СМС от Т-Банка'));
+        log(`в поле code символов: ${n}`);
         await sleep(4000); // дать странице принять код, иначе спросим его второй раз
       } else if (has('password-input') && !done.has('password')) {
         done.add('password');
-        await typeInto(page, 'password-input', await ask('password', 'Пароль от Т-Банка'));
+        const n = await typeInto(page, 'password-input', await ask('password', 'Пароль от Т-Банка'));
+        log(`в поле password символов: ${n}`);
       } else if (has('cancel-button')) {
         // «Придумать код для входа» и подобные предложения — пропускаем
         await page.evaluate(`document.querySelector('[automation-id="cancel-button"]').click()`);
