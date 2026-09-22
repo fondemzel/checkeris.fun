@@ -52,6 +52,9 @@ function addUserColumns(db) {
   addColumn(db, 'tg_logins', 'client', 'TEXT');
   addColumn(db, 'tg_logins', 'confirm_hash', 'TEXT');
   addColumn(db, 'tg_logins', 'tg_identity', 'TEXT');
+  addColumn(db, 'tg_logins', 'bot_chat', 'INTEGER');
+  addColumn(db, 'tg_logins', 'bot_msg', 'INTEGER');
+  addColumn(db, 'tg_outbox', 'delete_msg', 'INTEGER');
   addColumn(db, 'receipts', 'place_key', 'TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');
   // Первый пользователь — владелец проекта: без квот и с правом на системный справочник

@@ -68,7 +68,9 @@ export function notify(db, userId, text) {
 
 /** Для бота: неотправленные сообщения. Отдаём один раз — повторить уведомление не страшно пропустить. */
 export function takeOutbox(db) {
-  const rows = db.prepare('SELECT id, chat_id, text FROM tg_outbox WHERE sent_at IS NULL ORDER BY id LIMIT 20').all();
+  const rows = db
+    .prepare('SELECT id, chat_id, text, delete_msg FROM tg_outbox WHERE sent_at IS NULL ORDER BY id LIMIT 20')
+    .all();
   const mark = db.prepare('UPDATE tg_outbox SET sent_at = ? WHERE id = ?');
   for (const r of rows) mark.run(now(), r.id);
   return rows;
@@ -261,7 +263,11 @@ export function unlink(db, userId, bank) {
  * Операции банка за период. Пока это отдельный список: в суммы расходов они не входят,
  * иначе покупка картой считалась бы дважды — чеком и операцией. Сопоставление впереди.
  */
-export function listBankOps(db, budgetId, { from, to, direction = 'debit', per = 200, page = 1 }) {
+const BANK_SORTS = { date: 'at', name: 'COALESCE(merchant, description)', sum: 'amount' };
+
+export function listBankOps(db, budgetId, { from, to, direction = 'debit', per = 200, page = 1, sort = 'date', dir = 'desc' }) {
+  const column = BANK_SORTS[sort] ?? BANK_SORTS.date;
+  const order = dir === 'asc' ? 'ASC' : 'DESC';
   const args = { budgetId, from: `${from}T00:00:00`, to: `${to}T23:59:59` };
   const where = `WHERE budget_id = :budgetId AND at BETWEEN :from AND :to
                  ${direction === 'all' ? '' : 'AND direction = :direction'}`;
@@ -272,7 +278,7 @@ export function listBankOps(db, budgetId, { from, to, direction = 'debit', per =
       `SELECT id, ext_id, at, direction, amount, currency, account_name, status, op_group, mcc,
               description, merchant, bank_category, card, has_receipt
          FROM bank_ops ${where}
-        ORDER BY at DESC LIMIT :limit OFFSET :offset`,
+        ORDER BY ${column} ${order} LIMIT :limit OFFSET :offset`,
     )
     .all({ ...args, limit: per, offset: (page - 1) * per });
 

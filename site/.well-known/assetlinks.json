@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ru.checkeris.app",
+      "sha256_cert_fingerprints": [
+        "1D:FD:00:B8:4E:87:27:C3:6D:30:D9:32:86:F1:69:9A:30:C3:32:A2:5A:88:AC:81:27:B8:5C:BA:C4:8E:A5:2A"
+      ]
+    }
+  }
+]

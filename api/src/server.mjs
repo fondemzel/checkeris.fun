@@ -36,6 +36,7 @@ import {
   confirmLogin,
   confirmLink,
   verifyRelay,
+  noteBotMessage,
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
 import {
@@ -287,7 +288,8 @@ async function handleApi(req, res, url) {
   }
 
   // Бот с зарубежного сервера. Открыто наружу, но без верной подписи не принимается
-  if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm', '/api/telegram/outbox'].includes(pathname)) {
+  if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm', '/api/telegram/outbox',
+       '/api/telegram/sent'].includes(pathname)) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     let raw;
     let body;
@@ -302,6 +304,7 @@ async function handleApi(req, res, url) {
     }
     // Сообщения, которые Чекер хочет отправить людям: бот забирает их и отправляет сам
     if (pathname.endsWith('/outbox')) return sendJson(res, 200, { messages: takeOutbox(db) });
+    if (pathname.endsWith('/sent')) return sendJson(res, 200, noteBotMessage(db, body));
     return sendJson(
       res,
       200,
@@ -375,6 +378,8 @@ async function handleApi(req, res, url) {
         from: p.get('from'),
         to: p.get('to'),
         direction: p.get('direction') ?? 'debit',
+        sort: p.get('sort') ?? 'date',
+        dir: p.get('dir') ?? 'desc',
         per: Math.min(500, Number(p.get('per')) || 200),
         page: Math.max(1, Number(p.get('page')) || 1),
       }));

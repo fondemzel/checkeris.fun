@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS tg_logins (
   client       TEXT,                   -- m | cabinet: куда вернуть после подтверждения
   confirm_hash TEXT,                   -- код из ссылки «Войти» в сообщении бота (хеш)
   tg_identity  TEXT,                   -- кому бот показал запрос: id и имя из Telegram, JSON
+  bot_chat     INTEGER,                -- чат и сообщение бота с кнопками: после входа бот их удаляет,
+  bot_msg      INTEGER,                -- чтобы в переписке не копился мусор
   created_at   TEXT NOT NULL,
   expires_at   TEXT NOT NULL,
   confirmed_at TEXT
@@ -513,7 +515,8 @@ CREATE INDEX IF NOT EXISTS idx_bank_ops_budget_at ON bank_ops (budget_id, at);
 CREATE TABLE IF NOT EXISTS tg_outbox (
   id         INTEGER PRIMARY KEY,
   chat_id    INTEGER NOT NULL,
-  text       TEXT NOT NULL,
+  text       TEXT,                     -- что отправить; NULL — вместо отправки удалить сообщение
+  delete_msg INTEGER,                  -- номер сообщения, которое надо убрать
   created_at TEXT NOT NULL,
   sent_at    TEXT
 );

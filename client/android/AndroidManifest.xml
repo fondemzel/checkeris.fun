@@ -43,12 +43,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Ссылки-приглашения открываются прямо в приложении -->
+            <!-- Ссылки Чекера открываются в приложении, а не в браузере: приглашения
+                 в бюджет и подтверждение входа из бота -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="checkeris.fun" android:pathPrefix="/m" />
+                <data android:scheme="https" android:host="checkeris.fun" android:pathPrefix="/tg.html" />
             </intent-filter>
         </activity>
         <!-- Окно входа в интернет-банк: обычный браузер, данные вводит человек -->

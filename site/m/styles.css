@@ -673,11 +673,16 @@ button, input, select { font: inherit; color: inherit; }
 
 .member-invite:active { background: #eef2f9; }
 
-/* Банк — только в приложении: в браузере страница до банка не дотянется */
-.bank .budget-name { margin-bottom: 2px; }
-.bank-status { margin: 0 0 10px; }
-.bank .btn { width: 100%; }
-.bank .member-invite { margin-top: 4px; color: var(--muted); }
+/* Банки — только в приложении: в браузере страница до банка не дотянется.
+   Строка банка устроена как строка участника бюджета: значок, название, действие */
+.bank-row { align-items: center; gap: 10px; }
+.bank-logo { flex: none; width: 28px; height: 28px; border-radius: 6px; }
+.bank-row .member-name { display: flex; flex-direction: column; }
+.bank-row .member-name small { font-size: 12px; }
+.bank .member-invite { color: var(--muted); }
+.row-icon.spin svg { animation: spin 1s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
 .budget-hint { margin: 8px 0; }
 .budget .btn { width: 100%; margin-top: 6px; }
 

@@ -96,6 +96,9 @@ async function onMessage(msg) {
   const nonce = /^\/start(?:@\w+)?\s+(\S+)/.exec(msg.text ?? '')?.[1];
   if (!nonce || !NONCE.test(nonce)) return tg('sendMessage', { chat_id, text: HELP, disable_web_page_preview: true });
 
+  // Команда с кодом — мусор в переписке: убираем сразу
+  tg('deleteMessage', { chat_id, message_id: msg.message_id }).catch(() => {});
+
   let info;
   try {
     info = await checker('/api/telegram/prepare', {
@@ -112,17 +115,21 @@ async function onMessage(msg) {
     ? `Привязать этот Telegram к аккаунту Чекера?\n\nЗапрос с устройства: ${info.device}, ${when(info.created_at)}.`
     : `Войти в Чекер?\n\nЗапрос с устройства: ${info.device}, ${when(info.created_at)}.\n` +
       'Если вход начинали не вы — нажмите «Это не я».';
-  return tg('sendMessage', {
+  const sent = await tg('sendMessage', {
     chat_id,
     text,
     reply_markup: {
       inline_keyboard: [[
-        // Ссылка, а не кнопка-ответ: сразу открывает Чекер в браузере
+        // Ссылка, а не кнопка-ответ: открывает Чекер — в приложении, если оно стоит
         { text: info.link ? 'Привязать' : 'Войти', url: `${CHECKER}/tg.html?c=${info.code}` },
         { text: 'Это не я', callback_data: `no:${nonce}` },
       ]],
     },
   });
+
+  // Чекер запоминает это сообщение: после входа он попросит его удалить,
+  // чтобы кнопки не оставались в переписке
+  checker('/api/telegram/sent', { nonce, chat_id, message_id: sent.message_id }).catch(() => {});
 }
 
 /** Нажатие кнопки. Подтверждает тот, кто нажал, и только в своём личном чате с ботом. */
@@ -151,11 +158,10 @@ async function onCallback(cb) {
     }
   }
 
-  await tg('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
+  // Ответ показываем всплывающим окном, а сообщение с кнопками убираем: оно отработало
+  await tg('answerCallbackQuery', { callback_query_id: cb.id, text: reply, show_alert: true }).catch(() => {});
   if (!cb.message) return;
-  // Кнопки убираем: второй раз подтвердить тот же запрос нельзя
-  await tg('editMessageText', { chat_id: chat.id, message_id: cb.message.message_id, text: reply })
-    .catch(() => tg('sendMessage', { chat_id: chat.id, text: reply }));
+  await tg('deleteMessage', { chat_id: chat.id, message_id: cb.message.message_id }).catch(() => {});
 }
 
 async function setup() {
@@ -178,8 +184,10 @@ async function pumpOutbox() {
     return console.error('outbox:', err.message);
   }
   for (const m of messages) {
-    await tg('sendMessage', { chat_id: m.chat_id, text: m.text, disable_web_page_preview: true })
-      .catch((err) => console.error('outbox, отправка:', err.message));
+    const call = m.delete_msg
+      ? tg('deleteMessage', { chat_id: m.chat_id, message_id: m.delete_msg })
+      : tg('sendMessage', { chat_id: m.chat_id, text: m.text, disable_web_page_preview: true });
+    await call.catch((err) => console.error('outbox:', err.message));
   }
 }
 

@@ -59,6 +59,8 @@ const UI = {
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
   mail: svg('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>'),
+  refresh: svg('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'),
+  plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   income: svg('<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>'),
@@ -175,20 +177,31 @@ const state = {
   item: '',
   filter: 'all', // список чеков: all | failed | pending | manual
   added: '', // чек, только что добавленный сканом или руками
-  sort: 'sum', // список товаров: date | name | sum
+  sort: 'date', // списки: date | name | sum
   dir: 'desc',
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income', 'settings', 'stats', 'bank'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
-// Сортировки списка товаров и направление, с которого каждая начинается:
-// свежие и дорогие — сверху, названия — по алфавиту
-const ITEM_SORTS = {
+// Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
+// операции банка. Направление, с которого начинается каждая: свежие и дорогие сверху,
+// названия по алфавиту. Каждый экран сам переводит ключ в параметры своего запроса
+const SORTS = {
   date: ['По дате', 'desc', 'calendar'],
   name: ['По названию', 'asc', 'letters'],
-  sum: ['По цене', 'desc', 'ruble'],
+  sum: ['По сумме', 'desc', 'ruble'],
 };
+
+/** Ряд значков сортировки. Повторное нажатие на выбранный разворачивает порядок. */
+const sortChips = () => `
+  <div class="sorts">${Object.entries(SORTS)
+    .map(([key, [label, , icon]]) => {
+      const on = state.sort === key;
+      const arrow = on ? `<span class="sort-dir">${state.dir === 'asc' ? '↑' : '↓'}</span>` : '';
+      return `<button class="sort-chip${on ? ' on' : ''}" type="button" data-sort="${key}" aria-label="${label}" title="${label}">${UI[icon]}${arrow}</button>`;
+    })
+    .join('')}</div>`;
 const TOP = ['summary', 'receipts', 'income', 'settings', 'stats']; // корневые экраны: у них нет «назад», зато есть «+»
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;
@@ -220,7 +233,7 @@ function go(patch, replace = false) {
   if (state.item) params.set('item', state.item);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
-  if (state.screen === 'category' && (state.sort !== 'sum' || state.dir !== 'desc')) {
+  if (['category', 'receipts', 'bank'].includes(state.screen) && (state.sort !== 'date' || state.dir !== 'desc')) {
     params.set('sort', state.sort);
     params.set('dir', state.dir);
   }
@@ -244,7 +257,7 @@ function readUrl() {
   state.item = p.get('item') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
-  state.sort = Object.hasOwn(ITEM_SORTS, p.get('sort') ?? '') ? p.get('sort') : 'sum';
+  state.sort = Object.hasOwn(SORTS, p.get('sort') ?? '') ? p.get('sort') : 'date';
   state.dir = p.get('dir') === 'asc' ? 'asc' : 'desc';
 }
 
@@ -410,16 +423,6 @@ async function screenCategory() {
     ? findGroup(state.group)?.subcategories.find((s) => s.slug === state.category)?.name
     : findGroup(state.group)?.name;
 
-  // Сортировка — значками: подписи не помещаются в закреплённую шапку. Повторное нажатие
-  // на выбранную разворачивает порядок, стрелка показывает какой
-  const sorts = Object.entries(ITEM_SORTS)
-    .map(([key, [label, , icon]]) => {
-      const on = state.sort === key;
-      const arrow = on ? `<span class="sort-dir">${state.dir === 'asc' ? '↑' : '↓'}</span>` : '';
-      return `<button class="sort-chip${on ? ' on' : ''}" type="button" data-sort="${key}" aria-label="${label}" title="${label}">${UI[icon]}${arrow}</button>`;
-    })
-    .join('');
-
   // Шапка закреплена: при листании длинного списка итог и порядок остаются на виду
   const head = `
     <div class="stuck-head">
@@ -427,7 +430,7 @@ async function screenCategory() {
         <span class="total-sum">${money(data.totals.sum)}</span>
         <span class="total-note">${esc(name ?? '')}</span>
         ${periodNav(true)}
-        ${data.rows.length ? `<div class="sorts">${sorts}</div>` : ''}
+        ${data.rows.length ? sortChips() : ''}
       </div>
     </div>`;
 
@@ -460,7 +463,9 @@ async function screenCategory() {
  * следующий шаг; до него суммы расходов считаются по чекам, как раньше.
  */
 async function screenBank() {
-  const q = new URLSearchParams({ from: state.from, to: state.to, direction: 'debit', per: '300' });
+  const q = new URLSearchParams({
+    from: state.from, to: state.to, direction: 'debit', per: '300', sort: state.sort, dir: state.dir,
+  });
   const data = await api(`/api/bank/ops?${q}`);
 
   const head = `
@@ -470,6 +475,7 @@ async function screenBank() {
         <span class="total-sum">${money(data.totals.sum)}</span>
         <span class="total-note">${int.format(data.totals.count)} ${plural(data.totals.count, 'операция', 'операции', 'операций')} по картам</span>
         ${periodNav(true)}
+        ${data.rows.length ? sortChips() : ''}
       </div>
     </div>`;
 
@@ -809,6 +815,7 @@ async function screenReceipts() {
           data.totals.excluded_count ? ` · ${int.format(data.totals.excluded_count)} вне суммы` : ''
         }</span>
         ${periodNav(true)}
+        ${sortChips()}
       </div>
     </div>
     ${chips}`;
@@ -828,7 +835,9 @@ async function screenReceipts() {
 }
 
 function receiptsQuery(page) {
-  const q = new URLSearchParams({ from: state.from, to: state.to, sort: 'date', dir: 'desc', per: RECEIPTS_PER, page });
+  // У чека «название» — это продавец
+  const sort = { date: 'date', name: 'seller', sum: 'sum' }[state.sort] ?? 'date';
+  const q = new URLSearchParams({ from: state.from, to: state.to, sort, dir: state.dir, per: RECEIPTS_PER, page });
   if (state.filter === 'manual') q.set('kind', 'manual');
   return q;
 }
@@ -1656,7 +1665,7 @@ function onScreenClick(e) {
   const sort = e.target.closest('[data-sort]');
   if (sort) {
     const key = sort.dataset.sort;
-    const dir = key === state.sort ? (state.dir === 'asc' ? 'desc' : 'asc') : ITEM_SORTS[key][1];
+    const dir = key === state.sort ? (state.dir === 'asc' ? 'desc' : 'asc') : SORTS[key][1];
     return go({ sort: key, dir }, true);
   }
 
@@ -1901,25 +1910,40 @@ const appInfo = () => {
  * Банк в настройках. Вход в интернет-банк человек проходит сам, в окне банка внутри
  * приложения; сессия остаётся на телефоне, в Чекер приезжают только операции.
  */
+// Банки, которые умеет приложение. Логотипы официальные, файлами — как у мессенджеров
+const BANKS = [{ id: 'tbank', name: 'Т-Банк', logo: '/shared/brand/tbank.png' }];
+
+/**
+ * Банки в настройках: по строке на банк, как участники бюджета. Слева логотип, внутри
+ * название и когда обновлялись операции, справа кнопка обновления. Вход в интернет-банк
+ * человек проходит сам, в окне банка внутри приложения; сессия остаётся на телефоне.
+ */
 function bankSection(bank) {
   if (!inApp()) return '';
-  const link = bank?.links?.find((l) => l.bank === 'tbank');
-  const connected = appInfo().bank === 'tbank';
-  const ops = link?.ops ?? 0;
-  const status = !connected
-    ? 'Не подключён. Вход в банк проходит на этом телефоне'
-    : `Подключён · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}${
-        link?.synced_at ? ` · обновлено ${ago(link.synced_at)}` : ''
-      }`;
+  const connectedId = appInfo().bank;
+  const rows = BANKS.map((b) => {
+    const link = bank?.links?.find((l) => l.bank === b.id);
+    const connected = connectedId === b.id;
+    const ops = link?.ops ?? 0;
+    const note = connected
+      ? `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`
+      : 'не подключён';
+    return `
+      <div class="member bank-row">
+        <img class="bank-logo" src="${b.logo}" alt="" />
+        <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
+        <button class="row-icon" type="button" data-bank="${connected ? 'sync' : 'login'}" data-bank-id="${b.id}"
+          aria-label="${connected ? 'Обновить операции' : 'Подключить'}" title="${connected ? 'Обновить операции' : 'Подключить'}">${
+            connected ? UI.refresh : UI.plus
+          }</button>
+      </div>`;
+  }).join('');
+
   return `
     <div class="card bank">
-      <div class="card-label">Банк</div>
-      <div class="budget-name">Т-Банк</div>
-      <p class="note bank-status">${esc(status)}</p>
-      <button class="btn${connected ? '' : ' primary'}" type="button" data-bank="${connected ? 'sync' : 'login'}">${
-        connected ? 'Обновить операции' : 'Подключить Т-Банк'
-      }</button>
-      ${connected ? '<button class="member member-invite" type="button" data-bank="forget"><span class="member-name">Отключить банк</span></button>' : ''}
+      <div class="card-label">Банки</div>
+      ${rows}
+      ${connectedId ? '<button class="member member-invite" type="button" data-bank="forget"><span class="member-name">Отключить банк</span></button>' : ''}
     </div>`;
 }
 
@@ -1967,7 +1991,7 @@ async function onSettingsClick(e) {
       if (action === 'login') return window.Checker.bankLogin(); // окно банка открывает приложение
       if (action === 'sync') {
         bank.disabled = true;
-        bank.textContent = 'Обновляем…';
+        bank.classList.add('spin');
         return window.Checker.bankSync(token.get());
       }
       if (action === 'forget') {

@@ -121,6 +121,25 @@ export function prepareLogin(db, { nonce, telegram }) {
  * Подтверждение со страницы, открытой ссылкой «Войти». nonce — код входа, если эта
  * страница открылась в том же браузере, где вход начат: тогда она сама заберёт токен.
  */
+/**
+ * Бот сообщает, каким сообщением он показал запрос. После подтверждения входа Чекер
+ * попросит это сообщение удалить: кнопки уже нажаты, а переписка должна остаться чистой.
+ */
+export function noteBotMessage(db, { nonce, chat_id, message_id }) {
+  const row = find(db, nonce);
+  if (!row) return { ok: false };
+  db.prepare('UPDATE tg_logins SET bot_chat = ?, bot_msg = ? WHERE nonce_hash = ?')
+    .run(Number(chat_id) || null, Number(message_id) || null, row.nonce_hash);
+  return { ok: true };
+}
+
+/** Сообщение бота с кнопками больше не нужно: пусть бот его удалит. */
+function dropBotMessage(db, row) {
+  if (!row?.bot_chat || !row?.bot_msg) return;
+  db.prepare('INSERT INTO tg_outbox (chat_id, text, delete_msg, created_at) VALUES (?, NULL, ?, ?)')
+    .run(row.bot_chat, row.bot_msg, new Date().toISOString());
+}
+
 export function confirmLink(db, { code, nonce }) {
   const row = db.prepare('SELECT * FROM tg_logins WHERE confirm_hash = ?').get(sha(code ?? ''));
   if (!row?.tg_identity) return { ok: false, reply: EXPIRED };
@@ -130,6 +149,7 @@ export function confirmLink(db, { code, nonce }) {
   if (!alive(row)) return { ok: false, reply: EXPIRED };
 
   const result = settle(db, row, JSON.parse(row.tg_identity), true);
+  dropBotMessage(db, row);
   return {
     ...result,
     same: Boolean(nonce) && sha(nonce) === row.nonce_hash,

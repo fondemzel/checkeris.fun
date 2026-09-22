@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
@@ -39,6 +40,10 @@ public class MainActivity extends android.app.Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        // Строка состояния — в цвет шапки сайта, чтобы приложение выглядело цельным
+        getWindow().setStatusBarColor(Color.parseColor("#131a26"));
+        getWindow().setNavigationBarColor(Color.parseColor("#131a26"));
+
         web = new WebView(this);
         setContentView(web);
 
