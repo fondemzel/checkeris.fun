@@ -256,3 +256,29 @@ export function unlink(db, userId, bank) {
     .run(userId, bank);
   return { ok: true };
 }
+
+/**
+ * Операции банка за период. Пока это отдельный список: в суммы расходов они не входят,
+ * иначе покупка картой считалась бы дважды — чеком и операцией. Сопоставление впереди.
+ */
+export function listBankOps(db, budgetId, { from, to, direction = 'debit', per = 200, page = 1 }) {
+  const args = { budgetId, from: `${from}T00:00:00`, to: `${to}T23:59:59` };
+  const where = `WHERE budget_id = :budgetId AND at BETWEEN :from AND :to
+                 ${direction === 'all' ? '' : 'AND direction = :direction'}`;
+  if (direction !== 'all') args.direction = direction;
+
+  const rows = db
+    .prepare(
+      `SELECT id, ext_id, at, direction, amount, currency, account_name, status, op_group, mcc,
+              description, merchant, bank_category, card, has_receipt
+         FROM bank_ops ${where}
+        ORDER BY at DESC LIMIT :limit OFFSET :offset`,
+    )
+    .all({ ...args, limit: per, offset: (page - 1) * per });
+
+  const totals = db
+    .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS sum FROM bank_ops ${where}`)
+    .get(args);
+
+  return { rows, totals, page, per };
+}

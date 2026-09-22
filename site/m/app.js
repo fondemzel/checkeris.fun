@@ -179,7 +179,7 @@ const state = {
   dir: 'desc',
 };
 
-const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income', 'settings', 'stats'];
+const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income', 'settings', 'stats', 'bank'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списка товаров и направление, с которого каждая начинается:
@@ -285,7 +285,11 @@ const expenseSwitch = () => `
     <button class="segment${state.screen === 'receipts' ? ' on' : ''}" type="button" data-segment="receipts">Чеки${
       failedCount ? `<i class="seg-badge">${failedCount > 99 ? '99+' : failedCount}</i>` : ''
     }</button>
+    ${bankLinked ? `<button class="segment${state.screen === 'bank' ? ' on' : ''}" type="button" data-segment="bank">Банк</button>` : ''}
   </div>`;
+
+// Есть ли подключённый банк: без него третья вкладка не нужна
+let bankLinked = false;
 
 let failedCount = 0; // сканы с ошибкой: значок на вкладке «Расход» и на «Чеках»
 
@@ -448,6 +452,57 @@ async function screenCategory() {
     .join('');
 
   return `${head}<div class="list">${rows}</div>`;
+}
+
+/**
+ * Операции из банка. Пока отдельный список, а не часть расходов: покупка картой — это и чек
+ * из ФНС, и операция в банке, и считать её дважды нельзя. Сопоставление чеков с операциями —
+ * следующий шаг; до него суммы расходов считаются по чекам, как раньше.
+ */
+async function screenBank() {
+  const q = new URLSearchParams({ from: state.from, to: state.to, direction: 'debit', per: '300' });
+  const data = await api(`/api/bank/ops?${q}`);
+
+  const head = `
+    <div class="stuck-head">
+      ${expenseSwitch()}
+      <div class="total compact">
+        <span class="total-sum">${money(data.totals.sum)}</span>
+        <span class="total-note">${int.format(data.totals.count)} ${plural(data.totals.count, 'операция', 'операции', 'операций')} по картам</span>
+        ${periodNav(true)}
+      </div>
+    </div>`;
+
+  if (!data.rows.length) {
+    return `${head}<div class="empty">Операций за период нет</div>`;
+  }
+
+  let day = '';
+  const rows = data.rows
+    .map((op) => {
+      const opDay = op.at.slice(0, 10);
+      const header = opDay === day ? '' : `<div class="day">${dateRu(opDay)}</div>`;
+      day = opDay;
+      const note = [
+        timeRu(op.at),
+        op.bank_category,
+        op.card ? `карта ·${op.card}` : '',
+        op.status === 'WAIT' ? 'в обработке' : '',
+      ].filter(Boolean).join(' · ');
+      return `${header}
+        <div class="row bank-op">
+          <span class="row-main">
+            <span class="row-title">${esc(op.merchant ?? op.description ?? 'Без названия')}</span>
+            <span class="row-note">${esc(note)}</span>
+          </span>
+          <span class="row-sum">${money(op.amount)}</span>
+        </div>`;
+    })
+    .join('');
+
+  return `${head}
+    <p class="note list-hint">Операции по картам Т-Банка. В суммы расходов они пока не входят: по картам уже считаются чеки.</p>
+    <div class="list">${rows}</div>`;
 }
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
@@ -1492,6 +1547,7 @@ const SCREENS = {
   group: { title: () => findGroup(state.group)?.name ?? 'Группа', render: screenGroup },
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem, after: mountItemMap },
+  bank: { title: 'Операции банка', render: screenBank },
   income: {
     title: 'Доход',
     render: () => soon(UI.income, 'Доходы', 'Здесь будут зарплата, переводы и другие поступления — чтобы видеть, сколько остаётся.'),
@@ -1513,7 +1569,7 @@ const soon = (icon, title, text) => `
 
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
 const TAB_OF = {
-  summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary',
+  summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats',
 };
 
@@ -2108,6 +2164,14 @@ async function start() {
 
   // Бейдж ошибок виден с любого экрана — застрявший скан не должен теряться
   api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
+  // Есть ли банк: от этого зависит третья вкладка в «Расходе»
+  api('/api/bank')
+    .then((d) => {
+      const had = bankLinked;
+      bankLinked = (d.links ?? []).some((l) => l.ops > 0);
+      if (bankLinked !== had) render();
+    })
+    .catch(() => {});
 }
 
 $('login-form').addEventListener('submit', async (e) => {

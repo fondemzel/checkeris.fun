@@ -25,7 +25,7 @@ import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
-import { banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink } from './banks.mjs';
+import { banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps } from './banks.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -369,6 +369,17 @@ async function handleApi(req, res, url) {
     if (pathname === '/api/bank' && req.method === 'DELETE') {
       return sendJson(res, 200, unlink(db, user.id, String(url.searchParams.get('bank') ?? 'tbank')));
     }
+    if (pathname === '/api/bank/ops' && req.method === 'GET') {
+      const p = url.searchParams;
+      return sendJson(res, 200, listBankOps(db, user.budget_id, {
+        from: p.get('from'),
+        to: p.get('to'),
+        direction: p.get('direction') ?? 'debit',
+        per: Math.min(500, Number(p.get('per')) || 200),
+        page: Math.max(1, Number(p.get('page')) || 1),
+      }));
+    }
+
     if (pathname === '/api/bank/ops' && req.method === 'POST') {
       let body;
       try {
