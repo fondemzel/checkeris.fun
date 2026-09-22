@@ -555,31 +555,26 @@ button, input, select { font: inherit; color: inherit; }
 .inline-input:not([readonly]) { border-bottom-color: var(--accent); cursor: text; }
 .budget-name { margin-bottom: 6px; font-size: 16px; font-weight: 600; } /* как имя в «Входе» */
 
-/* «Добавить пользователя» — последняя строка списка участников */
-.member-add {
-  width: 100%;
+
+/* Выход — единственное действие со значком: строка входа сама по себе не нажимается */
+.login-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+
+.row-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border: none;
-  border-top: 1px solid #f0f1f3;
-  background: none;
-  color: var(--accent);
-  font-size: 15px;
-  text-align: left;
+  border-radius: 50%;
+  background: #eef1f5;
+  color: var(--muted);
   cursor: pointer;
 }
 
-/* Строка-действие: выглядит как подпись, нажимается целиком */
-.row-action {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
-  padding: 4px 0;
-  border: none;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-
-.row-action:active { color: var(--text); }
+.row-icon svg { width: 17px; height: 17px; }
+.row-icon:active { background: #e2e6ec; }
 .settings-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .settings-actions .note { margin-top: 4px; text-align: center; }
 .settings-actions .note a { color: inherit; }

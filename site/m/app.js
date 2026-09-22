@@ -1716,7 +1716,7 @@ function budgetSection(budget) {
         ? inlineEdit('budget', budget.name, { cls: 'budget-name', label: 'Название бюджета', max: 60 })
         : `<div class="budget-name">${esc(budget.name)}</div>`}
       ${members}
-      ${budget.is_owner ? '<button class="member member-add" type="button" data-invite>Добавить пользователя</button>' : ''}
+      ${budget.is_owner ? '<button class="btn" type="button" data-invite>Пригласить пользователя</button>' : ''}
       <p class="note budget-hint">${
         budget.members.length > 1
           ? 'Все участники видят и добавляют траты в этот бюджет.'
@@ -1756,9 +1756,10 @@ async function screenSettings() {
     <div class="card profile">
       <div class="card-label">Вход</div>
       ${inlineEdit('name', me?.name ?? '', { cls: 'profile-name', label: 'Имя', placeholder: 'Ваше имя', max: 60 })}
-      <button class="row-action note" type="button" data-logout>${
-        me?.telegram ? 'Вход через Телеграм' : 'Вход по паролю'
-      }. Нажмите для выхода</button>
+      <div class="login-row">
+        <span class="note">${me?.telegram ? 'Вход через Телеграм' : 'Вход по паролю'}</span>
+        <button class="row-icon" type="button" data-logout aria-label="Выйти на этом устройстве" title="Выйти на этом устройстве">${UI.logout}</button>
+      </div>
     </div>
     ${budgetSection(budget)}
     <div class="settings-actions">
@@ -1796,7 +1797,6 @@ async function onSettingsClick(e) {
     }
 
     if (e.target.closest('[data-logout]')) {
-      // Строка — большая цель, задеть её легко: переспрашиваем
       if (!confirm('Выйти на этом устройстве?')) return;
       await api('/api/logout', { method: 'POST' }).catch(() => {});
       token.clear();
