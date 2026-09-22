@@ -1755,7 +1755,8 @@ async function shareInvite(button) {
   // Логотипы мессенджеров — официальные, файлами: у Макса он градиентный и тяжёлый для кода
   const logo = (name) => `<img class="share-logo" src="/shared/brand/${name}.svg" alt="" />`;
   const targets = [
-    ['Telegram', logo('telegram'), `https://telegram.me/share/url?url=${enc(invite.url)}&text=${enc(text)}`],
+    // Сайты Telegram из России открываются не всегда — ссылка сразу в приложение, как у входа
+    ['Telegram', logo('telegram'), `tg://msg_url?url=${enc(invite.url)}&text=${enc(text)}`],
     ['WhatsApp', logo('whatsapp'), `https://wa.me/?text=${enc(both)}`],
     ['Макс', logo('max'), `https://max.ru/:share?text=${enc(both)}`],
     ['Почта', `<span class="share-ic">${UI.mail}</span>`, `mailto:?subject=${enc('Приглашение в Чекер')}&body=${enc(`${text}:\n${invite.url}`)}`],
@@ -1775,7 +1776,7 @@ async function shareInvite(button) {
       <div class="picker-list share-list">
         ${targets
           .map(([name, icon, href]) => `
-            <a class="picker-item share-item" href="${esc(href)}"${href.startsWith('mailto:') ? '' : ' target="_blank" rel="noopener"'} data-share>
+            <a class="picker-item share-item" href="${esc(href)}"${href.startsWith('https:') ? ' target="_blank" rel="noopener"' : ''} data-share>
               ${icon}<span>${name}</span>
             </a>`)
           .join('')}
