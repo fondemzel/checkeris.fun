@@ -172,7 +172,11 @@ async function setup() {
   console.log('описание и меню бота обновлены');
 }
 
-/** Сообщения от Чекера людям: забираем раз в 30 секунд и отправляем. */
+/**
+ * Сообщения от Чекера людям: забираем каждые несколько секунд и отправляем. Часто —
+ * чтобы запись о входе появлялась сразу после подтверждения: кнопка «Войти» — это ссылка,
+ * и о нажатии бот узнаёт только отсюда. Запрос короткий и идёт к нашему же серверу.
+ */
 async function pumpOutbox() {
   let messages = [];
   try {
@@ -190,7 +194,7 @@ async function pumpOutbox() {
 
 async function run() {
   const me = await tg('getMe');
-  setInterval(pumpOutbox, 30_000);
+  setInterval(pumpOutbox, 5_000);
   // Вебхук и long polling взаимоисключающи: снимаем вебхук, если его кто-то ставил
   await tg('deleteWebhook', { drop_pending_updates: false });
   console.log(`бот @${me.username} слушает; Чекер: ${CHECKER}`);
