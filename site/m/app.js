@@ -1605,6 +1605,7 @@ if ('ResizeObserver' in window) {
 
 let renderSeq = 0;
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
+const EXPENSE = ['summary', 'receipts', 'bank']; // один раздел: переключатель в шапке, общая шапка
 
 async function render() {
   const seq = ++renderSeq;
@@ -1624,11 +1625,13 @@ async function render() {
   for (const tab of document.querySelectorAll('[data-tab]')) {
     tab.classList.toggle('on', tab.dataset.tab === TAB_OF[state.screen]);
   }
-  // Пустой экран с «Загрузкой» — только когда идём на другой экран. Листание месяцев и
-  // смена сортировки перерисовывают тот же список: старое содержимое остаётся на месте,
-  // иначе экран мигает на каждое нажатие
-  const sameScreen = state.screen === shownScreen && $('screen').firstChild;
-  if (!sameScreen) {
+  // Пустой экран с «Загрузкой» — только когда уходим в другой раздел. Листание месяцев,
+  // смена сортировки и переключатель «Категории | Чеки | Банк» перерисовывают содержимое
+  // на месте: иначе экран мигает на каждое нажатие
+  const shown = Boolean($('screen').firstChild);
+  const sameScreen = shown && state.screen === shownScreen;
+  const sameKind = shown && EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen);
+  if (!sameScreen && !sameKind) {
     $('screen').innerHTML = loading();
     window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
   }
@@ -1638,9 +1641,10 @@ async function render() {
   try {
     const html = await screen.render();
     if (seq !== renderSeq) return;
+    // Тот же список — остаёмся там же, где листали; другой — смотрим с начала
     const keepScroll = sameScreen ? window.scrollY : 0;
     $('screen').innerHTML = html;
-    if (keepScroll) window.scrollTo(0, keepScroll); // остались там же, где листали
+    window.scrollTo(0, keepScroll);
     shownScreen = state.screen;
     screen.after?.();
   } catch (err) {
