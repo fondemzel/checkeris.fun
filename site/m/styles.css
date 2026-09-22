@@ -538,14 +538,10 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Настройки */
 .profile { margin-bottom: 12px; }
-.login-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
-/* Правка на месте: текст и неприметный карандаш рядом */
-.inline-row { display: flex; align-items: center; gap: 8px; }
-
+/* Правка на месте: нажатие на текст открывает поле, пунктир — идёт правка */
 .inline-input {
   display: block;
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   padding: 2px 0;
   border: none;
   border-bottom: 1px dashed transparent;
@@ -553,31 +549,26 @@ button, input, select { font: inherit; color: inherit; }
   font-size: 16px;
   font-weight: 600;
   outline: none;
-}
-
-.inline-input[readonly] { cursor: default; }
-.inline-input:not([readonly]) { border-bottom-color: var(--accent); }
-.profile-name { font-size: 18px; }
-.budget-name { margin-bottom: 6px; font-size: 16px; font-weight: 600; }
-.inline-row .budget-name { margin-bottom: 0; }
-.budget .inline-row { margin-bottom: 6px; }
-
-.inline-edit {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 50%;
-  background: #eef1f5;
-  color: var(--muted);
   cursor: pointer;
 }
 
-.inline-edit svg { width: 17px; height: 17px; }
-.inline-input:not([readonly]) + .inline-edit { background: var(--accent); color: #fff; }
+.inline-input:not([readonly]) { border-bottom-color: var(--accent); cursor: text; }
+.profile-name { font-size: 18px; }
+.budget-name { margin-bottom: 6px; font-size: 16px; font-weight: 600; }
+
+/* Строка-действие: выглядит как подпись, нажимается целиком */
+.row-action {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-action:active { color: var(--text); }
 .settings-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .settings-actions .note { margin-top: 4px; text-align: center; }
 .settings-actions .note a { color: inherit; }

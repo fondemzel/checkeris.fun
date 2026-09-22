@@ -1756,10 +1756,9 @@ async function screenSettings() {
     <div class="card profile">
       <div class="card-label">Вход</div>
       ${inlineEdit('name', me?.name ?? '', { cls: 'profile-name', label: 'Имя', placeholder: 'Ваше имя', max: 60 })}
-      <div class="login-row">
-        <span class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</span>
-        <button class="inline-edit" type="button" data-logout aria-label="Выйти на этом устройстве" title="Выйти на этом устройстве">${UI.logout}</button>
-      </div>
+      <button class="row-action note" type="button" data-logout>${
+        me?.telegram ? 'Вход через Телеграм' : 'Вход по паролю'
+      }. Нажмите для выхода</button>
     </div>
     ${budgetSection(budget)}
     <div class="settings-actions">
@@ -1797,6 +1796,8 @@ async function onSettingsClick(e) {
     }
 
     if (e.target.closest('[data-logout]')) {
+      // Строка — большая цель, задеть её легко: переспрашиваем
+      if (!confirm('Выйти на этом устройстве?')) return;
       await api('/api/logout', { method: 'POST' }).catch(() => {});
       token.clear();
       location.reload();
@@ -1820,17 +1821,14 @@ $('screen').addEventListener('click', (e) => {
 });
 
 /**
- * Правка на месте: имя в настройках, название бюджета. Текст выглядит как текст, рядом —
- * неприметный карандаш: он открывает поле и клавиатуру, а на время правки становится
- * галочкой. Сохраняется, когда человек закончил: галочка, «Готово» на клавиатуре или уход из поля.
+ * Правка на месте: имя в настройках, название бюджета. В настройках нажимается почти каждая
+ * строка, поэтому значков у действий нет: нажатие на текст открывает поле и клавиатуру.
+ * Сохраняется, когда человек закончил: «Готово» на клавиатуре или уход из поля.
  */
 function inlineEdit(field, value, { cls = '', label = '', placeholder = '', max = 60 } = {}) {
   return `
-    <div class="inline-row">
-      <input class="inline-input ${cls}" data-inline="${field}" type="text" maxlength="${max}" enterkeyhint="done"
-        readonly value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(label)}" />
-      <button class="inline-edit" type="button" data-inline-btn aria-label="Изменить: ${esc(label)}" title="Изменить">${UI.pen}</button>
-    </div>`;
+    <input class="inline-input ${cls}" data-inline="${field}" type="text" maxlength="${max}" enterkeyhint="done"
+      readonly value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(label)} — нажмите, чтобы изменить" />`;
 }
 
 // Куда сохранять каждое поле. Возвращают сохранённое значение — сервер его чистит
@@ -1856,25 +1854,12 @@ const INLINE_SAVE = {
   },
 };
 
-const inlineParts = (el) => {
-  const row = el.closest('.inline-row');
-  return row && { input: row.querySelector('[data-inline]'), button: row.querySelector('[data-inline-btn]') };
-};
-
-$('screen').addEventListener('pointerdown', (e) => {
-  // Нажатие на галочку не должно уводить фокус из поля раньше, чем сработает клик
-  const parts = e.target.closest('[data-inline-btn]') && inlineParts(e.target);
-  if (parts && !parts.input.readOnly) e.preventDefault();
-});
-
 $('screen').addEventListener('click', (e) => {
-  if (!e.target.closest('[data-inline-btn]')) return;
-  const { input, button } = inlineParts(e.target);
-  if (!input.readOnly) return input.blur(); // галочка — сохранить
+  const input = e.target.closest('[data-inline]');
+  if (!input?.readOnly) return;
   input.readOnly = false;
   input.focus(); // в обработчике нажатия, иначе iOS не покажет клавиатуру
   input.select();
-  button.innerHTML = UI.ok;
 });
 
 $('screen').addEventListener('keydown', (e) => {
@@ -1884,11 +1869,9 @@ $('screen').addEventListener('keydown', (e) => {
 $('screen').addEventListener('focusout', async (e) => {
   const input = e.target;
   if (!input.matches?.('[data-inline]') || input.readOnly) return;
-  const { button } = inlineParts(input);
   input.readOnly = true;
   input.setSelectionRange(0, 0); // снимаем выделение, оставшееся от начала правки
   window.getSelection()?.removeAllRanges();
-  button.innerHTML = UI.pen;
   const value = input.value.replace(/\s+/g, ' ').trim();
   if (!value || value === input.defaultValue) {
     input.value = input.defaultValue; // пустое не сохраняем — возвращаем прежнее
