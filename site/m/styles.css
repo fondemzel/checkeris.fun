@@ -712,8 +712,25 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Банки — только в приложении: в браузере страница до банка не дотянется.
    Строка банка устроена как строка участника бюджета: значок, название, действие */
-.bank-row { width: 100%; align-items: center; gap: 10px; border: none; border-top: 1px solid #f0f1f3; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-.bank-row:active { background: #eef2f9; }
+.bank-row { align-items: center; gap: 8px; border-top: 1px solid #f0f1f3; }
+
+/* Строка банка: слева — переход на его страницу, справа — обновление или подключение */
+.bank-open {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bank-open:active { background: #eef2f9; }
 
 /* Логотип: пока файла нет — кружок с буквой банка */
 .bank-logo {

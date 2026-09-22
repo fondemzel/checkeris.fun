@@ -2009,12 +2009,18 @@ function bankSection(bank) {
       : connected
         ? `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`
         : b.ready ? 'не подключён' : 'скоро';
+    // Подключённый банк обновляют прямо отсюда, остальные открывают страницу банка
+    const action = connected && !expired
+      ? `<button class="row-icon" type="button" data-bank="sync" data-bank-id="${b.id}" aria-label="Обновить операции" title="Обновить операции">${UI.refresh}</button>`
+      : `<button class="row-icon" type="button" data-bank-open="${b.id}" aria-label="Подключить" title="Подключить">${UI.plus}</button>`;
     return `
-      <button class="member bank-row" type="button" data-bank-open="${b.id}">
-        ${bankLogo(b, connected && !expired)}
-        <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
-        <span class="row-icon" aria-hidden="true">${UI.plus}</span>
-      </button>`;
+      <div class="member bank-row">
+        <button class="bank-open" type="button" data-bank-open="${b.id}">
+          ${bankLogo(b, connected && !expired)}
+          <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
+        </button>
+        ${action}
+      </div>`;
   }).join('');
 
   return `
