@@ -1024,6 +1024,7 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .share-item { width: 100%; color: var(--text); font-size: 15px; text-decoration: none; }
 .share-ic { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #eef1f5; color: var(--muted); }
 .share-ic svg { width: 18px; height: 18px; }
+.share-logo { display: block; flex: none; width: 36px; height: 36px; }
 .share-more { align-self: center; margin-top: 12px; color: var(--muted); font-size: 14px; }
 .picker-item:active { background: #eef2f9; }
 .picker-item .dot { width: 14px; height: 14px; margin: 0; }
