@@ -1710,8 +1710,11 @@ async function screenSettings() {
   ]);
   return `
     <div class="card profile">
-      <input class="profile-name" id="profile-name" type="text" maxlength="60" enterkeyhint="done"
-        autocomplete="name" value="${esc(me?.name ?? '')}" placeholder="Ваше имя" aria-label="Имя" />
+      <div class="profile-row">
+        <input class="profile-name" id="profile-name" type="text" maxlength="60" enterkeyhint="done" readonly
+          autocomplete="name" value="${esc(me?.name ?? '')}" placeholder="Ваше имя" aria-label="Имя" />
+        <button class="profile-edit" id="profile-edit" type="button" aria-label="Изменить имя" title="Изменить имя">${UI.pen}</button>
+      </div>
       <div class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</div>
     </div>
     ${budgetSection(budget)}
@@ -1786,9 +1789,25 @@ $('screen').addEventListener('click', (e) => {
 });
 
 /**
- * Имя в настройках — поле ввода, похожее на текст: нажатие сразу открывает клавиатуру.
- * Сохраняется, когда человек закончил: «Готово» на клавиатуре или уход из поля.
+ * Имя в настройках меняется кнопкой-карандашом: она открывает поле и клавиатуру,
+ * а на время правки становится галочкой. Сохраняется, когда человек закончил:
+ * галочка, «Готово» на клавиатуре или уход из поля.
  */
+$('screen').addEventListener('pointerdown', (e) => {
+  // Нажатие на галочку не должно уводить фокус из поля раньше, чем сработает клик
+  if (e.target.closest('#profile-edit') && !$('profile-name').readOnly) e.preventDefault();
+});
+
+$('screen').addEventListener('click', (e) => {
+  if (!e.target.closest('#profile-edit')) return;
+  const input = $('profile-name');
+  if (!input.readOnly) return input.blur(); // галочка — сохранить
+  input.readOnly = false;
+  input.focus(); // в обработчике нажатия, иначе iOS не покажет клавиатуру
+  input.select();
+  e.target.closest('#profile-edit').innerHTML = UI.ok;
+});
+
 $('screen').addEventListener('keydown', (e) => {
   if (e.target.id === 'profile-name' && e.key === 'Enter') e.target.blur();
 });
@@ -1796,6 +1815,8 @@ $('screen').addEventListener('keydown', (e) => {
 $('screen').addEventListener('focusout', async (e) => {
   const input = e.target;
   if (input.id !== 'profile-name') return;
+  input.readOnly = true;
+  $('profile-edit').innerHTML = UI.pen;
   const name = input.value.replace(/\s+/g, ' ').trim();
   if (!name || name === input.defaultValue) {
     input.value = input.defaultValue; // пустое имя не сохраняем — возвращаем прежнее

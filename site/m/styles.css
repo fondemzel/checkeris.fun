@@ -538,9 +538,12 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Настройки */
 .profile { margin-bottom: 12px; }
+.profile-row { display: flex; align-items: center; gap: 8px; }
+
 .profile-name {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 2px 0;
   border: none;
   border-bottom: 1px dashed transparent;
@@ -550,7 +553,25 @@ button, input, select { font: inherit; color: inherit; }
   outline: none;
 }
 
-.profile-name:focus { border-bottom-color: var(--accent); }
+.profile-name[readonly] { cursor: default; }
+.profile-name:not([readonly]) { border-bottom-color: var(--accent); }
+
+.profile-edit {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #eef1f5;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.profile-edit svg { width: 17px; height: 17px; }
+.profile-name:not([readonly]) + .profile-edit { background: var(--accent); color: #fff; }
 .settings-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .settings-actions .note { margin-top: 4px; text-align: center; }
 .settings-actions .note a { color: inherit; }
