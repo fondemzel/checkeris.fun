@@ -1754,12 +1754,15 @@ async function screenSettings() {
   ]);
   return `
     <div class="card profile">
+      <div class="card-label">Вход</div>
       ${inlineEdit('name', me?.name ?? '', { cls: 'profile-name', label: 'Имя', placeholder: 'Ваше имя', max: 60 })}
-      <div class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</div>
+      <div class="login-row">
+        <span class="note">${me?.telegram ? 'вход через Telegram' : 'вход по паролю'}</span>
+        <button class="inline-edit" type="button" data-logout aria-label="Выйти на этом устройстве" title="Выйти на этом устройстве">${UI.logout}</button>
+      </div>
     </div>
     ${budgetSection(budget)}
     <div class="settings-actions">
-      <button class="btn with-ic" type="button" data-logout>${UI.logout}<span>Выйти на этом устройстве</span></button>
       ${me?.role === 'admin' ? '' : '<button class="btn danger" type="button" data-delete-account>Удалить аккаунт и все данные</button>'}
       <p class="note"><a href="/privacy.html">Какие данные хранит Чекер</a></p>
     </div>`;
