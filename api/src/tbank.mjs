@@ -12,6 +12,12 @@ const API = `${BASE}/api/common/v1`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** В поле телефона «+7» уже стоит: вводим 10 цифр, откуда бы ни пришёл номер. */
+export function phoneDigits(phone) {
+  const digits = String(phone ?? '').replace(/\D/g, '');
+  return digits.length === 11 && /^[78]/.test(digits) ? digits.slice(1) : digits;
+}
+
 /** Запрос к веб-API банка. Ответ банка — { resultCode, payload, errorMessage }. */
 export async function call(sessionId, method, params = {}) {
   const q = new URLSearchParams({ origin: 'web,ib5,platform', ...params });
@@ -54,7 +60,8 @@ const PROBE = `(() => {
     if (shown(el)) ids[el.getAttribute('automation-id')] = el.tagName.toLowerCase();
   }
   const text = (document.querySelector('h1, h2, [automation-id="title"]')?.innerText ?? '').slice(0, 120);
-  return { url: location.href, ids, text };
+  const error = (document.querySelector('[automation-id="server-error"]')?.innerText ?? '').trim().slice(0, 300);
+  return { url: location.href, ids, text, error };
 })()`;
 
 async function typeInto(page, automationId, value) {
@@ -122,10 +129,16 @@ export async function login({ ask, log = () => {}, headless = true, timeoutMs = 
         log(`страница: ${state.url} · ${state.text || '—'} · ${Object.keys(state.ids).join(', ') || 'нет полей'}`);
       }
 
+      // Банк ответил ошибкой — ждать нечего: показываем её текст и снимок экрана
+      if (state.error) {
+        const shot = await page.send('Page.captureScreenshot', { format: 'png' }).catch(() => null);
+        throw Object.assign(new Error(`Т-Банк ответил: ${state.error}`), { screenshot: shot?.data ?? null, state });
+      }
+
       const has = (id) => Object.hasOwn(state.ids, id);
       if (has('phone-input') && !done.has('phone')) {
         done.add('phone');
-        await typeInto(page, 'phone-input', await ask('phone', 'Телефон, привязанный к Т-Банку'));
+        await typeInto(page, 'phone-input', phoneDigits(await ask('phone', 'Телефон, привязанный к Т-Банку')));
       } else if (has('otp-input')) {
         await typeInto(page, 'otp-input', await ask('code', 'Код из СМС от Т-Банка'));
         await sleep(4000); // дать странице принять код, иначе спросим его второй раз
