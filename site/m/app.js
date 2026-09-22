@@ -1476,7 +1476,6 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
       </div>
       ${unknown ? `<p class="note sheet-hint">${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — выберите значком справа</p>` : ''}
       <div class="sheet-list">${receipt.items.map((i) => sheetRow(i, { open: true })).join('')}</div>
-      ${manual ? '<div class="sheet-actions"><button class="btn danger" type="button" data-remove>Удалить запись</button></div>' : ''}
     </div>`;
 
   document.body.appendChild(sheet);
@@ -1495,18 +1494,6 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
 
   sheet.addEventListener('click', async (e) => {
     if (e.target.closest('[data-close]') || e.target === sheet) return close();
-
-    if (e.target.closest('[data-remove]')) {
-      if (!confirm('Удалить эту запись?')) return;
-      try {
-        await api(`/api/receipts/${receipt.id}`, { method: 'DELETE' });
-        toast('Запись удалена');
-        close();
-      } catch (err) {
-        toast(`Не удалилось: ${err.message}`);
-      }
-      return;
-    }
 
     // Значок справа открывает выбор категории; сохранение — уже по возврату
     const pick = e.target.closest('[data-pick]');
