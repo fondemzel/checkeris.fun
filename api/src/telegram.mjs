@@ -133,12 +133,25 @@ export function noteBotMessage(db, { nonce, chat_id, message_id }) {
   return { ok: true };
 }
 
-/** Сообщение бота с кнопками больше не нужно: пусть бот его удалит. */
-function dropBotMessage(db, row) {
-  if (!row?.bot_chat || !row?.bot_msg) return;
+// Московское время: бот пишет о входе так же, как показывает время запроса
+const moscowTime = () =>
+  new Date().toLocaleString('ru-RU', {
+    timeZone: 'Europe/Moscow', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+  });
+
+/**
+ * Вход состоялся: сообщение с кнопками бот убирает — оно отработало, — а вместо него
+ * пишет короткую запись о входе. Её не удаляем: по ней видно, когда и с какого устройства
+ * входили, и чужой вход не останется незамеченным.
+ */
+function closeBotMessage(db, row, link) {
+  if (!row?.bot_chat) return;
+  const at = new Date().toISOString();
   // Текст пустой, а не NULL: в базах, заведённых раньше, у столбца стоит NOT NULL
-  db.prepare("INSERT INTO tg_outbox (chat_id, text, delete_msg, created_at) VALUES (?, '', ?, ?)")
-    .run(row.bot_chat, row.bot_msg, new Date().toISOString());
+  const add = db.prepare('INSERT INTO tg_outbox (chat_id, text, delete_msg, created_at) VALUES (?, ?, ?, ?)');
+  if (row.bot_msg) add.run(row.bot_chat, '', row.bot_msg, at);
+  const what = link ? 'Telegram привязан к Чекеру' : 'Выполнен вход в Чекер';
+  add.run(row.bot_chat, `${what} ${moscowTime()}${row.device ? ` · ${row.device}` : ''}`, null, at);
 }
 
 export function confirmLink(db, { code, nonce }) {
@@ -150,7 +163,7 @@ export function confirmLink(db, { code, nonce }) {
   if (!alive(row)) return { ok: false, reply: EXPIRED };
 
   const result = settle(db, row, JSON.parse(row.tg_identity), true);
-  dropBotMessage(db, row);
+  closeBotMessage(db, row, Boolean(row.link_user_id));
   return {
     ...result,
     same: Boolean(nonce) && sha(nonce) === row.nonce_hash,
