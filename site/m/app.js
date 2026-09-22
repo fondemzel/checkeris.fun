@@ -1805,9 +1805,10 @@ async function shareInvite(button) {
 
 /** Настройки: кто вошёл, бюджет, выход и удаление аккаунта. */
 async function screenSettings() {
-  const [me, budget] = await Promise.all([
+  const [me, budget, bank] = await Promise.all([
     api('/api/session').catch(() => null),
     api('/api/budget').catch(() => null),
+    inApp() ? api('/api/bank').catch(() => null) : null,
   ]);
   return `
     <div class="card profile">
@@ -1819,10 +1820,61 @@ async function screenSettings() {
       </div>
     </div>
     ${budgetSection(budget)}
+    ${bankSection(bank)}
     <div class="settings-actions">
       ${me?.role === 'admin' ? '' : '<button class="btn danger" type="button" data-delete-account>Удалить аккаунт и все данные</button>'}
       <p class="note"><a href="/privacy.html">Какие данные хранит Чекер</a></p>
     </div>`;
+}
+
+/**
+ * Приложение для Android: страница живёт внутри него и через мост window.Checker умеет то,
+ * чего браузер не может, — войти в банк на устройстве и забрать оттуда операции. В обычном
+ * браузере моста нет, и раздел «Банк» не показывается.
+ */
+const inApp = () => Boolean(window.Checker);
+const appInfo = () => {
+  try {
+    return JSON.parse(window.Checker.info());
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * Банк в настройках. Вход в интернет-банк человек проходит сам, в окне банка внутри
+ * приложения; сессия остаётся на телефоне, в Чекер приезжают только операции.
+ */
+function bankSection(bank) {
+  if (!inApp()) return '';
+  const link = bank?.links?.find((l) => l.bank === 'tbank');
+  const connected = appInfo().bank === 'tbank';
+  const ops = link?.ops ?? 0;
+  const status = !connected
+    ? 'Не подключён. Вход в банк проходит на этом телефоне'
+    : `Подключён · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}${
+        link?.synced_at ? ` · обновлено ${ago(link.synced_at)}` : ''
+      }`;
+  return `
+    <div class="card bank">
+      <div class="card-label">Банк</div>
+      <div class="budget-name">Т-Банк</div>
+      <p class="note bank-status">${esc(status)}</p>
+      <button class="btn${connected ? '' : ' primary'}" type="button" data-bank="${connected ? 'sync' : 'login'}">${
+        connected ? 'Обновить операции' : 'Подключить Т-Банк'
+      }</button>
+      ${connected ? '<button class="member member-invite" type="button" data-bank="forget"><span class="member-name">Отключить банк</span></button>' : ''}
+    </div>`;
+}
+
+/** «10 мин назад», «3 ч назад», иначе дата. */
+function ago(iso) {
+  if (!iso) return '';
+  const min = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+  if (min < 1) return 'только что';
+  if (min < 60) return `${min} мин назад`;
+  if (min < 24 * 60) return `${Math.round(min / 60)} ч назад`;
+  return dateRu(iso.slice(0, 10));
 }
 
 async function onSettingsClick(e) {
@@ -1851,6 +1903,23 @@ async function onSettingsClick(e) {
         toast(`Не вышло: ${err.message}`);
       }
       return;
+    }
+
+    const bank = e.target.closest('[data-bank]');
+    if (bank) {
+      const action = bank.dataset.bank;
+      if (action === 'login') return window.Checker.bankLogin(); // окно банка открывает приложение
+      if (action === 'sync') {
+        bank.disabled = true;
+        bank.textContent = 'Обновляем…';
+        return window.Checker.bankSync(token.get());
+      }
+      if (action === 'forget') {
+        if (!confirm('Отключить Т-Банк? Загруженные операции останутся, новые приходить не будут.')) return;
+        window.Checker.bankForget();
+        await api('/api/bank?bank=tbank', { method: 'DELETE' }).catch(() => {});
+        return render();
+      }
     }
 
     if (e.target.closest('[data-logout]')) {
@@ -1940,6 +2009,13 @@ $('screen').addEventListener('focusout', async (e) => {
     input.value = input.defaultValue;
     toast(`Не сохранилось: ${err.message}`);
   }
+});
+
+// Итог выгрузки приходит от приложения событием: показываем и обновляем экран
+window.addEventListener('checker-bank', (e) => {
+  const r = e.detail ?? {};
+  toast(r.ok ? `Операции обновлены: ${int.format(r.ops ?? 0)}` : `Банк: ${r.error ?? 'не вышло'}`);
+  if (state.screen === 'settings') render();
 });
 
 // ── запуск ───────────────────────────────────────────────

@@ -51,5 +51,12 @@
                 <data android:scheme="https" android:host="checkeris.fun" android:pathPrefix="/m" />
             </intent-filter>
         </activity>
+        <!-- Окно входа в интернет-банк: обычный браузер, данные вводит человек -->
+        <activity
+            android:name=".BankLoginActivity"
+            android:exported="false"
+            android:label="Вход в Т-Банк"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

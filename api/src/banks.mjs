@@ -132,17 +132,8 @@ function opRow(link, budgetId, accountName, op) {
   };
 }
 
-/** Загрузка операций одного подключения. Повторы не плодят строк: ключ — id операции в банке. */
-export async function syncLink(db, link) {
-  const sessionId = decrypt(link.session_enc);
-  const budgetId = db.prepare('SELECT budget_id FROM users WHERE id = ?').get(link.user_id)?.budget_id;
-  if (!budgetId) return { accounts: 0, ops: 0 };
-
-  const since = link.synced_at
-    ? new Date(Date.parse(link.synced_at) - OVERLAP_DAYS * 86_400_000)
-    : new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
-
-  const upsert = db.prepare(
+function opUpsert(db) {
+  return db.prepare(
     `INSERT INTO bank_ops (link_id, budget_id, ext_id, account, account_name, at, debited_at, direction, amount,
        currency, account_amount, status, op_group, mcc, description, merchant, bank_category, card, has_receipt,
        raw, created_at, updated_at)
@@ -155,6 +146,54 @@ export async function syncLink(db, link) {
        bank_category = excluded.bank_category, has_receipt = excluded.has_receipt, raw = excluded.raw,
        updated_at = excluded.updated_at`,
   );
+}
+
+/**
+ * Операции, присланные приложением с телефона. Вход в банк и сама выгрузка происходят
+ * на устройстве человека — сюда приезжают уже готовые операции в том виде, в каком их
+ * отдал банк. Подключение для такого источника помечается status = 'device':
+ * сессии банка на сервере нет и пинговать нечего.
+ */
+export function importOps(db, userId, bank, ops) {
+  const budgetId = db.prepare('SELECT budget_id FROM users WHERE id = ?').get(userId)?.budget_id;
+  if (!budgetId) return { ops: 0 };
+  const at = now();
+  db.prepare(
+    `INSERT INTO bank_links (user_id, bank, session_enc, status, login_at, last_ok_at, synced_at)
+     VALUES (?, ?, NULL, 'device', ?, ?, ?)
+     ON CONFLICT (user_id, bank) DO UPDATE SET status = 'device', session_enc = NULL,
+       last_ok_at = excluded.last_ok_at, synced_at = excluded.synced_at, fails = 0, expired_at = NULL`,
+  ).run(userId, bank, at, at, at);
+  const link = db.prepare('SELECT id FROM bank_links WHERE user_id = ? AND bank = ?').get(userId, bank);
+
+  const upsert = opUpsert(db);
+  let count = 0;
+  db.exec('BEGIN');
+  try {
+    for (const op of ops ?? []) {
+      if (!op?.id || !op.operationTime) continue;
+      upsert.run({ ...opRow(link, budgetId, op.accountName ?? null, op), now: at });
+      count += 1;
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return { ops: count, total: db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE link_id = ?').get(link.id).c };
+}
+
+/** Загрузка операций одного подключения. Повторы не плодят строк: ключ — id операции в банке. */
+export async function syncLink(db, link) {
+  const sessionId = decrypt(link.session_enc);
+  const budgetId = db.prepare('SELECT budget_id FROM users WHERE id = ?').get(link.user_id)?.budget_id;
+  if (!budgetId) return { accounts: 0, ops: 0 };
+
+  const since = link.synced_at
+    ? new Date(Date.parse(link.synced_at) - OVERLAP_DAYS * 86_400_000)
+    : new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
+
+  const upsert = opUpsert(db);
 
   const accounts = await tbank.accounts(sessionId);
   let count = 0;
@@ -197,4 +236,23 @@ export async function syncAll(db) {
   } finally {
     syncing = false;
   }
+}
+
+/** Что показать в настройках: подключения человека, без самих сессий. */
+export function listLinks(db, userId) {
+  return db
+    .prepare(
+      `SELECT l.bank, l.status, l.login_at, l.last_ok_at, l.expired_at, l.synced_at, l.last_error,
+              (SELECT COUNT(*) FROM bank_ops o WHERE o.link_id = l.id) AS ops,
+              (SELECT MAX(at) FROM bank_ops o WHERE o.link_id = l.id) AS last_op_at
+         FROM bank_links l WHERE l.user_id = ?`,
+    )
+    .all(userId);
+}
+
+/** Отключить банк: операции остаются, связь с источником обрывается. */
+export function unlink(db, userId, bank) {
+  db.prepare("UPDATE bank_links SET session_enc = NULL, status = 'off' WHERE user_id = ? AND bank = ?")
+    .run(userId, bank);
+  return { ok: true };
 }

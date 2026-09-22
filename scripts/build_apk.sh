@@ -123,6 +123,10 @@ echo "→ ресурсы"
   --manifest "$SRC/AndroidManifest.xml" \
   --version-code "$VERSION_CODE" --version-name "$VERSION_NAME"   --java "$OUT/gen" --auto-add-overlay "$OUT/res.zip"
 
+# Версия — в код: приложение показывает её сайту через мост
+sed -i.bak "s/VERSION = \".*\"/VERSION = \"$VERSION_NAME\"/" "$SRC/java/ru/checkeris/app/BuildInfo.java"
+rm -f "$SRC/java/ru/checkeris/app/BuildInfo.java.bak"
+
 echo "→ классы"
 mkdir -p "$OUT/gen"
 find "$SRC/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"

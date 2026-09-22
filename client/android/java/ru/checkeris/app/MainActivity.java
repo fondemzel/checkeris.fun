@@ -12,8 +12,11 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+
+import org.json.JSONObject;
 
 /**
  * Весь интерфейс — сайт checkeris.fun/m во встроенном браузере: выкладка сайта обновляет
@@ -69,7 +72,56 @@ public class MainActivity extends android.app.Activity {
             }
         });
 
+        web.addJavascriptInterface(new Bridge(), "Checker");
         web.loadUrl(startUrl(getIntent()));
+    }
+
+    /**
+     * Мост для сайта: window.Checker. Через него страница настроек узнаёт, что работает
+     * внутри приложения, открывает окно входа в банк и просит забрать операции.
+     * Ответы возвращаются на страницу событием «checker-bank».
+     */
+    private class Bridge {
+
+        @JavascriptInterface
+        public String info() {
+            try {
+                return new JSONObject()
+                        .put("app", "android")
+                        .put("version", BuildInfo.VERSION)
+                        .put("bank", BankSync.connected(MainActivity.this) ? "tbank" : JSONObject.NULL)
+                        .toString();
+            } catch (Exception e) {
+                return "{}";
+            }
+        }
+
+        @JavascriptInterface
+        public void bankLogin() {
+            startActivity(new Intent(MainActivity.this, BankLoginActivity.class));
+        }
+
+        @JavascriptInterface
+        public void bankForget() {
+            BankSync.forget(MainActivity.this);
+        }
+
+        /** Долгая работа — в фоновом потоке, итог уходит на страницу событием. */
+        @JavascriptInterface
+        public void bankSync(String checkerToken) {
+            new Thread(() -> {
+                BankSync.Result result = BankSync.run(MainActivity.this, checkerToken);
+                String json;
+                try {
+                    json = result.json().toString();
+                } catch (Exception e) {
+                    json = "{\"ok\":false,\"error\":\"сбой\"}";
+                }
+                final String payload = json;
+                runOnUiThread(() -> web.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('checker-bank',{detail:" + payload + "}))", null));
+            }).start();
+        }
     }
 
     @Override

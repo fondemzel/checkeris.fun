@@ -25,7 +25,7 @@ import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
-import { banksReady, keepAlive, syncAll, takeOutbox } from './banks.mjs';
+import { banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink } from './banks.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -357,6 +357,33 @@ async function handleApi(req, res, url) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     revokeToken(db, bearer(req));
     return sendJson(res, 200, { ok: true });
+  }
+
+  // ── банк на телефоне ──
+  // Вход в интернет-банк человек делает сам, в приложении на своём устройстве; сюда
+  // приезжают уже готовые операции. Сессии банка на сервере нет.
+  if (pathname === '/api/bank' || pathname === '/api/bank/ops') {
+    if (pathname === '/api/bank' && req.method === 'GET') {
+      return sendJson(res, 200, { links: listLinks(db, user.id) });
+    }
+    if (pathname === '/api/bank' && req.method === 'DELETE') {
+      return sendJson(res, 200, unlink(db, user.id, String(url.searchParams.get('bank') ?? 'tbank')));
+    }
+    if (pathname === '/api/bank/ops' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req, 8 * 1024 * 1024); // чек-лист операций за 90 дней — это мегабайты
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const bank = /^[a-z]{2,20}$/.test(body.bank ?? '') ? body.bank : 'tbank';
+      try {
+        return sendJson(res, 200, importOps(db, user.id, bank, body.ops));
+      } catch (err) {
+        return sendJson(res, 500, { error: err.message });
+      }
+    }
+    return sendJson(res, 405, { error: 'method not allowed' });
   }
 
   // ── бюджет: состав, приглашения, выход ──

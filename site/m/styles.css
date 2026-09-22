@@ -671,6 +671,12 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .member-invite:active { background: #eef2f9; }
+
+/* Банк — только в приложении: в браузере страница до банка не дотянется */
+.bank .budget-name { margin-bottom: 2px; }
+.bank-status { margin: 0 0 10px; }
+.bank .btn { width: 100%; }
+.bank .member-invite { margin-top: 4px; color: var(--muted); }
 .budget-hint { margin: 8px 0; }
 .budget .btn { width: 100%; margin-top: 6px; }
 
