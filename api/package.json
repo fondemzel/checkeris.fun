@@ -1,6 +1,6 @@
 {
   "name": "checker-api",
-  "version": "0.31.14",
+  "version": "0.31.15",
   "private": true,
   "type": "module",
   "description": "API кабинета checkeris.fun: выгрузки ФНС в SQLite + JSON-эндпоинты",

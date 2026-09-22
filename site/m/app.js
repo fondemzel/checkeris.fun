@@ -1716,12 +1716,12 @@ function budgetSection(budget) {
         ? inlineEdit('budget', budget.name, { cls: 'budget-name', label: 'Название бюджета', max: 60 })
         : `<div class="budget-name">${esc(budget.name)}</div>`}
       ${members}
+      ${budget.is_owner ? '<button class="member member-add" type="button" data-invite>Добавить пользователя</button>' : ''}
       <p class="note budget-hint">${
         budget.members.length > 1
           ? 'Все участники видят и добавляют траты в этот бюджет.'
           : 'Пригласите семью — будете вести один бюджет на всех.'
       }</p>
-      ${budget.is_owner ? '<button class="btn" type="button" data-invite>Пригласить в бюджет</button>' : ''}
       ${!budget.is_home ? '<button class="btn" type="button" data-leave>Выйти из общего бюджета</button>' : ''}
     </div>`;
 }
