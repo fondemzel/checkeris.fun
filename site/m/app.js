@@ -487,10 +487,12 @@ async function screenSummary() {
   const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
 
   // Подпись: сколько покупок, как отсортировано и что отобрано
+  // Каждая часть помечена: после нажатия на значок изменившаяся часть подсвечивается
+  const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
   const note = [
-    `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`,
-    SORTS[state.sort]?.[0].toLowerCase(),
-    state.src ? SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase() : '',
+    part('count', `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`),
+    SORTS[state.sort] ? part('sort', SORTS[state.sort][0].toLowerCase()) : '',
+    state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase()) : '',
   ].filter(Boolean).join(' · ');
 
   const head = `
@@ -2057,6 +2059,22 @@ if ('ResizeObserver' in window) {
 }
 
 let renderSeq = 0;
+
+/**
+ * Подсветка изменившейся части подписи: круг расходится и тает. Так человек видит, что
+ * сделал значок, который он только что нажал, — без слов и подсказок.
+ */
+let pulseNext = null;
+function pulse(name) {
+  pulseNext = null;
+  const el = document.querySelector(`[data-note-part="${name}"]`);
+  if (!el) return;
+  el.classList.remove('pulse');
+  void el.offsetWidth; // перезапуск анимации, если нажали дважды подряд
+  el.classList.add('pulse');
+  // Снимаем по таймеру: событие конца анимации приходит не во всех браузерах
+  setTimeout(() => el.classList.remove('pulse'), 1100);
+}
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
 const EXPENSE = ['summary', 'receipts', 'bank']; // один раздел: переключатель в шапке, общая шапка
 const NONE = '-'; // «Без категории»: у неразмеченного нет кода, но открывать его список нужно
@@ -2101,6 +2119,7 @@ async function render() {
     window.scrollTo(0, keepScroll);
     shownScreen = state.screen;
     screen.after?.();
+    if (pulseNext) pulse(pulseNext);
   } catch (err) {
     if (seq === renderSeq) $('screen').innerHTML = failed(err);
   } finally {
@@ -2119,7 +2138,11 @@ async function onScreenClick(e) {
   // Категория в карточке товара
   // Фильтр по источнику: повторное нажатие снимает
   const src = e.target.closest('[data-src]');
-  if (src) return go({ src: !src.dataset.src || state.src === src.dataset.src ? '' : src.dataset.src }, true);
+  if (src) {
+    const next = !src.dataset.src || state.src === src.dataset.src ? '' : src.dataset.src;
+    pulseNext = next ? 'src' : 'count'; // фильтр сняли — меняется число покупок
+    return go({ src: next }, true);
+  }
 
   // Заголовок раздела: свернуть или развернуть. При длинной ленте открыт только один
   const sectionBtn = e.target.closest('[data-section]');
@@ -2233,6 +2256,7 @@ async function onScreenClick(e) {
   if (sort) {
     const key = sort.dataset.sort;
     const dir = key === state.sort ? (state.dir === 'asc' ? 'desc' : 'asc') : SORTS[key][1];
+    pulseNext = 'sort';
     return go({ sort: key, dir }, true);
   }
 

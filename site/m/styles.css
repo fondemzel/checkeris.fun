@@ -624,6 +624,33 @@ button, input, select { font: inherit; color: inherit; }
 /* Верх шапки: сумма слева, фильтр по источнику справа */
 .head-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .src-filters { margin-top: 4px; }
+/* Часть подписи, которую только что изменил значок: расходящийся тающий круг */
+.note-part { position: relative; display: inline-block; }
+.note-part.pulse { animation: note-flash 1s ease-out; }
+.note-part.pulse::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
+  animation: note-ripple 0.9s ease-out forwards;
+}
+
+@keyframes note-ripple {
+  from { transform: scale(0.5); opacity: 0.35; }
+  to { transform: scale(9); opacity: 0; }
+}
+
+@keyframes note-flash {
+  0%, 40% { color: var(--accent); }
+  100% { color: inherit; }
+}
+
 .sort-chip.chip-all { width: auto; padding: 0 8px; font-size: 12px; font-weight: 600; } /* слово, а не значок */
 .head-line .sorts { margin-left: auto; } /* сортировка прижата к правому краю строки периода */
 .total.compact .total-sum,
