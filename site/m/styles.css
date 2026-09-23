@@ -626,7 +626,7 @@ button, input, select { font: inherit; color: inherit; }
 .src-filters { margin-top: 4px; }
 /* Часть подписи, которую только что изменил значок: расходящийся тающий круг */
 .note-part { position: relative; display: inline-block; }
-.note-part.pulse { animation: note-flash 1s ease-out; }
+.note-part.pulse { animation: note-bold 1s ease-out; }
 .note-part.pulse::after {
   content: '';
   position: absolute;
@@ -636,7 +636,7 @@ button, input, select { font: inherit; color: inherit; }
   height: 12px;
   margin: -6px 0 0 -6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: #8b93a1;
   pointer-events: none;
   animation: note-ripple 0.9s ease-out forwards;
 }
@@ -646,9 +646,11 @@ button, input, select { font: inherit; color: inherit; }
   to { transform: scale(9); opacity: 0; }
 }
 
-@keyframes note-flash {
-  0%, 40% { color: var(--accent); }
-  100% { color: inherit; }
+/* Жирность — тенью, а не font-weight: системный шрифт меняет толщину ступенькой и
+   раздвигает строку, а тень утолщает буквы плавно и на месте */
+@keyframes note-bold {
+  0%, 30% { color: var(--text); text-shadow: 0.35px 0 0 currentColor, -0.35px 0 0 currentColor, 0 0.25px 0 currentColor; }
+  100% { text-shadow: 0 0 0 transparent; }
 }
 
 .sort-chip.chip-all { width: auto; padding: 0 8px; font-size: 12px; font-weight: 600; } /* слово, а не значок */
