@@ -166,6 +166,26 @@ function periodTitle(from, to) {
   return `${left} – ${b.getDate()} ${MONTHS_SHORT[b.getMonth()]} ${b.getFullYear()}`;
 }
 
+/**
+ * Период цифрами — для шапки, где рядом стоит сортировка и словам тесно:
+ * месяц — «09.26», несколько месяцев — «01.26–09.26», год — «2026», дни — «01.09.26».
+ * Полное название («Сентябрь 2026») видно в подсказке и в календаре.
+ */
+function periodShort(from, to) {
+  const a = parseDay(from);
+  const b = parseDay(to);
+  const two = (n) => String(n).padStart(2, '0');
+  const month = (d) => `${two(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)}`;
+  const day = (d) => `${two(d.getDate())}.${month(d)}`;
+  const months = wholeMonths(from, to);
+
+  if (months === 12 && a.getMonth() === 0) return String(a.getFullYear());
+  if (months === 1) return month(a);
+  if (months) return `${month(a)}–${month(b)}`;
+  if (from === to) return day(a);
+  return `${day(a)}–${day(b)}`;
+}
+
 // ── состояние ────────────────────────────────────────────
 
 let meta = null;
@@ -349,7 +369,9 @@ const failed = (err) => `<div class="empty error">${esc(err.message)}</div>`;
 const periodNav = (compact = false) => `
   <div class="month${compact ? ' compact' : ''}">
     <button class="month-arrow" type="button" data-shift="-1" aria-label="Раньше">‹</button>
-    <button class="month-name" type="button" data-period>${UI.calendar}<span>${esc(periodTitle(state.from, state.to))}</span></button>
+    <button class="month-name" type="button" data-period title="${esc(periodTitle(state.from, state.to))}">${UI.calendar}<span>${esc(
+      compact ? periodShort(state.from, state.to) : periodTitle(state.from, state.to),
+    )}</span></button>
     <button class="month-arrow" type="button" data-shift="1" aria-label="Позже">›</button>
   </div>`;
 
