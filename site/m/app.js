@@ -292,12 +292,22 @@ function openPopup(el) {
   if (!history.state?.popup) history.pushState({ ...state, popup: true }, '', location.href);
 }
 
-/** Закрыть попап: снимаем его запись из истории, экран перерисует обработчик «назад». */
+/**
+ * Закрыть попап. Его запись из истории снимаем, только если это последний открытый попап:
+ * выбор категории поверх чека закрывается сам по себе, а чек должен остаться.
+ */
 function closePopup(el) {
   el.remove();
-  if (history.state?.popup) history.back();
+  if (document.querySelector('.sheet, .picker')) return; // под ним ещё один — историю не трогаем
+  if (history.state?.popup) history.back(); // экран перерисует обработчик «назад»
   else render();
 }
+
+/**
+ * Попап уступает место переходу: запись истории не снимаем — её заменит сам переход
+ * (go с replace). Иначе «назад» успевает вернуть прежнее состояние и отменяет выбор.
+ */
+const dropPopup = (el) => el.remove();
 
 window.addEventListener('popstate', (e) => {
   // popup и sheet — пометки самой записи истории, в состоянии экрана им делать нечего
@@ -711,12 +721,12 @@ function openPeriodPicker() {
 
     const preset = e.target.closest('[data-preset]');
     if (preset) {
-      close();
+      dropPopup(el);
       return go(presets[Number(preset.dataset.preset)][1](), true);
     }
 
     if (e.target.closest('[data-apply]')) {
-      close();
+      dropPopup(el);
       go({ from: start, to: end ?? start }, true);
     }
   });
