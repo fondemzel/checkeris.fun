@@ -1278,3 +1278,48 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 
 /* Подпись под категорией в карточке: пустая — без отступа */
 #pick-note:empty { display: none; }
+
+/* ── мастер подключения банка ─────────────────────────────
+   Шаги точками сверху, крупные цифры загрузки, строки счетов с галочками */
+
+.wiz-dots { display: flex; justify-content: center; gap: 8px; margin: 4px 0 14px; }
+.wiz-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background 0.3s; }
+.wiz-dot.on { background: var(--accent); }
+
+.wiz-hello { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.wiz-hello h2, .wiz-title { margin: 0 0 4px; font-size: 19px; font-weight: 600; line-height: 1.25; }
+.wiz-hello .bank-logo, .wiz-hello .bank-logo img { width: 56px; height: 56px; border-radius: 12px; font-size: 24px; }
+
+.wiz-plan { margin: 0; padding-left: 20px; }
+.wiz-plan li { margin: 6px 0; }
+
+.wiz-wait { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 48px 24px; text-align: center; color: var(--muted); }
+.wiz-wait p { margin: 0; }
+.wiz-spin {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: wiz-spin 0.9s linear infinite;
+}
+@keyframes wiz-spin { to { transform: rotate(360deg); } }
+
+.wiz-accs { margin-top: 10px; }
+.wiz-acc { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+.wiz-acc:first-child { border-top: 0; }
+.wiz-acc input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); flex: none; }
+.wiz-acc-main { display: flex; flex-direction: column; min-width: 0; }
+.wiz-acc-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.wiz-bar { height: 10px; margin: 12px 0 16px; border-radius: 5px; background: var(--border); overflow: hidden; }
+.wiz-bar span { display: block; width: 0; height: 100%; border-radius: 5px; background: var(--accent); transition: width 0.6s ease; }
+.wiz-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; text-align: center; }
+.wiz-nums b { display: block; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wiz-load .note + .note { margin-top: 8px; }
+.wiz-hint { margin: 0 4px 12px; text-align: center; }
+
+.wiz-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.wiz-row:first-of-type { border-top: 0; }
+.wiz-row > span { display: flex; flex-direction: column; }
+.wiz-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }

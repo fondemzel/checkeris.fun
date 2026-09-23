@@ -217,7 +217,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'stats', 'bank', 'bank_card', 'op'];
+  'settings', 'stats', 'bank', 'bank_card', 'bank_wizard', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -1988,6 +1988,386 @@ async function saveCategory(itemId, slug) {
   }
 }
 
+// ── мастер подключения банка ─────────────────────────────
+// Подключение банка и загрузка всей истории — по шагам, чтобы человек видел, что
+// происходит: вступление → счета → выбор → загрузка → итог.
+//
+// Про конкретный банк мастер ничего не знает: команды уходят в приложение
+// (window.Checker: bankAccounts, historyStart, historyStop, historyStatus), ход приходит
+// событиями «checker-history». Шаг хранится на сервере, а ход загрузки — в приложении,
+// поэтому мастер можно закрыть и вернуться туда же.
+
+const WIZ_STEPS = ['intro', 'analyze', 'found', 'load', 'result'];
+const WIZ_DOT = { intro: 0, analyze: 1, found: 2, load: 3, marking: 3, result: 4 };
+const WIZ_PART_SEC = 13; // одна часть (счёт × год): пауза, запрос, отправка — так вышло на настоящей загрузке
+
+const ACCOUNT_TYPES = {
+  Current: 'Текущий счёт',
+  Credit: 'Кредитная карта',
+  Saving: 'Накопительный счёт',
+  CurrentKids: 'Детская карта',
+  BNPL: 'Оплата долями',
+  Deposit: 'Вклад',
+};
+
+let wiz = null; // { bank, step, accounts, selected, result, progress, error, awaitLogin }
+let wizTimer = null;
+
+const historyStatus = () => {
+  try {
+    return JSON.parse(window.Checker?.historyStatus?.() || '{}');
+  } catch {
+    return {};
+  }
+};
+
+/** Мастер для банка: с сервера — шаг, из приложения — идёт ли загрузка. */
+async function wizLoad(bank) {
+  if (wiz?.bank === bank) return wiz;
+  const saved = await api(`/api/bank/history?bank=${encodeURIComponent(bank)}`).catch(() => ({}));
+  wiz = { bank, step: 'intro', accounts: null, selected: [], result: null, ...(saved.state ?? {}) };
+  if (wiz.step === 'analyze' || wiz.step === 'marking') wiz.step = wiz.step === 'marking' ? 'load' : 'intro';
+  const s = historyStatus();
+  if (s.running || (s.total && s.done < s.total)) {
+    wiz.step = 'load';
+    wiz.progress = { ...s, stage: s.running ? 'load' : 'paused' };
+  } else if (wiz.step === 'load') {
+    wiz.progress = { ...s, stage: 'paused' };
+  }
+  return wiz;
+}
+
+/** Шаг — на сервер: закрыли приложение, открыли — мастер там же. Ход загрузки не нужен. */
+function wizSave() {
+  const { bank, step, accounts, selected, result } = wiz;
+  api('/api/bank/history', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ bank, state: { step, accounts, selected, result } }),
+  }).catch(() => {});
+}
+
+function wizGo(step) {
+  wiz.step = step;
+  wiz.error = null;
+  wizSave();
+  if (state.screen === 'bank_wizard') render();
+}
+
+/** Открыть мастер. fresh — начать сначала; идущую или прерванную загрузку это не сбрасывает. */
+function openWizard(bank, fresh = false) {
+  const s = historyStatus();
+  const busy = s.running || (s.total && s.done < s.total);
+  if (fresh && !busy) {
+    wiz = { bank, step: 'intro', accounts: null, selected: [], result: null };
+    wizSave();
+  }
+  go({ screen: 'bank_wizard', bank });
+}
+
+async function screenBankWizard() {
+  const w = await wizLoad(state.bank ?? 'tbank');
+  const b = bankById(w.bank) ?? BANKS[0];
+  const dots = WIZ_STEPS.map((_, i) => `<span class="wiz-dot${i <= WIZ_DOT[w.step] ? ' on' : ''}"></span>`).join('');
+  const body = await WIZ_SCREENS[w.step](w, b);
+  return `<div class="wiz"><div class="wiz-dots">${dots}</div>${body}</div>`;
+}
+
+const wizSpinner = (text) => `<div class="wiz-wait"><span class="wiz-spin"></span><p>${text}</p></div>`;
+
+const WIZ_SCREENS = {
+  intro: (w, b) => `
+    <div class="card wiz-hello">
+      ${bankLogo(b, true)}
+      <h2>Загрузим всю историю из ${esc(b.from ?? b.name)}</h2>
+      <p class="note">Все траты и поступления за годы — в одном месте, разложенные по категориям.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Это безопасно</div>
+      <ul class="bank-facts">
+        <li><b>Вход — на вашем телефоне.</b> Телефон, код из СМС и пароль вы вводите в окне банка сами, Чекер их не видит.</li>
+        <li><b>Только чтение.</b> Чекер не может ничего перевести или оплатить — он лишь читает операции.</li>
+        <li><b>Только для вас.</b> Операции видны вам и участникам вашего бюджета, больше никому.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-label">Как это будет</div>
+      <ol class="wiz-plan">
+        <li>Входите в банк</li>
+        <li>Смотрим, какие у вас счета и с какого года</li>
+        <li>Вы выбираете, что загружать</li>
+        <li>Загружаем — обычно 10–15 минут</li>
+        <li>Показываем, что нашли и как разложили</li>
+      </ol>
+    </div>`,
+
+  analyze: (w) =>
+    w.error
+      ? `<div class="card"><p class="note error">Не получилось: ${esc(w.error)}</p></div>`
+      : wizSpinner('Смотрим ваши счета…'),
+
+  found: async (w) => {
+    const bankData = await api('/api/bank').catch(() => null);
+    const have = bankData?.links?.find((l) => l.bank === w.bank)?.ops ?? 0;
+    const thisYear = new Date().getFullYear();
+    const rows = (w.accounts ?? []).map((a) => {
+      const since = a.created ? new Date(a.created).getFullYear() : thisYear;
+      const kind = ACCOUNT_TYPES[a.type] ?? a.type ?? '';
+      const currency = a.currency && a.currency !== 'RUB' ? ` · ${a.currency}` : '';
+      return `
+        <label class="wiz-acc">
+          <input type="checkbox" data-wiz-acc="${esc(a.id)}"${w.selected.includes(a.id) ? ' checked' : ''} />
+          <span class="wiz-acc-main">
+            <span class="wiz-acc-name">${esc(a.name)}</span>
+            <small class="note">${esc(kind)}${currency} · с ${since} года</small>
+          </span>
+        </label>`;
+    }).join('');
+    return `
+      <div class="card">
+        <h2 class="wiz-title">Нашли ${w.accounts?.length ?? 0} ${plural(w.accounts?.length ?? 0, 'счёт', 'счёта', 'счетов')}</h2>
+        <p class="note">Снимите галочку со счетов, которые не нужны, — например, чужих или брокерских.</p>
+        <div class="wiz-accs">${rows}</div>
+      </div>
+      <div class="card"><p class="note" id="wiz-estimate">${wizEstimate(w)}</p>${
+        have ? `<p class="note">Уже загружено ${int.format(have)} ${plural(have, 'операция', 'операции', 'операций')} — они не задвоятся, добавятся только недостающие.</p>` : ''
+      }</div>`;
+  },
+
+  load: (w) => {
+    const p = w.progress ?? {};
+    const failed = p.stage === 'error';
+    const paused = p.stage === 'paused' || p.stage === 'stopped';
+    return `
+      <div class="card wiz-load">
+        <h2 class="wiz-title">${failed ? 'Загрузка прервалась' : paused ? 'Загрузка на паузе' : 'Загружаем историю'}</h2>
+        <div class="wiz-bar"><span id="wiz-bar" style="width:${p.total ? Math.round(((p.done ?? 0) / p.total) * 100) : 0}%"></span></div>
+        <div class="wiz-nums">
+          <div><b id="wiz-ops">0</b><small class="note">операций</small></div>
+          <div><b id="wiz-parts">0 из 0</b><small class="note">частей</small></div>
+          <div><b id="wiz-eta">—</b><small class="note">осталось</small></div>
+        </div>
+        <p class="note" id="wiz-now"></p>
+        ${failed ? `<p class="note error">${esc(w.error ?? 'Ошибка')}. Всё загруженное сохранено — можно продолжить с того же места.</p>` : ''}
+        ${paused ? '<p class="note">Всё загруженное сохранено — продолжим с того же места.</p>' : ''}
+      </div>
+      <p class="note wiz-hint">Можно свернуть приложение, но не закрывать его: загрузка идёт, пока оно открыто.</p>`;
+  },
+
+  marking: () => wizSpinner('Раскладываем: ищем чеки к операциям, переводы между своими счетами, категории…'),
+
+  result: (w) => {
+    const r = w.result ?? {};
+    const kinds = Object.fromEntries((r.kinds ?? []).map((k) => [k.kind, k]));
+    const count = (k) => kinds[k]?.count ?? 0;
+    const expenses = count('expense');
+    const sorted = kinds.expense?.categorized ?? 0;
+    const share = expenses ? Math.round((sorted / expenses) * 100) : 100;
+    const first = r.total?.first?.slice(0, 4);
+    const last = r.total?.last?.slice(0, 4);
+    const years = first && last ? Number(last) - Number(first) + 1 : 0;
+    const row = (label, value, note = '') =>
+      `<div class="wiz-row"><span>${label}${note ? `<small class="note">${note}</small>` : ''}</span><b>${value}</b></div>`;
+    const accounts = (r.accounts ?? [])
+      .map((a) => row(esc(a.name ?? a.account), int.format(a.count), `с ${a.first?.slice(0, 4)} года`))
+      .join('');
+    return `
+      <div class="card wiz-hello">
+        <h2>Готово: ${int.format(r.total?.count ?? 0)} ${plural(r.total?.count ?? 0, 'операция', 'операции', 'операций')}</h2>
+        <p class="note">${years ? `История за ${years} ${plural(years, 'год', 'года', 'лет')}: с ${first} по ${last}` : ''}</p>
+      </div>
+      <div class="card">
+        <div class="card-label">Что нашли</div>
+        ${row('Покупки с чеком', int.format(count('covered')), 'сумма — по чеку, с товарами')}
+        ${row('Траты без чека', int.format(expenses), `разложено по категориям: ${share}%`)}
+        ${row('Поступления', int.format(count('income')))}
+        ${row('Переводы между своими', int.format(count('transfer')), 'не трата и не доход')}
+        ${count('excluded') ? row('Не учитываются', int.format(count('excluded'))) : ''}
+      </div>
+      ${expenses - sorted > 0 ? `
+      <div class="card">
+        <p class="note">Без категории — ${int.format(expenses - sorted)} ${plural(expenses - sorted, 'трата', 'траты', 'трат')}: переводы людям, наличные, маркетплейсы. Их можно разложить в расходах — выбор для продавца запоминается на все его операции.</p>
+      </div>` : ''}
+      <div class="card">
+        <div class="card-label">По счетам</div>
+        ${accounts}
+      </div>`;
+  },
+};
+
+/** Сколько частей и времени займёт загрузка выбранных счетов. */
+function wizEstimate(w) {
+  const chosen = (w.accounts ?? []).filter((a) => w.selected.includes(a.id));
+  if (!chosen.length) return 'Выберите хотя бы один счёт.';
+  const parts = chosen.reduce((n, a) => n + (a.years ?? 1), 0);
+  const min = Math.max(1, Math.ceil((parts * WIZ_PART_SEC) / 60));
+  const since = Math.min(...chosen.map((a) => (a.created ? new Date(a.created).getFullYear() : new Date().getFullYear())));
+  return `Выбрано ${chosen.length} ${plural(chosen.length, 'счёт', 'счёта', 'счетов')}, история с ${since} года. Займёт около ${min} мин. Лучше по Wi-Fi — это десятки мегабайт.`;
+}
+
+/** Кнопки внизу — у каждого шага своя главная. */
+function wizActions() {
+  if (!wiz) return '';
+  const p = wiz.progress ?? {};
+  switch (wiz.step) {
+    case 'intro':
+      return '<button class="btn primary big" type="button" data-wiz="begin">Начать</button>';
+    case 'analyze':
+      return wiz.error ? '<button class="btn primary big" type="button" data-wiz="begin">Попробовать ещё раз</button>' : '';
+    case 'found':
+      return `<button class="btn primary big" type="button" data-wiz="sync"${wiz.selected.length ? '' : ' disabled'}>Начать синхронизацию</button>`;
+    case 'load':
+      return p.stage === 'load' || p.stage === 'wait'
+        ? '<button class="btn big" type="button" data-wiz="stop">Остановить</button>'
+        : '<button class="btn primary big" type="button" data-wiz="resume">Продолжить загрузку</button>';
+    case 'result':
+      return '<button class="btn primary big" type="button" data-wiz="done">Готово</button>';
+    default:
+      return '';
+  }
+}
+
+/** Ход загрузки — раз в секунду, без перерисовки экрана. */
+function wizTick() {
+  if (state.screen !== 'bank_wizard' || wiz?.step !== 'load') return;
+  const p = wiz.progress ?? {};
+  const bar = $('wiz-bar');
+  if (!bar) return;
+  const total = p.total || 0;
+  const done = p.done || 0;
+  bar.style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
+  $('wiz-ops').textContent = int.format(p.ops ?? 0);
+  $('wiz-parts').textContent = `${done} из ${total}`;
+
+  // Оставшееся время — по скорости с начала этого захода, пока её нет — по оценке
+  const left = total - done;
+  let eta = left * WIZ_PART_SEC;
+  if (p.runStart && p.runDone > 0) eta = ((Date.now() - p.runStart) / 1000 / p.runDone) * left;
+  const waitLeft = p.waitUntil ? Math.ceil((p.waitUntil - Date.now()) / 1000) : 0;
+  $('wiz-eta').textContent = left ? (eta < 60 ? `${Math.max(1, Math.round(eta))} с` : `${Math.ceil(eta / 60)} мин`) : '—';
+  $('wiz-now').textContent =
+    waitLeft > 0
+      ? `Банк просит подождать: продолжим через ${waitLeft} с`
+      : p.stage === 'load' && p.account
+        ? `Сейчас: ${p.account}, ${p.year} год`
+        : '';
+}
+
+function wizStartTimer() {
+  clearInterval(wizTimer);
+  wizTimer = setInterval(() => {
+    if (state.screen !== 'bank_wizard') return clearInterval(wizTimer);
+    wizTick();
+  }, 1000);
+}
+
+/** Начать: банк подключён — сразу к счетам, нет — сначала окно входа. */
+function wizBegin() {
+  const info = appInfo();
+  if (info.bank === wiz.bank && info.bankState === 'active') {
+    wizGo('analyze');
+    return window.Checker.bankAccounts();
+  }
+  wiz.awaitLogin = true;
+  window.Checker.bankLogin();
+}
+
+async function onWizardClick(button) {
+  const action = button.dataset.wiz;
+  if (action === 'begin') return wizBegin();
+  if (action === 'sync') {
+    button.disabled = true;
+    try {
+      await post('/api/bank/history/start', { bank: wiz.bank });
+    } catch (err) {
+      button.disabled = false;
+      return toast(`Не вышло: ${err.message}`);
+    }
+    wiz.progress = { stage: 'load', done: 0, total: 0, ops: 0, runStart: Date.now(), runDone: 0 };
+    wizGo('load');
+    return window.Checker.historyStart(token.get(), JSON.stringify(wiz.selected));
+  }
+  if (action === 'stop') {
+    button.disabled = true;
+    button.textContent = 'Останавливаем…';
+    return window.Checker.historyStop();
+  }
+  if (action === 'resume') {
+    wiz.progress = { ...wiz.progress, ...historyStatus(), stage: 'load', runStart: Date.now(), runDone: 0 };
+    wiz.error = null;
+    render();
+    return window.Checker.historyStart(token.get(), '');
+  }
+  if (action === 'done') {
+    wizSave();
+    return go({ screen: 'bank_card', bank: wiz.bank });
+  }
+}
+
+/** Конец загрузки: сервер размечает всё разом и рассказывает, что получилось. */
+async function wizFinish() {
+  wiz.step = 'marking';
+  if (state.screen === 'bank_wizard') render();
+  try {
+    wiz.result = await post('/api/bank/history/finish', { bank: wiz.bank });
+    wizGo('result');
+  } catch (err) {
+    wiz.step = 'load';
+    wiz.progress = { ...wiz.progress, stage: 'error' };
+    wiz.error = `Не удалось разложить: ${err.message}`;
+    if (state.screen === 'bank_wizard') render();
+  }
+}
+
+window.addEventListener('checker-history', (e) => {
+  const r = e.detail ?? {};
+  if (!wiz) return;
+  if (r.stage === 'accounts') {
+    wiz.accounts = r.accounts ?? [];
+    wiz.selected = wiz.accounts.map((a) => a.id);
+    return wizGo('found');
+  }
+  if (r.stage === 'loaded') return wizFinish();
+
+  const before = wiz.progress?.stage;
+  const p = { ...(wiz.progress ?? {}) };
+  if (r.stage === 'error') {
+    if (wiz.step === 'analyze') {
+      wiz.error = r.error;
+      return render();
+    }
+    wiz.error = r.error;
+    p.stage = 'error';
+  } else if (r.stage === 'wait') {
+    p.stage = 'wait';
+    p.waitUntil = Date.now() + r.seconds * 1000;
+  } else {
+    // load и stopped: счётчики из приложения
+    const prevDone = p.done ?? 0;
+    Object.assign(p, r, { waitUntil: 0 });
+    if (r.stage === 'load' && r.done > prevDone) p.runDone = (p.runDone ?? 0) + (r.done - prevDone);
+    p.runStart ??= Date.now();
+  }
+  wiz.progress = p;
+  if (wiz.step !== 'load') wiz.step = 'load';
+  // Сменилось состояние — меняются заголовок и кнопка; иначе хватит цифр
+  if (state.screen !== 'bank_wizard') return;
+  if (before !== p.stage && !(before === 'wait' && p.stage === 'load') && !(before === 'load' && p.stage === 'wait')) render();
+  else wizTick();
+});
+
+// Галочки счетов: оценка времени меняется сразу
+$('screen').addEventListener('change', (e) => {
+  const box = e.target.closest('[data-wiz-acc]');
+  if (!box || !wiz) return;
+  const id = box.dataset.wizAcc;
+  wiz.selected = box.checked ? [...new Set([...wiz.selected, id])] : wiz.selected.filter((x) => x !== id);
+  const estimate = $('wiz-estimate');
+  if (estimate) estimate.textContent = wizEstimate(wiz);
+  const sync = document.querySelector('[data-wiz="sync"]');
+  if (sync) sync.disabled = !wiz.selected.length;
+});
+
 // ── экраны ───────────────────────────────────────────────
 
 const SCREENS = {
@@ -2020,6 +2400,19 @@ const SCREENS = {
   },
   settings: { title: 'Настройки', render: screenSettings },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
+  bank_wizard: {
+    title: () => bankById(state.bank)?.name ?? 'Банк',
+    render: screenBankWizard,
+    // Кнопки зависят от шага, а он известен только после загрузки мастера
+    after: () => {
+      const actions = wizActions();
+      $('actions').innerHTML = actions;
+      $('actions').hidden = !actions;
+      updateDock();
+      wizTick();
+      wizStartTimer();
+    },
+  },
   op: { title: 'Товар', render: screenOp, after: () => fitNote() },
 };
 
@@ -2034,7 +2427,7 @@ const soon = (icon, title, text) => `
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
 const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
-  income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', op: 'summary',
+  income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_wizard: 'settings', op: 'summary',
 };
 
 /**
@@ -2209,6 +2602,13 @@ async function onScreenClick(e) {
   const bankOpen = e.target.closest('[data-bank-open]');
   if (bankOpen) return go({ screen: 'bank_card', bank: bankOpen.dataset.bankOpen });
 
+  const wizButton = e.target.closest('[data-wiz]');
+  if (wizButton) return onWizardClick(wizButton);
+
+  // Мастер: подключение и загрузка всей истории
+  const wizOpen = e.target.closest('[data-wizard]');
+  if (wizOpen) return openWizard(wizOpen.dataset.wizard, true);
+
   const bank = e.target.closest('[data-bank]');
   if (bank) {
     const id = bank.dataset.bankId ?? 'tbank';
@@ -2217,20 +2617,6 @@ async function onScreenClick(e) {
       bank.disabled = true;
       bank.classList.add('spin');
       return window.Checker.bankSync(token.get());
-    }
-    // Проверочная загрузка всей истории — до мастера: все счета, ход на кнопке
-    if (bank.dataset.bank === 'history') {
-      const s = JSON.parse(window.Checker.historyStatus() || '{}');
-      if (s.running) {
-        if (confirm('Остановить загрузку истории? Продолжится с того же места.')) window.Checker.historyStop();
-        return;
-      }
-      if (s.total && s.done < s.total) return window.Checker.historyStart(token.get(), ''); // продолжить
-      if (!confirm('Загрузить всю историю операций со всех счетов? Это займёт 10–15 минут, лучше по Wi-Fi.')) return;
-      bank.disabled = true;
-      await post('/api/bank/history/start', { bank: 'tbank' });
-      historyTest = true;
-      return window.Checker.bankAccounts();
     }
     if (bank.dataset.bank === 'forget') {
       if (!confirm('Отключить банк? Загруженные операции останутся, новые приходить не будут.')) return;
@@ -2522,10 +2908,11 @@ const appInfo = () => {
  * Логотип лежит файлом в /shared/brand; нет файла — рисуем букву банка.
  */
 const BANKS = [
-  { id: 'tbank', name: 'Т-Банк', logo: '/shared/brand/tbank.png', ready: true },
-  { id: 'vtb', name: 'ВТБ', logo: '/shared/brand/vtb.svg' },
-  { id: 'alfa', name: 'Альфа-Банк', logo: '/shared/brand/alfa.svg' },
-  { id: 'sber', name: 'Сбербанк', logo: '/shared/brand/sber.svg' },
+  // from — название после «из»: «загрузим историю из Т-Банка»
+  { id: 'tbank', name: 'Т-Банк', from: 'Т-Банка', logo: '/shared/brand/tbank.png', ready: true },
+  { id: 'vtb', name: 'ВТБ', from: 'ВТБ', logo: '/shared/brand/vtb.svg' },
+  { id: 'alfa', name: 'Альфа-Банк', from: 'Альфа-Банка', logo: '/shared/brand/alfa.svg' },
+  { id: 'sber', name: 'Сбербанк', from: 'Сбербанка', logo: '/shared/brand/sber.svg' },
 ];
 
 const bankById = (id) => BANKS.find((b) => b.id === id);
@@ -2617,11 +3004,13 @@ async function screenBankCard() {
     </div>
 
     <div class="settings-actions">
-      ${b.ready
-        ? `<button class="btn primary big" type="button" data-bank="login" data-bank-id="${b.id}">${connected ? 'Войти в банк заново' : 'Подключить'}</button>`
-        : '<button class="btn big" type="button" disabled>Подключение появится позже</button>'}
+      ${!b.ready
+        ? '<button class="btn big" type="button" disabled>Подключение появится позже</button>'
+        : !connected && window.Checker?.historyStart
+          ? `<button class="btn primary big" type="button" data-wizard="${b.id}">Подключить</button>`
+          : `<button class="btn${connected ? '' : ' primary big'}" type="button" data-bank="login" data-bank-id="${b.id}">${connected ? 'Войти в банк заново' : 'Подключить'}</button>`}
+      ${connected && !expired && window.Checker?.historyStart ? `<button class="btn${ops ? '' : ' primary big'}" type="button" data-wizard="${b.id}">Загрузить всю историю</button>` : ''}
       ${connected && !expired ? `<button class="btn" type="button" data-bank="sync" data-bank-id="${b.id}">Обновить операции</button>` : ''}
-      ${connected && !expired && window.Checker?.historyStart ? `<button class="btn" type="button" data-bank="history" data-bank-id="${b.id}">${historyLabel()}</button>` : ''}
       ${connected ? `<button class="btn" type="button" data-bank="forget" data-bank-id="${b.id}">Отключить банк</button>` : ''}
       ${ops ? `<button class="btn danger" type="button" data-bank="wipe" data-bank-id="${b.id}">Удалить загруженные операции</button>` : ''}
     </div>`;
@@ -2768,6 +3157,7 @@ fetch('/api/version').then((r) => r.json()).then((v) => (loadedVersion = v.versi
 
 async function reloadIfUpdated() {
   if (!loadedVersion || document.querySelector('.sheet, .picker, .scanner')) return; // не рвём начатое
+  if (state.screen === 'bank_wizard') return; // мастер ждёт событий от приложения
   try {
     const { version } = await (await fetch('/api/version', { cache: 'no-store' })).json();
     if (version && version !== loadedVersion) location.reload();
@@ -2868,6 +3258,15 @@ $('screen').addEventListener('focusout', async (e) => {
 // Вернулись в приложение (например, из окна банка) — состояние могло измениться
 window.addEventListener('checker-resume', () => {
   reloadIfUpdated();
+  if (state.screen === 'bank_wizard' && wiz?.awaitLogin) {
+    const info = appInfo();
+    if (info.bank === wiz.bank && info.bankState === 'active') {
+      wiz.awaitLogin = false;
+      wizGo('analyze');
+      window.Checker.bankAccounts();
+    }
+    return;
+  }
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
@@ -2883,59 +3282,6 @@ window.addEventListener('checker-bank', (e) => {
       : `Банк: ${r.error ?? 'не вышло'}`,
   );
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
-});
-
-// Проверочная загрузка истории: ход — на кнопке, итог — всплывающим сообщением.
-// Временная: её место займёт мастер подключения банка
-let historyTest = false;
-let historyNote = '';
-
-function historyLabel() {
-  if (historyNote) return historyNote;
-  try {
-    const s = JSON.parse(window.Checker.historyStatus() || '{}');
-    if (s.total && s.done < s.total) return `Продолжить загрузку истории (${s.done} из ${s.total})`;
-  } catch {
-    // старое приложение
-  }
-  return 'Загрузить всю историю (проверка)';
-}
-
-window.addEventListener('checker-history', async (e) => {
-  const r = e.detail ?? {};
-  const setNote = (text) => {
-    historyNote = text;
-    const button = document.querySelector('[data-bank="history"]');
-    if (button) {
-      button.textContent = text || historyLabel();
-      button.disabled = false;
-    }
-  };
-  if (r.stage === 'accounts' && historyTest) {
-    historyTest = false;
-    return window.Checker.historyStart(token.get(), JSON.stringify(r.accounts.map((a) => a.id)));
-  }
-  if (r.stage === 'load') {
-    return setNote(`${r.year ?? ''} · ${r.account ?? ''} — ${r.done} из ${r.total} · ${int.format(r.ops)} оп.`);
-  }
-  if (r.stage === 'wait') return setNote(`Банк просит подождать ${r.seconds} с…`);
-  if (r.stage === 'stopped') {
-    setNote('');
-    return toast('Загрузка остановлена');
-  }
-  if (r.stage === 'error') {
-    setNote('');
-    return toast(`История: ${r.error}`);
-  }
-  if (r.stage === 'loaded') {
-    setNote('Размечаем…');
-    const res = await post('/api/bank/history/finish', { bank: 'tbank' })
-      .catch((err) => ({ error: err.message }));
-    setNote('');
-    if (res.error) return toast(`Разметка: ${res.error}`);
-    toast(`Загружено ${int.format(r.ops)} оп., новых ${int.format(r.added)}. Всего в базе ${int.format(res.total.count)} с ${String(res.total.first).slice(0, 4)} года`);
-    if (state.screen === 'settings' || state.screen === 'bank_card') render();
-  }
 });
 
 // ── запуск ───────────────────────────────────────────────
