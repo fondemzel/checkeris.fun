@@ -24,7 +24,9 @@ export const ITEM_SORTS = {
   seller: 'seller',
 };
 
-const MAX_PER_PAGE = 500;
+// Лента «Расхода» берёт период целиком: свёрнутые разделы не рисуются, поэтому тысячи
+// строк телефону не в тягость. Предел — от случайного запроса «всё за десять лет»
+const MAX_PER_PAGE = 20_000;
 
 export function parsePaging(params) {
   const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);

@@ -427,11 +427,11 @@ async function screenSummary() {
   // Все траты периода: товары из чеков и ручные записи — по названиям, траты из банка —
   // по операциям. Покупки, у которых нашёлся чек, приходят один раз — чеком
   const params = new URLSearchParams({
-    from: state.from, to: state.to, collapse: '1', per: '500',
+    from: state.from, to: state.to, collapse: '1', per: '20000',
     sort: ['date', 'name', 'sum'].includes(state.sort) ? state.sort : 'date', dir: state.dir,
   });
   const opsQuery = new URLSearchParams({
-    from: state.from, to: state.to, direction: 'debit', kind: 'expense', per: '500',
+    from: state.from, to: state.to, direction: 'debit', kind: 'expense', per: '20000',
   });
   const [data, ops, failed] = await Promise.all([
     api(`/api/items?${params}`),
@@ -465,12 +465,7 @@ async function screenSummary() {
     ? `<p class="note list-hint"><button class="link" type="button" data-to-failed>Сканы с ошибкой: ${int.format(failedCount)}</button></p>`
     : '';
 
-  // За длинный период товаров больше, чем разумно показать разом: говорим об этом прямо
-  const cut = data.totals.count > data.rows.length
-    ? `<p class="note list-hint">Показаны ${int.format(data.rows.length)} из ${int.format(data.totals.count)} товаров — выберите период короче, чтобы увидеть все</p>`
-    : '';
-
-  return `${head}${failedLink}${await spendingFeed(data.rows, bankRows)}${cut}`;
+  return `${head}${failedLink}${await spendingFeed(data.rows, bankRows)}`;
 }
 
 async function screenGroup() {
@@ -579,9 +574,12 @@ async function spendingFeed(itemRows, bankRows) {
   const sectionOf = (r) =>
     state.sort === 'date' ? r.at.slice(0, 10) : state.sort === 'category' ? r.category ?? NONE : null;
   const sums = new Map();
+  const counts = new Map(); // сколько покупок в разделе — для заголовка категории
   for (const r of spendings) {
     const key = sectionOf(r);
-    if (key != null && !r.outside) sums.set(key, (sums.get(key) ?? 0) + r.sum);
+    if (key == null) continue;
+    counts.set(key, (counts.get(key) ?? 0) + (r.positions ?? 1));
+    if (!r.outside) sums.set(key, (sums.get(key) ?? 0) + r.sum);
   }
   // Разделы свёрнуты: по умолчанию открыт только верхний. Если строк много, открытым
   // держим один раздел — иначе лента разрастается до тысяч строк
@@ -602,7 +600,7 @@ async function spendingFeed(itemRows, bankRows) {
       : (() => {
           const found = key === NONE ? null : findCategory(key);
           const color = found ? categoryColor(found.group.slug, key) ?? found.group.color : '#c9ced6';
-          return `<span class="op-cat" style="background:${color}"></span>${esc(found?.category.name ?? 'Без категории')}`;
+          return `<span class="op-cat" style="background:${color}"></span>${esc(found?.category.name ?? 'Без категории')} (${int.format(counts.get(key) ?? 0)})`;
         })();
     return `
       <button class="day section${isOpen ? ' open' : ''}" type="button" data-section="${esc(key)}">

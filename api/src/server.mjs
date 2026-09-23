@@ -411,7 +411,7 @@ async function handleApi(req, res, url) {
         category: p.get('category'),
         sort: p.get('sort') ?? 'date',
         dir: p.get('dir') ?? 'desc',
-        per: Math.min(500, Number(p.get('per')) || 200),
+        per: Math.min(20_000, Number(p.get('per')) || 200),
         page: Math.max(1, Number(p.get('page')) || 1),
       }));
     }
