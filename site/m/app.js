@@ -512,7 +512,22 @@ async function screenCategory() {
     })
     .join('');
 
-  return `${head}<div class="list">${rows}</div>`;
+  // Траты без чека — отдельным списком: у них нет товаров, зато есть продавец и категория
+  const withoutReceipt = bankRows.length
+    ? `<p class="note list-hint">Без чека: ${int.format(bankRows.length)} ${plural(bankRows.length, 'операция', 'операции', 'операций')}</p>
+       <div class="list">${bankRows
+         .map((op) => `
+           <button class="row bank-op" type="button" data-op-cat="${op.id}">
+             <span class="row-main">
+               <span class="row-title">${esc(op.merchant ?? op.description ?? 'Без названия')}</span>
+               <span class="row-note">${dateRu(op.at.slice(0, 10))} · ${esc(timeRu(op.at))}${op.card ? ` · карта ·${op.card}` : ''}</span>
+             </span>
+             <span class="row-sum">${money(op.amount)}</span>
+           </button>`)
+         .join('')}</div>`
+    : '';
+
+  return `${head}${rows ? `<div class="list">${rows}</div>` : ''}${withoutReceipt}`;
 }
 
 /**
@@ -643,22 +658,7 @@ async function screenIncome() {
     })
     .join('');
 
-  // Траты без чека — отдельным списком: у них нет товаров, зато есть продавец и категория
-  const bank = bankRows.length
-    ? `<p class="note list-hint">Без чека: ${int.format(bankRows.length)} ${plural(bankRows.length, 'операция', 'операции', 'операций')}</p>
-       <div class="list">${bankRows
-         .map((op) => `
-           <button class="row bank-op" type="button" data-op-cat="${op.id}">
-             <span class="row-main">
-               <span class="row-title">${esc(op.merchant ?? op.description ?? 'Без названия')}</span>
-               <span class="row-note">${dateRu(op.at.slice(0, 10))} · ${esc(timeRu(op.at))}${op.card ? ` · карта ·${op.card}` : ''}</span>
-             </span>
-             <span class="row-sum">${money(op.amount)}</span>
-           </button>`)
-         .join('')}</div>`
-    : '';
-
-  return `${head}${rows ? `<div class="list">${rows}</div>` : ''}${bank}`;
+  return `${head}<div class="list">${rows}</div>`;
 }
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
