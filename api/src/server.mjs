@@ -397,6 +397,8 @@ async function handleApi(req, res, url) {
         to: p.get('to'),
         direction: p.get('direction') ?? 'debit',
         kind: p.get('kind'),
+        group: p.get('group'),
+        category: p.get('category'),
         sort: p.get('sort') ?? 'date',
         dir: p.get('dir') ?? 'desc',
         per: Math.min(500, Number(p.get('per')) || 200),

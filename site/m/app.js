@@ -463,7 +463,18 @@ async function screenCategory() {
   if (state.category) params.set('category', state.category);
   else params.set('group', state.group);
 
-  const data = await api(`/api/items?${params}`);
+  // Расход — это движение денег, а чек лишь один из его источников: рядом с товарами
+  // показываем и траты без чека из той же категории
+  const opsQuery = new URLSearchParams({
+    from: state.from, to: state.to, direction: 'debit', kind: 'expense', per: '100',
+    sort: state.sort, dir: state.dir,
+    ...(state.category ? { category: state.category } : { group: state.group }),
+  });
+  const [data, ops] = await Promise.all([
+    api(`/api/items?${params}`),
+    api(`/api/bank/ops?${opsQuery}`).catch(() => null),
+  ]);
+  const bankRows = ops?.rows ?? [];
   const name = state.category === NONE || state.group === NONE
     ? 'Без категории'
     : state.category
@@ -471,12 +482,17 @@ async function screenCategory() {
       : findGroup(state.group)?.name;
 
   // Шапка закреплена: при листании длинного списка итог и порядок остаются на виду
+  const bankSum = bankRows.reduce((sum, op) => sum + op.amount, 0);
   const head = `
     <div class="stuck-head">
-      ${listHead({ sum: money(data.totals.sum), note: esc(name ?? ''), sorts: data.rows.length > 0 })}
+      ${listHead({
+        sum: money(data.totals.sum + bankSum),
+        note: esc(name ?? ''),
+        sorts: data.rows.length > 0,
+      })}
     </div>`;
 
-  if (!data.rows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
+  if (!data.rows.length && !bankRows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
 
   const rows = data.rows
     .map((r) => {
@@ -627,7 +643,22 @@ async function screenIncome() {
     })
     .join('');
 
-  return `${head}<div class="list">${rows}</div>`;
+  // Траты без чека — отдельным списком: у них нет товаров, зато есть продавец и категория
+  const bank = bankRows.length
+    ? `<p class="note list-hint">Без чека: ${int.format(bankRows.length)} ${plural(bankRows.length, 'операция', 'операции', 'операций')}</p>
+       <div class="list">${bankRows
+         .map((op) => `
+           <button class="row bank-op" type="button" data-op-cat="${op.id}">
+             <span class="row-main">
+               <span class="row-title">${esc(op.merchant ?? op.description ?? 'Без названия')}</span>
+               <span class="row-note">${dateRu(op.at.slice(0, 10))} · ${esc(timeRu(op.at))}${op.card ? ` · карта ·${op.card}` : ''}</span>
+             </span>
+             <span class="row-sum">${money(op.amount)}</span>
+           </button>`)
+         .join('')}</div>`
+    : '';
+
+  return `${head}${rows ? `<div class="list">${rows}</div>` : ''}${bank}`;
 }
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки

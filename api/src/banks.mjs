@@ -276,15 +276,29 @@ export function unlink(db, userId, bank) {
  */
 const BANK_SORTS = { date: 'at', name: 'COALESCE(merchant, description)', sum: 'amount' };
 
-export function listBankOps(db, budgetId, { from, to, direction = 'debit', kind = null, per = 200, page = 1, sort = 'date', dir = 'desc' }) {
+export function listBankOps(db, budgetId, {
+  from, to, direction = 'debit', kind = null, group = null, category = null, per = 200, page = 1,
+  sort = 'date', dir = 'desc',
+}) {
   const column = BANK_SORTS[sort] ?? BANK_SORTS.date;
   const order = dir === 'asc' ? 'ASC' : 'DESC';
   const args = { budgetId, from: `${from}T00:00:00`, to: `${to}T23:59:59` };
   const kinds = kind ? String(kind).split(',').filter((k) => /^[a-z]+$/.test(k)) : [];
+  // «-» — траты без категории: их тоже нужно уметь открыть списком
+  const byCategory = category === '-' ? 'AND category_slug IS NULL' : category ? 'AND category_slug = :category' : '';
+  const byGroup = group === '-'
+    ? 'AND category_slug IS NULL'
+    : group
+      ? `AND category_slug IN (SELECT c.slug FROM categories c
+           WHERE c.budget_id = :budgetId AND c.group_slug = :group)`
+      : '';
   const where = `WHERE budget_id = :budgetId AND at BETWEEN :from AND :to
                  ${direction === 'all' ? '' : 'AND direction = :direction'}
-                 ${kinds.length ? `AND kind IN (${kinds.map((k) => `'${k}'`).join(', ')})` : ''}`;
+                 ${kinds.length ? `AND kind IN (${kinds.map((k) => `'${k}'`).join(', ')})` : ''}
+                 ${byCategory} ${byGroup}`;
   if (direction !== 'all') args.direction = direction;
+  if (category && category !== '-') args.category = category;
+  if (group && group !== '-') args.group = group;
 
   const rows = db
     .prepare(

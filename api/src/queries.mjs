@@ -311,6 +311,72 @@ const SUMMARY_BY = {
  * Фильтры те же, что у списков, поэтому сводка и список всегда об одном и том же.
  * Названия и цвета отдаются вместе с числами: клиенту не нужен второй запрос.
  */
+/**
+ * Траты без чека — второй источник расходов. Чек показывает, что куплено, банк — что
+ * деньги ушли; в сводке они складываются. Покупки, у которых чек нашёлся (kind = covered),
+ * сюда не попадают: их уже посчитали по чеку. Переводы между своими счетами — тоже.
+ */
+function bankExpenses(db, budgetId, params, by) {
+  const from = params.get('from');
+  const to = params.get('to');
+  if (!isDate(from) || !isDate(to)) return [];
+
+  // Разрезы «продавец» у банка нет: там нет ИНН, только название. Месяц и категории есть
+  const key = {
+    group: "(SELECT c.group_slug FROM categories c WHERE c.budget_id = o.budget_id AND c.slug = o.category_slug)",
+    category: 'o.category_slug',
+    month: "substr(o.at, 1, 7)",
+  }[by];
+  if (!key) return [];
+
+  const where = ["o.budget_id = :budgetId", "o.kind = 'expense'", 'o.at BETWEEN :from AND :to'];
+  const args = { budgetId, from: `${from}T00:00:00`, to: `${to}T23:59:59` };
+
+  // Фильтры по группе и категории действуют и здесь: иначе, провалившись в группу,
+  // человек увидел бы чужие траты
+  const group = (params.get('group') ?? '').trim();
+  if (group === NONE) where.push(`${key === 'o.category_slug' ? 'o.category_slug' : key} IS NULL`);
+  else if (group) {
+    where.push(
+      `o.category_slug IN (SELECT c.slug FROM categories c WHERE c.budget_id = o.budget_id AND c.group_slug = :group)`,
+    );
+    args.group = group;
+  }
+  const category = (params.get('category') ?? '').trim();
+  if (category === NONE) where.push('o.category_slug IS NULL');
+  else if (category) {
+    where.push('o.category_slug = :category');
+    args.category = category;
+  }
+  if ((params.get('uncategorized') ?? '') === '1') where.push('o.category_slug IS NULL');
+
+  return db
+    .prepare(
+      `SELECT ${key} AS key, COUNT(*) AS count, COALESCE(SUM(o.amount), 0) AS sum
+         FROM bank_ops o WHERE ${where.join(' AND ')} GROUP BY 1`,
+    )
+    .all(args);
+}
+
+/** Сложить строки сводки из чеков и из банка: ключ разреза один и тот же. */
+function mergeBank(rows, bank, names) {
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  for (const extra of bank) {
+    const row = byKey.get(extra.key);
+    if (row) {
+      row.sum += extra.sum;
+      row.count += extra.count;
+      row.bank_sum = (row.bank_sum ?? 0) + extra.sum;
+      continue;
+    }
+    // Такой категории в чеках не было: строка появляется целиком из банка
+    const fresh = { key: extra.key, count: extra.count, receipts: 0, sum: extra.sum, excluded_sum: 0, bank_sum: extra.sum, ...(names.get(extra.key) ?? {}) };
+    rows.push(fresh);
+    byKey.set(extra.key, fresh);
+  }
+  return rows.sort((a, b) => b.sum - a.sum);
+}
+
 export function summary(db, budgetId, params) {
   // prefix: колонки берутся из v_items под псевдонимом v — иначе они спорят с groups
   const { sql: whereSql, args } = buildFilters(params, { budgetId, searchItems: true, prefix: 'v.' });
@@ -352,6 +418,30 @@ export function summary(db, budgetId, params) {
          ${whereSql}`,
     )
     .get(args);
+
+  // Второй источник расходов — траты без чека. Названия и цвета берём из справочника:
+  // в v_items такой категории может не быть вовсе
+  const bank = bankExpenses(db, budgetId, params, by);
+  if (bank.length) {
+    const names = new Map(
+      by === 'group'
+        ? db
+            .prepare('SELECT slug AS key, name, icon, color, shade_from, shade_to FROM groups WHERE budget_id = ?')
+            .all(budgetId)
+            .map((g) => [g.key, g])
+        : by === 'category'
+          ? db
+              .prepare('SELECT slug AS key, name, group_slug FROM categories WHERE budget_id = ?')
+              .all(budgetId)
+              .map((c) => [c.key, c])
+          : [],
+    );
+    mergeBank(rows, bank, names);
+    totals.sum += bank.reduce((s, r) => s + r.sum, 0);
+    totals.count += bank.reduce((s, r) => s + r.count, 0);
+    totals.bank_sum = bank.reduce((s, r) => s + r.sum, 0);
+    totals.bank_count = bank.reduce((s, r) => s + r.count, 0);
+  }
 
   return { by, rows, totals };
 }
