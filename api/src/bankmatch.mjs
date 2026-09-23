@@ -101,8 +101,88 @@ export function matchBank(db, budgetId) {
     const transfers = markTransfers(db, budgetId);
     const receipts = matchReceipts(db, budgetId);
     classifyRest(db, budgetId);
+    const categorized = applyRules(db, budgetId);
     db.exec('COMMIT');
-    return { transfers, receipts };
+    return { transfers, receipts, categorized };
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+/**
+ * Ключ правила: продавец, а если его нет — описание операции. Приводим к общему виду,
+ * чтобы «МОСЭНЕРГОСБЫТ» и «Мосэнергосбыт » были одним и тем же.
+ */
+export function ruleKey(op) {
+  const raw = String(op.merchant || op.description || '').toLowerCase().replace(/ё/g, 'е');
+  const key = raw.replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return key.length >= 2 ? key : null;
+}
+
+/** Разложить траты без чека по категориям, которые человек уже выбирал для этих продавцов. */
+export function applyRules(db, budgetId) {
+  const ops = db
+    .prepare(
+      `SELECT id, merchant, description FROM bank_ops
+        WHERE budget_id = ? AND kind = 'expense' AND category_slug IS NULL`,
+    )
+    .all(budgetId);
+  const rule = db.prepare('SELECT category_slug FROM bank_rules WHERE budget_id = ? AND key = ?');
+  const save = db.prepare("UPDATE bank_ops SET category_slug = ?, category_source = 'rule' WHERE id = ?");
+  let done = 0;
+  for (const op of ops) {
+    const key = ruleKey(op);
+    const found = key && rule.get(budgetId, key);
+    if (!found) continue;
+    save.run(found.category_slug, op.id);
+    done += 1;
+  }
+  return done;
+}
+
+/**
+ * Категория траты без чека: человек выбрал её сам. Запоминаем для этого продавца и сразу
+ * размечаем все его операции — и прошлые, и те, что придут позже (applyRules).
+ */
+export function setOpCategory(db, budgetId, id, slug) {
+  const op = db.prepare('SELECT * FROM bank_ops WHERE id = ? AND budget_id = ?').get(id, budgetId);
+  if (!op) return { error: 'operation not found', status: 404 };
+
+  const category = slug
+    ? db
+        .prepare(
+          `SELECT c.slug, c.name, c.group_slug, g.name AS group_name
+             FROM categories c JOIN groups g ON g.budget_id = c.budget_id AND g.slug = c.group_slug
+            WHERE c.budget_id = ? AND c.slug = ?`,
+        )
+        .get(budgetId, slug)
+    : null;
+  if (slug && !category) return { error: 'unknown category', status: 400 };
+
+  const key = ruleKey(op);
+  const at = new Date().toISOString();
+  db.exec('BEGIN');
+  try {
+    if (!slug) {
+      // Сняли категорию: забываем и правило, иначе оно вернёт её обратно
+      if (key) db.prepare('DELETE FROM bank_rules WHERE budget_id = ? AND key = ?').run(budgetId, key);
+      db.prepare('UPDATE bank_ops SET category_slug = NULL, category_source = NULL WHERE id = ?').run(id);
+      db.exec('COMMIT');
+      return { category: null, affected: 1 };
+    }
+
+    if (key) {
+      db.prepare(
+        `INSERT INTO bank_rules (budget_id, key, category_slug, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (budget_id, key) DO UPDATE SET category_slug = excluded.category_slug,
+           updated_at = excluded.updated_at`,
+      ).run(budgetId, key, slug, at);
+    }
+    db.prepare("UPDATE bank_ops SET category_slug = ?, category_source = 'manual' WHERE id = ?").run(slug, id);
+    const affected = key ? 1 + applyRules(db, budgetId) : 1;
+    db.exec('COMMIT');
+    return { category, affected };
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;

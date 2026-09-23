@@ -289,7 +289,8 @@ export function listBankOps(db, budgetId, { from, to, direction = 'debit', kind 
   const rows = db
     .prepare(
       `SELECT id, ext_id, at, direction, amount, currency, account_name, status, op_group, mcc,
-              description, merchant, bank_category, card, has_receipt, kind, receipt_id
+              description, merchant, bank_category, card, has_receipt, kind, receipt_id,
+              category_slug, category_source
          FROM bank_ops ${where}
         ORDER BY ${column} ${order} LIMIT :limit OFFSET :offset`,
     )

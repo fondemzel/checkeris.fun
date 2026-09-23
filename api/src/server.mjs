@@ -28,7 +28,7 @@ import { geocoderReady, runGeocoder } from './geocoder.mjs';
 import {
   banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank,
 } from './banks.mjs';
-import { bankTotals, matchBank } from './bankmatch.mjs';
+import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -368,7 +368,7 @@ async function handleApi(req, res, url) {
   // ── банк на телефоне ──
   // Вход в интернет-банк человек делает сам, в приложении на своём устройстве; сюда
   // приезжают уже готовые операции. Сессии банка на сервере нет.
-  if (pathname === '/api/bank' || pathname === '/api/bank/ops') {
+  if (pathname === '/api/bank' || pathname.startsWith('/api/bank/')) {
     if (pathname === '/api/bank' && req.method === 'GET') {
       const p = url.searchParams;
       const period = p.get('from') && p.get('to') ? bankTotals(db, user.budget_id, p.get('from'), p.get('to')) : null;
@@ -377,6 +377,19 @@ async function handleApi(req, res, url) {
     if (pathname === '/api/bank' && req.method === 'DELETE') {
       return sendJson(res, 200, unlink(db, user.id, String(url.searchParams.get('bank') ?? 'tbank')));
     }
+    // Категория траты без чека: выбор человека запоминается для этого продавца
+    const opCategory = pathname.match(/^\/api\/bank\/ops\/(\d+)\/category$/);
+    if (opCategory && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const result = setOpCategory(db, user.budget_id, Number(opCategory[1]), String(body.category ?? '').trim());
+      return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
+    }
+
     if (pathname === '/api/bank/ops' && req.method === 'GET') {
       const p = url.searchParams;
       return sendJson(res, 200, listBankOps(db, user.budget_id, {

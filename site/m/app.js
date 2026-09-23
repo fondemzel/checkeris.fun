@@ -549,17 +549,24 @@ async function screenBank() {
         op.card ? `карта ·${op.card}` : '',
         op.status === 'WAIT' ? 'в обработке' : '',
       ].filter(Boolean).join(' · ');
-      // У операции с чеком строка ведёт в этот чек — там видно, что именно куплено
-      const open = op.receipt_id ? ` data-receipt="${op.receipt_id}"` : '';
+      // Операция с чеком ведёт в чек: там видно, что куплено. Трата без чека — в выбор
+      // категории: иначе она нигде не учтётся
+      const found = op.category_slug ? findCategory(op.category_slug) : null;
+      const cat = op.receipt_id
+        ? ''
+        : found
+          ? `<span class="op-cat" style="background:${found.group.color ?? '#eef1f5'}"></span>${esc(found.category.name)}`
+          : '<span class="op-cat none"></span><span class="pick-hint">выбрать категорию</span>';
+      const action = op.receipt_id ? `data-receipt="${op.receipt_id}"` : `data-op-cat="${op.id}"`;
       return `${header}
-        <${op.receipt_id ? 'button' : 'div'} class="row bank-op" ${op.receipt_id ? 'type="button"' : ''}${open}>
+        <button class="row bank-op" type="button" ${action}>
           <span class="row-main">
             <span class="row-title">${esc(op.merchant ?? op.description ?? 'Без названия')}</span>
-            <span class="row-note">${esc(note)}</span>
+            <span class="row-note">${cat}${cat ? ' · ' : ''}${esc(note)}</span>
           </span>
           ${op.receipt_id ? `<span class="op-mark" title="Есть чек">${UI.receipt}</span>` : ''}
           <span class="row-sum">${money(op.amount)}</span>
-        </${op.receipt_id ? 'button' : 'div'}>`;
+        </button>`;
     })
     .join('');
 
@@ -1605,6 +1612,17 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
   });
 }
 
+/** Категория траты без чека: запоминается для этого продавца и красит его прошлые операции. */
+async function saveOpCategory(id, slug) {
+  try {
+    const res = await post(`/api/bank/ops/${id}/category`, { category: slug });
+    toast(res.affected > 1 ? `Категория выбрана · ещё ${int.format(res.affected - 1)} у этого продавца` : 'Категория выбрана');
+    render();
+  } catch (err) {
+    toast(`Не сохранилось: ${err.message}`);
+  }
+}
+
 /** Сохранение выбранной категории и обновление строки на месте. */
 async function saveCategory(itemId, slug) {
   const row = document.querySelector(`.sheet-row[data-row="${itemId}"]`);
@@ -1764,6 +1782,10 @@ async function onScreenClick(e) {
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
   // Категория в карточке товара
+  // Трата без чека: категорию выбирает человек, дальше такие же операции размечаются сами
+  const opCat = e.target.closest('[data-op-cat]');
+  if (opCat) return openCategoryPicker(Number(opCat.dataset.opCat), saveOpCategory);
+
   const bankOpen = e.target.closest('[data-bank-open]');
   if (bankOpen) return go({ screen: 'bank_card', bank: bankOpen.dataset.bankOpen });
 

@@ -503,6 +503,8 @@ CREATE TABLE IF NOT EXISTS bank_ops (
   card           TEXT,                  -- последние цифры карты
   has_receipt    INTEGER NOT NULL DEFAULT 0, -- у банка есть кассовый чек
   kind           TEXT,                  -- covered (есть чек) | expense | income | transfer
+  category_slug  TEXT,                  -- категория траты без чека: у покупок с чеком она у позиций
+  category_source TEXT,                 -- manual (выбрал человек) | rule (по прошлому выбору)
   receipt_id     INTEGER REFERENCES receipts (id) ON DELETE SET NULL, -- чек этой же покупки
   pair_id        INTEGER,               -- вторая половина перевода между своими счетами
   raw            TEXT NOT NULL,         -- ответ банка целиком: разбор можно улучшать задним числом
@@ -512,6 +514,17 @@ CREATE TABLE IF NOT EXISTS bank_ops (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bank_ops_budget_at ON bank_ops (budget_id, at);
+
+-- Выбор категории для трат без чека запоминается по продавцу: выбрав «ЖКХ» для
+-- «Мосэнергосбыт» однажды, человек не выбирает её снова. Правило живёт в бюджете:
+-- у каждого свои категории и свои привычки.
+CREATE TABLE IF NOT EXISTS bank_rules (
+  budget_id     INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
+  key           TEXT NOT NULL,          -- продавец или описание, приведённые к общему виду
+  category_slug TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  PRIMARY KEY (budget_id, key)
+);
 
 -- Сообщения человеку в Telegram. С основного сервера Telegram недоступен, поэтому их
 -- забирает бот на зарубежном сервере (bot/relay.mjs) подписанным запросом и отправляет.

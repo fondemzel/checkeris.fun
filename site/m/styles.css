@@ -684,6 +684,11 @@ button, input, select { font: inherit; color: inherit; }
 .bank-op { width: 100%; cursor: default; }
 button.bank-op { cursor: pointer; }
 .op-mark { display: flex; flex: none; color: var(--muted); } /* у операции есть чек */
+
+/* Кружок цвета группы перед названием категории — как в списках товаров */
+.op-cat { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; }
+.op-cat.none { background: #d7dbe2; }
+.pick-hint { color: var(--accent); }
 .op-mark svg { width: 16px; height: 16px; }
 .row-sum.income { color: #1baf7a; }
 .row .scan-dot { margin: 0 3px; }
