@@ -26,7 +26,7 @@ import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
 import {
-  banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank,
+  banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank, getBankOp,
 } from './banks.mjs';
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { loadEnv } from './llm.mjs';
@@ -377,6 +377,13 @@ async function handleApi(req, res, url) {
     if (pathname === '/api/bank' && req.method === 'DELETE') {
       return sendJson(res, 200, unlink(db, user.id, String(url.searchParams.get('bank') ?? 'tbank')));
     }
+    // Одна операция — для её карточки
+    const opOne = pathname.match(/^\/api\/bank\/ops\/(\d+)$/);
+    if (opOne && req.method === 'GET') {
+      const op = getBankOp(db, user.budget_id, Number(opOne[1]));
+      return op ? sendJson(res, 200, op) : sendJson(res, 404, { error: 'operation not found' });
+    }
+
     // Категория траты без чека: выбор человека запоминается для этого продавца
     const opCategory = pathname.match(/^\/api\/bank\/ops\/(\d+)\/category$/);
     if (opCategory && req.method === 'POST') {

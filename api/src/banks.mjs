@@ -333,3 +333,22 @@ export function forgetBank(db, userId, bank) {
   }
   return { ops };
 }
+
+/** Одна операция для её карточки: с категорией и сколько ещё операций у этого продавца. */
+export function getBankOp(db, budgetId, id) {
+  const op = db
+    .prepare(
+      `SELECT o.id, o.at, o.debited_at, o.direction, o.amount, o.currency, o.account_name, o.status,
+              o.op_group, o.mcc, o.description, o.merchant, o.bank_category, o.card, o.kind,
+              o.receipt_id, o.category_slug, o.category_source,
+              c.name AS category_name, c.group_slug, g.name AS group_name,
+              (SELECT COUNT(*) FROM bank_ops x WHERE x.budget_id = o.budget_id AND x.kind = 'expense'
+                 AND COALESCE(x.merchant, x.description) = COALESCE(o.merchant, o.description)) AS same_count
+         FROM bank_ops o
+         LEFT JOIN categories c ON c.budget_id = o.budget_id AND c.slug = o.category_slug
+         LEFT JOIN groups g ON g.budget_id = o.budget_id AND g.slug = c.group_slug
+        WHERE o.id = ? AND o.budget_id = ?`,
+    )
+    .get(id, budgetId);
+  return op ?? null;
+}

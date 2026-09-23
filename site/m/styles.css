@@ -688,6 +688,7 @@ button.bank-op { cursor: pointer; }
 /* Откуда трата: чек, банк или руками. Значок неприметный — это подсказка, а не действие */
 .src { display: flex; flex: none; margin-left: -4px; color: #c3c9d2; } /* после суммы, вплотную к ней */
 .src svg { width: 15px; height: 15px; }
+.kv b svg { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; color: var(--muted); }
 
 /* Кружок цвета группы перед названием категории — как в списках товаров */
 .op-cat { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; }

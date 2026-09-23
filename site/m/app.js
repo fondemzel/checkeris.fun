@@ -178,13 +178,14 @@ const state = {
   item: '',
   filter: 'all', // список чеков: all | failed | pending | manual
   bank: '', // банк, чья страница открыта
+  op: '', // операция банка, чья карточка открыта
   added: '', // чек, только что добавленный сканом или руками
   sort: 'date', // списки: date | name | sum
   dir: 'desc',
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'stats', 'bank', 'bank_card'];
+  'settings', 'stats', 'bank', 'bank_card', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -253,6 +254,7 @@ function go(patch, replace = false) {
   if (state.category) params.set('category', state.category);
   if (state.item) params.set('item', state.item);
   if (state.bank) params.set('bank', state.bank);
+  if (state.op) params.set('op', state.op);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   if (['category', 'receipts', 'bank'].includes(state.screen) && (state.sort !== 'date' || state.dir !== 'desc')) {
@@ -278,6 +280,7 @@ function readUrl() {
   state.category = p.get('category') ?? '';
   state.item = p.get('item') ?? '';
   state.bank = p.get('bank') ?? '';
+  state.op = p.get('op') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
   state.sort = Object.hasOwn(SORTS, p.get('sort') ?? '') ? p.get('sort') : 'date';
@@ -514,7 +517,7 @@ async function screenCategory() {
       source: 'bank',
       note: op.card ? `карта ·${op.card}` : '',
       outside: false,
-      action: `data-op-cat="${op.id}"`,
+      action: `data-op="${op.id}"`,
     })),
   ].sort((a, b) => {
     const back = state.dir === 'asc' ? -1 : 1;
@@ -596,7 +599,7 @@ async function screenBank() {
         : found
           ? `<span class="op-cat" style="background:${found.group.color ?? '#eef1f5'}"></span>${esc(found.category.name)}`
           : '<span class="op-cat none"></span><span class="pick-hint">выбрать категорию</span>';
-      const action = op.receipt_id ? `data-receipt="${op.receipt_id}"` : `data-op-cat="${op.id}"`;
+      const action = op.receipt_id ? `data-receipt="${op.receipt_id}"` : `data-op="${op.id}"`;
       return `${header}
         <button class="row bank-op" type="button" ${action}>
           <span class="row-main">
@@ -675,6 +678,41 @@ const SOURCES = {
   manual: { title: 'Вбито вручную', icon: UI.pen },
   bank: { title: 'Из банка, без чека', icon: UI.card },
 };
+
+/**
+ * Карточка траты из банка — такая же, как у товара: сумма, что это, когда, категория.
+ * Откуда трата взялась, важно меньше, чем то, что она учтена, поэтому и выглядят они одинаково.
+ */
+async function screenOp() {
+  const op = await api(`/api/bank/ops/${state.op}`);
+  const kv = (rows) =>
+    rows
+      .filter(([, v]) => v)
+      .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`)
+      .join('');
+
+  return `
+    <div class="card">
+      <div class="card-sum">${money(op.amount, true)}</div>
+      <div class="card-name">${esc(op.merchant ?? op.description ?? 'Без названия')}</div>
+      ${kv([
+        ['Дата', `${dateRu(op.at.slice(0, 10))} ${esc(timeRu(op.at))}`],
+        ['Описание', op.merchant && op.description && op.description !== op.merchant ? esc(op.description) : ''],
+        ['Карта', op.card ? `·${esc(op.card)}` : ''],
+        ['Счёт', esc(op.account_name ?? '')],
+        ['Категория в банке', esc(op.bank_category ?? '')],
+        ['Источник', `${SOURCES.bank.icon} из банка, без чека`],
+      ])}
+    </div>
+
+    <div class="card">
+      <div class="card-label">Категория</div>
+      <button class="cat-pick" type="button" data-op-cat="${op.id}">${categoryButton(op.category_slug)}</button>
+      ${op.same_count > 1
+        ? `<p class="note">Изменение категории затронет ${int.format(op.same_count)} ${plural(op.same_count, 'операцию', 'операции', 'операций')} этого продавца</p>`
+        : ''}
+    </div>`;
+}
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
 
@@ -1539,6 +1577,7 @@ function openCategoryPicker(itemId, onPick) {
   const name =
     (itemId && document.querySelector(`.sheet-row[data-row="${itemId}"] .sheet-name`)?.textContent) ||
     (itemId && itemShown?.id === itemId ? itemShown.name : '') ||
+    (state.screen === 'op' ? document.querySelector('.card-name')?.textContent : '') ||
     (!itemId ? document.getElementById('m-name')?.value.trim() : '') ||
     '';
   const subtitle = name ? `<small class="picker-for">Выберите категорию для расхода «${esc(name)}»</small>` : '';
@@ -1730,6 +1769,7 @@ const SCREENS = {
   },
   settings: { title: 'Настройки', render: screenSettings },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
+  op: { title: 'Трата', render: screenOp },
 };
 
 /** Раздела ещё нет, а вкладка уже на месте: навигация не будет меняться потом. */
@@ -1743,7 +1783,7 @@ const soon = (icon, title, text) => `
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
 const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
-  income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings',
+  income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', op: 'summary',
 };
 
 /**
@@ -1828,7 +1868,10 @@ async function onScreenClick(e) {
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
   // Категория в карточке товара
-  // Трата без чека: категорию выбирает человек, дальше такие же операции размечаются сами
+  // Трата из банка открывается карточкой, как товар; категория меняется уже в ней
+  const opOpen = e.target.closest('[data-op]');
+  if (opOpen) return go({ screen: 'op', op: opOpen.dataset.op });
+
   const opCat = e.target.closest('[data-op-cat]');
   if (opCat) return openCategoryPicker(Number(opCat.dataset.opCat), saveOpCategory);
 
