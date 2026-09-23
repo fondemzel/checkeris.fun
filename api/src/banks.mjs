@@ -169,11 +169,14 @@ export function importOps(db, userId, bank, ops) {
   const link = db.prepare('SELECT id FROM bank_links WHERE user_id = ? AND bank = ?').get(userId, bank);
 
   const upsert = opUpsert(db);
+  const known = db.prepare('SELECT 1 FROM bank_ops WHERE link_id = ? AND ext_id = ?');
   let count = 0;
+  let added = 0; // сколько операций человек видит впервые: остальные приехали на повторную проверку
   db.exec('BEGIN');
   try {
     for (const op of ops ?? []) {
       if (!op?.id || !op.operationTime) continue;
+      if (!known.get(link.id, String(op.id))) added += 1;
       upsert.run({ ...opRow(link, budgetId, op.accountName ?? null, op), now: at });
       count += 1;
     }
@@ -182,7 +185,11 @@ export function importOps(db, userId, bank, ops) {
     db.exec('ROLLBACK');
     throw err;
   }
-  return { ops: count, total: db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE link_id = ?').get(link.id).c };
+  return {
+    ops: count,
+    added,
+    total: db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE link_id = ?').get(link.id).c,
+  };
 }
 
 /** Загрузка операций одного подключения. Повторы не плодят строк: ключ — id операции в банке. */

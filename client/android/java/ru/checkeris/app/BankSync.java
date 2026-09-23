@@ -26,20 +26,26 @@ final class BankSync {
     private static final long OVERLAP = 3L * 24 * 3600 * 1000; // операции «в обработке» меняются задним числом
     private static final int BATCH = 150; // операция с полным ответом банка весит килобайты — шлём пачками
 
-    /** Итог для показа человеку. */
+    /** Итог для показа человеку: сколько операций новых и сколько всего проверили. */
     static final class Result {
         final boolean ok;
-        final int ops;
+        final int added;
+        final int seen;
         final String error;
 
-        Result(boolean ok, int ops, String error) {
+        Result(boolean ok, int added, int seen, String error) {
             this.ok = ok;
-            this.ops = ops;
+            this.added = added;
+            this.seen = seen;
             this.error = error;
         }
 
         JSONObject json() throws Exception {
-            return new JSONObject().put("ok", ok).put("ops", ops).put("error", error == null ? JSONObject.NULL : error);
+            return new JSONObject()
+                    .put("ok", ok)
+                    .put("ops", added)
+                    .put("seen", seen)
+                    .put("error", error == null ? JSONObject.NULL : error);
         }
     }
 
@@ -72,15 +78,15 @@ final class BankSync {
     static Result run(Context context, String checkerToken) {
         Secrets secrets = new Secrets(context);
         String session = secrets.get(BankLoginActivity.SESSION);
-        if (session == null) return new Result(false, 0, "Т-Банк не подключён");
+        if (session == null) return new Result(false, 0, 0, "Т-Банк не подключён");
 
         int state = TBank.check(session);
-        if (state == TBank.OFFLINE) return new Result(false, 0, "Банк не отвечает — попробуйте позже");
+        if (state == TBank.OFFLINE) return new Result(false, 0, 0, "Банк не отвечает — попробуйте позже");
         if (state == TBank.EXPIRED) {
             // Подключение остаётся, но нужен новый вход: стирать сессию и показывать
             // «не подключён» нечестно — человек-то банк подключал
             secrets.put(EXPIRED, "1");
-            return new Result(false, 0, "Банк просит войти заново");
+            return new Result(false, 0, 0, "Банк просит войти заново");
         }
         secrets.put(EXPIRED, null);
 
@@ -101,19 +107,21 @@ final class BankSync {
                     all.put(op);
                 }
             }
+            int added = 0;
             for (int from = 0; from < all.length(); from += BATCH) {
                 JSONArray batch = new JSONArray();
                 for (int i = from; i < Math.min(from + BATCH, all.length()); i++) batch.put(all.get(i));
-                send(checkerToken, batch);
+                added += send(checkerToken, batch);
             }
             secrets.putLong(LAST_SYNC, System.currentTimeMillis());
-            return new Result(true, all.length(), null);
+            return new Result(true, added, all.length(), null);
         } catch (Exception e) {
-            return new Result(false, 0, String.valueOf(e.getMessage()));
+            return new Result(false, 0, 0, String.valueOf(e.getMessage()));
         }
     }
 
-    private static void send(String token, JSONArray ops) throws Exception {
+    /** Отправить пачку в Чекер и узнать, сколько операций там оказались новыми. */
+    private static int send(String token, JSONArray ops) throws Exception {
         JSONObject body = new JSONObject().put("bank", "tbank").put("ops", ops);
         HttpURLConnection http = (HttpURLConnection) new URL(CHECKER).openConnection();
         http.setRequestMethod("POST");
@@ -129,5 +137,6 @@ final class BankSync {
         String answer = TBank.read(code >= 400 ? http.getErrorStream() : http.getInputStream());
         http.disconnect();
         if (code >= 400) throw new IllegalStateException("Чекер: " + answer);
+        return new JSONObject(answer).optInt("added");
     }
 }

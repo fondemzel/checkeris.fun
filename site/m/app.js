@@ -2242,7 +2242,14 @@ window.addEventListener('checker-resume', () => {
 // Итог выгрузки приходит от приложения событием: показываем и обновляем экран
 window.addEventListener('checker-bank', (e) => {
   const r = e.detail ?? {};
-  toast(r.ok ? `Операции обновлены: ${int.format(r.ops ?? 0)}` : `Банк: ${r.error ?? 'не вышло'}`);
+  // Показываем новое, а не всё проверенное: банк каждый раз отдаёт и последние дни
+  toast(
+    r.ok
+      ? r.ops
+        ? `Новых операций: ${int.format(r.ops)}`
+        : 'Новых операций нет'
+      : `Банк: ${r.error ?? 'не вышло'}`,
+  );
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
