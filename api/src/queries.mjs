@@ -471,11 +471,30 @@ export function getReceipt(db, budgetId, id) {
 }
 
 /** Позиция со всеми реквизитами — для карточки товара в правой панели. */
+/** Комментарий к товару. Пустой — удалить. Держится за чек и номер позиции. */
+export function setItemNote(db, budgetId, id, note) {
+  const item = db
+    .prepare('SELECT i.receipt_id, i.pos FROM items i JOIN receipts r ON r.id = i.receipt_id WHERE i.id = ? AND r.budget_id = ?')
+    .get(id, budgetId);
+  if (!item) return { error: 'item not found', status: 404 };
+  const text = String(note ?? '').trim().slice(0, 1000);
+  if (!text) {
+    db.prepare('DELETE FROM item_notes WHERE receipt_id = ? AND pos = ?').run(item.receipt_id, item.pos);
+    return { note: null };
+  }
+  db.prepare(
+    `INSERT INTO item_notes (receipt_id, pos, note, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (receipt_id, pos) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at`,
+  ).run(item.receipt_id, item.pos, text, new Date().toISOString());
+  return { note: text };
+}
+
 export function getItem(db, budgetId, id) {
   return (
     db
       .prepare(
         `SELECT v.*, i.nds_sum, i.provider_inn,
+                (SELECT n.note FROM item_notes n WHERE n.receipt_id = v.receipt_id AND n.pos = v.pos) AS note,
                 (SELECT COUNT(*) FROM items x JOIN receipts rx ON rx.id = x.receipt_id
                   WHERE x.name_norm = v.name_norm AND rx.budget_id = v.budget_id) AS same_name_count,
                 (CASE WHEN r.internet_sign = 0 AND p.status = 'ok' THEN p.lat END) AS place_lat,

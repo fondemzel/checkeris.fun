@@ -702,6 +702,7 @@ async function screenOp() {
     seller: op.merchant && op.description && op.description !== op.merchant ? op.description : null,
     category_slug: op.category_slug,
     same_name_count: op.same_count,
+    note: op.note,
     card: op.card,
     account_name: op.account_name,
   });
@@ -748,6 +749,12 @@ function itemCard(it) {
             : `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позицию', 'позиции', 'позиций')} с таким же названием`
           : ''
       }</p>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Комментарий</div>
+      <textarea class="note-input" id="item-note" rows="1" maxlength="1000" placeholder="Добавить комментарий"
+        data-note="${bank ? `/api/bank/ops/${it.id}/note` : `/api/items/${it.id}/note`}">${esc(it.note ?? '')}</textarea>
     </div>
 
     ${it.source === 'receipt' ? `
@@ -1758,7 +1765,7 @@ const SCREENS = {
     render: screenGroup,
   },
   category: { title: 'Позиции', render: screenCategory },
-  item: { title: 'Товар', render: screenItem, after: mountItemMap },
+  item: { title: 'Товар', render: screenItem, after: () => { mountItemMap(); fitNote(); } },
   bank: { title: 'Операции банка', render: screenBank },
   income: { title: 'Доход', render: screenIncome },
   stats: {
@@ -1767,7 +1774,7 @@ const SCREENS = {
   },
   settings: { title: 'Настройки', render: screenSettings },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
-  op: { title: 'Товар', render: screenOp },
+  op: { title: 'Товар', render: screenOp, after: () => fitNote() },
 };
 
 /** Раздела ещё нет, а вкладка уже на месте: навигация не будет меняться потом. */
@@ -2429,6 +2436,32 @@ async function reloadIfUpdated() {
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') reloadIfUpdated();
+});
+
+/**
+ * Комментарий к товару: поле, которое растёт вместе с текстом и сохраняется само, когда
+ * человек закончил писать — ушёл из поля. Отдельной кнопки нет: это заметка, а не форма.
+ */
+const growNote = (el) => {
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+};
+const fitNote = () => $('item-note') && growNote($('item-note'));
+
+$('screen').addEventListener('input', (e) => {
+  if (e.target.matches?.('[data-note]')) growNote(e.target);
+});
+
+$('screen').addEventListener('focusout', async (e) => {
+  const el = e.target;
+  if (!el.matches?.('[data-note]') || el.value === el.defaultValue) return;
+  try {
+    const res = await post(el.dataset.note, { note: el.value });
+    el.value = el.defaultValue = res.note ?? '';
+    toast(res.note ? 'Комментарий сохранён' : 'Комментарий удалён');
+  } catch (err) {
+    toast(`Не сохранилось: ${err.message}`);
+  }
 });
 
 // Вернулись в приложение (например, из окна банка) — состояние могло измениться

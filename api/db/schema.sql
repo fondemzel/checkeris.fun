@@ -506,6 +506,7 @@ CREATE TABLE IF NOT EXISTS bank_ops (
   kind           TEXT,                  -- covered (есть чек) | expense | income | transfer
   category_slug  TEXT,                  -- категория траты без чека: у покупок с чеком она у позиций
   category_source TEXT,                 -- manual (выбрал человек) | rule (по прошлому выбору)
+  note           TEXT,                  -- комментарий человека: у операций банка id постоянный
   receipt_id     INTEGER REFERENCES receipts (id) ON DELETE SET NULL, -- чек этой же покупки
   pair_id        INTEGER,               -- вторая половина перевода между своими счетами
   raw            TEXT NOT NULL,         -- ответ банка целиком: разбор можно улучшать задним числом
@@ -515,6 +516,16 @@ CREATE TABLE IF NOT EXISTS bank_ops (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bank_ops_budget_at ON bank_ops (budget_id, at);
+
+-- Комментарии к товарам. Позиции чека при повторном импорте выгрузки пересоздаются
+-- с новыми id, поэтому комментарий держится за чек и номер позиции в нём: они постоянны.
+CREATE TABLE IF NOT EXISTS item_notes (
+  receipt_id INTEGER NOT NULL REFERENCES receipts (id) ON DELETE CASCADE,
+  pos        INTEGER NOT NULL,
+  note       TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (receipt_id, pos)
+);
 
 -- Выбор категории для трат без чека запоминается по продавцу: выбрав «ЖКХ» для
 -- «Мосэнергосбыт» однажды, человек не выбирает её снова. Правило живёт в бюджете:

@@ -59,6 +59,7 @@ function addUserColumns(db) {
   addColumn(db, 'bank_ops', 'kind', 'TEXT');
   addColumn(db, 'bank_ops', 'category_slug', 'TEXT');
   addColumn(db, 'bank_ops', 'category_source', 'TEXT');
+  addColumn(db, 'bank_ops', 'note', 'TEXT');
   addColumn(db, 'bank_ops', 'receipt_id', 'INTEGER');
   addColumn(db, 'bank_ops', 'pair_id', 'INTEGER');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');

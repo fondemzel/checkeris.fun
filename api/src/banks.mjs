@@ -340,7 +340,7 @@ export function getBankOp(db, budgetId, id) {
     .prepare(
       `SELECT o.id, o.at, o.debited_at, o.direction, o.amount, o.currency, o.account_name, o.status,
               o.op_group, o.mcc, o.description, o.merchant, o.bank_category, o.card, o.kind,
-              o.receipt_id, o.category_slug, o.category_source,
+              o.receipt_id, o.category_slug, o.category_source, o.note,
               c.name AS category_name, c.group_slug, g.name AS group_name,
               (SELECT COUNT(*) FROM bank_ops x WHERE x.budget_id = o.budget_id AND x.kind = 'expense'
                  AND COALESCE(x.merchant, x.description) = COALESCE(o.merchant, o.description)) AS same_count
@@ -351,4 +351,11 @@ export function getBankOp(db, budgetId, id) {
     )
     .get(id, budgetId);
   return op ?? null;
+}
+
+/** Комментарий к трате из банка. Пустой — удалить. */
+export function setBankOpNote(db, budgetId, id, note) {
+  const text = String(note ?? '').trim().slice(0, 1000) || null;
+  const res = db.prepare('UPDATE bank_ops SET note = ? WHERE id = ? AND budget_id = ?').run(text, id, budgetId);
+  return res.changes ? { note: text } : { error: 'operation not found', status: 404 };
 }
