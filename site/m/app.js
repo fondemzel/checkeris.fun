@@ -506,16 +506,22 @@ async function screenCategory() {
  */
 async function screenBank() {
   const q = new URLSearchParams({
-    from: state.from, to: state.to, direction: 'debit', per: '300', sort: state.sort, dir: state.dir,
+    from: state.from, to: state.to, direction: 'debit', kind: 'covered,expense',
+    per: '300', sort: state.sort, dir: state.dir,
   });
-  const data = await api(`/api/bank/ops?${q}`);
+  const [data, state_] = await Promise.all([
+    api(`/api/bank/ops?${q}`),
+    api(`/api/bank?from=${state.from}&to=${state.to}`).catch(() => null),
+  ]);
+  const byKind = Object.fromEntries((state_?.totals ?? []).map((t) => [t.kind, t]));
 
   const head = `
     <div class="stuck-head">
       ${expenseSwitch()}
       ${listHead({
         sum: money(data.totals.sum),
-        note: `${int.format(data.totals.count)} ${plural(data.totals.count, 'операция', 'операции', 'операций')} по картам`,
+        note: `${int.format(byKind.covered?.count ?? 0)} с чеком · ${int.format(byKind.expense?.count ?? 0)} без чека${
+          byKind.transfer ? ` · ${int.format(byKind.transfer.count)} переводов между своими` : ''}`,
         sorts: data.rows.length > 0,
       })}
     </div>`;
@@ -523,6 +529,10 @@ async function screenBank() {
   if (!data.rows.length) {
     return `${head}<div class="empty">Операций за период нет</div>`;
   }
+
+  // Покупка с чеком уже посчитана чеком: сумма в шапке — это оплата картой, а не «ещё расходы»
+  const hint = `<p class="note list-hint">Оплата картами Т-Банка. Покупки с чеком в расходах считаются
+    по чеку — дважды они не попадают. Переводы между своими счетами в список не входят.</p>`;
 
   const byDate = state.sort === 'date';
   let day = '';
@@ -539,20 +549,78 @@ async function screenBank() {
         op.card ? `карта ·${op.card}` : '',
         op.status === 'WAIT' ? 'в обработке' : '',
       ].filter(Boolean).join(' · ');
+      // У операции с чеком строка ведёт в этот чек — там видно, что именно куплено
+      const open = op.receipt_id ? ` data-receipt="${op.receipt_id}"` : '';
       return `${header}
-        <div class="row bank-op">
+        <${op.receipt_id ? 'button' : 'div'} class="row bank-op" ${op.receipt_id ? 'type="button"' : ''}${open}>
           <span class="row-main">
             <span class="row-title">${esc(op.merchant ?? op.description ?? 'Без названия')}</span>
             <span class="row-note">${esc(note)}</span>
           </span>
+          ${op.receipt_id ? `<span class="op-mark" title="Есть чек">${UI.receipt}</span>` : ''}
           <span class="row-sum">${money(op.amount)}</span>
+        </${op.receipt_id ? 'button' : 'div'}>`;
+    })
+    .join('');
+
+  return `${head}${hint}<div class="list">${rows}</div>`;
+}
+
+/**
+ * Доход — поступления из банка. Переводы между своими счетами сюда не попадают: деньги
+ * не появились, а переложены. Без подключённого банка показывать нечего.
+ */
+async function screenIncome() {
+  if (!bankLinked) {
+    return soon(UI.income, 'Доходы', inApp()
+      ? 'Подключите банк в настройках — поступления появятся здесь сами.'
+      : 'Поступления берутся из банка. Подключить его можно в приложении для Android.');
+  }
+
+  const q = new URLSearchParams({
+    from: state.from, to: state.to, direction: 'credit', kind: 'income',
+    per: '300', sort: state.sort, dir: state.dir,
+  });
+  const [data, bank] = await Promise.all([
+    api(`/api/bank/ops?${q}`),
+    api(`/api/bank?from=${state.from}&to=${state.to}`).catch(() => null),
+  ]);
+  const transfers = (bank?.totals ?? []).find((t) => t.kind === 'transfer');
+
+  const head = `
+    <div class="stuck-head">
+      ${listHead({
+        sum: money(data.totals.sum),
+        note: `${int.format(data.totals.count)} ${plural(data.totals.count, 'поступление', 'поступления', 'поступлений')}${
+          transfers ? ` · ${int.format(transfers.count)} переводов между своими` : ''}`,
+        sorts: data.rows.length > 0,
+      })}
+    </div>`;
+
+  if (!data.rows.length) return `${head}<div class="empty">Поступлений за период нет</div>`;
+
+  const byDate = state.sort === 'date';
+  let day = '';
+  const rows = data.rows
+    .map((op) => {
+      const opDay = op.at.slice(0, 10);
+      const header = !byDate || opDay === day
+        ? ''
+        : dayHead(opDay, daySum(data.rows, opDay, (x) => x.at, (x) => x.amount));
+      day = opDay;
+      const note = [timeRu(op.at), op.account_name].filter(Boolean).join(' · ');
+      return `${header}
+        <div class="row bank-op">
+          <span class="row-main">
+            <span class="row-title">${esc(op.description ?? op.merchant ?? 'Поступление')}</span>
+            <span class="row-note">${esc(note)}</span>
+          </span>
+          <span class="row-sum income">+${money(op.amount)}</span>
         </div>`;
     })
     .join('');
 
-  return `${head}
-    <p class="note list-hint">Операции по картам Т-Банка. В суммы расходов они пока не входят: по картам уже считаются чеки.</p>
-    <div class="list">${rows}</div>`;
+  return `${head}<div class="list">${rows}</div>`;
 }
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
@@ -1591,10 +1659,7 @@ const SCREENS = {
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem, after: mountItemMap },
   bank: { title: 'Операции банка', render: screenBank },
-  income: {
-    title: 'Доход',
-    render: () => soon(UI.income, 'Доходы', 'Здесь будут зарплата, переводы и другие поступления — чтобы видеть, сколько остаётся.'),
-  },
+  income: { title: 'Доход', render: screenIncome },
   stats: {
     title: 'Статистика',
     render: () => soon(UI.stats, 'Статистика', 'Здесь будут графики: как меняются траты по месяцам и категориям.'),

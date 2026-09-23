@@ -502,6 +502,9 @@ CREATE TABLE IF NOT EXISTS bank_ops (
   bank_category  TEXT,
   card           TEXT,                  -- последние цифры карты
   has_receipt    INTEGER NOT NULL DEFAULT 0, -- у банка есть кассовый чек
+  kind           TEXT,                  -- covered (есть чек) | expense | income | transfer
+  receipt_id     INTEGER REFERENCES receipts (id) ON DELETE SET NULL, -- чек этой же покупки
+  pair_id        INTEGER,               -- вторая половина перевода между своими счетами
   raw            TEXT NOT NULL,         -- ответ банка целиком: разбор можно улучшать задним числом
   created_at     TEXT NOT NULL,
   updated_at     TEXT NOT NULL,

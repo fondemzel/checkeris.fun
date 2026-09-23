@@ -7,6 +7,7 @@
 // подключение помечается expired, а человеку уходит сообщение в Telegram: войти заново.
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { loadEnv } from './llm.mjs';
+import { matchBank } from './bankmatch.mjs';
 import * as tbank from './tbank.mjs';
 
 const FAILS_TO_EXPIRE = 3; // пинг может разово не пройти из-за сети — не спешим хоронить сессию
@@ -185,10 +186,13 @@ export function importOps(db, userId, bank, ops) {
     db.exec('ROLLBACK');
     throw err;
   }
+  // Сразу разбираем: что покрыто чеком, что перевод между своими, что доход
+  const marks = matchBank(db, budgetId);
   return {
     ops: count,
     added,
     total: db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE link_id = ?').get(link.id).c,
+    ...marks,
   };
 }
 
@@ -272,18 +276,20 @@ export function unlink(db, userId, bank) {
  */
 const BANK_SORTS = { date: 'at', name: 'COALESCE(merchant, description)', sum: 'amount' };
 
-export function listBankOps(db, budgetId, { from, to, direction = 'debit', per = 200, page = 1, sort = 'date', dir = 'desc' }) {
+export function listBankOps(db, budgetId, { from, to, direction = 'debit', kind = null, per = 200, page = 1, sort = 'date', dir = 'desc' }) {
   const column = BANK_SORTS[sort] ?? BANK_SORTS.date;
   const order = dir === 'asc' ? 'ASC' : 'DESC';
   const args = { budgetId, from: `${from}T00:00:00`, to: `${to}T23:59:59` };
+  const kinds = kind ? String(kind).split(',').filter((k) => /^[a-z]+$/.test(k)) : [];
   const where = `WHERE budget_id = :budgetId AND at BETWEEN :from AND :to
-                 ${direction === 'all' ? '' : 'AND direction = :direction'}`;
+                 ${direction === 'all' ? '' : 'AND direction = :direction'}
+                 ${kinds.length ? `AND kind IN (${kinds.map((k) => `'${k}'`).join(', ')})` : ''}`;
   if (direction !== 'all') args.direction = direction;
 
   const rows = db
     .prepare(
       `SELECT id, ext_id, at, direction, amount, currency, account_name, status, op_group, mcc,
-              description, merchant, bank_category, card, has_receipt
+              description, merchant, bank_category, card, has_receipt, kind, receipt_id
          FROM bank_ops ${where}
         ORDER BY ${column} ${order} LIMIT :limit OFFSET :offset`,
     )

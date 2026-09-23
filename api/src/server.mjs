@@ -28,6 +28,7 @@ import { geocoderReady, runGeocoder } from './geocoder.mjs';
 import {
   banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank,
 } from './banks.mjs';
+import { bankTotals, matchBank } from './bankmatch.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -369,7 +370,9 @@ async function handleApi(req, res, url) {
   // приезжают уже готовые операции. Сессии банка на сервере нет.
   if (pathname === '/api/bank' || pathname === '/api/bank/ops') {
     if (pathname === '/api/bank' && req.method === 'GET') {
-      return sendJson(res, 200, { links: listLinks(db, user.id) });
+      const p = url.searchParams;
+      const period = p.get('from') && p.get('to') ? bankTotals(db, user.budget_id, p.get('from'), p.get('to')) : null;
+      return sendJson(res, 200, { links: listLinks(db, user.id), totals: period });
     }
     if (pathname === '/api/bank' && req.method === 'DELETE') {
       return sendJson(res, 200, unlink(db, user.id, String(url.searchParams.get('bank') ?? 'tbank')));
@@ -380,6 +383,7 @@ async function handleApi(req, res, url) {
         from: p.get('from'),
         to: p.get('to'),
         direction: p.get('direction') ?? 'debit',
+        kind: p.get('kind'),
         sort: p.get('sort') ?? 'date',
         dir: p.get('dir') ?? 'desc',
         per: Math.min(500, Number(p.get('per')) || 200),
@@ -695,6 +699,20 @@ if (geocoderReady()) {
 } else {
   console.error('DaData: ключ не задан (DADATA_API_KEY) — адреса покупок на карту не попадут');
 }
+
+// Операции, загруженные до появления разбора, размечаем один раз при запуске:
+// что покрыто чеком, что перевод между своими счетами, что доход
+setTimeout(() => {
+  try {
+    const budgets = db.prepare('SELECT DISTINCT budget_id FROM bank_ops WHERE kind IS NULL').all();
+    for (const { budget_id } of budgets) {
+      const res = matchBank(db, budget_id);
+      console.log(`банк: разбор бюджета #${budget_id} — чеков ${res.receipts}, переводов ${res.transfers}`);
+    }
+  } catch (err) {
+    console.error('банк, разбор:', err.message);
+  }
+}, 3000).unref();
 
 // Банки: сессию пингуем раз в минуту — иначе банк её сбросит, операции забираем раз в 15 минут
 if (banksReady()) {

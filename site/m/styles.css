@@ -681,7 +681,11 @@ button, input, select { font: inherit; color: inherit; }
 
 .day b { font: inherit; } /* подытог — тем же стилем, что и дата: это одна строка, а не выделение */
 
-.bank-op { cursor: default; }
+.bank-op { width: 100%; cursor: default; }
+button.bank-op { cursor: pointer; }
+.op-mark { display: flex; flex: none; color: var(--muted); } /* у операции есть чек */
+.op-mark svg { width: 16px; height: 16px; }
+.row-sum.income { color: #1baf7a; }
 .row .scan-dot { margin: 0 3px; }
 .scan-dot.waiting { background: #eda100; box-shadow: 0 0 0 3px #fbe7bd; }
 
