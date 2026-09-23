@@ -623,6 +623,15 @@ export function getMeta(db, budgetId) {
     )
     .get(budgetId);
 
+  // Границы данных — по всем источникам: история банка бывает на годы старше первого чека,
+  // и «Всё время» должно её охватывать
+  const bank = db
+    .prepare('SELECT MIN(substr(at, 1, 10)) AS date_from, MAX(substr(at, 1, 10)) AS date_to FROM bank_ops WHERE budget_id = ?')
+    .get(budgetId);
+  const edge = (a, b, pick) => (a && b ? pick(a, b) : a ?? b ?? null);
+  stats.date_from = edge(stats.date_from, bank.date_from, (a, b) => (a < b ? a : b));
+  stats.date_to = edge(stats.date_to, bank.date_to, (a, b) => (a > b ? a : b));
+
   const sellers = db
     .prepare(
       `SELECT seller_inn, MIN(seller) AS seller, COUNT(*) AS receipts, SUM(total_sum) AS sum
