@@ -312,6 +312,16 @@ CREATE INDEX IF NOT EXISTS idx_item_labels_source   ON item_labels (source);
 
 -- Позиции вместе с контекстом чека и категорией: на этом представлении строится
 -- вкладка «Товары», сводка и мобильная версия.
+-- Позиции, которые человек убрал из расходов: задвоенные, учтённые где-то ещё.
+-- Удалять строку из чека нельзя — повторный импорт выгрузки вернёт её. Поэтому помечаем,
+-- и держится пометка за чек и номер позиции: они постоянны, id позиции — нет.
+CREATE TABLE IF NOT EXISTS item_hidden (
+  receipt_id INTEGER NOT NULL REFERENCES receipts (id) ON DELETE CASCADE,
+  pos        INTEGER NOT NULL,
+  hidden_at  TEXT NOT NULL,
+  PRIMARY KEY (receipt_id, pos)
+);
+
 DROP VIEW IF EXISTS v_items;
 CREATE VIEW v_items AS
 SELECT
@@ -355,7 +365,9 @@ FROM items i
 JOIN receipts r ON r.id = i.receipt_id
 LEFT JOIN item_labels l ON l.item_id = i.id
 LEFT JOIN categories c ON c.budget_id = r.budget_id AND c.slug = l.category_slug
-LEFT JOIN groups g ON g.budget_id = c.budget_id AND g.slug = c.group_slug;
+LEFT JOIN groups g ON g.budget_id = c.budget_id AND g.slug = c.group_slug
+-- Убранное из расходов не видно нигде: ни в ленте, ни в суммах
+WHERE NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.receipt_id = i.receipt_id AND h.pos = i.pos);
 
 -- Позиция с категорией: на ней работает классификатор.
 DROP VIEW IF EXISTS v_item_categories;

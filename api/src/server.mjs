@@ -19,6 +19,7 @@ import {
   getMeta,
   setItemCategory,
   setItemNote,
+  hideItem,
 } from './queries.mjs';
 import { loadCategories, syncCategories } from './categories.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
@@ -28,7 +29,7 @@ import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
 import {
   banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank, getBankOp,
-  setBankOpNote,
+  setBankOpNote, setBankOpKind,
 } from './banks.mjs';
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { loadEnv } from './llm.mjs';
@@ -370,8 +371,8 @@ async function handleApi(req, res, url) {
   // ── банк на телефоне ──
   // Вход в интернет-банк человек делает сам, в приложении на своём устройстве; сюда
   // приезжают уже готовые операции. Сессии банка на сервере нет.
-  // Комментарий к операции обрабатывается вместе с комментариями к товарам — ниже
-  if ((pathname === '/api/bank' || pathname.startsWith('/api/bank/')) && !pathname.endsWith('/note')) {
+  // Комментарий и вид операции обрабатываются вместе с товарами — ниже
+  if ((pathname === '/api/bank' || pathname.startsWith('/api/bank/')) && !/\/(note|kind)$/.test(pathname)) {
     if (pathname === '/api/bank' && req.method === 'GET') {
       const p = url.searchParams;
       const period = p.get('from') && p.get('to') ? bankTotals(db, user.budget_id, p.get('from'), p.get('to')) : null;
@@ -514,6 +515,28 @@ async function handleApi(req, res, url) {
     return result.error
       ? sendJson(res, result.status ?? 400, result)
       : sendJson(res, 200, result);
+  }
+
+  // Убрать товар из расходов: задвоенный или учтённый где-то ещё
+  const hideMatch = pathname.match(/^\/api\/items\/(\d+)\/hide$/);
+  if (hideMatch) {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    const result = hideItem(db, user.budget_id, Number(hideMatch[1]));
+    return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
+  }
+
+  // Трата из банка: перевод себе или не учитывать
+  const kindMatch = pathname.match(/^\/api\/bank\/ops\/(\d+)\/kind$/);
+  if (kindMatch) {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = setBankOpKind(db, user.budget_id, Number(kindMatch[1]), String(body.kind ?? ''));
+    return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
   }
 
   // Комментарий к товару — у позиции чека и у траты из банка

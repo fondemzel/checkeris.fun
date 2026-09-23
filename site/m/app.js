@@ -944,6 +944,14 @@ function itemCard(it) {
       </div>
     </div>
 
+    <div class="settings-actions item-actions">
+      ${bank
+        ? `<button class="btn" type="button" data-op-kind="transfer" data-id="${it.id}">Это перевод себе</button>
+           <button class="btn danger" type="button" data-op-kind="excluded" data-id="${it.id}">Не учитывать</button>
+           <p class="note">Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.</p>`
+        : `<button class="btn danger" type="button" data-item-hide="${it.id}">${it.source === 'manual' ? 'Удалить запись' : 'Убрать из расходов'}</button>`}
+    </div>
+
     ${it.source === 'receipt' ? `
     <div class="card">
       <div class="card-label">Чек</div>
@@ -2080,6 +2088,36 @@ async function onScreenClick(e) {
 
   // Сканы с ошибкой — ссылкой с «Расхода»: отдельной вкладки «Чеки» больше нет
   if (e.target.closest('[data-to-failed]')) return go({ screen: 'receipts', filter: 'failed' });
+
+  // Убрать товар из расходов: задвоенный или учтённый где-то ещё
+  const hide = e.target.closest('[data-item-hide]');
+  if (hide) {
+    const manual = hide.textContent.includes('Удалить');
+    if (!confirm(manual ? 'Удалить эту запись?' : 'Убрать товар из расходов? Он перестанет учитываться в суммах.')) return;
+    try {
+      await post(`/api/items/${hide.dataset.itemHide}/hide`, {});
+      toast(manual ? 'Запись удалена' : 'Товар убран из расходов');
+      return history.back(); // карточки больше нет — возвращаемся к ленте
+    } catch (err) {
+      return toast(`Не вышло: ${err.message}`);
+    }
+  }
+
+  // Трата из банка — перевод себе или не учитывать
+  const opKind = e.target.closest('[data-op-kind]');
+  if (opKind) {
+    const transfer = opKind.dataset.opKind === 'transfer';
+    if (!confirm(transfer
+      ? 'Отметить как перевод себе? Он не будет считаться расходом.'
+      : 'Не учитывать эту трату? Она пропадёт из расходов.')) return;
+    try {
+      await post(`/api/bank/ops/${opKind.dataset.id}/kind`, { kind: opKind.dataset.opKind });
+      toast(transfer ? 'Отмечено как перевод себе' : 'Трата больше не учитывается');
+      return history.back();
+    } catch (err) {
+      return toast(`Не вышло: ${err.message}`);
+    }
+  }
 
   // Стрелка у группы одинаковых покупок: развернуть или свернуть, не открывая карточку
   const toggle = e.target.closest('[data-expand]');

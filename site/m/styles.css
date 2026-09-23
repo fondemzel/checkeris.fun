@@ -762,6 +762,9 @@ button.bank-op { cursor: pointer; }
 /* У товара есть комментарий: кружок цвета старой бумаги перед ценой */
 .noted { flex: none; width: 8px; height: 8px; margin-right: -4px; border-radius: 50%; background: #ead9a4; box-shadow: inset 0 0 0 1px #d6c083; }
 
+/* Действия с товаром — внизу карточки, отдельно от сведений о нём */
+.item-actions { margin-bottom: 12px; }
+
 /* Комментарий: галочка сохранения появляется, пока пишут */
 .note-row { display: flex; align-items: flex-start; gap: 8px; }
 .note-row .note-input { flex: 1; }

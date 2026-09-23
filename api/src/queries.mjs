@@ -476,6 +476,27 @@ export function getReceipt(db, budgetId, id) {
 }
 
 /** Позиция со всеми реквизитами — для карточки товара в правой панели. */
+/**
+ * Убрать товар из расходов. Ручную запись удаляем совсем — она только наша. Позицию чека
+ * помечаем: сам чек настоящий, и повторный импорт выгрузки вернул бы удалённую строку.
+ */
+export function hideItem(db, budgetId, id) {
+  const item = db
+    .prepare(
+      `SELECT i.receipt_id, i.pos, r.fiscal_drive FROM items i JOIN receipts r ON r.id = i.receipt_id
+        WHERE i.id = ? AND r.budget_id = ?`,
+    )
+    .get(id, budgetId);
+  if (!item) return { error: 'item not found', status: 404 };
+  if (item.fiscal_drive === 'manual') {
+    db.prepare('DELETE FROM receipts WHERE id = ?').run(item.receipt_id); // позиции уходят каскадом
+    return { deleted: true };
+  }
+  db.prepare('INSERT OR IGNORE INTO item_hidden (receipt_id, pos, hidden_at) VALUES (?, ?, ?)')
+    .run(item.receipt_id, item.pos, new Date().toISOString());
+  return { hidden: true };
+}
+
 /** Комментарий к товару. Пустой — удалить. Держится за чек и номер позиции. */
 export function setItemNote(db, budgetId, id, note) {
   const item = db

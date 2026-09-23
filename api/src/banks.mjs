@@ -359,3 +359,17 @@ export function setBankOpNote(db, budgetId, id, note) {
   const res = db.prepare('UPDATE bank_ops SET note = ? WHERE id = ? AND budget_id = ?').run(text, id, budgetId);
   return res.changes ? { note: text } : { error: 'operation not found', status: 404 };
 }
+
+/**
+ * Трата из банка не расход: либо это перевод себе (на карту Озона, в копилку) — тогда
+ * расходом станут покупки, сделанные на эти деньги, — либо задвоение, и её просто не
+ * учитываем. Разметка при следующей загрузке эту пометку не трогает: она ставит вид
+ * только операциям без вида.
+ */
+export function setBankOpKind(db, budgetId, id, kind) {
+  if (!['transfer', 'excluded', 'expense'].includes(kind)) return { error: 'unknown kind', status: 400 };
+  const res = db
+    .prepare("UPDATE bank_ops SET kind = ? WHERE id = ? AND budget_id = ? AND direction = 'debit'")
+    .run(kind, id, budgetId);
+  return res.changes ? { kind } : { error: 'operation not found', status: 404 };
+}
