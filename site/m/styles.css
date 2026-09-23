@@ -695,14 +695,16 @@ button.bank-op { cursor: pointer; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 14px;
-  margin-left: 2px;
+  width: 1.05em;   /* высотой с цифры подписи: растёт и уменьшается вместе с её шрифтом */
+  height: 1.05em;
+  margin-left: 3px;
   overflow: hidden;
-  vertical-align: -2px;
-  color: var(--accent);
+  border-radius: 50%;
+  background: #e3e6eb;
+  color: var(--text);
+  vertical-align: -0.15em;
 }
-.expand svg { width: 13px; height: 13px; flex: none; transition: transform 0.15s; }
+.expand svg { width: 0.8em; height: 0.8em; flex: none; stroke-width: 3; transition: transform 0.15s; }
 .expand.open svg { transform: rotate(180deg); }
 
 /* Покупки развёрнутой группы — со сдвигом: видно, что это части строки над ними */
