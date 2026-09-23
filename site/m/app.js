@@ -897,7 +897,7 @@ function openPeriodPicker() {
 
     el.innerHTML = `
       <div class="picker-box cal" role="dialog" aria-label="Выбор периода">
-        <div class="picker-top"><span>Период</span><button class="btn" data-close type="button">Отмена</button></div>
+        <div class="picker-top"><div class="picker-title">Период</div><button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button></div>
         <div class="chips">${presets
           .map(([label], i) => `<button class="chip" type="button" data-preset="${i}">${label}</button>`)
           .join('')}</div>
