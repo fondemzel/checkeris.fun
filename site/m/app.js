@@ -530,8 +530,8 @@ async function screenCategory() {
           <span class="row-title">${esc(r.name)}</span>
           <span class="row-note">${dateRu(r.at.slice(0, 10))}${r.note ? ` · ${esc(r.note)}` : ''}</span>
         </span>
-        <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
         <span class="row-sum${r.outside ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
+        <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
       </button>`)
     .join('');
 
