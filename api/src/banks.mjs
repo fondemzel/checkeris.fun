@@ -350,7 +350,7 @@ export function setBankOpNote(db, budgetId, id, note) {
 export function setBankOpKind(db, budgetId, id, kind) {
   if (!['transfer', 'excluded', 'expense'].includes(kind)) return { error: 'unknown kind', status: 400 };
   const res = db
-    .prepare("UPDATE bank_ops SET kind = ? WHERE id = ? AND budget_id = ? AND direction = 'debit'")
+    .prepare("UPDATE bank_ops SET kind = ?, kind_source = 'manual' WHERE id = ? AND budget_id = ? AND direction = 'debit'")
     .run(kind, id, budgetId);
   return res.changes ? { kind } : { error: 'operation not found', status: 404 };
 }

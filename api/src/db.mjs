@@ -62,6 +62,7 @@ function addUserColumns(db) {
   addColumn(db, 'bank_ops', 'note', 'TEXT');
   addColumn(db, 'bank_ops', 'receipt_id', 'INTEGER');
   addColumn(db, 'bank_ops', 'pair_id', 'INTEGER');
+  addColumn(db, 'bank_ops', 'kind_source', 'TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');
   // Первый пользователь — владелец проекта: без квот и с правом на системный справочник
   db.exec(`UPDATE users SET role = 'admin'

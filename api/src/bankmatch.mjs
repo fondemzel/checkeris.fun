@@ -1,3 +1,5 @@
+import { bankCategories } from './bankformat.mjs';
+
 // Разбор операций банка: что из них трата, что доход, а что вообще не движение денег.
 //
 // Одна покупка картой существует дважды: чеком из ФНС (с товарами) и операцией банка.
@@ -104,6 +106,42 @@ function matchReceipts(db, budgetId) {
   return matched;
 }
 
+// Перевод себе: банк так и пишет — «Себе в другой банк», «На свою карту»,
+// «Перевод собственных средств»
+const SELF = /(^|\s)себе(\s|$)|сво(ю|й|и|его)\s+(карт|сч[её]т)|между\s+сво|собственных\s+средств/i;
+
+/**
+ * Переводы себе в другие банки: по описанию, а ещё по получателю — человек, которому
+ * уходят переводы «себе», это сам владелец («Дмитрий Ч.»), и все переводы ему (и от
+ * него) — перекладывание своих денег, а не трата и не доход. Вид, выбранный человеком,
+ * не трогаем; покрытые чеком — тоже.
+ */
+function markSelfTransfers(db, budgetId) {
+  const ops = db
+    .prepare(
+      `SELECT id, direction, description,
+              json_extract(raw, '$.subcategory') AS subcategory,
+              json_extract(raw, '$.payment.fieldsValues.maskedFIO') AS recipient,
+              json_extract(raw, '$.senderDetails') AS sender
+         FROM bank_ops
+        WHERE budget_id = ? AND op_group IN ('TRANSFER', 'INCOME') AND kind_source IS NULL
+          AND (kind IS NULL OR kind IN ('expense', 'income'))`,
+    )
+    .all(budgetId);
+  const self = (op) => SELF.test(op.description ?? '') || SELF.test(op.subcategory ?? '');
+  const me = new Set(ops.filter((op) => op.direction === 'debit' && self(op) && op.recipient).map((op) => op.recipient));
+
+  const mark = db.prepare("UPDATE bank_ops SET kind = 'transfer' WHERE id = ?");
+  let marked = 0;
+  for (const op of ops) {
+    const person = op.direction === 'debit' ? op.recipient : op.sender;
+    if (!self(op) && !(person && me.has(person))) continue;
+    mark.run(op.id);
+    marked += 1;
+  }
+  return marked;
+}
+
 /** Остальное: приход — доход, расход без чека — трата. */
 function classifyRest(db, budgetId) {
   db.prepare(
@@ -118,11 +156,13 @@ export function matchBank(db, budgetId) {
   db.exec('BEGIN');
   try {
     const transfers = markTransfers(db, budgetId);
+    const self = markSelfTransfers(db, budgetId);
     const receipts = matchReceipts(db, budgetId);
     classifyRest(db, budgetId);
     const categorized = applyRules(db, budgetId);
+    const byBank = applyBankCategories(db, budgetId);
     db.exec('COMMIT');
-    return { transfers, receipts, categorized };
+    return { transfers, self, receipts, categorized, byBank };
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
@@ -139,12 +179,15 @@ export function ruleKey(op) {
   return key.length >= 2 ? key : null;
 }
 
-/** Разложить траты без чека по категориям, которые человек уже выбирал для этих продавцов. */
+/**
+ * Разложить траты без чека по категориям, которые человек уже выбирал для этих продавцов.
+ * Выбор человека сильнее категории банка: его правило её перекрывает.
+ */
 export function applyRules(db, budgetId) {
   const ops = db
     .prepare(
       `SELECT id, merchant, description FROM bank_ops
-        WHERE budget_id = ? AND kind = 'expense' AND category_slug IS NULL`,
+        WHERE budget_id = ? AND kind = 'expense' AND (category_slug IS NULL OR category_source = 'bank')`,
     )
     .all(budgetId);
   const rule = db.prepare('SELECT category_slug FROM bank_rules WHERE budget_id = ? AND key = ?');
@@ -155,6 +198,31 @@ export function applyRules(db, budgetId) {
     const found = key && rule.get(budgetId, key);
     if (!found) continue;
     save.run(found.category_slug, op.id);
+    done += 1;
+  }
+  return done;
+}
+
+/**
+ * Что не разложили правила — по категории банка («Супермаркеты» → «Еда»), если она
+ * однозначна. Словарь у каждого банка свой (bankformat.mjs); категории нет в бюджете —
+ * пропускаем.
+ */
+function applyBankCategories(db, budgetId) {
+  const own = new Set(db.prepare('SELECT slug FROM categories WHERE budget_id = ?').all(budgetId).map((c) => c.slug));
+  const ops = db
+    .prepare(
+      `SELECT o.id, o.bank_category, l.bank FROM bank_ops o JOIN bank_links l ON l.id = o.link_id
+        WHERE o.budget_id = ? AND o.kind = 'expense' AND o.category_slug IS NULL AND o.bank_category IS NOT NULL`,
+    )
+    .all(budgetId);
+  const save = db.prepare("UPDATE bank_ops SET category_slug = ?, category_source = 'bank' WHERE id = ?");
+  let done = 0;
+  for (const op of ops) {
+    // У банка в названиях бывают неразрывные пробелы: «Ремонт и мебель»
+    const slug = bankCategories(op.bank)[op.bank_category.replace(/\s+/g, ' ').trim()];
+    if (!slug || !own.has(slug)) continue;
+    save.run(slug, op.id);
     done += 1;
   }
   return done;

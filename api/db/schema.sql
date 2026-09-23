@@ -515,9 +515,10 @@ CREATE TABLE IF NOT EXISTS bank_ops (
   bank_category  TEXT,
   card           TEXT,                  -- последние цифры карты
   has_receipt    INTEGER NOT NULL DEFAULT 0, -- у банка есть кассовый чек
-  kind           TEXT,                  -- covered (есть чек) | expense | income | transfer
+  kind           TEXT,                  -- covered (есть чек) | expense | income | transfer | excluded
+  kind_source    TEXT,                  -- manual — вид выбрал человек, разметка его не трогает
   category_slug  TEXT,                  -- категория траты без чека: у покупок с чеком она у позиций
-  category_source TEXT,                 -- manual (выбрал человек) | rule (по прошлому выбору)
+  category_source TEXT,                 -- manual (выбрал человек) | rule (по прошлому выбору) | bank (категория банка)
   note           TEXT,                  -- комментарий человека: у операций банка id постоянный
   receipt_id     INTEGER REFERENCES receipts (id) ON DELETE SET NULL, -- чек этой же покупки
   pair_id        INTEGER,               -- вторая половина перевода между своими счетами

@@ -802,10 +802,12 @@ setTimeout(() => {
   try {
     const trimmed = trimStoredOps(db);
     if (trimmed) console.log(`банк: сокращено операций до нужных полей — ${trimmed}`);
-    const budgets = db.prepare('SELECT DISTINCT budget_id FROM bank_ops WHERE kind IS NULL').all();
+    // Разбор идемпотентен и быстрый (доли секунды на десятки тысяч операций): прогоняем
+    // все бюджеты — так улучшения разметки сразу применяются к уже загруженной истории
+    const budgets = db.prepare('SELECT DISTINCT budget_id FROM bank_ops').all();
     for (const { budget_id } of budgets) {
       const res = matchBank(db, budget_id);
-      console.log(`банк: разбор бюджета #${budget_id} — чеков ${res.receipts}, переводов ${res.transfers}`);
+      console.log(`банк: разбор бюджета #${budget_id} — чеков ${res.receipts}, переводов ${res.transfers}, себе ${res.self}, по категориям банка ${res.byBank}`);
     }
   } catch (err) {
     console.error('банк, разбор:', err.message);

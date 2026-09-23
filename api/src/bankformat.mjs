@@ -47,6 +47,47 @@ const ADAPTERS = {
       has_receipt: op.hasShoppingReceipt ? 1 : 0,
     }),
     valid: (op) => Boolean(op?.id && op.operationTime?.milliseconds),
+    // Категория банка → наша. Только однозначные: «Маркетплейсы», «Переводы», «Наличные»,
+    // «Различные товары» по категории банка не понять — их разложат правила и ИИ
+    categories: {
+      'Супермаркеты': 'food.groceries',
+      'Фастфуд': 'food.dining',
+      'Рестораны': 'food.dining',
+      'Заправки': 'transport.fuel',
+      'Связь': 'housing.telecom',
+      'Мобильная связь': 'housing.telecom',
+      'Телефония': 'housing.telecom',
+      'Ремонт и мебель': 'housing.repair',
+      'Местный транспорт': 'transport.public',
+      'Транспорт': 'transport.public',
+      'Такси': 'transport.public',
+      'Каршеринг': 'transport.public',
+      'Цифровые товары': 'leisure.media',
+      'Экосистема Яндекс': 'leisure.media',
+      'Аптеки': 'health.pharmacy',
+      'Медицина': 'health.services',
+      'Красота': 'health.beauty',
+      'Косметика': 'health.beauty',
+      'Спорттовары': 'health.fitness',
+      'Тренировки': 'health.fitness',
+      'Одежда и обувь': 'clothing.apparel',
+      'Ювелирные изделия и часы': 'clothing.accessories',
+      'ЖКХ': 'housing.utilities',
+      'Развлечения': 'leisure.events',
+      'Кино': 'leisure.events',
+      'Искусство': 'leisure.events',
+      'Автоуслуги': 'transport.service',
+      'Платные дороги': 'transport.parking',
+      'Животные': 'pets.food',
+      'Образование': 'education.courses',
+      'Книги и канцтовары': 'education.materials',
+      'Канцтовары': 'education.materials',
+      'Цветы': 'gifts.gifts',
+      'Подарки и творчество': 'gifts.gifts',
+      'Кредиты': 'finance.credit',
+      'Финансы': 'finance.fees',
+      'Гаджеты и техника': 'home.electronics',
+    },
   },
 };
 
@@ -68,4 +109,5 @@ export function trimOp(bank, op) {
 }
 
 export const parseOp = (bank, op) => ADAPTERS[bank].parse(op);
+export const bankCategories = (bank) => ADAPTERS[bank]?.categories ?? {};
 export const validOp = (bank, op) => ADAPTERS[bank].valid(op);
