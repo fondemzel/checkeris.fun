@@ -624,6 +624,7 @@ button, input, select { font: inherit; color: inherit; }
 /* Верх шапки: сумма слева, фильтр по источнику справа */
 .head-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .src-filters { margin-top: 4px; }
+.sort-chip.chip-all { width: auto; padding: 0 8px; font-size: 12px; font-weight: 600; } /* слово, а не значок */
 .head-line .sorts { margin-left: auto; } /* сортировка прижата к правому краю строки периода */
 .total.compact .total-sum,
 .total.compact .total-note { display: block; }

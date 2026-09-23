@@ -260,7 +260,8 @@ const SOURCE_FILTERS = [
 ];
 
 const sourceChips = () => `
-  <div class="sorts src-filters">${SOURCE_FILTERS
+  <div class="sorts src-filters">
+    <button class="sort-chip chip-all${state.src ? '' : ' on'}" type="button" data-src="" aria-label="Все источники" title="Все источники">Все</button>${SOURCE_FILTERS
     .map(([key, label]) => `
       <button class="sort-chip${state.src === key ? ' on' : ''}" type="button" data-src="${key}"
         aria-label="${label}" title="${label}">${SOURCES[key].icon}</button>`)
@@ -2118,7 +2119,7 @@ async function onScreenClick(e) {
   // Категория в карточке товара
   // Фильтр по источнику: повторное нажатие снимает
   const src = e.target.closest('[data-src]');
-  if (src) return go({ src: state.src === src.dataset.src ? '' : src.dataset.src }, true);
+  if (src) return go({ src: !src.dataset.src || state.src === src.dataset.src ? '' : src.dataset.src }, true);
 
   // Заголовок раздела: свернуть или развернуть. При длинной ленте открыт только один
   const sectionBtn = e.target.closest('[data-section]');
