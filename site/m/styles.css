@@ -618,7 +618,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Шапка списка: две строки, всё прижато к левому краю; справа — сортировка и фильтры */
 .total.compact { text-align: left; }
-.head-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.head-line { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .head-sum { min-width: 0; }
 .head-line .sorts { margin-left: auto; } /* сортировка прижата к правому краю строки периода */
 .total.compact .total-sum,
@@ -639,27 +639,35 @@ button, input, select { font: inherit; color: inherit; }
 /* Период внутри шапки — строкой помельче, как чипсы сортировки */
 .month.compact { flex: none; justify-content: flex-start; gap: 6px; margin: 0; }
 /* Период и сортировка делят одну строку — обоим нужно быть компактными */
-.month.compact { gap: 4px; }
-.month.compact .month-arrow { width: 26px; height: 28px; border-radius: 14px; font-size: 15px; color: var(--muted); }
+.month.compact { gap: 3px; }
+.month.compact .month-arrow { width: 24px; height: 28px; border-radius: 14px; font-size: 15px; color: var(--muted); }
 .month.compact .month-name {
   min-height: 28px;
-  gap: 5px;
-  padding: 0 8px;
+  gap: 4px;
+  padding: 0 7px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
   font-size: 13px;
 }
 .month.compact .month-name svg { width: 14px; height: 14px; }
+/* Длинный период («Январь – сентябрь 2026») сокращается, а сортировка остаётся целой */
+.head-line .month.compact { flex: 0 1 auto; min-width: 0; }
+.month.compact .month-name { min-width: 0; }
+.month.compact .month-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.month.compact .month-arrow, .month.compact .month-name svg { flex: none; }
 
-.sorts { display: flex; flex: none; gap: 4px; }
+.sorts { display: flex; flex: none; gap: 3px; }
 
 .sort-chip {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 1px;
+  justify-content: center;
+  flex: none;
+  width: 26px;    /* ширина постоянная: выбранный значок не должен раздвигать строку */
   height: 28px;
-  padding: 0 7px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
@@ -668,9 +676,25 @@ button, input, select { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-.sort-chip svg { width: 14px; height: 14px; }
+.sort-chip svg { width: 13px; height: 13px; }
 .sort-chip.on { border-color: var(--bar); background: var(--bar); color: #fff; }
-.sort-dir { font-size: 12px; line-height: 1; }
+/* Направление — меткой в углу значка, а не рядом с ним: рядом не хватает места */
+.sort-dir {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
 
 .list-hint { margin: -2px 2px 10px; }
 .list.stuck { margin-bottom: 12px; }

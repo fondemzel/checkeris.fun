@@ -60,6 +60,7 @@ const UI = {
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
   mail: svg('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>'),
   card: svg('<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>'),
+  grid: svg('<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
   refresh: svg('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'),
   plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
@@ -194,6 +195,7 @@ const FILTERS = ['all', 'failed', 'pending', 'manual'];
 // названия по алфавиту. Каждый экран сам переводит ключ в параметры своего запроса
 const SORTS = {
   date: ['По дате', 'desc', 'calendar'],
+  category: ['По категориям', 'asc', 'grid'],
   name: ['По названию', 'asc', 'letters'],
   sum: ['По сумме', 'desc', 'ruble'],
 };
@@ -202,7 +204,7 @@ const SORTS = {
   * Шапка списка: сумма и подпись слева, сортировка справа от них, ниже период и фильтры.
   * Всё выровнено по левому краю — так в двух строках помещается больше, чем по центру.
   */
-const listHead = ({ sum, note, sorts = true }) => `
+const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'] }) => `
   <div class="total compact">
     <div class="head-sum">
       <span class="total-sum">${sum}</span>
@@ -210,14 +212,15 @@ const listHead = ({ sum, note, sorts = true }) => `
     </div>
     <div class="head-line">
       ${periodNav(true)}
-      ${sorts ? sortChips() : ''}
+      ${sorts ? sortChips(sorts === true ? undefined : sorts) : ''}
     </div>
   </div>`;
 
 /** Ряд значков сортировки. Повторное нажатие на выбранный разворачивает порядок. */
-const sortChips = () => `
-  <div class="sorts">${Object.entries(SORTS)
-    .map(([key, [label, , icon]]) => {
+const sortChips = (keys = ['date', 'name', 'sum']) => `
+  <div class="sorts">${keys
+    .map((key) => {
+      const [label, , icon] = SORTS[key];
       const on = state.sort === key;
       const arrow = on ? `<span class="sort-dir">${state.dir === 'asc' ? '↑' : '↓'}</span>` : '';
       return `<button class="sort-chip${on ? ' on' : ''}" type="button" data-sort="${key}" aria-label="${label}" title="${label}">${UI[icon]}${arrow}</button>`;
@@ -260,7 +263,7 @@ function go(patch, replace = false) {
   if (state.op) params.set('op', state.op);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
-  if (['category', 'receipts', 'bank'].includes(state.screen) && (state.sort !== 'date' || state.dir !== 'desc')) {
+  if (['summary', 'category', 'receipts', 'bank'].includes(state.screen) && (state.sort !== 'date' || state.dir !== 'desc')) {
     params.set('sort', state.sort);
     params.set('dir', state.dir);
   }
@@ -397,44 +400,53 @@ function toast(text) {
 // ── расходы ──────────────────────────────────────────────
 
 async function screenSummary() {
-  const data = await api(`/api/summary?by=group&from=${state.from}&to=${state.to}`);
-  const max = Math.max(1, ...data.rows.map((r) => r.sum));
+  // Все траты периода: товары из чеков и ручные записи — по названиям, траты из банка —
+  // по операциям. Покупки, у которых нашёлся чек, приходят один раз — чеком
+  const params = new URLSearchParams({
+    from: state.from, to: state.to, collapse: '1', per: '500',
+    sort: ['date', 'name', 'sum'].includes(state.sort) ? state.sort : 'date', dir: state.dir,
+  });
+  const opsQuery = new URLSearchParams({
+    from: state.from, to: state.to, direction: 'debit', kind: 'expense', per: '500',
+  });
+  const [data, ops, failed] = await Promise.all([
+    api(`/api/items?${params}`),
+    api(`/api/bank/ops?${opsQuery}`).catch(() => null),
+    api('/api/scan?state=failed').catch(() => null),
+  ]);
+  const bankRows = ops?.rows ?? [];
+  if (failed) updateBadge(failed.counts.failed);
 
-  // Период и итог закреплены: листая группы, видно, за что и сколько
-  const head = `
-    <div class="stuck-head">
-      ${expenseSwitch()}
-      ${listHead({
-        sum: money(data.totals.sum),
-        note: `${int.format(data.totals.receipts)} ${plural(data.totals.receipts, 'чек', 'чека', 'чеков')} · ${
-          int.format(data.totals.count)} ${plural(data.totals.count, 'позиция', 'позиции', 'позиций')}`,
-        sorts: false, // группы сортируются по сумме: так видно главное
-      })}
-    </div>`;
-
-  if (!data.rows.length) {
+  if (!data.rows.length && !bankRows.length) {
     // Совсем новый аккаунт — не «трат нет», а с чего начать. Сводку в meta освежаем:
     // она берётся при входе и не знает о первом добавленном чеке
     if (!meta.stats.receipts) meta = await api('/api/meta');
-    if (!meta.stats.receipts) return welcome();
-    return `${head}<div class="empty">За этот период трат нет</div>`;
+    if (!meta.stats.receipts && !bankLinked) return welcome();
   }
 
-  const rows = data.rows
-    .map((r) =>
-      row({
-        href: `data-group="${esc(r.key ?? NONE)}"`,
-        color: r.color,
-        icon: r.icon ?? 'none',
-        title: r.name ?? 'Без категории',
-        note: `${int.format(r.count)} ${plural(r.count, 'позиция', 'позиции', 'позиций')}`,
-        sum: r.sum,
-        share: r.sum / max,
-      }),
-    )
-    .join('');
+  const bankSum = bankRows.reduce((sum, op) => sum + op.amount, 0);
+  const count = data.totals.positions ?? data.totals.count;
+  const head = `
+    <div class="stuck-head">
+      ${listHead({
+        sum: money(data.totals.sum + bankSum),
+        note: `${int.format(count + bankRows.length)} ${plural(count + bankRows.length, 'покупка', 'покупки', 'покупок')}`,
+        sorts: ['date', 'category', 'name', 'sum'],
+      })}
+    </div>`;
 
-  return `${head}<div class="list">${rows}</div>`;
+  // Сканы с ошибкой не должны теряться: переключателя с «Чеками» больше нет — ведём ссылкой
+  const failedCount = failed?.counts.failed ?? 0;
+  const failedLink = failedCount
+    ? `<p class="note list-hint"><button class="link" type="button" data-to-failed>Сканы с ошибкой: ${int.format(failedCount)}</button></p>`
+    : '';
+
+  // За длинный период товаров больше, чем разумно показать разом: говорим об этом прямо
+  const cut = data.totals.count > data.rows.length
+    ? `<p class="note list-hint">Показаны ${int.format(data.rows.length)} из ${int.format(data.totals.count)} товаров — выберите период короче, чтобы увидеть все</p>`
+    : '';
+
+  return `${head}${failedLink}${await spendingFeed(data.rows, bankRows)}${cut}`;
 }
 
 async function screenGroup() {
@@ -467,6 +479,148 @@ async function screenGroup() {
     .join('');
 
   return `${head}<div class="list">${rows}</div>`;
+}
+
+/**
+ * Лента трат — одна на «Расходе» и внутри категории. Неважно, чем трата попала в Чекер:
+ * товар из чека, ручная запись или операция банка — это просто покупка. Откуда она,
+ * говорит неприметный значок у суммы; слева — значок группы, под названием — категория.
+ *
+ * При сортировке по дате лента делится на дни, по категориям — на категории; у каждого
+ * заголовка — подытог.
+ */
+async function spendingFeed(itemRows, bankRows) {
+  const spendings = [
+    ...itemRows.map((r) => ({
+      name: r.name,
+      at: r.purchased_at,
+      sum: r.sum,
+      source: r.manual ? 'manual' : 'receipt',
+      category: r.category_slug,
+      positions: r.positions,
+      outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
+      action: `data-item="${r.first_id}"`,
+      group: r.positions > 1 ? r.name_norm : null, // несколько покупок одного товара — можно развернуть
+    })),
+    ...bankRows.map((op) => ({
+      name: op.merchant ?? op.description ?? 'Без названия',
+      at: op.at,
+      sum: op.amount,
+      source: 'bank',
+      category: op.category_slug,
+      positions: 1,
+      outside: false,
+      action: `data-op="${op.id}"`,
+      group: null,
+    })),
+  ];
+  if (!spendings.length) return '<div class="empty">За этот период трат нет</div>';
+
+  // Порядок категорий — как в справочнике: так группы идут всегда в одном порядке
+  const catOrder = new Map();
+  (meta?.categories ?? []).forEach((g, gi) =>
+    g.subcategories.forEach((c, ci) => catOrder.set(c.slug, gi * 1000 + ci)),
+  );
+  const back = state.dir === 'asc' ? -1 : 1;
+  const byDate = (a, b) => (Date.parse(b.at) - Date.parse(a.at)) * back;
+  spendings.sort((a, b) => {
+    if (state.sort === 'name') return a.name.localeCompare(b.name, 'ru') * -back;
+    if (state.sort === 'sum') return (b.sum - a.sum) * back;
+    if (state.sort === 'category') {
+      const diff = (catOrder.get(a.category) ?? 1e9) - (catOrder.get(b.category) ?? 1e9);
+      return (diff ? diff * -back : Date.parse(b.at) - Date.parse(a.at));
+    }
+    return byDate(a, b);
+  });
+
+  // Развёрнутые группы подгружаем здесь же, до отрисовки: тогда «назад» из карточки
+  // возвращает список уже раскрытым, и прокрутка попадает на то же место
+  const open = spendings.filter((r) => r.group && expanded.has(expandKey(r.group)));
+  const parts = new Map(
+    await Promise.all(
+      open.map(async (r) => {
+        const q = new URLSearchParams({
+          from: state.from, to: state.to, name_norm: r.group, sort: 'date', dir: 'desc', per: '100',
+          ...(state.category ? { category: state.category } : state.group ? { group: state.group } : {}),
+        });
+        const res = await api(`/api/items?${q}`).catch(() => ({ rows: [], totals: { count: 0 } }));
+        return [r.group, res];
+      }),
+    ),
+  );
+
+  // Заголовки разделов: день или категория, справа — подытог
+  const sectionOf = (r) =>
+    state.sort === 'date' ? r.at.slice(0, 10) : state.sort === 'category' ? r.category ?? NONE : null;
+  const sums = new Map();
+  for (const r of spendings) {
+    const key = sectionOf(r);
+    if (key != null && !r.outside) sums.set(key, (sums.get(key) ?? 0) + r.sum);
+  }
+  const sectionHead = (key) => {
+    if (state.sort === 'date') return dayHead(key, sums.get(key) ?? 0);
+    const found = key === NONE ? null : findCategory(key);
+    const color = found ? categoryColor(found.group.slug, key) ?? found.group.color : '#c9ced6';
+    return `
+      <div class="day">
+        <span><span class="op-cat" style="background:${color}"></span>${esc(found?.category.name ?? 'Без категории')}</span>
+        <b>${money(sums.get(key) ?? 0)}</b>
+      </div>`;
+  };
+
+  let section;
+  const rows = spendings
+    .map((r) => {
+      const key = sectionOf(r);
+      const head = key != null && key !== section ? sectionHead(key) : '';
+      section = key;
+
+      const found = r.category ? findCategory(r.category) : null;
+      const color = found?.group.color ?? '#eef1f5';
+      const dot = found ? categoryColor(found.group.slug, r.category) ?? color : '#d7dbe2';
+      const isOpen = r.group && parts.has(r.group);
+      // Стрелка — внутри подписи, в размер текста: как бы ни рисовался значок, строка не поплывёт
+      const toggle = r.group
+        ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(r.group)}" role="button" aria-label="${isOpen ? 'Свернуть' : 'Показать покупки'}">${UI.chevron}</span>`
+        : '';
+      const note = [
+        `<span class="op-cat" style="background:${dot}"></span>${esc(found?.category.name ?? 'Без категории')}`,
+        r.positions > 1 ? `${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : '',
+      ].filter(Boolean).join(' · ');
+
+      const row = `${head}
+      <button class="row item" type="button" ${r.action}>
+        <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(found?.group.icon ?? 'none')}</span>
+        <span class="row-main">
+          <span class="row-title">${esc(r.name)}</span>
+          <span class="row-note">${note}${toggle}</span>
+        </span>
+        <span class="row-sum${r.outside ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
+        <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
+      </button>`;
+      if (!isOpen) return row;
+
+      // Покупки группы — со сдвигом вправо: видно, что это части строки выше
+      const part = parts.get(r.group);
+      const subs = part.rows
+        .map((it) => `
+          <button class="row item sub-row" type="button" data-item="${it.id}">
+            <span class="row-main">
+              <span class="row-title">${dateRu(it.purchased_date ?? it.purchased_at.slice(0, 10))} · ${esc(timeRu(it.purchased_at))}</span>
+              <span class="row-note">${esc(it.seller ?? '')}${it.quantity !== 1 ? ` · ${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''}</span>
+            </span>
+            <span class="row-sum">${money(it.sum)}</span>
+          </button>`)
+        .join('');
+      // Показываем последние сто: дальше листать группу неудобно, а сумма в строке и так полная
+      const more = part.totals.count > part.rows.length
+        ? `<div class="sub-more note">Показаны последние ${int.format(part.rows.length)} из ${int.format(part.totals.count)}</div>`
+        : '';
+      return row + subs + more;
+    })
+    .join('');
+
+  return `<div class="list">${rows}</div>`;
 }
 
 async function screenCategory() {
@@ -507,89 +661,7 @@ async function screenCategory() {
 
   if (!data.rows.length && !bankRows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
 
-  // Один список: неважно, чем трата попала в Чекер — важно, что она учтена. Откуда она
-  // взялась, говорит значок в строке
-  const spendings = [
-    ...data.rows.map((r) => ({
-      name: r.name,
-      at: r.purchased_at,
-      sum: r.sum,
-      source: r.manual ? 'manual' : 'receipt',
-      note: r.positions > 1 ? `${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : '',
-      outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
-      action: `data-item="${r.first_id}"`,
-      group: r.positions > 1 ? r.name_norm : null, // несколько покупок одного товара — можно развернуть
-    })),
-    ...bankRows.map((op) => ({
-      name: op.merchant ?? op.description ?? 'Без названия',
-      at: op.at,
-      sum: op.amount,
-      source: 'bank',
-      note: op.card ? `карта ·${op.card}` : '',
-      outside: false,
-      action: `data-op="${op.id}"`,
-    })),
-  ].sort((a, b) => {
-    const back = state.dir === 'asc' ? -1 : 1;
-    if (state.sort === 'name') return a.name.localeCompare(b.name, 'ru') * -back;
-    if (state.sort === 'sum') return (a.sum - b.sum) * -back;
-    return (Date.parse(a.at) - Date.parse(b.at)) * -back;
-  });
-
-  // Развёрнутые группы подгружаем здесь же, до отрисовки: тогда «назад» из карточки
-  // возвращает список уже раскрытым, и прокрутка попадает на то же место
-  const open = spendings.filter((r) => r.group && expanded.has(expandKey(r.group)));
-  const parts = new Map(
-    await Promise.all(
-      open.map(async (r) => {
-        const q = new URLSearchParams({
-          from: state.from, to: state.to, name_norm: r.group, sort: 'date', dir: 'desc', per: '100',
-          ...(state.category ? { category: state.category } : { group: state.group }),
-        });
-        const res = await api(`/api/items?${q}`).catch(() => ({ rows: [], totals: { count: 0 } }));
-        return [r.group, res];
-      }),
-    ),
-  );
-
-  const rows = spendings
-    .map((r) => {
-      const isOpen = r.group && parts.has(r.group);
-      // Стрелка — внутри подписи, в размер текста: как бы ни рисовался значок, строка не поплывёт
-      const toggle = r.group
-        ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(r.group)}" role="button" aria-label="${isOpen ? 'Свернуть' : 'Показать покупки'}">${UI.chevron}</span>`
-        : '';
-      const row = `
-      <button class="row item" type="button" ${r.action}>
-        <span class="row-main">
-          <span class="row-title">${esc(r.name)}</span>
-          <span class="row-note">${dateRu(r.at.slice(0, 10))}${r.note ? ` · ${esc(r.note)}` : ''}${toggle}</span>
-        </span>
-        <span class="row-sum${r.outside ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
-        <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
-      </button>`;
-      if (!isOpen) return row;
-      // Покупки группы — со сдвигом вправо: видно, что это части строки выше
-      const part = parts.get(r.group);
-      const subs = part.rows
-        .map((it) => `
-          <button class="row item sub-row" type="button" data-item="${it.id}">
-            <span class="row-main">
-              <span class="row-title">${dateRu(it.purchased_date ?? it.purchased_at.slice(0, 10))} · ${esc(timeRu(it.purchased_at))}</span>
-              <span class="row-note">${esc(it.seller ?? '')}${it.quantity !== 1 ? ` · ${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''}</span>
-            </span>
-            <span class="row-sum">${money(it.sum)}</span>
-          </button>`)
-        .join('');
-      // Показываем последние сто: дальше листать группу неудобно, а сумма в строке и так полная
-      const more = part.totals.count > part.rows.length
-        ? `<div class="sub-more note">Показаны последние ${int.format(part.rows.length)} из ${int.format(part.totals.count)}</div>`
-        : '';
-      return row + subs + more;
-    })
-    .join('');
-
-  return `${head}<div class="list">${rows}</div>`;
+  return `${head}${await spendingFeed(data.rows, bankRows)}`;
 }
 
 /**
@@ -610,7 +682,6 @@ async function screenBank() {
 
   const head = `
     <div class="stuck-head">
-      ${expenseSwitch()}
       ${listHead({
         sum: money(data.totals.sum),
         note: `${int.format(byKind.covered?.count ?? 0)} с чеком · ${int.format(byKind.expense?.count ?? 0)} без чека${
@@ -1065,8 +1136,8 @@ async function screenReceipts() {
       ? `<p class="note list-hint">Обычно это чек, который касса ещё не передала в ФНС. Мы переспрашиваем сами — через час, 6 часов, сутки и трое суток. ${back}</p>`
       : `<p class="note list-hint">${back}</p>`;
     return scans.jobs.length
-      ? `${expenseSwitch()}${hint}<div class="list">${scans.jobs.map(jobRow).join('')}</div>`
-      : `${expenseSwitch()}${hint}<div class="empty">${f === 'failed' ? 'Сканов с ошибкой нет' : 'Очередь пуста'}</div>`;
+      ? `${hint}<div class="list">${scans.jobs.map(jobRow).join('')}</div>`
+      : `${hint}<div class="empty">${f === 'failed' ? 'Сканов с ошибкой нет' : 'Очередь пуста'}</div>`;
   }
 
   receiptsPage = 1;
@@ -1079,7 +1150,6 @@ async function screenReceipts() {
 
   const head = `
     <div class="stuck-head">
-      ${expenseSwitch()}
       ${listHead({
         sum: money(data.totals.sum),
         note: `${int.format(data.totals.count)} ${plural(data.totals.count, 'чек', 'чека', 'чеков')}${
@@ -1935,6 +2005,9 @@ async function onScreenClick(e) {
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
   // Категория в карточке товара
+  // Сканы с ошибкой — ссылкой с «Расхода»: отдельной вкладки «Чеки» больше нет
+  if (e.target.closest('[data-to-failed]')) return go({ screen: 'receipts', filter: 'failed' });
+
   // Стрелка у группы одинаковых покупок: развернуть или свернуть, не открывая карточку
   const toggle = e.target.closest('[data-expand]');
   if (toggle) {
