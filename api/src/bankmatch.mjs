@@ -17,6 +17,9 @@
 // ошибку маловероятной
 const MINUTES = 30;
 
+// Время у операций и чеков — московское без зоны; для разницы в минутах зона не важна
+const minutes = (at) => Date.parse(`${String(at).slice(0, 19)}Z`) / 60_000;
+
 /** Переводы между своими счетами: банк помечает их сам, плюс пары «списание — зачисление». */
 function markTransfers(db, budgetId) {
   // Банк знает про свои внутренние переводы
@@ -26,27 +29,30 @@ function markTransfers(db, budgetId) {
   ).run(budgetId);
 
   // Пара: то же число копеек ушло и пришло почти в ту же секунду — это перекладывание
-  // из кармана в карман, например «Перевод округлений» в копилку
-  const pairs = db
-    .prepare(
-      `SELECT a.id AS debit_id, b.id AS credit_id
-         FROM bank_ops a
-         JOIN bank_ops b ON b.budget_id = a.budget_id AND b.direction = 'credit'
-          AND b.amount = a.amount AND b.id <> a.id
-          AND abs(julianday(b.at) - julianday(a.at)) * 1440 <= 5
-        WHERE a.budget_id = ? AND a.direction = 'debit'
-          AND (a.pair_id IS NULL AND b.pair_id IS NULL)`,
-    )
+  // из кармана в карман, например «Перевод округлений» в копилку.
+  // Ищем группировкой по сумме, а не сравнением «каждая с каждой»: история банка — это
+  // десятки тысяч операций, и попарное сравнение занимало минуты, пока сервер стоял
+  const unpaired = db
+    .prepare('SELECT id, at, amount, direction FROM bank_ops WHERE budget_id = ? AND pair_id IS NULL ORDER BY at, id')
     .all(budgetId);
+  const credits = new Map(); // сумма → зачисления
+  for (const op of unpaired) {
+    if (op.direction !== 'credit') continue;
+    if (!credits.has(op.amount)) credits.set(op.amount, []);
+    credits.get(op.amount).push({ id: op.id, t: minutes(op.at) });
+  }
 
   const link = db.prepare("UPDATE bank_ops SET pair_id = ?, kind = 'transfer' WHERE id = ? AND pair_id IS NULL");
   const taken = new Set();
-  for (const p of pairs) {
-    if (taken.has(p.debit_id) || taken.has(p.credit_id)) continue;
-    taken.add(p.debit_id);
-    taken.add(p.credit_id);
-    link.run(p.credit_id, p.debit_id);
-    link.run(p.debit_id, p.credit_id);
+  for (const op of unpaired) {
+    if (op.direction !== 'debit') continue;
+    const t = minutes(op.at);
+    const match = (credits.get(op.amount) ?? []).find((c) => !taken.has(c.id) && Math.abs(c.t - t) <= 5);
+    if (!match) continue;
+    taken.add(op.id);
+    taken.add(match.id);
+    link.run(match.id, op.id);
+    link.run(op.id, match.id);
   }
   return taken.size / 2;
 }
@@ -64,22 +70,35 @@ function matchReceipts(db, budgetId) {
         ORDER BY at`,
     )
     .all(budgetId);
+  if (!ops.length) return 0;
 
-  const candidates = db.prepare(
-    `SELECT r.id, r.purchased_at FROM receipts r
-      WHERE r.budget_id = :budgetId AND r.total_sum = :amount AND r.fiscal_drive <> 'manual'
-        AND abs(julianday(r.purchased_at) - julianday(:at)) * 1440 <= :minutes
-        AND NOT EXISTS (SELECT 1 FROM bank_ops o WHERE o.receipt_id = r.id)
-      ORDER BY abs(julianday(r.purchased_at) - julianday(:at))
-      LIMIT 1`,
+  // Чеки, ещё не отданные другой операции, — сразу все, сгруппированные по сумме: запрос
+  // на каждую операцию при десятках тысяч операций держал сервер минутами
+  const receipts = new Map();
+  const free = db.prepare(
+    `SELECT r.id, r.purchased_at, r.total_sum FROM receipts r
+      WHERE r.budget_id = ? AND r.fiscal_drive <> 'manual'
+        AND NOT EXISTS (SELECT 1 FROM bank_ops o WHERE o.budget_id = r.budget_id AND o.receipt_id = r.id)`,
   );
-  const save = db.prepare("UPDATE bank_ops SET receipt_id = ?, kind = 'covered' WHERE id = ?");
+  for (const r of free.all(budgetId)) {
+    if (!receipts.has(r.total_sum)) receipts.set(r.total_sum, []);
+    receipts.get(r.total_sum).push({ id: r.id, t: minutes(r.purchased_at) });
+  }
 
+  const save = db.prepare("UPDATE bank_ops SET receipt_id = ?, kind = 'covered' WHERE id = ?");
+  const taken = new Set();
   let matched = 0;
   for (const op of ops) {
-    const receipt = candidates.get({ budgetId, amount: op.amount, at: op.at, minutes: MINUTES });
-    if (!receipt) continue;
-    save.run(receipt.id, op.id);
+    const t = minutes(op.at);
+    let best = null;
+    for (const r of receipts.get(op.amount) ?? []) {
+      const gap = Math.abs(r.t - t);
+      if (gap > MINUTES || taken.has(r.id)) continue;
+      if (!best || gap < best.gap) best = { id: r.id, gap };
+    }
+    if (!best) continue;
+    taken.add(best.id);
+    save.run(best.id, op.id);
     matched += 1;
   }
   return matched;
