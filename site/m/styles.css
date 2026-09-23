@@ -446,6 +446,18 @@ button, input, select { font: inherit; color: inherit; }
 
 .form { display: flex; flex-direction: column; gap: 14px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
+/* Комментарий в форме ручной траты — такой же рамкой, как остальные поля */
+.m-note {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 16px; /* меньше — и iOS увеличит страницу при вводе */
+  resize: vertical;
+}
+
 .field > span { font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
 
 .field input {

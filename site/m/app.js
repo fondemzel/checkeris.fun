@@ -1535,6 +1535,10 @@ function screenManual() {
         <span>Категория</span>
         <button class="cat-pick" id="m-cat" type="button">${categoryButton(manualCategory)}</button>
       </div>
+      <label class="field">
+        <span>Комментарий</span>
+        <textarea id="m-note" class="m-note" rows="2" maxlength="1000" placeholder="Необязательно"></textarea>
+      </label>
       <p class="note" id="m-note"></p>
       <button class="btn primary big" id="m-save" type="submit">Записать</button>
     </form>`;
@@ -1569,7 +1573,9 @@ async function saveManual() {
   note.classList.remove('error');
   note.textContent = 'Записываем…';
   try {
-    const saved = await post('/api/manual', { sum, date, time, name: $('m-name').value, category: manualCategory });
+    const saved = await post('/api/manual', {
+      sum, date, time, name: $('m-name').value, category: manualCategory, note: $('m-note').value,
+    });
     // Записали часть битого чека — остаток ждёт «Вбить ещё»
     const left = manualPrefill ? manualPrefill.left - Math.round(Number(sum.replace(/\s/g, '').replace(',', '.')) * 100) : 0;
     manualCarry = left > 0 ? { ...manualPrefill, left, sum: rublesInput(left) } : null;

@@ -255,6 +255,12 @@ export function addManual(db, budgetId, body, addedBy = null) {
        VALUES (?, ?, ?, 'pinned', 1, ?)`,
     ).run(itemId, budgetId, category.slug, now);
 
+    // Комментарий — сразу при записи: как у любого товара, он держится за чек и позицию
+    const note = String(body.note ?? '').trim().slice(0, 1000);
+    if (note) {
+      db.prepare('INSERT INTO item_notes (receipt_id, pos, note, updated_at) VALUES (?, 1, ?, ?)').run(receiptId, note, now);
+    }
+
     db.exec('COMMIT');
     return { id: receiptId, item_id: itemId };
   } catch (err) {
