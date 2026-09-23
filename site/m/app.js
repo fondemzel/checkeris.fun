@@ -675,51 +675,43 @@ async function screenIncome() {
 /** Откуда трата попала в Чекер: значок в строке отвечает на этот вопрос без слов. */
 const SOURCES = {
   receipt: { title: 'Из чека', icon: UI.receipt },
-  manual: { title: 'Вбито вручную', icon: UI.pen },
-  bank: { title: 'Из банка, без чека', icon: UI.card },
+  manual: { title: 'Вручную', icon: UI.pen },
+  bank: { title: 'Из банка', icon: UI.card },
 };
-
-/**
- * Карточка траты из банка — такая же, как у товара: сумма, что это, когда, категория.
- * Откуда трата взялась, важно меньше, чем то, что она учтена, поэтому и выглядят они одинаково.
- */
-async function screenOp() {
-  const op = await api(`/api/bank/ops/${state.op}`);
-  const kv = (rows) =>
-    rows
-      .filter(([, v]) => v)
-      .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`)
-      .join('');
-
-  return `
-    <div class="card">
-      <div class="card-sum">${money(op.amount, true)}</div>
-      <div class="card-name">${esc(op.merchant ?? op.description ?? 'Без названия')}</div>
-      ${kv([
-        ['Дата', `${dateRu(op.at.slice(0, 10))} ${esc(timeRu(op.at))}`],
-        ['Описание', op.merchant && op.description && op.description !== op.merchant ? esc(op.description) : ''],
-        ['Карта', op.card ? `·${esc(op.card)}` : ''],
-        ['Счёт', esc(op.account_name ?? '')],
-        ['Категория в банке', esc(op.bank_category ?? '')],
-        ['Источник', `${SOURCES.bank.icon} из банка, без чека`],
-      ])}
-    </div>
-
-    <div class="card">
-      <div class="card-label">Категория</div>
-      <button class="cat-pick" type="button" data-op-cat="${op.id}">${categoryButton(op.category_slug)}</button>
-      ${op.same_count > 1
-        ? `<p class="note">Изменение категории затронет ${int.format(op.same_count)} ${plural(op.same_count, 'операцию', 'операции', 'операций')} этого продавца</p>`
-        : ''}
-    </div>`;
-}
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
 
 async function screenItem() {
   const it = await api(`/api/items/${state.item}`);
+  return itemCard({ ...it, source: it.receipt_drive === 'manual' ? 'manual' : 'receipt' });
+}
+
+/**
+ * Трата из банка — тот же товар, только без чека. Приводим её к полям позиции и рисуем
+ * той же карточкой: человеку важно, что трата учтена, а не каким путём она пришла.
+ */
+async function screenOp() {
+  const op = await api(`/api/bank/ops/${state.op}`);
+  return itemCard({
+    id: op.id,
+    source: 'bank',
+    sum: op.amount,
+    name: op.merchant ?? op.description ?? 'Без названия',
+    purchased_at: op.at,
+    quantity: 1,
+    seller: op.merchant && op.description && op.description !== op.merchant ? op.description : null,
+    category_slug: op.category_slug,
+    same_name_count: op.same_count,
+    card: op.card,
+    account_name: op.account_name,
+  });
+}
+
+/** Карточка траты — одна для всех источников. Отличается только строка «Источник». */
+function itemCard(it) {
   itemShown = it;
-  const onMap = mappable(it) && meta?.maps?.key;
+  const bank = it.source === 'bank';
+  const onMap = !bank && mappable(it) && meta?.maps?.key;
 
   const kv = (rows) =>
     rows
@@ -734,25 +726,31 @@ async function screenItem() {
       ${kv([
         ['Дата', `${dateRu(it.purchased_at)} ${esc(timeRu(it.purchased_at))}`],
         ['Количество', it.quantity !== 1 ? `${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''],
-        ['Продавец', esc(it.seller ?? '')],
+        // У ручной записи продавца нет — «Ручная запись» уже сказано строкой «Источник»
+        ['Продавец', it.source === 'manual' ? '' : esc(it.seller ?? '')],
         ['Точка', esc(it.retail_place ?? '')],
         // Адрес текстом — когда карты нет. У интернет-покупки это адрес продавца, а не магазина
         ['Адрес', !onMap && !it.internet_sign ? esc(it.retail_address ?? '') : ''],
         ['Покупка', it.internet_sign ? 'в интернете' : ''],
+        ['Карта', it.card ? `·${esc(it.card)}` : ''],
+        ['Счёт', esc(it.account_name ?? '')],
+        ['Источник', `${SOURCES[it.source].icon} ${SOURCES[it.source].title.toLowerCase()}`],
       ])}
     </div>
 
     <div class="card">
       <div class="card-label">Категория</div>
-      <button class="cat-pick" id="item-cat" type="button" data-item-cat="${it.id}">${categoryButton(it.category_slug)}</button>
+      <button class="cat-pick" id="item-cat" type="button" ${bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`}>${categoryButton(it.category_slug)}</button>
       <p class="note" id="pick-note">${
         it.same_name_count > 1
-          ? `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позицию', 'позиции', 'позиций')} с таким же названием`
+          ? bank
+            ? `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'трату', 'траты', 'трат')} этого продавца`
+            : `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позицию', 'позиции', 'позиций')} с таким же названием`
           : ''
       }</p>
     </div>
 
-    ${it.receipt_drive !== 'manual' ? `
+    ${it.source === 'receipt' ? `
     <div class="card">
       <div class="card-label">Чек</div>
       <button class="cat-pick" type="button" data-item-receipt="${it.receipt_id}">
@@ -1769,7 +1767,7 @@ const SCREENS = {
   },
   settings: { title: 'Настройки', render: screenSettings },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
-  op: { title: 'Трата', render: screenOp },
+  op: { title: 'Товар', render: screenOp },
 };
 
 /** Раздела ещё нет, а вкладка уже на месте: навигация не будет меняться потом. */
