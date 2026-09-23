@@ -60,6 +60,7 @@ const UI = {
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
   mail: svg('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>'),
   card: svg('<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>'),
+  chevron: svg('<path d="m6 9 6 6 6-6"/>'),
   refresh: svg('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'),
   plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
@@ -517,6 +518,7 @@ async function screenCategory() {
       note: r.positions > 1 ? `${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : '',
       outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
       action: `data-item="${r.first_id}"`,
+      group: r.positions > 1 ? r.name_norm : null, // несколько покупок одного товара — можно развернуть
     })),
     ...bankRows.map((op) => ({
       name: op.merchant ?? op.description ?? 'Без названия',
@@ -534,16 +536,57 @@ async function screenCategory() {
     return (Date.parse(a.at) - Date.parse(b.at)) * -back;
   });
 
+  // Развёрнутые группы подгружаем здесь же, до отрисовки: тогда «назад» из карточки
+  // возвращает список уже раскрытым, и прокрутка попадает на то же место
+  const open = spendings.filter((r) => r.group && expanded.has(expandKey(r.group)));
+  const parts = new Map(
+    await Promise.all(
+      open.map(async (r) => {
+        const q = new URLSearchParams({
+          from: state.from, to: state.to, name_norm: r.group, sort: 'date', dir: 'desc', per: '100',
+          ...(state.category ? { category: state.category } : { group: state.group }),
+        });
+        const res = await api(`/api/items?${q}`).catch(() => ({ rows: [], totals: { count: 0 } }));
+        return [r.group, res];
+      }),
+    ),
+  );
+
   const rows = spendings
-    .map((r) => `
+    .map((r) => {
+      const isOpen = r.group && parts.has(r.group);
+      // Стрелка — внутри подписи, в размер текста: как бы ни рисовался значок, строка не поплывёт
+      const toggle = r.group
+        ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(r.group)}" role="button" aria-label="${isOpen ? 'Свернуть' : 'Показать покупки'}">${UI.chevron}</span>`
+        : '';
+      const row = `
       <button class="row item" type="button" ${r.action}>
         <span class="row-main">
           <span class="row-title">${esc(r.name)}</span>
-          <span class="row-note">${dateRu(r.at.slice(0, 10))}${r.note ? ` · ${esc(r.note)}` : ''}</span>
+          <span class="row-note">${dateRu(r.at.slice(0, 10))}${r.note ? ` · ${esc(r.note)}` : ''}${toggle}</span>
         </span>
         <span class="row-sum${r.outside ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
         <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
-      </button>`)
+      </button>`;
+      if (!isOpen) return row;
+      // Покупки группы — со сдвигом вправо: видно, что это части строки выше
+      const part = parts.get(r.group);
+      const subs = part.rows
+        .map((it) => `
+          <button class="row item sub-row" type="button" data-item="${it.id}">
+            <span class="row-main">
+              <span class="row-title">${dateRu(it.purchased_date ?? it.purchased_at.slice(0, 10))} · ${esc(timeRu(it.purchased_at))}</span>
+              <span class="row-note">${esc(it.seller ?? '')}${it.quantity !== 1 ? ` · ${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''}</span>
+            </span>
+            <span class="row-sum">${money(it.sum)}</span>
+          </button>`)
+        .join('');
+      // Показываем последние сто: дальше листать группу неудобно, а сумма в строке и так полная
+      const more = part.totals.count > part.rows.length
+        ? `<div class="sub-more note">Показаны последние ${int.format(part.rows.length)} из ${int.format(part.totals.count)}</div>`
+        : '';
+      return row + subs + more;
+    })
     .join('');
 
   return `${head}<div class="list">${rows}</div>`;
@@ -686,6 +729,11 @@ const SOURCES = {
   manual: { title: 'Вручную', icon: UI.pen },
   bank: { title: 'Из банка', icon: UI.card },
 };
+
+// Какие группы одинаковых товаров развёрнуты. Ключ включает категорию и период: в другом
+// списке та же группа начинается свёрнутой
+const expanded = new Set();
+const expandKey = (norm) => `${state.group}|${state.category}|${state.from}|${state.to}|${norm}`;
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
 
@@ -1881,6 +1929,15 @@ async function onScreenClick(e) {
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
   // Категория в карточке товара
+  // Стрелка у группы одинаковых покупок: развернуть или свернуть, не открывая карточку
+  const toggle = e.target.closest('[data-expand]');
+  if (toggle) {
+    const key = expandKey(toggle.dataset.expand);
+    if (expanded.has(key)) expanded.delete(key);
+    else expanded.add(key);
+    return render(); // тот же экран — список перерисуется на месте, прокрутка не сбросится
+  }
+
   // Трата из банка открывается карточкой, как товар; категория меняется уже в ней
   const opOpen = e.target.closest('[data-op]');
   if (opOpen) return go({ screen: 'op', op: opOpen.dataset.op });
