@@ -304,7 +304,7 @@ export function listBankOps(db, budgetId, {
     .prepare(
       `SELECT id, ext_id, at, direction, amount, currency, account_name, status, op_group, mcc,
               description, merchant, bank_category, card, has_receipt, kind, receipt_id,
-              category_slug, category_source
+              category_slug, category_source, note IS NOT NULL AS has_note
          FROM bank_ops ${where}
         ORDER BY ${column} ${order} LIMIT :limit OFFSET :offset`,
     )

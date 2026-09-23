@@ -201,7 +201,8 @@ export function listItems(db, budgetId, params) {
       `SELECT id, receipt_id, pos, name, name_norm, quantity, unit, price, sum, nds, product_type, gtin,
               purchased_at, purchased_date, seller, seller_inn, retail_place, operation_type,
               prepaid_sum, counted,
-              category_slug, category_name, category_source, group_slug, group_name
+              category_slug, category_name, category_source, group_slug, group_name,
+              EXISTS (SELECT 1 FROM item_notes n WHERE n.receipt_id = v_items.receipt_id AND n.pos = v_items.pos) AS has_note
          FROM v_items
          ${whereSql}
         ORDER BY ${column} ${dir}, id ${dir}
@@ -260,6 +261,8 @@ export function listItemGroups(db, budgetId, params) {
               MAX(purchased_at) AS purchased_at,
               MIN(purchased_at) AS first_at,
               MAX(manual) AS manual,
+              -- хотя бы у одной покупки группы есть комментарий: в ленте это видно пометкой
+              MAX(EXISTS (SELECT 1 FROM item_notes n WHERE n.receipt_id = v_items.receipt_id AND n.pos = v_items.pos)) AS has_note,
               unit,
               category_slug, category_name, category_source, group_slug, group_name
          FROM v_items

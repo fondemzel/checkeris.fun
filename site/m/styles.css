@@ -688,13 +688,16 @@ button, input, select { font: inherit; color: inherit; }
   justify-content: center;
   width: 13px;
   height: 13px;
+  border: 1px solid var(--border);
   border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
+  background: var(--surface);
+  color: var(--text);
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
 }
+.sort-chip .sort-dir svg { width: 9px; height: 9px; stroke-width: 3.5; }
+.sort-chip .sort-dir.asc svg { transform: rotate(180deg); }
 
 .list-hint { margin: -2px 2px 10px; }
 .list.stuck { margin-bottom: 12px; }
@@ -728,7 +731,7 @@ button.bank-op { cursor: pointer; }
 /* Стрелка у группы одинаковых покупок. Размер задан жёстко и в размер строки подписи:
    даже если значок нарисуется крупнее, он обрежется, а не раздвинет строку */
 .expand {
-  display: inline-flex;
+  display: none; /* разворачиваем долгим нажатием на строку, стрелка была мелкой */
   align-items: center;
   justify-content: center;
   width: 1.05em;   /* высотой с цифры подписи: растёт и уменьшается вместе с её шрифтом */
@@ -745,6 +748,26 @@ button.bank-op { cursor: pointer; }
 
 /* Покупки развёрнутой группы — со сдвигом: видно, что это части строки над ними */
 .sub-row { padding-left: 30px; min-height: 48px; background: #fafbfc; }
+
+/* Раздел ленты — день или категория: заголовок нажимается и сворачивает раздел */
+.day.section { width: 100%; border: none; border-bottom: 1px solid #f0f1f3; font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
+.day.section > span { display: flex; align-items: center; min-width: 0; }
+.section-arrow { display: inline-flex; flex: none; width: 14px; margin-right: 4px; color: var(--muted); }
+.section-arrow svg { width: 12px; height: 12px; stroke-width: 3; transform: rotate(-90deg); transition: transform 0.15s; }
+.day.section.open .section-arrow svg { transform: none; }
+
+/* Долгое нажатие не должно выделять текст и открывать меню */
+.row[data-long] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+/* У товара есть комментарий: кружок цвета старой бумаги перед ценой */
+.noted { flex: none; width: 8px; height: 8px; margin-right: -4px; border-radius: 50%; background: #ead9a4; box-shadow: inset 0 0 0 1px #d6c083; }
+
+/* Комментарий: галочка сохранения появляется, пока пишут */
+.note-row { display: flex; align-items: flex-start; gap: 8px; }
+.note-row .note-input { flex: 1; }
+.note-save { display: none; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; border: none; border-radius: 50%; background: var(--accent); color: #fff; cursor: pointer; }
+.note-save svg { width: 17px; height: 17px; stroke-width: 2.5; }
+.note-row:focus-within .note-save { display: flex; }
 .sub-row .row-title { font-size: 14px; }
 .sub-more { padding: 8px 14px 10px 30px; border-bottom: 1px solid #f0f1f3; background: #fafbfc; }
 /* Комментарий: выглядит как текст карточки, пока в него не начали писать */

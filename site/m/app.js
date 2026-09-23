@@ -62,6 +62,7 @@ const UI = {
   card: svg('<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>'),
   grid: svg('<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+  arrow: svg('<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>'),
   refresh: svg('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'),
   plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
@@ -242,7 +243,8 @@ const sortChips = (keys = ['date', 'name', 'sum']) => `
     .map((key) => {
       const [label, , icon] = SORTS[key];
       const on = state.sort === key;
-      const arrow = on ? `<span class="sort-dir">${state.dir === 'asc' ? '↑' : '↓'}</span>` : '';
+      // Стрелка — значком, а не символом: символ ↓ телефон может нарисовать цветным эмодзи
+      const arrow = on ? `<span class="sort-dir${state.dir === 'asc' ? ' asc' : ''}">${UI.arrow}</span>` : '';
       return `<button class="sort-chip${on ? ' on' : ''}" type="button" data-sort="${key}" aria-label="${label}" title="${label}">${UI[icon]}${arrow}</button>`;
     })
     .join('')}</div>`;
@@ -523,6 +525,7 @@ async function spendingFeed(itemRows, bankRows) {
       outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
       action: `data-item="${r.first_id}"`,
       group: r.positions > 1 ? r.name_norm : null, // несколько покупок одного товара — можно развернуть
+      noted: Boolean(r.has_note),
     })),
     ...bankRows.map((op) => ({
       name: op.merchant ?? op.description ?? 'Без названия',
@@ -534,6 +537,7 @@ async function spendingFeed(itemRows, bankRows) {
       outside: false,
       action: `data-op="${op.id}"`,
       group: null,
+      noted: Boolean(op.has_note),
     })),
   ];
   if (!spendings.length) return '<div class="empty">За этот период трат нет</div>';
@@ -579,15 +583,32 @@ async function spendingFeed(itemRows, bankRows) {
     const key = sectionOf(r);
     if (key != null && !r.outside) sums.set(key, (sums.get(key) ?? 0) + r.sum);
   }
+  // Разделы свёрнуты: по умолчанию открыт только верхний. Если строк много, открытым
+  // держим один раздел — иначе лента разрастается до тысяч строк
+  const order = [...new Set(spendings.map(sectionOf))].filter((k) => k != null);
+  const opened = openSections(order[0]);
+  const single = spendings.length > 500;
+  if (single && opened.size > 1) {
+    const keep = [...opened].pop();
+    opened.clear();
+    opened.add(keep);
+  }
+  feedSections = { order, single };
+
   const sectionHead = (key) => {
-    if (state.sort === 'date') return dayHead(key, sums.get(key) ?? 0);
-    const found = key === NONE ? null : findCategory(key);
-    const color = found ? categoryColor(found.group.slug, key) ?? found.group.color : '#c9ced6';
+    const isOpen = opened.has(key);
+    const title = state.sort === 'date'
+      ? esc(dayTitle(key))
+      : (() => {
+          const found = key === NONE ? null : findCategory(key);
+          const color = found ? categoryColor(found.group.slug, key) ?? found.group.color : '#c9ced6';
+          return `<span class="op-cat" style="background:${color}"></span>${esc(found?.category.name ?? 'Без категории')}`;
+        })();
     return `
-      <div class="day">
-        <span><span class="op-cat" style="background:${color}"></span>${esc(found?.category.name ?? 'Без категории')}</span>
+      <button class="day section${isOpen ? ' open' : ''}" type="button" data-section="${esc(key)}">
+        <span><span class="section-arrow">${UI.chevron}</span>${title}</span>
         <b>${money(sums.get(key) ?? 0)}</b>
-      </div>`;
+      </button>`;
   };
 
   let section;
@@ -596,6 +617,7 @@ async function spendingFeed(itemRows, bankRows) {
       const key = sectionOf(r);
       const head = key != null && key !== section ? sectionHead(key) : '';
       section = key;
+      if (key != null && !opened.has(key)) return head; // раздел свёрнут — строк не рисуем
 
       const found = r.category ? findCategory(r.category) : null;
       const color = found?.group.color ?? '#eef1f5';
@@ -611,12 +633,13 @@ async function spendingFeed(itemRows, bankRows) {
       ].filter(Boolean).join(' · ');
 
       const row = `${head}
-      <button class="row item" type="button" ${r.action}>
+      <button class="row item" type="button" ${r.action}${r.group ? ` data-long="${esc(r.group)}"` : ''}>
         <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(found?.group.icon ?? 'none')}</span>
         <span class="row-main">
           <span class="row-title">${esc(r.name)}</span>
           <span class="row-note">${note}${toggle}</span>
         </span>
+        ${r.noted ? '<span class="noted" title="Есть комментарий"></span>' : ''}
         <span class="row-sum${r.outside ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
         <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
       </button>`;
@@ -631,6 +654,7 @@ async function spendingFeed(itemRows, bankRows) {
               <span class="row-title">${dateRu(it.purchased_date ?? it.purchased_at.slice(0, 10))} · ${esc(timeRu(it.purchased_at))}</span>
               <span class="row-note">${esc(it.seller ?? '')}${it.quantity !== 1 ? ` · ${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''}</span>
             </span>
+            ${it.has_note ? '<span class="noted" title="Есть комментарий"></span>' : ''}
             <span class="row-sum">${money(it.sum)}</span>
           </button>`)
         .join('');
@@ -823,6 +847,17 @@ const SOURCES = {
   bank: { title: 'Из банка', icon: UI.card },
 };
 
+// Какие разделы ленты (дни, категории) открыты. Ключ — всё, что меняет состав ленты:
+// в другом периоде или сортировке снова открыт только верхний раздел
+const sectionState = new Map();
+let feedSections = { order: [], single: false };
+const sectionsKey = () => `${state.sort}|${state.group}|${state.category}|${state.from}|${state.to}`;
+function openSections(first) {
+  const key = sectionsKey();
+  if (!sectionState.has(key)) sectionState.set(key, new Set(first != null ? [first] : []));
+  return sectionState.get(key);
+}
+
 // Какие группы одинаковых товаров развёрнуты. Ключ включает категорию и период: в другом
 // списке та же группа начинается свёрнутой
 const expanded = new Set();
@@ -902,8 +937,11 @@ function itemCard(it) {
 
     <div class="card">
       <div class="card-label">Комментарий</div>
-      <textarea class="note-input" id="item-note" rows="1" maxlength="1000" placeholder="Добавить комментарий"
-        data-note="${bank ? `/api/bank/ops/${it.id}/note` : `/api/items/${it.id}/note`}">${esc(it.note ?? '')}</textarea>
+      <div class="note-row">
+        <textarea class="note-input" id="item-note" rows="1" maxlength="1000" placeholder="Добавить комментарий"
+          data-note="${bank ? `/api/bank/ops/${it.id}/note` : `/api/items/${it.id}/note`}">${esc(it.note ?? '')}</textarea>
+        <button class="note-save" type="button" data-note-save aria-label="Сохранить" title="Сохранить">${UI.ok}</button>
+      </div>
     </div>
 
     ${it.source === 'receipt' ? `
@@ -2027,6 +2065,19 @@ async function onScreenClick(e) {
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
   // Категория в карточке товара
+  // Заголовок раздела: свернуть или развернуть. При длинной ленте открыт только один
+  const sectionBtn = e.target.closest('[data-section]');
+  if (sectionBtn) {
+    const opened = openSections();
+    const key = sectionBtn.dataset.section;
+    if (opened.has(key)) opened.delete(key);
+    else {
+      if (feedSections.single) opened.clear();
+      opened.add(key);
+    }
+    return render();
+  }
+
   // Сканы с ошибкой — ссылкой с «Расхода»: отдельной вкладки «Чеки» больше нет
   if (e.target.closest('[data-to-failed]')) return go({ screen: 'receipts', filter: 'failed' });
 
@@ -2605,6 +2656,56 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /**
+ * Длинный тап по строке «6 покупок» разворачивает их: стрелка была слишком мелкой, чтобы
+ * в неё попадать. Обычный тап, как и раньше, открывает товар.
+ */
+let longPress = null;
+let longPressFired = false;
+
+$('screen').addEventListener('pointerdown', (e) => {
+  const row = e.target.closest('[data-long]');
+  if (!row) return;
+  longPressFired = false;
+  const { clientX: x, clientY: y } = e;
+  longPress = {
+    x,
+    y,
+    timer: setTimeout(() => {
+      longPressFired = true;
+      navigator.vibrate?.(15); // короткий отклик: человек понимает, что сработало
+      const key = expandKey(row.dataset.long);
+      if (expanded.has(key)) expanded.delete(key);
+      else expanded.add(key);
+      render();
+    }, 450),
+  };
+});
+
+const cancelLongPress = (e) => {
+  if (!longPress) return;
+  // Палец поехал — это прокрутка, а не нажатие
+  if (e?.type === 'pointermove' && Math.hypot(e.clientX - longPress.x, e.clientY - longPress.y) < 10) return;
+  clearTimeout(longPress.timer);
+  longPress = null;
+};
+for (const type of ['pointerup', 'pointercancel', 'pointermove', 'pointerleave']) {
+  $('screen').addEventListener(type, cancelLongPress);
+}
+
+// Тап, которым закончилось долгое нажатие, не должен ещё и открывать товар
+$('screen').addEventListener('click', (e) => {
+  if (!longPressFired) return;
+  longPressFired = false;
+  e.stopPropagation();
+  e.preventDefault();
+}, true);
+
+// Долгое нажатие на телефоне вызывает меню выделения — у строк оно ни к чему
+$('screen').addEventListener('contextmenu', (e) => {
+  if (e.target.closest('[data-long]')) e.preventDefault();
+});
+
+/**
  * Комментарий к товару: поле, которое растёт вместе с текстом и сохраняется само, когда
  * человек закончил писать — ушёл из поля. Отдельной кнопки нет: это заметка, а не форма.
  */
@@ -2616,6 +2717,15 @@ const fitNote = () => $('item-note') && growNote($('item-note'));
 
 $('screen').addEventListener('input', (e) => {
   if (e.target.matches?.('[data-note]')) growNote(e.target);
+});
+
+// Галочка сохранения видна, пока пишут. Нажатие не должно уводить фокус раньше клика —
+// тогда поле само потеряет фокус по нашей команде и сохранится как обычно
+$('screen').addEventListener('pointerdown', (e) => {
+  if (e.target.closest('[data-note-save]')) e.preventDefault();
+});
+$('screen').addEventListener('click', (e) => {
+  if (e.target.closest('[data-note-save]')) $('item-note')?.blur();
 });
 
 $('screen').addEventListener('focusout', async (e) => {
