@@ -21,11 +21,13 @@ final class TBank {
 
     static final String LOGIN_URL = "https://www.tbank.ru/login/";
     static final String HOST = "www.tbank.ru";
+    static final String RATE_LIMIT = "Превышен лимит запросов";
     private static final String API = "https://www.tbank.ru/api/common/v1/";
 
     /** Ответ банка: { resultCode, payload }. Payload возвращаем как есть. */
     private static Object call(String session, String method, String query) throws Exception {
         JSONObject body = new JSONObject(body(session, method, query));
+        if ("REQUEST_RATE_LIMIT_EXCEEDED".equals(body.optString("resultCode"))) throw new IllegalStateException(RATE_LIMIT);
         if (!"OK".equals(body.optString("resultCode"))) {
             throw new IllegalStateException(body.optString("errorMessage", body.optString("resultCode")));
         }
@@ -71,6 +73,7 @@ final class TBank {
             return "CLIENT".equals(((JSONObject) call(session, "ping", null)).optString("accessLevel"))
                     ? ALIVE : EXPIRED;
         } catch (IllegalStateException e) {
+            if (RATE_LIMIT.equals(e.getMessage())) return OFFLINE; // «подождите» — не повод просить вход
             return EXPIRED; // банк ответил, но отказал
         } catch (Exception e) {
             return OFFLINE; // сеть, таймаут, сбой на стороне банка
@@ -86,8 +89,11 @@ final class TBank {
     }
 
     static JSONArray operations(String session, String account, long since) throws Exception {
-        String query = "&account=" + URLEncoder.encode(account, "UTF-8")
-                + "&start=" + since + "&end=" + System.currentTimeMillis();
+        return operations(session, account, since, System.currentTimeMillis());
+    }
+
+    static JSONArray operations(String session, String account, long from, long to) throws Exception {
+        String query = "&account=" + URLEncoder.encode(account, "UTF-8") + "&start=" + from + "&end=" + to;
         return (JSONArray) call(session, "operations", query);
     }
 }

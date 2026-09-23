@@ -24,6 +24,7 @@ final class BankSync {
     private static final String LAST_SYNC = "tbank.lastSync";
     private static final long FIRST_DAYS = 90L * 24 * 3600 * 1000;
     private static final long OVERLAP = 3L * 24 * 3600 * 1000; // операции «в обработке» меняются задним числом
+    private static final BankAdapter ADAPTER = new TBankAdapter();
     private static final int BATCH = 150; // операция с полным ответом банка весит килобайты — шлём пачками
 
     /** Итог для показа человеку: сколько операций новых и сколько всего проверили. */
@@ -90,6 +91,9 @@ final class BankSync {
         }
         secrets.put(EXPIRED, null);
 
+        // История грузится тем же банком: лишние запросы рядом с ней упрутся в лимит
+        if (BankHistory.running()) return new Result(false, 0, 0, "Идёт загрузка истории — обновим после неё");
+
         long last = secrets.getLong(LAST_SYNC, 0);
         long since = last > 0 ? last - OVERLAP : System.currentTimeMillis() - FIRST_DAYS;
 
@@ -102,16 +106,16 @@ final class BankSync {
                 if (id.isEmpty()) continue;
                 JSONArray ops = TBank.operations(session, id, since);
                 for (int j = 0; j < ops.length(); j++) {
-                    JSONObject op = ops.getJSONObject(j);
-                    op.put("accountName", account.optString("name")); // чтобы в Чекере было видно, по какой карте
-                    all.put(op);
+                    // Только нужные поля: полный ответ банка в пять раз тяжелее. Имя счёта — чтобы
+                    // в Чекере было видно, по какой карте
+                    all.put(ADAPTER.trim(ops.getJSONObject(j), account.optString("name")));
                 }
             }
             int added = 0;
             for (int from = 0; from < all.length(); from += BATCH) {
                 JSONArray batch = new JSONArray();
                 for (int i = from; i < Math.min(from + BATCH, all.length()); i++) batch.put(all.get(i));
-                added += send(checkerToken, batch);
+                added += send(checkerToken, "tbank", batch, false);
             }
             secrets.putLong(LAST_SYNC, System.currentTimeMillis());
             return new Result(true, added, all.length(), null);
@@ -120,9 +124,12 @@ final class BankSync {
         }
     }
 
-    /** Отправить пачку в Чекер и узнать, сколько операций там оказались новыми. */
-    private static int send(String token, JSONArray ops) throws Exception {
-        JSONObject body = new JSONObject().put("bank", "tbank").put("ops", ops);
+    /**
+     * Отправить пачку в Чекер и узнать, сколько операций там оказались новыми.
+     * defer — не размечать после пачки: при загрузке истории разметка одна, в конце.
+     */
+    static int send(String token, String bank, JSONArray ops, boolean defer) throws Exception {
+        JSONObject body = new JSONObject().put("bank", bank).put("ops", ops).put("defer", defer);
         HttpURLConnection http = (HttpURLConnection) new URL(CHECKER).openConnection();
         http.setRequestMethod("POST");
         http.setRequestProperty("Content-Type", "application/json");

@@ -6,7 +6,7 @@
 // Зависимостей нет: только встроенные модули Node.
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { openDb, migrate, PROJECT_ROOT, API_ROOT, DB_PATH } from './db.mjs';
 import {
@@ -32,6 +32,8 @@ import {
   setBankOpNote, setBankOpKind,
 } from './banks.mjs';
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
+import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
+import { knownBank } from './bankformat.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -401,18 +403,34 @@ async function handleApi(req, res, url) {
       return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
     }
 
-    // Разведка перед загрузкой всей истории: отчёт телефона — в файл для разбора, не в базу
-    if (pathname === '/api/bank/probe' && req.method === 'POST') {
-      let body;
-      try {
-        body = await readJson(req, 8 * 1024 * 1024);
-      } catch {
-        return sendJson(res, 400, { error: 'bad request body' });
+    // Загрузка всей истории: шаг мастера, копия базы перед стартом, разметка и итог в конце
+    if (pathname.startsWith('/api/bank/history')) {
+      let body = {};
+      if (req.method !== 'GET') {
+        try {
+          body = await readJson(req);
+        } catch {
+          return sendJson(res, 400, { error: 'bad request body' });
+        }
       }
-      const dir = join(API_ROOT, 'data', 'probe');
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-      writeFileSync(join(dir, `${user.id}-${Date.now()}.json`), JSON.stringify(body, null, 1), { mode: 0o600 });
-      return sendJson(res, 200, { ok: true });
+      const bank = body.bank ?? url.searchParams.get('bank') ?? 'tbank';
+      if (!knownBank(bank)) return sendJson(res, 400, { error: 'unknown bank' });
+      try {
+        if (pathname === '/api/bank/history' && req.method === 'GET') return sendJson(res, 200, getHistory(db, user.id, bank));
+        if (pathname === '/api/bank/history' && req.method === 'PUT') {
+          return sendJson(res, 200, saveHistory(db, user.id, bank, body.state));
+        }
+        if (pathname === '/api/bank/history/start' && req.method === 'POST') {
+          return sendJson(res, 200, startHistory(db, user.id, bank));
+        }
+        if (pathname === '/api/bank/history/finish' && req.method === 'POST') {
+          const result = finishHistory(db, user.id, bank);
+          return sendJson(res, result.status ?? 200, result);
+        }
+      } catch (err) {
+        return sendJson(res, 500, { error: err.message });
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
     }
 
     if (pathname === '/api/bank/ops' && req.method === 'GET') {
@@ -444,9 +462,10 @@ async function handleApi(req, res, url) {
       } catch {
         return sendJson(res, 400, { error: 'bad request body' });
       }
-      const bank = /^[a-z]{2,20}$/.test(body.bank ?? '') ? body.bank : 'tbank';
+      const bank = body.bank ?? 'tbank';
+      if (!knownBank(bank)) return sendJson(res, 400, { error: 'unknown bank' });
       try {
-        return sendJson(res, 200, importOps(db, user.id, bank, body.ops));
+        return sendJson(res, 200, importOps(db, user.id, bank, body.ops, { defer: body.defer === true }));
       } catch (err) {
         return sendJson(res, 500, { error: err.message });
       }
@@ -781,6 +800,8 @@ if (geocoderReady()) {
 // что покрыто чеком, что перевод между своими счетами, что доход
 setTimeout(() => {
   try {
+    const trimmed = trimStoredOps(db);
+    if (trimmed) console.log(`банк: сокращено операций до нужных полей — ${trimmed}`);
     const budgets = db.prepare('SELECT DISTINCT budget_id FROM bank_ops WHERE kind IS NULL').all();
     for (const { budget_id } of budgets) {
       const res = matchBank(db, budget_id);

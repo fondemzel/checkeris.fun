@@ -8,6 +8,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { loadEnv } from './llm.mjs';
 import { matchBank } from './bankmatch.mjs';
+import { parseOp, trimOp, validOp } from './bankformat.mjs';
 import * as tbank from './tbank.mjs';
 
 const FAILS_TO_EXPIRE = 3; // пинг может разово не пройти из-за сети — не спешим хоронить сессию
@@ -105,33 +106,15 @@ export async function keepAlive(db) {
   }
 }
 
-// Время банка — миллисекунды UTC; у чеков — московское время без зоны. Приводим к нему
-const moscow = (ms) =>
-  ms ? new Date(ms).toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).replace(' ', 'T') : null;
-const kopecks = (money) => (money?.value == null ? null : Math.round(Math.abs(money.value) * 100));
-
-function opRow(link, budgetId, accountName, op) {
+/** Строка bank_ops из операции банка: храним сокращённый ответ, поля — по разбору его банка. */
+function opRow(link, budgetId, bank, accountName, op) {
+  const trimmed = trimOp(bank, accountName ? { ...op, accountName } : op);
   return {
     link_id: link.id,
     budget_id: budgetId,
-    ext_id: String(op.id),
-    account: String(op.account),
-    account_name: accountName ?? null,
-    at: moscow(op.operationTime?.milliseconds),
-    debited_at: moscow(op.debitingTime?.milliseconds),
-    direction: op.type === 'Debit' ? 'debit' : 'credit',
-    amount: kopecks(op.amount) ?? 0,
-    currency: op.amount?.currency?.name ?? 'RUB',
-    account_amount: kopecks(op.accountAmount),
-    status: op.status ?? null,
-    op_group: op.group ?? null,
-    mcc: Number(op.mcc) || null,
-    description: op.description ?? null,
-    merchant: op.merchant?.name ?? op.brand?.name ?? null,
-    bank_category: op.spendingCategory?.name ?? op.category?.name ?? null,
-    card: op.cardNumber ? String(op.cardNumber).slice(-4) : null,
-    has_receipt: op.hasShoppingReceipt ? 1 : 0,
-    raw: JSON.stringify(op),
+    account_name: trimmed.accountName ?? null,
+    ...parseOp(bank, trimmed),
+    raw: JSON.stringify(trimmed),
   };
 }
 
@@ -157,7 +140,7 @@ function opUpsert(db) {
  * отдал банк. Подключение для такого источника помечается status = 'device':
  * сессии банка на сервере нет и пинговать нечего.
  */
-export function importOps(db, userId, bank, ops) {
+export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   const budgetId = db.prepare('SELECT budget_id FROM users WHERE id = ?').get(userId)?.budget_id;
   if (!budgetId) return { ops: 0 };
   const at = now();
@@ -176,9 +159,9 @@ export function importOps(db, userId, bank, ops) {
   db.exec('BEGIN');
   try {
     for (const op of ops ?? []) {
-      if (!op?.id || !op.operationTime) continue;
+      if (!validOp(bank, op)) continue;
       if (!known.get(link.id, String(op.id))) added += 1;
-      upsert.run({ ...opRow(link, budgetId, op.accountName ?? null, op), now: at });
+      upsert.run({ ...opRow(link, budgetId, bank, null, op), now: at });
       count += 1;
     }
     db.exec('COMMIT');
@@ -186,14 +169,12 @@ export function importOps(db, userId, bank, ops) {
     db.exec('ROLLBACK');
     throw err;
   }
+  const total = db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE link_id = ?').get(link.id).c;
+  // Загрузка истории идёт сотнями пачек: разбирать всё после каждой незачем — один раз в конце
+  if (defer) return { ops: count, added, total };
   // Сразу разбираем: что покрыто чеком, что перевод между своими, что доход
   const marks = matchBank(db, budgetId);
-  return {
-    ops: count,
-    added,
-    total: db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE link_id = ?').get(link.id).c,
-    ...marks,
-  };
+  return { ops: count, added, total, ...marks };
 }
 
 /** Загрузка операций одного подключения. Повторы не плодят строк: ключ — id операции в банке. */
@@ -216,7 +197,7 @@ export async function syncLink(db, link) {
     try {
       for (const op of ops) {
         if (!op?.id || !op.operationTime) continue;
-        upsert.run({ ...opRow(link, budgetId, account.name, op), now: now() });
+        upsert.run({ ...opRow(link, budgetId, 'tbank', account.name, op), now: now() });
         count += 1;
       }
       db.exec('COMMIT');

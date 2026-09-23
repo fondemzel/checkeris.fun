@@ -131,7 +131,10 @@ echo "→ классы"
 mkdir -p "$OUT/gen"
 find "$SRC/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
 "$JAVAC" -source 17 -target 17 -nowarn -encoding UTF-8 \
-  -classpath "$ANDROID_JAR" -d "$OUT/classes" "@$OUT/sources.txt" 2>&1 | grep -v 'bootstrap class path' || true
+  -classpath "$ANDROID_JAR" -d "$OUT/classes" "@$OUT/sources.txt" 2>&1 | { grep -v 'bootstrap class path' || true; }
+# Ошибка компиляции должна останавливать сборку: иначе выйдет apk без классов, который
+# установится и сразу упадёт
+[[ "${PIPESTATUS[0]}" == 0 ]] || { echo "ошибка компиляции — сборка остановлена" >&2; exit 1; }
 
 echo "→ байткод Android"
 "$D8" --release --lib "$ANDROID_JAR" --output "$OUT" $(find "$OUT/classes" -name '*.class')

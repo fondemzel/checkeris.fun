@@ -142,26 +142,50 @@ public class MainActivity extends android.app.Activity {
             }).start();
         }
 
-        /** Разведка перед загрузкой истории: ход и итог — событием «checker-probe». */
+        /** Счета банка для мастера: ответ — событием «checker-history» со stage = accounts. */
         @JavascriptInterface
-        public void bankProbe(String checkerToken) {
+        public void bankAccounts() {
             new Thread(() -> {
-                JSONObject report = BankProbe.run(MainActivity.this, checkerToken, text -> probeEvent(text, false, null));
-                probeEvent(report.has("error") ? "Ошибка: " + report.optString("error")
-                        : report.has("sendError") ? "Не отправился: " + report.optString("sendError")
-                        : "Готово, отчёт на сервере", true, report.optString("error", null));
+                try {
+                    history(BankHistory.accounts(MainActivity.this, new TBankAdapter()).put("stage", "accounts"));
+                } catch (Exception e) {
+                    try {
+                        history(new JSONObject().put("stage", "error").put("error", String.valueOf(e.getMessage())));
+                    } catch (Exception ignored) {
+                        // нечего показать
+                    }
+                }
             }).start();
         }
 
-        private void probeEvent(String text, boolean done, String error) {
-            try {
-                String detail = new JSONObject().put("text", text).put("done", done).toString();
-                runOnUiThread(() -> web.evaluateJavascript(
-                        "window.dispatchEvent(new CustomEvent('checker-probe',{detail:" + detail + "}))", null));
-            } catch (Exception ignored) {
-                // страница закрыта — показывать некому
-            }
+        /** Загрузка всей истории. selected — JSON-массив id счетов; пусто — продолжить прежнюю. */
+        @JavascriptInterface
+        public void historyStart(String checkerToken, String selected) {
+            if (checkerToken == null || checkerToken.isEmpty()) return;
+            BankHistory.start(MainActivity.this, new TBankAdapter(), checkerToken,
+                    selected == null || selected.isEmpty() ? null : selected, MainActivity.this::history);
         }
+
+        @JavascriptInterface
+        public void historyStop() {
+            BankHistory.stop();
+        }
+
+        @JavascriptInterface
+        public String historyStatus() {
+            return BankHistory.status(MainActivity.this).toString();
+        }
+    }
+
+    /** Ход загрузки истории — на страницу. Страницы нет — событие теряется, загрузка идёт. */
+    private void history(JSONObject event) {
+        String detail = event.toString();
+        runOnUiThread(() -> {
+            if (web != null) {
+                web.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('checker-history',{detail:" + detail + "}))", null);
+            }
+        });
     }
 
     @Override

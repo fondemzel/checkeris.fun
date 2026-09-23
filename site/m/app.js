@@ -2218,9 +2218,19 @@ async function onScreenClick(e) {
       bank.classList.add('spin');
       return window.Checker.bankSync(token.get());
     }
-    if (bank.dataset.bank === 'probe') {
+    // Проверочная загрузка всей истории — до мастера: все счета, ход на кнопке
+    if (bank.dataset.bank === 'history') {
+      const s = JSON.parse(window.Checker.historyStatus() || '{}');
+      if (s.running) {
+        if (confirm('Остановить загрузку истории? Продолжится с того же места.')) window.Checker.historyStop();
+        return;
+      }
+      if (s.total && s.done < s.total) return window.Checker.historyStart(token.get(), ''); // продолжить
+      if (!confirm('Загрузить всю историю операций со всех счетов? Это займёт 10–15 минут, лучше по Wi-Fi.')) return;
       bank.disabled = true;
-      return window.Checker.bankProbe(token.get());
+      await post('/api/bank/history/start', { bank: 'tbank' });
+      historyTest = true;
+      return window.Checker.bankAccounts();
     }
     if (bank.dataset.bank === 'forget') {
       if (!confirm('Отключить банк? Загруженные операции останутся, новые приходить не будут.')) return;
@@ -2611,7 +2621,7 @@ async function screenBankCard() {
         ? `<button class="btn primary big" type="button" data-bank="login" data-bank-id="${b.id}">${connected ? 'Войти в банк заново' : 'Подключить'}</button>`
         : '<button class="btn big" type="button" disabled>Подключение появится позже</button>'}
       ${connected && !expired ? `<button class="btn" type="button" data-bank="sync" data-bank-id="${b.id}">Обновить операции</button>` : ''}
-      ${connected && !expired && window.Checker?.bankProbe ? `<button class="btn" type="button" data-bank="probe" data-bank-id="${b.id}">Разведка истории</button>` : ''}
+      ${connected && !expired && window.Checker?.historyStart ? `<button class="btn" type="button" data-bank="history" data-bank-id="${b.id}">${historyLabel()}</button>` : ''}
       ${connected ? `<button class="btn" type="button" data-bank="forget" data-bank-id="${b.id}">Отключить банк</button>` : ''}
       ${ops ? `<button class="btn danger" type="button" data-bank="wipe" data-bank-id="${b.id}">Удалить загруженные операции</button>` : ''}
     </div>`;
@@ -2875,13 +2885,57 @@ window.addEventListener('checker-bank', (e) => {
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
-// Разведка истории банка: ход показываем на кнопке, итог — всплывающим сообщением
-window.addEventListener('checker-probe', (e) => {
+// Проверочная загрузка истории: ход — на кнопке, итог — всплывающим сообщением.
+// Временная: её место займёт мастер подключения банка
+let historyTest = false;
+let historyNote = '';
+
+function historyLabel() {
+  if (historyNote) return historyNote;
+  try {
+    const s = JSON.parse(window.Checker.historyStatus() || '{}');
+    if (s.total && s.done < s.total) return `Продолжить загрузку истории (${s.done} из ${s.total})`;
+  } catch {
+    // старое приложение
+  }
+  return 'Загрузить всю историю (проверка)';
+}
+
+window.addEventListener('checker-history', async (e) => {
   const r = e.detail ?? {};
-  const button = document.querySelector('[data-bank="probe"]');
-  if (button) button.textContent = r.done ? 'Разведка истории' : r.text;
-  if (button && r.done) button.disabled = false;
-  if (r.done) toast(r.text);
+  const setNote = (text) => {
+    historyNote = text;
+    const button = document.querySelector('[data-bank="history"]');
+    if (button) {
+      button.textContent = text || historyLabel();
+      button.disabled = false;
+    }
+  };
+  if (r.stage === 'accounts' && historyTest) {
+    historyTest = false;
+    return window.Checker.historyStart(token.get(), JSON.stringify(r.accounts.map((a) => a.id)));
+  }
+  if (r.stage === 'load') {
+    return setNote(`${r.year ?? ''} · ${r.account ?? ''} — ${r.done} из ${r.total} · ${int.format(r.ops)} оп.`);
+  }
+  if (r.stage === 'wait') return setNote(`Банк просит подождать ${r.seconds} с…`);
+  if (r.stage === 'stopped') {
+    setNote('');
+    return toast('Загрузка остановлена');
+  }
+  if (r.stage === 'error') {
+    setNote('');
+    return toast(`История: ${r.error}`);
+  }
+  if (r.stage === 'loaded') {
+    setNote('Размечаем…');
+    const res = await post('/api/bank/history/finish', { bank: 'tbank' })
+      .catch((err) => ({ error: err.message }));
+    setNote('');
+    if (res.error) return toast(`Разметка: ${res.error}`);
+    toast(`Загружено ${int.format(r.ops)} оп., новых ${int.format(r.added)}. Всего в базе ${int.format(res.total.count)} с ${String(res.total.first).slice(0, 4)} года`);
+    if (state.screen === 'settings' || state.screen === 'bank_card') render();
+  }
 });
 
 // ── запуск ───────────────────────────────────────────────

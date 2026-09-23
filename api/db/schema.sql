@@ -550,6 +550,18 @@ CREATE TABLE IF NOT EXISTS bank_rules (
   PRIMARY KEY (budget_id, key)
 );
 
+-- Загрузка всей истории банка мастером: на каком шаге человек, когда начал и закончил.
+-- state — то, что странице мастера нужно помнить между запусками, сервер его не разбирает.
+CREATE TABLE IF NOT EXISTS bank_history (
+  user_id     INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  bank        TEXT NOT NULL,
+  state       TEXT NOT NULL,
+  started_at  TEXT,
+  finished_at TEXT,
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (user_id, bank)
+);
+
 -- Сообщения человеку в Telegram. С основного сервера Telegram недоступен, поэтому их
 -- забирает бот на зарубежном сервере (bot/relay.mjs) подписанным запросом и отправляет.
 CREATE TABLE IF NOT EXISTS tg_outbox (
