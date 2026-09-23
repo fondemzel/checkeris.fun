@@ -6,7 +6,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.net.http.SslError;
 import android.webkit.CookieManager;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -48,6 +50,13 @@ public class BankLoginActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 check();
+            }
+
+            // Сертификат банка — от Минцифры: пропускаем только если он проверен (MincifryTrust)
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                if (MincifryTrust.accept(BankLoginActivity.this, error)) handler.proceed();
+                else handler.cancel();
             }
         });
         web.loadUrl(TBank.LOGIN_URL);

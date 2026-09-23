@@ -141,6 +141,27 @@ public class MainActivity extends android.app.Activity {
                         "window.dispatchEvent(new CustomEvent('checker-bank',{detail:" + payload + "}))", null));
             }).start();
         }
+
+        /** Разведка перед загрузкой истории: ход и итог — событием «checker-probe». */
+        @JavascriptInterface
+        public void bankProbe(String checkerToken) {
+            new Thread(() -> {
+                JSONObject report = BankProbe.run(MainActivity.this, checkerToken, text -> probeEvent(text, false, null));
+                probeEvent(report.has("error") ? "Ошибка: " + report.optString("error")
+                        : report.has("sendError") ? "Не отправился: " + report.optString("sendError")
+                        : "Готово, отчёт на сервере", true, report.optString("error", null));
+            }).start();
+        }
+
+        private void probeEvent(String text, boolean done, String error) {
+            try {
+                String detail = new JSONObject().put("text", text).put("done", done).toString();
+                runOnUiThread(() -> web.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('checker-probe',{detail:" + detail + "}))", null));
+            } catch (Exception ignored) {
+                // страница закрыта — показывать некому
+            }
+        }
     }
 
     @Override

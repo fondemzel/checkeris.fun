@@ -2218,6 +2218,10 @@ async function onScreenClick(e) {
       bank.classList.add('spin');
       return window.Checker.bankSync(token.get());
     }
+    if (bank.dataset.bank === 'probe') {
+      bank.disabled = true;
+      return window.Checker.bankProbe(token.get());
+    }
     if (bank.dataset.bank === 'forget') {
       if (!confirm('Отключить банк? Загруженные операции останутся, новые приходить не будут.')) return;
       window.Checker.bankForget();
@@ -2607,6 +2611,7 @@ async function screenBankCard() {
         ? `<button class="btn primary big" type="button" data-bank="login" data-bank-id="${b.id}">${connected ? 'Войти в банк заново' : 'Подключить'}</button>`
         : '<button class="btn big" type="button" disabled>Подключение появится позже</button>'}
       ${connected && !expired ? `<button class="btn" type="button" data-bank="sync" data-bank-id="${b.id}">Обновить операции</button>` : ''}
+      ${connected && !expired && window.Checker?.bankProbe ? `<button class="btn" type="button" data-bank="probe" data-bank-id="${b.id}">Разведка истории</button>` : ''}
       ${connected ? `<button class="btn" type="button" data-bank="forget" data-bank-id="${b.id}">Отключить банк</button>` : ''}
       ${ops ? `<button class="btn danger" type="button" data-bank="wipe" data-bank-id="${b.id}">Удалить загруженные операции</button>` : ''}
     </div>`;
@@ -2868,6 +2873,15 @@ window.addEventListener('checker-bank', (e) => {
       : `Банк: ${r.error ?? 'не вышло'}`,
   );
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
+});
+
+// Разведка истории банка: ход показываем на кнопке, итог — всплывающим сообщением
+window.addEventListener('checker-probe', (e) => {
+  const r = e.detail ?? {};
+  const button = document.querySelector('[data-bank="probe"]');
+  if (button) button.textContent = r.done ? 'Разведка истории' : r.text;
+  if (button && r.done) button.disabled = false;
+  if (r.done) toast(r.text);
 });
 
 // ── запуск ───────────────────────────────────────────────

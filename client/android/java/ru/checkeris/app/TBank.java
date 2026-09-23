@@ -25,6 +25,15 @@ final class TBank {
 
     /** Ответ банка: { resultCode, payload }. Payload возвращаем как есть. */
     private static Object call(String session, String method, String query) throws Exception {
+        JSONObject body = new JSONObject(body(session, method, query));
+        if (!"OK".equals(body.optString("resultCode"))) {
+            throw new IllegalStateException(body.optString("errorMessage", body.optString("resultCode")));
+        }
+        return body.opt("payload");
+    }
+
+    /** Ответ банка текстом, без разбора: для разведки нужен и размер, и отказ целиком. */
+    static String body(String session, String method, String query) throws Exception {
         String url = API + method + "?origin=web,ib5,platform" + (query == null ? "" : query)
                 + "&sessionid=" + URLEncoder.encode(session, "UTF-8");
         HttpURLConnection http = (HttpURLConnection) new URL(url).openConnection();
@@ -34,11 +43,7 @@ final class TBank {
         try {
             int code = http.getResponseCode();
             InputStream stream = code >= 400 ? http.getErrorStream() : http.getInputStream();
-            JSONObject body = new JSONObject(read(stream));
-            if (!"OK".equals(body.optString("resultCode"))) {
-                throw new IllegalStateException(body.optString("errorMessage", body.optString("resultCode")));
-            }
-            return body.opt("payload");
+            return read(stream);
         } finally {
             http.disconnect();
         }

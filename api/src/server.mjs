@@ -6,7 +6,7 @@
 // Зависимостей нет: только встроенные модули Node.
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { openDb, migrate, PROJECT_ROOT, API_ROOT, DB_PATH } from './db.mjs';
 import {
@@ -399,6 +399,20 @@ async function handleApi(req, res, url) {
       }
       const result = setOpCategory(db, user.budget_id, Number(opCategory[1]), String(body.category ?? '').trim());
       return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
+    }
+
+    // Разведка перед загрузкой всей истории: отчёт телефона — в файл для разбора, не в базу
+    if (pathname === '/api/bank/probe' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req, 8 * 1024 * 1024);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const dir = join(API_ROOT, 'data', 'probe');
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      writeFileSync(join(dir, `${user.id}-${Date.now()}.json`), JSON.stringify(body, null, 1), { mode: 0o600 });
+      return sendJson(res, 200, { ok: true });
     }
 
     if (pathname === '/api/bank/ops' && req.method === 'GET') {
