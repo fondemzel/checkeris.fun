@@ -2408,8 +2408,32 @@ $('screen').addEventListener('focusout', async (e) => {
 // Приложению нужен токен: фоновая загрузка операций идёт без открытой страницы
 if (inApp() && token.get()) window.Checker.saveToken?.(token.get());
 
+/**
+ * Новая выкладка сайта. Телефон держит открытую страницу в памяти днями — и в браузере,
+ * и в приложении, — поэтому, возвращаясь, сверяем версию с сервером: вышла новая —
+ * тихо перезагружаемся на том же месте. Иначе обновление доходит, только когда
+ * приложение закроют совсем.
+ */
+let loadedVersion = null;
+fetch('/api/version').then((r) => r.json()).then((v) => (loadedVersion = v.version)).catch(() => {});
+
+async function reloadIfUpdated() {
+  if (!loadedVersion || document.querySelector('.sheet, .picker, .scanner')) return; // не рвём начатое
+  try {
+    const { version } = await (await fetch('/api/version', { cache: 'no-store' })).json();
+    if (version && version !== loadedVersion) location.reload();
+  } catch {
+    // нет сети — проверим в следующий раз
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') reloadIfUpdated();
+});
+
 // Вернулись в приложение (например, из окна банка) — состояние могло измениться
 window.addEventListener('checker-resume', () => {
+  reloadIfUpdated();
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
