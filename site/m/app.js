@@ -629,6 +629,8 @@ async function spendingFeed(itemRows, bankRows) {
         : '';
       const note = [
         `<span class="op-cat" style="background:${dot}"></span>${esc(found?.category.name ?? 'Без категории')}`,
+        // При сортировке по дате день уже в заголовке раздела, в остальных — нужен в строке
+        state.sort === 'date' ? '' : dateRu(r.at.slice(0, 10)),
         r.positions > 1 ? `${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : '',
       ].filter(Boolean).join(' · ');
 
