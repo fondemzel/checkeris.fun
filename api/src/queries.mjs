@@ -259,6 +259,7 @@ export function listItemGroups(db, budgetId, params) {
               COALESCE(SUM(CASE WHEN counted = 1 THEN 0 ELSE 1 END), 0) AS excluded_count,
               MAX(purchased_at) AS purchased_at,
               MIN(purchased_at) AS first_at,
+              MAX(manual) AS manual,
               unit,
               category_slug, category_name, category_source, group_slug, group_name
          FROM v_items

@@ -59,6 +59,7 @@ const UI = {
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
   mail: svg('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>'),
+  card: svg('<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>'),
   refresh: svg('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'),
   plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
@@ -494,40 +495,47 @@ async function screenCategory() {
 
   if (!data.rows.length && !bankRows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
 
-  const rows = data.rows
-    .map((r) => {
-      // Ноль здесь означал бы бесплатную покупку. На деле это возврат или зачёт аванса:
-      // сумма есть, но в расходы она не идёт — так и пишем.
-      const outside = r.sum === 0 && r.excluded_count;
-      return `
-      <button class="row item" type="button" data-item="${r.first_id}">
+  // Один список: неважно, чем трата попала в Чекер — важно, что она учтена. Откуда она
+  // взялась, говорит значок в строке
+  const spendings = [
+    ...data.rows.map((r) => ({
+      name: r.name,
+      at: r.purchased_at,
+      sum: r.sum,
+      source: r.manual ? 'manual' : 'receipt',
+      note: r.positions > 1 ? `${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : '',
+      outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
+      action: `data-item="${r.first_id}"`,
+    })),
+    ...bankRows.map((op) => ({
+      name: op.merchant ?? op.description ?? 'Без названия',
+      at: op.at,
+      sum: op.amount,
+      source: 'bank',
+      note: op.card ? `карта ·${op.card}` : '',
+      outside: false,
+      action: `data-op-cat="${op.id}"`,
+    })),
+  ].sort((a, b) => {
+    const back = state.dir === 'asc' ? -1 : 1;
+    if (state.sort === 'name') return a.name.localeCompare(b.name, 'ru') * -back;
+    if (state.sort === 'sum') return (a.sum - b.sum) * -back;
+    return (Date.parse(a.at) - Date.parse(b.at)) * -back;
+  });
+
+  const rows = spendings
+    .map((r) => `
+      <button class="row item" type="button" ${r.action}>
         <span class="row-main">
           <span class="row-title">${esc(r.name)}</span>
-          <span class="row-note">${dateRu(r.purchased_at)}${
-            r.positions > 1 ? ` · ${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : ''
-          }</span>
+          <span class="row-note">${dateRu(r.at.slice(0, 10))}${r.note ? ` · ${esc(r.note)}` : ''}</span>
         </span>
-        <span class="row-sum${outside ? ' muted' : ''}">${outside ? 'вне суммы' : money(r.sum)}</span>
-      </button>`;
-    })
+        <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
+        <span class="row-sum${r.outside ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
+      </button>`)
     .join('');
 
-  // Траты без чека — отдельным списком: у них нет товаров, зато есть продавец и категория
-  const withoutReceipt = bankRows.length
-    ? `<p class="note list-hint">Без чека: ${int.format(bankRows.length)} ${plural(bankRows.length, 'операция', 'операции', 'операций')}</p>
-       <div class="list">${bankRows
-         .map((op) => `
-           <button class="row bank-op" type="button" data-op-cat="${op.id}">
-             <span class="row-main">
-               <span class="row-title">${esc(op.merchant ?? op.description ?? 'Без названия')}</span>
-               <span class="row-note">${dateRu(op.at.slice(0, 10))} · ${esc(timeRu(op.at))}${op.card ? ` · карта ·${op.card}` : ''}</span>
-             </span>
-             <span class="row-sum">${money(op.amount)}</span>
-           </button>`)
-         .join('')}</div>`
-    : '';
-
-  return `${head}${rows ? `<div class="list">${rows}</div>` : ''}${withoutReceipt}`;
+  return `${head}<div class="list">${rows}</div>`;
 }
 
 /**
@@ -660,6 +668,13 @@ async function screenIncome() {
 
   return `${head}<div class="list">${rows}</div>`;
 }
+
+/** Откуда трата попала в Чекер: значок в строке отвечает на этот вопрос без слов. */
+const SOURCES = {
+  receipt: { title: 'Из чека', icon: UI.receipt },
+  manual: { title: 'Вбито вручную', icon: UI.pen },
+  bank: { title: 'Из банка, без чека', icon: UI.card },
+};
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
 

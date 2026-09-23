@@ -341,6 +341,7 @@ SELECT
   r.operation_type,
   r.prepaid_sum,
   r.total_sum AS receipt_total,
+  CASE WHEN r.fiscal_drive = 'manual' THEN 1 ELSE 0 END AS manual, -- вбито руками, чека нет
   -- Деньги считаем один раз: возврат — не трата, а чек, закрытый зачётом аванса,
   -- повторяет более ранний чек предоплаты, по которому деньги уже ушли.
   CASE WHEN r.operation_type = 2 OR r.prepaid_sum > 0 THEN 0 ELSE 1 END AS counted,
