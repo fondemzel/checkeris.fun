@@ -248,6 +248,8 @@ function categoryColor(groupSlug, categorySlug) {
 // Экраны складываются в историю браузера, чтобы работала кнопка «назад» телефона.
 
 function go(patch, replace = false) {
+  // Уходим вглубь — запоминаем, где был список: «назад» вернёт ровно туда
+  if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY }, '', location.href);
   Object.assign(state, patch);
   const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
@@ -313,14 +315,20 @@ function closePopup(el) {
  */
 const dropPopup = (el) => el.remove();
 
+// Прокрутку возвращаем сами: браузер делает это раньше, чем список успевает отрисоваться
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
 window.addEventListener('popstate', (e) => {
-  // popup и sheet — пометки самой записи истории, в состоянии экрана им делать нечего
-  const { popup, sheet, ...screenState } = e.state ?? {};
+  // popup, sheet и scroll — пометки самой записи истории, в состоянии экрана им делать нечего
+  const { popup, sheet, scroll, ...screenState } = e.state ?? {};
   if (e.state) Object.assign(state, screenState);
   else readUrl();
   // «Назад» закрывает открытый попап — и лист, и выбор категории, и календарь
+  const hadPopup = document.querySelector('.sheet, .picker');
   for (const el of document.querySelectorAll('.sheet, .picker')) el.remove();
-  render();
+  // Вернулись к списку — туда же, где его оставили. Закрытие попапа экран не двигает
+  const back = render();
+  if (scroll && !hadPopup) back.then(() => window.scrollTo(0, scroll));
   // Вернулись из карточки товара, открытой из попапа чека, — показываем чек снова
   if (sheet) {
     history.replaceState({ ...state, popup: true }, '', location.href);
