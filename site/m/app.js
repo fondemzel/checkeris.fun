@@ -62,6 +62,14 @@ const UI = {
   card: svg('<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>'),
   grid: svg('<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+  bank: svg(
+    '<path d="M10 18v-7"/><path d="M11.12 2.198a2 2 0 0 1 1.76.006l7.866 3.847c.476.233.31.949-.22.949H3.474c-.53 0-.695-.716-.22-.949z"/>' +
+      '<path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M3 22h18"/><path d="M6 18v-7"/>',
+  ),
+  keyboard: svg(
+    '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/>' +
+      '<path d="M18 8h.01"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/><path d="M7 16h10"/>',
+  ),
   arrow: svg('<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>'),
   refresh: svg('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'),
   plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
@@ -202,6 +210,7 @@ const state = {
   filter: 'all', // список чеков: all | failed | pending | manual
   bank: '', // банк, чья страница открыта
   op: '', // операция банка, чья карточка открыта
+  src: '', // фильтр ленты по источнику: '' | receipt | bank | manual
   added: '', // чек, только что добавленный сканом или руками
   sort: 'date', // списки: date | name | sum
   dir: 'desc',
@@ -225,17 +234,37 @@ const SORTS = {
   * Шапка списка: сумма и подпись слева, сортировка справа от них, ниже период и фильтры.
   * Всё выровнено по левому краю — так в двух строках помещается больше, чем по центру.
   */
-const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'] }) => `
+const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '' }) => `
   <div class="total compact">
-    <div class="head-sum">
-      <span class="total-sum">${sum}</span>
-      <span class="total-note">${note}</span>
+    <div class="head-top">
+      <div class="head-sum">
+        <span class="total-sum">${sum}</span>
+        <span class="total-note">${note}</span>
+      </div>
+      ${filters}
     </div>
     <div class="head-line">
       ${periodNav(true)}
       ${sorts ? sortChips(sorts === true ? undefined : sorts) : ''}
     </div>
   </div>`;
+
+/**
+ * Фильтр по источнику: только из банка, только чеки или только ручные записи. Нажатие
+ * включает, повторное — снимает. Значки те же, что у сумм в ленте, — их уже узнают.
+ */
+const SOURCE_FILTERS = [
+  ['receipt', 'Только чеки'],
+  ['bank', 'Только банк'],
+  ['manual', 'Только вручную'],
+];
+
+const sourceChips = () => `
+  <div class="sorts src-filters">${SOURCE_FILTERS
+    .map(([key, label]) => `
+      <button class="sort-chip${state.src === key ? ' on' : ''}" type="button" data-src="${key}"
+        aria-label="${label}" title="${label}">${SOURCES[key].icon}</button>`)
+    .join('')}</div>`;
 
 /** Ряд значков сортировки. Повторное нажатие на выбранный разворачивает порядок. */
 const sortChips = (keys = ['date', 'name', 'sum']) => `
@@ -283,6 +312,7 @@ function go(patch, replace = false) {
   if (state.item) params.set('item', state.item);
   if (state.bank) params.set('bank', state.bank);
   if (state.op) params.set('op', state.op);
+  if (state.screen === 'summary' && state.src) params.set('src', state.src);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   if (['summary', 'category', 'receipts', 'bank'].includes(state.screen) && (state.sort !== 'date' || state.dir !== 'desc')) {
@@ -309,6 +339,7 @@ function readUrl() {
   state.item = p.get('item') ?? '';
   state.bank = p.get('bank') ?? '';
   state.op = p.get('op') ?? '';
+  state.src = ['receipt', 'bank', 'manual'].includes(p.get('src')) ? p.get('src') : '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
   state.sort = Object.hasOwn(SORTS, p.get('sort') ?? '') ? p.get('sort') : 'date';
@@ -448,14 +479,26 @@ async function screenSummary() {
     if (!meta.stats.receipts && !bankLinked) return welcome();
   }
 
-  const bankSum = bankRows.reduce((sum, op) => sum + op.amount, 0);
-  const count = data.totals.positions ?? data.totals.count;
+  // Фильтр по источнику: итог и число покупок считаем по тому, что осталось
+  const shownItems = state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || (state.src === 'manual') === Boolean(r.manual));
+  const shownOps = !state.src || state.src === 'bank' ? bankRows : [];
+  const total = shownItems.reduce((s, r) => s + r.sum, 0) + shownOps.reduce((s, op) => s + op.amount, 0);
+  const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
+
+  // Подпись: сколько покупок, как отсортировано и что отобрано
+  const note = [
+    `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`,
+    SORTS[state.sort]?.[0].toLowerCase(),
+    state.src ? SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase() : '',
+  ].filter(Boolean).join(' · ');
+
   const head = `
     <div class="stuck-head">
       ${listHead({
-        sum: money(data.totals.sum + bankSum),
-        note: `${int.format(count + bankRows.length)} ${plural(count + bankRows.length, 'покупка', 'покупки', 'покупок')}`,
+        sum: money(total),
+        note,
         sorts: ['date', 'category', 'name', 'sum'],
+        filters: sourceChips(),
       })}
     </div>`;
 
@@ -465,7 +508,7 @@ async function screenSummary() {
     ? `<p class="note list-hint"><button class="link" type="button" data-to-failed>Сканы с ошибкой: ${int.format(failedCount)}</button></p>`
     : '';
 
-  return `${head}${failedLink}${await spendingFeed(data.rows, bankRows)}`;
+  return `${head}${failedLink}${await spendingFeed(shownItems, shownOps)}`;
 }
 
 async function screenGroup() {
@@ -843,8 +886,8 @@ async function screenIncome() {
 /** Откуда трата попала в Чекер: значок в строке отвечает на этот вопрос без слов. */
 const SOURCES = {
   receipt: { title: 'Из чека', icon: UI.receipt },
-  manual: { title: 'Вручную', icon: UI.pen },
-  bank: { title: 'Из банка', icon: UI.card },
+  manual: { title: 'Вручную', icon: UI.keyboard }, // карандаш путали с кнопкой «редактировать»
+  bank: { title: 'Из банка', icon: UI.bank },
 };
 
 // Какие разделы ленты (дни, категории) открыты. Ключ — всё, что меняет состав ленты:
@@ -2073,6 +2116,10 @@ async function onScreenClick(e) {
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
 
   // Категория в карточке товара
+  // Фильтр по источнику: повторное нажатие снимает
+  const src = e.target.closest('[data-src]');
+  if (src) return go({ src: state.src === src.dataset.src ? '' : src.dataset.src }, true);
+
   // Заголовок раздела: свернуть или развернуть. При длинной ленте открыт только один
   const sectionBtn = e.target.closest('[data-section]');
   if (sectionBtn) {

@@ -620,6 +620,10 @@ button, input, select { font: inherit; color: inherit; }
 .total.compact { text-align: left; }
 .head-line { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .head-sum { min-width: 0; }
+
+/* Верх шапки: сумма слева, фильтр по источнику справа */
+.head-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.src-filters { margin-top: 4px; }
 .head-line .sorts { margin-left: auto; } /* сортировка прижата к правому краю строки периода */
 .total.compact .total-sum,
 .total.compact .total-note { display: block; }
