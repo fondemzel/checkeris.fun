@@ -35,6 +35,7 @@ import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
+import { listAccounts, saveAccounts, rememberLoadedAccounts } from './bankaccounts.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -434,6 +435,26 @@ async function handleApi(req, res, url) {
       return sendJson(res, 405, { error: 'method not allowed' });
     }
 
+    // Счета банка и выбор, с каких брать операции: мастер, карточка банка и приложение
+    if (pathname === '/api/bank/accounts') {
+      const bank = url.searchParams.get('bank') ?? 'tbank';
+      if (!knownBank(bank)) return sendJson(res, 400, { error: 'unknown bank' });
+      if (req.method === 'GET') return sendJson(res, 200, listAccounts(db, user.id, bank));
+      if (req.method !== 'PUT') return sendJson(res, 405, { error: 'method not allowed' });
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      try {
+        const result = saveAccounts(db, user.id, bank, body.accounts);
+        return sendJson(res, result.status ?? 200, result);
+      } catch (err) {
+        return sendJson(res, 500, { error: err.message });
+      }
+    }
+
     if (pathname === '/api/bank/ops' && req.method === 'GET') {
       const p = url.searchParams;
       return sendJson(res, 200, listBankOps(db, user.budget_id, {
@@ -827,6 +848,7 @@ if (geocoderReady()) {
 // что покрыто чеком, что перевод между своими счетами, что доход
 setTimeout(() => {
   try {
+    rememberLoadedAccounts(db);
     const trimmed = trimStoredOps(db);
     if (trimmed) console.log(`банк: сокращено операций до нужных полей — ${trimmed}`);
     // Разбор идемпотентен и быстрый (доли секунды на десятки тысяч операций): прогоняем

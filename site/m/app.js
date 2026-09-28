@@ -2126,7 +2126,7 @@ const WIZ_SCREENS = {
     return `
       <div class="card">
         <h2 class="wiz-title">Нашли ${w.accounts?.length ?? 0} ${plural(w.accounts?.length ?? 0, 'счёт', 'счёта', 'счетов')}</h2>
-        <p class="note">Снимите галочку со счетов, которые не нужны, — например, чужих или брокерских.</p>
+        <p class="note">Отметьте счета, с которых брать операции, — и сейчас, и при каждом обновлении. Выбор можно поменять потом на странице банка.</p>
         <div class="wiz-accs">${rows}</div>
       </div>
       <div class="card"><p class="note" id="wiz-estimate">${wizEstimate(w)}</p>${
@@ -2278,6 +2278,12 @@ async function onWizardClick(button) {
   if (action === 'sync') {
     button.disabled = true;
     try {
+      // Выбор счетов — не только для истории: обычное обновление тоже берёт только их
+      await api(`/api/bank/accounts?bank=${encodeURIComponent(wiz.bank)}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accounts: wiz.accounts.map((a) => ({ ...a, enabled: wiz.selected.includes(a.id) })) }),
+      });
       await post('/api/bank/history/start', { bank: wiz.bank });
     } catch (err) {
       button.disabled = false;
@@ -2324,8 +2330,15 @@ window.addEventListener('checker-history', (e) => {
   if (!wiz) return;
   if (r.stage === 'accounts') {
     wiz.accounts = r.accounts ?? [];
-    wiz.selected = wiz.accounts.map((a) => a.id);
-    return wizGo('found');
+    // Галочки — по прошлому выбору: выключенный однажды счёт остаётся выключенным
+    api(`/api/bank/accounts?bank=${encodeURIComponent(wiz.bank)}`)
+      .catch(() => ({ accounts: [] }))
+      .then(({ accounts }) => {
+        const off = new Set(accounts.filter((a) => !a.enabled).map((a) => a.id));
+        wiz.selected = wiz.accounts.map((a) => a.id).filter((id) => !off.has(id));
+        wizGo('found');
+      });
+    return;
   }
   if (r.stage === 'loaded') return wizFinish();
 
@@ -2354,6 +2367,31 @@ window.addEventListener('checker-history', (e) => {
   if (state.screen !== 'bank_wizard') return;
   if (before !== p.stage && !(before === 'wait' && p.stage === 'load') && !(before === 'load' && p.stage === 'wait')) render();
   else wizTick();
+});
+
+// Счета на странице банка: выбор сохраняется сразу, операции счёта уходят из учёта или возвращаются
+$('screen').addEventListener('change', async (e) => {
+  const box = e.target.closest('[data-bank-acc]');
+  if (!box) return;
+  const ops = Number(box.dataset.ops) || 0;
+  if (!box.checked && ops && !confirm(`Не брать операции с этого счёта? ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')} перестанут учитываться.`)) {
+    box.checked = true;
+    return;
+  }
+  box.disabled = true;
+  try {
+    await api(`/api/bank/accounts?bank=${encodeURIComponent(state.bank ?? 'tbank')}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ accounts: [{ id: box.dataset.bankAcc, enabled: box.checked }] }),
+    });
+    toast(box.checked ? 'Счёт снова учитывается' : 'Счёт больше не учитывается');
+  } catch (err) {
+    box.checked = !box.checked;
+    toast(`Не сохранилось: ${err.message}`);
+  } finally {
+    box.disabled = false;
+  }
 });
 
 // Галочки счетов: оценка времени меняется сразу
@@ -2969,8 +3007,14 @@ function bankSection(bank) {
  */
 async function screenBankCard() {
   const b = bankById(state.bank) ?? BANKS[0];
-  const data = inApp() ? await api('/api/bank').catch(() => null) : null;
+  const [data, accs] = inApp()
+    ? await Promise.all([
+        api('/api/bank').catch(() => null),
+        api(`/api/bank/accounts?bank=${encodeURIComponent(b.id)}`).catch(() => null),
+      ])
+    : [null, null];
   const link = data?.links?.find((l) => l.bank === b.id);
+  const accounts = accs?.accounts ?? [];
   const connected = inApp() && appInfo().bank === b.id;
   const expired = connected && appInfo().bankState === 'expired';
   const ops = link?.ops ?? 0;
@@ -2991,6 +3035,21 @@ async function screenBankCard() {
         </div>
       </div>
     </div>
+
+    ${accounts.length ? `
+    <div class="card">
+      <div class="card-label">Счета</div>
+      <p class="note">Операции берём только с отмеченных. Снятая галочка убирает операции счёта из учёта, возвращённая — возвращает.</p>
+      <div class="wiz-accs">${accounts.map((a) => `
+        <label class="wiz-acc">
+          <input type="checkbox" data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"${a.enabled ? ' checked' : ''} />
+          <span class="wiz-acc-main">
+            <span class="wiz-acc-name">${esc(a.name ?? a.id)}</span>
+            <small class="note">${esc(ACCOUNT_TYPES[a.type] ?? a.type ?? 'счёт')}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${plural(a.ops, 'операция', 'операции', 'операций')}</small>
+          </span>
+        </label>`).join('')}
+      </div>
+    </div>` : ''}
 
     <div class="card">
       <div class="card-label">Что с данными</div>

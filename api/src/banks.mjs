@@ -9,6 +9,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { loadEnv } from './llm.mjs';
 import { matchBank } from './bankmatch.mjs';
 import { parseOp, trimOp, validOp } from './bankformat.mjs';
+import { disabledAccounts } from './bankaccounts.mjs';
 import * as tbank from './tbank.mjs';
 
 const FAILS_TO_EXPIRE = 3; // пинг может разово не пройти из-за сети — не спешим хоронить сессию
@@ -154,14 +155,27 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
 
   const upsert = opUpsert(db);
   const known = db.prepare('SELECT 1 FROM bank_ops WHERE link_id = ? AND ext_id = ?');
+  // Счета, которые человек выключил, не принимаем — даже если старое приложение их прислало.
+  // Незнакомый счёт запоминаем включённым: новая карта не должна выпасть из учёта молча
+  const disabled = disabledAccounts(db, link.id);
+  const remember = db.prepare(
+    `INSERT OR IGNORE INTO bank_accounts (link_id, account, name, enabled, updated_at) VALUES (?, ?, ?, 1, ?)`,
+  );
   let count = 0;
   let added = 0; // сколько операций человек видит впервые: остальные приехали на повторную проверку
+  let skipped = 0;
   db.exec('BEGIN');
   try {
     for (const op of ops ?? []) {
       if (!validOp(bank, op)) continue;
+      const row = opRow(link, budgetId, bank, null, op);
+      if (disabled.has(row.account)) {
+        skipped += 1;
+        continue;
+      }
+      remember.run(link.id, row.account, row.account_name, at);
       if (!known.get(link.id, String(op.id))) added += 1;
-      upsert.run({ ...opRow(link, budgetId, bank, null, op), now: at });
+      upsert.run({ ...row, now: at });
       count += 1;
     }
     db.exec('COMMIT');
@@ -171,10 +185,10 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   }
   const total = db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE link_id = ?').get(link.id).c;
   // Загрузка истории идёт сотнями пачек: разбирать всё после каждой незачем — один раз в конце
-  if (defer) return { ops: count, added, total };
+  if (defer) return { ops: count, added, total, skipped };
   // Сразу разбираем: что покрыто чеком, что перевод между своими, что доход
   const marks = matchBank(db, budgetId);
-  return { ops: count, added, total, ...marks };
+  return { ops: count, added, total, skipped, ...marks };
 }
 
 /** Загрузка операций одного подключения. Повторы не плодят строк: ключ — id операции в банке. */
@@ -306,6 +320,7 @@ export function forgetBank(db, userId, bank) {
   db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM bank_ops WHERE link_id = ?').run(link.id);
+    db.prepare('DELETE FROM bank_accounts WHERE link_id = ?').run(link.id);
     db.prepare('DELETE FROM bank_links WHERE id = ?').run(link.id);
     db.exec('COMMIT');
   } catch (err) {

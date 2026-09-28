@@ -24,10 +24,11 @@ const minutes = (at) => Date.parse(`${String(at).slice(0, 19)}Z`) / 60_000;
 
 /** Переводы между своими счетами: банк помечает их сам, плюс пары «списание — зачисление». */
 function markTransfers(db, budgetId) {
-  // Банк знает про свои внутренние переводы
+  // Банк знает про свои внутренние переводы. Вид, поставленный человеком или выключенным
+  // счётом (kind_source), разметка не трогает — ни здесь, ни ниже
   db.prepare(
     `UPDATE bank_ops SET kind = 'transfer'
-      WHERE budget_id = ? AND json_extract(raw, '$.isInner') = 1`,
+      WHERE budget_id = ? AND json_extract(raw, '$.isInner') = 1 AND kind_source IS NULL`,
   ).run(budgetId);
 
   // Пара: то же число копеек ушло и пришло почти в ту же секунду — это перекладывание
@@ -35,7 +36,10 @@ function markTransfers(db, budgetId) {
   // Ищем группировкой по сумме, а не сравнением «каждая с каждой»: история банка — это
   // десятки тысяч операций, и попарное сравнение занимало минуты, пока сервер стоял
   const unpaired = db
-    .prepare('SELECT id, at, amount, direction FROM bank_ops WHERE budget_id = ? AND pair_id IS NULL ORDER BY at, id')
+    .prepare(
+      `SELECT id, at, amount, direction FROM bank_ops
+        WHERE budget_id = ? AND pair_id IS NULL AND kind_source IS NULL ORDER BY at, id`,
+    )
     .all(budgetId);
   const credits = new Map(); // сумма → зачисления
   for (const op of unpaired) {
@@ -68,7 +72,7 @@ function matchReceipts(db, budgetId) {
     .prepare(
       `SELECT id, at, amount FROM bank_ops
         WHERE budget_id = ? AND direction = 'debit' AND receipt_id IS NULL
-          AND (kind IS NULL OR kind <> 'transfer')
+          AND (kind IS NULL OR kind <> 'transfer') AND kind_source IS NULL
         ORDER BY at`,
     )
     .all(budgetId);

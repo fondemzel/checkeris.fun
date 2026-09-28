@@ -21,6 +21,7 @@ final class BankSync {
     static final String EXPIRED = "tbank.expired"; // банк отказал: нужен новый вход руками
 
     private static final String CHECKER = "https://checkeris.fun/api/bank/ops";
+    private static final String ACCOUNTS = "https://checkeris.fun/api/bank/accounts?bank=tbank";
     private static final String LAST_SYNC = "tbank.lastSync";
     private static final long FIRST_DAYS = 90L * 24 * 3600 * 1000;
     private static final long OVERLAP = 3L * 24 * 3600 * 1000; // операции «в обработке» меняются задним числом
@@ -99,11 +100,12 @@ final class BankSync {
 
         try {
             JSONArray accounts = TBank.accounts(session);
+            java.util.Set<String> off = disabledAccounts(checkerToken);
             JSONArray all = new JSONArray();
             for (int i = 0; i < accounts.length(); i++) {
                 JSONObject account = accounts.getJSONObject(i);
                 String id = account.optString("id");
-                if (id.isEmpty()) continue;
+                if (id.isEmpty() || off.contains(id)) continue; // счёт, который человек выключил
                 JSONArray ops = TBank.operations(session, id, since);
                 for (int j = 0; j < ops.length(); j++) {
                     // Только нужные поля: полный ответ банка в пять раз тяжелее. Имя счёта — чтобы
@@ -122,6 +124,32 @@ final class BankSync {
         } catch (Exception e) {
             return new Result(false, 0, 0, String.valueOf(e.getMessage()));
         }
+    }
+
+    /**
+     * Счета, которые человек выключил в Чекере: их операции не качаем. Не ответил сервер —
+     * качаем всё: лишнее он всё равно не примет.
+     */
+    static java.util.Set<String> disabledAccounts(String token) {
+        java.util.Set<String> off = new java.util.HashSet<>();
+        try {
+            HttpURLConnection http = (HttpURLConnection) new URL(ACCOUNTS).openConnection();
+            http.setRequestProperty("Authorization", "Bearer " + token);
+            http.setConnectTimeout(15000);
+            http.setReadTimeout(30000);
+            int code = http.getResponseCode();
+            String answer = TBank.read(code >= 400 ? http.getErrorStream() : http.getInputStream());
+            http.disconnect();
+            if (code >= 400) return off;
+            JSONArray list = new JSONObject(answer).optJSONArray("accounts");
+            for (int i = 0; list != null && i < list.length(); i++) {
+                JSONObject a = list.getJSONObject(i);
+                if (!a.optBoolean("enabled", true)) off.add(a.optString("id"));
+            }
+        } catch (Exception ignored) {
+            // нет связи с Чекером — не страшно, см. выше
+        }
+        return off;
     }
 
     /**

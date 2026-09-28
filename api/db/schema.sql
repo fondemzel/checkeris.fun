@@ -553,6 +553,20 @@ CREATE TABLE IF NOT EXISTS bank_rules (
   PRIMARY KEY (budget_id, key)
 );
 
+-- Счета банка и выбор человека, с каких брать операции (bankaccounts.mjs). Счёт, которого
+-- здесь нет, берётся: новая карта не должна молча выпасть из учёта.
+CREATE TABLE IF NOT EXISTS bank_accounts (
+  link_id    INTEGER NOT NULL REFERENCES bank_links (id) ON DELETE CASCADE,
+  account    TEXT NOT NULL,         -- id счёта в банке
+  name       TEXT,
+  type       TEXT,                  -- как у банка: Current, Credit, Saving, CurrentKids…
+  currency   TEXT,
+  created    INTEGER,               -- дата открытия, мс
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (link_id, account)
+);
+
 -- Загрузка всей истории банка мастером: на каком шаге человек, когда начал и закончил.
 -- state — то, что странице мастера нужно помнить между запусками, сервер его не разбирает.
 CREATE TABLE IF NOT EXISTS bank_history (
