@@ -2167,8 +2167,7 @@ const WIZ_SCREENS = {
         <div class="wiz-bar${p.total ? '' : ' flow'}"><span id="wiz-bar" style="width:${p.total ? Math.min(100, Math.round(((p.done ?? 0) / p.total) * 100)) : 0}%"></span></div>
         <div class="wiz-nums">
           <div><b id="wiz-ops">0</b><small class="note">операций</small></div>
-          ${p.total && !p.byOps ? '<div><b id="wiz-parts">0 из 0</b><small class="note">частей</small></div>' : ''}
-          ${p.total && p.byOps ? `<div><b id="wiz-all">${int.format(p.total)}</b><small class="note">всего</small></div>` : ''}
+          <div><b id="wiz-mid">—</b><small class="note" id="wiz-mid-label">частей</small></div>
           <div><b id="wiz-eta">—</b><small class="note">осталось</small></div>
         </div>
         <p class="note" id="wiz-now"></p>
@@ -2267,17 +2266,28 @@ function wizTick() {
   $('wiz-ops').textContent = int.format(p.ops ?? 0);
   const waitLeft = p.waitUntil ? Math.ceil((p.waitUntil - Date.now()) / 1000) : 0;
 
+  // Общее число приходит не сразу (у Т-Банка — с первым событием, у Сбера — после подсчёта),
+  // поэтому вид полосы переключаем здесь, а не только при отрисовке: иначе «бегущая»
+  // анимация останется навсегда и настоящего прогресса не увидеть
+  const counting = p.stage === 'count' || !total;
+  bar.parentElement.classList.toggle('flow', counting);
+
+  // Средняя плитка: у Т-Банка — куски плана, у Сбера — общее число операций
+  const mid = $('wiz-mid');
+  if (mid) {
+    mid.textContent = !total ? '—' : p.byOps ? int.format(total) : `${done} из ${total}`;
+    $('wiz-mid-label').textContent = p.byOps ? 'всего' : 'частей';
+  }
+
   if (p.stage === 'count') {
     $('wiz-now').textContent = 'Считаем, сколько всего операций…';
     return;
   }
-  // Общее число ещё не известно: полоса «бежит», оставшееся время неизвестно
   if (!total) {
     $('wiz-now').textContent = 'Загружаем операции…';
     return;
   }
   bar.style.width = `${Math.min(100, Math.round((done / total) * 100))}%`;
-  if ($('wiz-parts')) $('wiz-parts').textContent = `${done} из ${total}`;
   const left = Math.max(0, total - done);
   // Пока не по чему считать скорость: у кусков плана есть средняя длительность,
   // а у операций её нет — ждём первых страниц
