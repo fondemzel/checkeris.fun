@@ -2640,6 +2640,15 @@ async function onScreenClick(e) {
   const bankOpen = e.target.closest('[data-bank-open]');
   if (bankOpen) return go({ screen: 'bank_card', bank: bankOpen.dataset.bankOpen });
 
+  // Временная проверка связи со Сбером — до полноценного подключения
+  const sber = e.target.closest('[data-sber]');
+  if (sber) {
+    if (sber.dataset.sber === 'login') return window.Checker.sberLogin();
+    sber.disabled = true;
+    sber.textContent = 'Проверяем…';
+    return window.Checker.sberProbe(token.get());
+  }
+
   const wizButton = e.target.closest('[data-wiz]');
   if (wizButton) return onWizardClick(wizButton);
 
@@ -3064,7 +3073,11 @@ async function screenBankCard() {
     </div>
 
     <div class="settings-actions">
-      ${!b.ready
+      ${b.id === 'sber' && window.Checker?.sberProbe
+        ? `<button class="btn primary big" type="button" data-sber="login">Войти в Сбербанк Онлайн</button>
+           <button class="btn" type="button" data-sber="probe">Проверить связь</button>
+           <p class="note">Проверка перед подключением: пускает ли Сбер запрос из приложения. Войдите, затем нажмите «Проверить связь».</p>`
+        : !b.ready
         ? '<button class="btn big" type="button" disabled>Подключение появится позже</button>'
         : !connected && window.Checker?.historyStart
           ? `<button class="btn primary big" type="button" data-wizard="${b.id}">Подключить</button>`
@@ -3364,6 +3377,13 @@ window.addEventListener('checker-bank', (e) => {
       : `Банк: ${r.error ?? 'не вышло'}`,
   );
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
+});
+
+// Временная проверка связи со Сбером: отчёт уже на сервере, тут только показываем итог
+window.addEventListener('checker-sber', (e) => {
+  const r = e.detail ?? {};
+  toast(r.ok ? `Сбер ответил: операций ${int.format(r.count ?? 0)}. Отчёт на сервере` : `Сбер: ${r.error ?? 'не вышло'}`);
+  if (state.screen === 'bank_card') render();
 });
 
 // ── запуск ───────────────────────────────────────────────

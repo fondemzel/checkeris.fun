@@ -108,6 +108,32 @@ public class MainActivity extends android.app.Activity {
             startActivity(new Intent(MainActivity.this, BankLoginActivity.class));
         }
 
+        /** Окно входа в Сбербанк Онлайн. */
+        @JavascriptInterface
+        public void sberLogin() {
+            startActivity(new Intent(MainActivity.this, BankLoginActivity.class).putExtra("bank", "sber"));
+        }
+
+        /**
+         * Проверка связи со Сбером: пускает ли банк повтор запроса нашими куками и та ли нода.
+         * Берём пару свежих операций и шлём как есть на сервер человека для разбора.
+         * Временно: как только связь подтвердится, соберём полноценный адаптер и это уберём.
+         */
+        @JavascriptInterface
+        public void sberProbe(String checkerToken) {
+            new Thread(() -> {
+                String detail;
+                try {
+                    detail = SberProbe.run(MainActivity.this, checkerToken);
+                } catch (Exception e) {
+                    detail = "{\"ok\":false,\"error\":\"сбой\"}";
+                }
+                final String payload = detail;
+                runOnUiThread(() -> web.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('checker-sber',{detail:" + payload + "}))", null));
+            }).start();
+        }
+
         @JavascriptInterface
         public void bankForget() {
             BankSync.forget(MainActivity.this);

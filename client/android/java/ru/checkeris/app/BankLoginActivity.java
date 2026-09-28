@@ -25,8 +25,10 @@ import android.widget.Toast;
 public class BankLoginActivity extends Activity {
 
     static final String SESSION = "tbank.session";
+    static final String SBER_SESSION = "sber.session";
 
     private WebView web;
+    private String bank = "tbank"; // какой банк подключаем: приходит в Intent
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean done;
 
@@ -34,7 +36,9 @@ public class BankLoginActivity extends Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
-        setTitle("Вход в Т-Банк");
+        if ("sber".equals(getIntent().getStringExtra("bank"))) bank = "sber";
+        boolean sber = bank.equals("sber");
+        setTitle(sber ? "Вход в Сбербанк Онлайн" : "Вход в Т-Банк");
         web = new WebView(this);
         setContentView(web);
 
@@ -59,28 +63,47 @@ public class BankLoginActivity extends Activity {
                 else handler.cancel();
             }
         });
-        web.loadUrl(TBank.LOGIN_URL);
+        web.loadUrl(bank.equals("sber") ? SberBank.LOGIN_URL : TBank.LOGIN_URL);
     }
 
     /** После каждой страницы смотрим: не появилась ли рабочая сессия. */
     private void check() {
         if (done) return;
+        if (bank.equals("sber")) {
+            checkSber();
+            return;
+        }
         String cookies = CookieManager.getInstance().getCookie("https://" + TBank.HOST);
         final String session = value(cookies, "psid");
         if (session == null) return;
         new Thread(() -> {
             if (!TBank.alive(session)) return; // кука есть и у гостя — ждём настоящего входа
-            handler.post(() -> {
-                if (done) return;
-                done = true;
-                Secrets secrets = new Secrets(this);
-                secrets.put(SESSION, session);
-                secrets.put(BankSync.EXPIRED, null);
-                Toast.makeText(this, "Т-Банк подключён", Toast.LENGTH_SHORT).show();
-                setResult(RESULT_OK);
-                finish();
-            });
+            handler.post(() -> connected(SESSION, session, "Т-Банк подключён"));
         }).start();
+    }
+
+    /**
+     * Сбер узнаёт сессию не по одной куке, а по всему их набору. Кука появляется и у гостя,
+     * поэтому не полагаемся на её наличие: пробуем запрос — вошёл ли человек по-настоящему.
+     */
+    private void checkSber() {
+        final String cookies = SberBank.cookies();
+        if (cookies == null) return;
+        new Thread(() -> {
+            if (SberBank.check(cookies) != SberBank.ALIVE) return;
+            handler.post(() -> connected(SBER_SESSION, SberBank.cookies(), "Сбербанк Онлайн подключён"));
+        }).start();
+    }
+
+    private void connected(String key, String session, String toast) {
+        if (done) return;
+        done = true;
+        Secrets secrets = new Secrets(this);
+        secrets.put(key, session);
+        secrets.put(BankSync.EXPIRED, null);
+        Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
+        setResult(RESULT_OK);
+        finish();
     }
 
     private static String value(String cookies, String name) {

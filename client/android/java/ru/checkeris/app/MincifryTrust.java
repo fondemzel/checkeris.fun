@@ -30,7 +30,7 @@ final class MincifryTrust {
         if (error.getPrimaryError() != SslError.SSL_UNTRUSTED) return false; // истёкший или чужой — не спасаем
 
         String host = Uri.parse(error.getUrl()).getHost();
-        if (host == null || !(host.equals("tbank.ru") || host.endsWith(".tbank.ru"))) return false;
+        if (host == null || !trusted(host)) return false;
 
         try {
             X509Certificate leaf = error.getCertificate().getX509Certificate();
@@ -52,6 +52,16 @@ final class MincifryTrust {
             }
         } catch (Exception e) {
             return false;
+        }
+        return false;
+    }
+
+    // Домены банков на сертификате Минцифры. Доверие — только им, не всему интернету
+    private static final String[] BANKS = {"tbank.ru", "sberbank.ru"};
+
+    private static boolean trusted(String host) {
+        for (String bank : BANKS) {
+            if (host.equals(bank) || host.endsWith("." + bank)) return true;
         }
         return false;
     }

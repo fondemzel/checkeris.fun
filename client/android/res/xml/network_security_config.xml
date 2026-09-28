@@ -10,6 +10,8 @@
 <network-security-config>
     <domain-config>
         <domain includeSubdomains="true">tbank.ru</domain>
+        <!-- Сбербанк Онлайн тоже на сертификате Минцифры -->
+        <domain includeSubdomains="true">sberbank.ru</domain>
         <trust-anchors>
             <certificates src="system" />
             <certificates src="@raw/mincifry_root" />

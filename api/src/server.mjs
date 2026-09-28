@@ -6,7 +6,7 @@
 // Зависимостей нет: только встроенные модули Node.
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { openDb, migrate, PROJECT_ROOT, API_ROOT, DB_PATH } from './db.mjs';
 import {
@@ -433,6 +433,21 @@ async function handleApi(req, res, url) {
         return sendJson(res, 500, { error: err.message });
       }
       return sendJson(res, 405, { error: 'method not allowed' });
+    }
+
+    // Разведка нового банка: отчёт телефона — в файл для разбора, не в базу.
+    // Данные принадлежат человеку и лежат под его же аккаунтом.
+    if (pathname === '/api/bank/probe' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req, 8 * 1024 * 1024);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const dir = join(API_ROOT, 'data', 'probe');
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      writeFileSync(join(dir, `${user.id}-${Date.now()}.json`), JSON.stringify(body, null, 1), { mode: 0o600 });
+      return sendJson(res, 200, { ok: true });
     }
 
     // Счета банка и выбор, с каких брать операции: мастер, карточка банка и приложение
