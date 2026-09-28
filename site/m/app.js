@@ -2164,10 +2164,11 @@ const WIZ_SCREENS = {
     return `
       <div class="card wiz-load">
         <h2 class="wiz-title">${failed ? 'Загрузка прервалась' : paused ? 'Загрузка на паузе' : 'Загружаем историю'}</h2>
-        <div class="wiz-bar${p.total ? '' : ' flow'}"><span id="wiz-bar" style="width:${p.total ? Math.round(((p.done ?? 0) / p.total) * 100) : 0}%"></span></div>
+        <div class="wiz-bar${p.total ? '' : ' flow'}"><span id="wiz-bar" style="width:${p.total ? Math.min(100, Math.round(((p.done ?? 0) / p.total) * 100)) : 0}%"></span></div>
         <div class="wiz-nums">
           <div><b id="wiz-ops">0</b><small class="note">операций</small></div>
-          ${p.total ? '<div><b id="wiz-parts">0 из 0</b><small class="note">частей</small></div>' : ''}
+          ${p.total && !p.byOps ? '<div><b id="wiz-parts">0 из 0</b><small class="note">частей</small></div>' : ''}
+          ${p.total && p.byOps ? `<div><b id="wiz-all">${int.format(p.total)}</b><small class="note">всего</small></div>` : ''}
           <div><b id="wiz-eta">—</b><small class="note">осталось</small></div>
         </div>
         <p class="note" id="wiz-now"></p>
@@ -2266,17 +2267,24 @@ function wizTick() {
   $('wiz-ops').textContent = int.format(p.ops ?? 0);
   const waitLeft = p.waitUntil ? Math.ceil((p.waitUntil - Date.now()) / 1000) : 0;
 
-  // У Сбера общего числа частей нет: полоса «бежит», оставшееся время неизвестно
+  if (p.stage === 'count') {
+    $('wiz-now').textContent = 'Считаем, сколько всего операций…';
+    return;
+  }
+  // Общее число ещё не известно: полоса «бежит», оставшееся время неизвестно
   if (!total) {
     $('wiz-now').textContent = 'Загружаем операции…';
     return;
   }
-  bar.style.width = `${Math.round((done / total) * 100)}%`;
+  bar.style.width = `${Math.min(100, Math.round((done / total) * 100))}%`;
   if ($('wiz-parts')) $('wiz-parts').textContent = `${done} из ${total}`;
-  const left = total - done;
-  let eta = left * WIZ_PART_SEC;
-  if (p.runStart && p.runDone > 0) eta = ((Date.now() - p.runStart) / 1000 / p.runDone) * left;
-  $('wiz-eta').textContent = left ? (eta < 60 ? `${Math.max(1, Math.round(eta))} с` : `${Math.ceil(eta / 60)} мин`) : '—';
+  const left = Math.max(0, total - done);
+  // Пока не по чему считать скорость: у кусков плана есть средняя длительность,
+  // а у операций её нет — ждём первых страниц
+  const measured = p.runStart && p.runDone > 0 ? ((Date.now() - p.runStart) / 1000 / p.runDone) * left : null;
+  const eta = measured ?? (p.byOps ? null : left * WIZ_PART_SEC);
+  $('wiz-eta').textContent =
+    !left || eta == null ? '—' : eta < 60 ? `${Math.max(1, Math.round(eta))} с` : `${Math.ceil(eta / 60)} мин`;
   $('wiz-now').textContent =
     waitLeft > 0
       ? `Банк просит подождать: продолжим через ${waitLeft} с`
@@ -2372,6 +2380,14 @@ window.addEventListener('checker-history', (e) => {
     return;
   }
   if (r.stage === 'loaded') return wizFinish();
+
+  // Сбер не говорит, сколько всего операций — приложение нащупывает это перед загрузкой
+  if (r.stage === 'count') {
+    wiz.progress = { ...(wiz.progress ?? {}), stage: 'count' };
+    if (wiz.step !== 'load') wiz.step = 'load';
+    if (state.screen === 'bank_wizard') render();
+    return;
+  }
 
   const before = wiz.progress?.stage;
   const p = { ...(wiz.progress ?? {}) };

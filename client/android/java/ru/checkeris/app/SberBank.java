@@ -27,9 +27,17 @@ final class SberBank {
 
     static final String LOGIN_URL = "https://online.sberbank.ru/";
     static final String HOST = "https://online.sberbank.ru";
-    // Веб-версия обращается к узлу web-standinN; куки общие для *.online.sberbank.ru.
-    // Номер узла может отличаться у другой сессии — проверим на живом входе.
-    private static final String OPERATIONS = "https://web-standin2.online.sberbank.ru/uoh-bh/v1/operations/list";
+    // Веб-версия обращается к узлу web-standinN, и номер у разных сессий разный. Куки общие
+    // для *.online.sberbank.ru, поэтому просто перебираем узлы и запоминаем ответивший.
+    private static final String[] NODES = {
+            "web-standin2", "web-standin1", "web-standin3", "web-standin4",
+            "web-node2", "web-node1", "web-node3",
+    };
+    private static final String PATH = ".online.sberbank.ru/uoh-bh/v1/operations/list";
+    private static volatile String node; // узел, который ответил в прошлый раз
+
+    /** Почему не вышло — для окна входа: иначе отказ выглядит как зависание. */
+    static volatile String lastError;
 
     static final int ALIVE = 1;
     static final int EXPIRED = 0;
@@ -52,7 +60,7 @@ final class SberBank {
      * Историю берём, увеличивая offset при том же to = сейчас, пока список не кончится.
      */
     static JSONArray operations(String cookies, int offset, int size, long to) throws Exception {
-        JSONObject body = new JSONObject()
+        String body = new JSONObject()
                 .put("to", stamp(to))
                 .put("paginationOffset", offset)
                 .put("paginationSize", size)
@@ -60,14 +68,87 @@ final class SberBank {
                 .put("showNotTransactionBonuses", true)
                 // Только счета Сбера: операции других банков, которые Сбер собирает по
                 // открытому банкингу, иначе задвоятся с их прямым подключением
-                .put("showOpenBanking", false);
-        JSONObject answer = new JSONObject(post(cookies, OPERATIONS, body.toString()));
-        if (!answer.optBoolean("success")) {
-            throw new IllegalStateException(answer.optString("errorMessage", "Сбер отказал"));
+                .put("showOpenBanking", false)
+                .toString();
+
+        lastError = null;
+        String trouble = "Сбер не отвечает";
+        for (String candidate : order()) {
+            String answer;
+            try {
+                answer = post(cookies, "https://" + candidate + PATH, body);
+            } catch (Exception e) {
+                trouble = "нет связи со Сбером";
+                continue; // до узла не достучались — пробуем следующий
+            }
+            JSONObject json;
+            try {
+                json = new JSONObject(answer);
+            } catch (Exception e) {
+                trouble = "чужой узел Сбера";
+                continue; // не тот узел: вернул не JSON, а страницу или переадресацию
+            }
+            if (!json.has("success")) {
+                trouble = "чужой узел Сбера";
+                continue;
+            }
+            node = candidate; // этот узел наш — с него и начнём в следующий раз
+            if (!json.optBoolean("success")) {
+                throw new IllegalStateException(json.optString("errorMessage", "Сбер отказал"));
+            }
+            lastError = null;
+            JSONObject payload = json.optJSONObject("body");
+            JSONArray ops = payload == null ? null : payload.optJSONArray("operations");
+            return ops == null ? new JSONArray() : ops;
         }
-        JSONObject payload = answer.optJSONObject("body");
-        JSONArray ops = payload == null ? null : payload.optJSONArray("operations");
-        return ops == null ? new JSONArray() : ops;
+        lastError = trouble;
+        throw new IllegalStateException(trouble);
+    }
+
+    /**
+     * Сколько всего операций до момента `to`. Сбер этого не сообщает — в ответе только сами
+     * операции. Зато есть сдвиг, поэтому нащупываем край истории пробами по одной операции:
+     * сначала удваиваем сдвиг, пока не упрёмся в пустоту, потом делим отрезок пополам.
+     * Останавливаемся, когда точности хватает для полосы загрузки (около 2%), — это полтора
+     * десятка лёгких запросов вместо точного перебора.
+     */
+    static int count(String cookies, long to) throws Exception {
+        int low = 0; // столько операций точно есть
+        int high = -1; // а столько — точно нет
+        int step = 512;
+        while (high < 0) {
+            if (has(cookies, step - 1, to)) low = step;
+            else high = step;
+            if (high < 0) {
+                if (step >= 1 << 20) { // разумный предел: дальше не ищем
+                    high = step;
+                    break;
+                }
+                step *= 2;
+            }
+            Thread.sleep(600);
+        }
+        while (high - low > Math.max(50, low / 50)) {
+            int mid = low + (high - low) / 2;
+            if (has(cookies, mid - 1, to)) low = mid;
+            else high = mid;
+            Thread.sleep(600);
+        }
+        return (low + high) / 2;
+    }
+
+    private static boolean has(String cookies, int offset, long to) throws Exception {
+        return operations(cookies, offset, 1, to).length() > 0;
+    }
+
+    /** Порядок обхода: сперва узел, отвечавший в прошлый раз. */
+    private static String[] order() {
+        if (node == null) return NODES;
+        String[] list = new String[NODES.length];
+        list[0] = node;
+        int i = 1;
+        for (String n : NODES) if (!n.equals(node)) list[i++] = n;
+        return list;
     }
 
     private static String post(String cookies, String url, String body) throws Exception {
@@ -99,9 +180,12 @@ final class SberBank {
             operations(cookies, 0, 1, System.currentTimeMillis());
             return ALIVE;
         } catch (IllegalStateException e) {
-            return EXPIRED; // банк ответил, но отказал
+            // Банк ответил и отказал — сессия не годится. А если не ответил ни один узел
+            // (lastError), сессию хоронить рано: это связь, а не отказ
+            return lastError == null ? EXPIRED : OFFLINE;
         } catch (Exception e) {
-            return OFFLINE; // сеть, таймаут, чужой узел
+            lastError = "сбой связи";
+            return OFFLINE;
         }
     }
 }

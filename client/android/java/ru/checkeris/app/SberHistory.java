@@ -76,6 +76,8 @@ final class SberHistory {
                     .put("ops", prefs.getLong("ops", 0))
                     .put("added", prefs.getLong("added", 0))
                     .put("done", prefs.getInt("offset", 0))
+                    .put("total", prefs.getInt("total", 0))
+                    .put("byOps", true)
                     .put("finished", prefs.getBoolean("finished", false));
         } catch (Exception e) {
             return new JSONObject();
@@ -108,6 +110,19 @@ final class SberHistory {
         long ops = prefs.getLong("ops", 0);
         long added = prefs.getLong("added", 0);
 
+        // Сколько всего операций — нащупываем один раз перед загрузкой, ради честной полосы.
+        // Не получилось (банк отказал на пробах) — грузим без процентов, как раньше
+        int total = prefs.getInt("total", 0);
+        if (total == 0) {
+            emit(listener, event("count", "stage", "count"));
+            try {
+                total = SberBank.count(cookies, now);
+                prefs.edit().putInt("total", total).apply();
+            } catch (Exception e) {
+                total = 0;
+            }
+        }
+
         while (!stopRequested) {
             JSONArray page = SberBank.operations(cookies, offset, PAGE, now);
             if (page.length() == 0) break;
@@ -115,24 +130,34 @@ final class SberHistory {
             offset += page.length();
             ops += page.length();
             prefs.edit().putInt("offset", offset).putLong("ops", ops).putLong("added", added).apply();
-            emit(listener, progress("load", ops, added, offset));
+            emit(listener, progress("load", ops, added, offset, total));
             if (page.length() < PAGE) break; // история кончилась
             Thread.sleep(PAUSE);
         }
         if (stopRequested) {
-            emit(listener, progress("stopped", ops, added, offset));
+            emit(listener, progress("stopped", ops, added, offset, total));
             return;
         }
         prefs.edit().putBoolean("finished", true).apply();
-        emit(listener, progress("loaded", ops, added, offset));
+        emit(listener, progress("loaded", ops, added, offset, total));
     }
 
     private static void reset(Context context) {
-        prefs(context).edit().putInt("offset", 0).putLong("ops", 0).putLong("added", 0).putBoolean("finished", false).apply();
+        prefs(context).edit()
+                .putInt("offset", 0).putLong("ops", 0).putLong("added", 0)
+                .putInt("total", 0).putBoolean("finished", false)
+                .apply();
     }
 
-    private static JSONObject progress(String stage, long ops, long added, int done) throws Exception {
-        return new JSONObject().put("stage", stage).put("ops", ops).put("added", added).put("done", done);
+    /** byOps — считаем в операциях, а не в кусках плана: у Сбера плана нет. */
+    private static JSONObject progress(String stage, long ops, long added, int done, int total) throws Exception {
+        return new JSONObject()
+                .put("stage", stage)
+                .put("ops", ops)
+                .put("added", added)
+                .put("done", done)
+                .put("total", total)
+                .put("byOps", true);
     }
 
     private static JSONObject event(String stage, String key, String value) {

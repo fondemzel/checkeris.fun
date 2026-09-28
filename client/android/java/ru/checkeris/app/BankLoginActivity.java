@@ -12,6 +12,8 @@ import android.webkit.SslErrorHandler;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 /**
@@ -28,6 +30,7 @@ public class BankLoginActivity extends Activity {
     static final String SBER_SESSION = "sber.session";
 
     private WebView web;
+    private TextView status; // полоска состояния под окном банка (только у Сбера)
     private String bank = "tbank"; // какой банк подключаем: приходит в Intent
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean done;
@@ -40,7 +43,23 @@ public class BankLoginActivity extends Activity {
         boolean sber = bank.equals("sber");
         setTitle(sber ? "Вход в Сбербанк Онлайн" : "Вход в Т-Банк");
         web = new WebView(this);
-        setContentView(web);
+        if (sber) {
+            // Полоска состояния под окном банка: без неё неудачная проверка выглядит
+            // как зависание — человек не понимает, вошёл он или нет
+            LinearLayout box = new LinearLayout(this);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.addView(web, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+            status = new TextView(this);
+            status.setPadding(32, 20, 32, 20);
+            status.setTextSize(13);
+            status.setText("Войдите в Сбербанк Онлайн — окно закроется само");
+            box.addView(status, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            setContentView(box);
+        } else {
+            setContentView(web);
+        }
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -73,6 +92,7 @@ public class BankLoginActivity extends Activity {
     private static final long POLL_MS = 1500;
     private boolean checking; // одна проверка за раз, чтобы запросы не наслаивались
     private long lastNet; // когда последний раз ходили к банку — чтобы не частить впустую
+    private String lastChecked; // куки, с которыми уже спрашивали: те же — спрашивать нечего
 
     private final Runnable poll = new Runnable() {
         @Override
@@ -106,18 +126,56 @@ public class BankLoginActivity extends Activity {
     private void checkSber() {
         final String cookies = SberBank.cookies();
         if (cookies == null || checking) return;
-        // Как только появилась кука сессии, проверяем сразу — вход виден мгновенно. Без неё
-        // не дёргаем банк чаще раза в 5 c: у гостя куки тоже есть, но сессии ещё нет
-        boolean signedIn = cookies.contains("SBTSBOL_SESSION");
         long now = System.currentTimeMillis();
-        if (!signedIn && now - lastNet < 5000) return;
+        // Спрашиваем банк, когда куки изменились — значит, со входом что-то произошло.
+        // Не чаще раза в 3 с, иначе за время входа набегают десятки запросов и Сбер
+        // начинает считать нас роботом. Раз в 10 с проверяем и без изменений — на случай,
+        // если последняя кука встала ровно между проверками
+        boolean changed = !cookies.equals(lastChecked);
+        if (now - lastNet < 3000) return;
+        if (!changed && now - lastNet < 10_000) return;
+        lastChecked = cookies;
         lastNet = now;
         checking = true;
+        say("Проверяем вход…");
+        new Thread(() -> {
+            int state = SberBank.check(cookies);
+            handler.post(() -> {
+                checking = false;
+                if (state == SberBank.ALIVE) {
+                    connected(SBER_SESSION, SberBank.cookies(), "Сбербанк Онлайн подключён");
+                } else if (state == SberBank.OFFLINE) {
+                    say("Сбер не отвечает: " + SberBank.lastError + ". Ждём…");
+                } else {
+                    say("Войдите в Сбербанк Онлайн — окно закроется само");
+                }
+            });
+        }).start();
+    }
+
+    private void say(String text) {
+        if (status != null) status.setText(text);
+    }
+
+    /**
+     * Назад — последняя проверка: вход мог состояться ровно между опросами, и обиднее
+     * всего потерять его на выходе.
+     */
+    @Override
+    public void onBackPressed() {
+        String cookies = done || !bank.equals("sber") ? null : SberBank.cookies();
+        if (cookies == null || checking) {
+            super.onBackPressed();
+            return;
+        }
+        checking = true;
+        say("Проверяем вход…");
         new Thread(() -> {
             boolean alive = SberBank.check(cookies) == SberBank.ALIVE;
             handler.post(() -> {
                 checking = false;
                 if (alive) connected(SBER_SESSION, SberBank.cookies(), "Сбербанк Онлайн подключён");
+                else finish();
             });
         }).start();
     }
