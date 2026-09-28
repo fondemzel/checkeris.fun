@@ -255,7 +255,9 @@ export function listItemGroups(db, budgetId, params) {
     .prepare(
       `SELECT name_norm,
               name,
-              id AS first_id,
+              -- Карточку строки открывает последняя покупка. Голая колонка рядом с MAX()
+              -- тут не годится: в запросе есть и MIN(), и SQLite вправе взять id любой строки
+              CAST(substr(MAX(purchased_at || printf('%012d', id)), -12) AS INTEGER) AS first_id,
               COUNT(*) AS positions,
               COALESCE(SUM(quantity), 0) AS quantity,
               COALESCE(SUM(CASE WHEN counted = 1 THEN sum ELSE 0 END), 0) AS sum,
@@ -624,7 +626,9 @@ export function getMeta(db, budgetId) {
     .get(budgetId);
 
   // Границы данных — по всем источникам: история банка бывает на годы старше первого чека,
-  // и «Всё время» должно её охватывать
+  // и «Всё время» должно её охватывать. Границы самих чеков — отдельно, для подписи «N чеков с …»
+  stats.receipts_from = stats.date_from;
+  stats.receipts_to = stats.date_to;
   const bank = db
     .prepare('SELECT MIN(substr(at, 1, 10)) AS date_from, MAX(substr(at, 1, 10)) AS date_to FROM bank_ops WHERE budget_id = ?')
     .get(budgetId);

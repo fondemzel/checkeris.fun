@@ -34,6 +34,7 @@ import {
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
+import { listSpending } from './spending.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -686,6 +687,9 @@ async function handleApi(req, res, url) {
   }
 
   // collapse=1 — одна строка на название; раскрытие группы идёт обычным списком с name_norm
+  // Все траты одной лентой: чеки, ручные записи и банк — для таблицы кабинета
+  if (pathname === '/api/spending') return sendJson(res, 200, listSpending(db, user.budget_id, searchParams));
+
   if (pathname === '/api/items') {
     const collapse = searchParams.get('collapse') === '1' && !searchParams.get('name_norm');
     return sendJson(res, 200, (collapse ? listItemGroups : listItems)(db, user.budget_id, searchParams));

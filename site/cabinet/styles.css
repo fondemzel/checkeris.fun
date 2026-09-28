@@ -886,3 +886,34 @@ tbody tr.child-more td { padding-left: 24px; }
 }
 
 .chart-tip .dim { color: #b9bec7; }
+
+/* ── «Расходы»: источник траты, комментарий ─────────────── */
+
+.src-ic { display: inline-flex; margin-right: 6px; color: var(--muted); vertical-align: -3px; }
+.src-ic svg { width: 15px; height: 15px; }
+.cat-cell .small { margin-top: 2px; }
+
+.chip.with-ic { display: inline-flex; align-items: center; gap: 6px; }
+.chip.with-ic svg { width: 14px; height: 14px; }
+
+.note-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: #e0b64a;
+  vertical-align: middle;
+}
+
+.note-edit { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 0 12px 12px; }
+.note-edit textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: inherit;
+  resize: vertical;
+}
+.card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.card-hint { padding: 0 12px 12px; }

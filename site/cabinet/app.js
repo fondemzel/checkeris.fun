@@ -100,9 +100,10 @@ const DEFAULTS = {
   group: '', // группа категорий — первый ряд чипсов
   category: '', // подкатегория — второй ряд, зависит от выбранной группы
   uncategorized: '', // '1' — только неразмеченные позиции
+  src: '', // источник трат в «Расходах»: receipt | manual | bank, пусто — все
   sort: 'date',
   dir: 'desc',
-  card: '', // выбранная карточка: r<id> — чек, i<id> — позиция
+  card: '', // выбранная карточка: r<id> — чек, i<id> — позиция, o<id> — операция банка
   year: String(new Date().getFullYear()), // период раздела «Анализ»: год или all
   node: '', // выбранное в разделе «Категории»: g:<slug> — группа, c:<slug> — категория
 };
@@ -123,7 +124,8 @@ function readUrl() {
   }
   if (!['items', 'taxonomy', 'analysis'].includes(state.view)) state.view = 'receipts';
   if (!['', 'day', 'week', 'month', 'year'].includes(state.period)) state.period = '';
-  if (!/^[ri]\d+$/.test(state.card)) state.card = '';
+  if (!/^[rio]\d+$/.test(state.card)) state.card = '';
+  if (!Object.hasOwn(SOURCES, state.src)) state.src = '';
   if (!/^[gc]:.+$/.test(state.node)) state.node = '';
 }
 
@@ -186,6 +188,7 @@ function apiParams(page) {
     else if (state.category) params.set('category', state.category);
     else if (state.group) params.set('group', state.group);
     params.set('collapse', '1'); // одна строка на название; раскрытие снимает этот параметр
+    if (state.src) params.set('src', state.src);
   }
   params.set('sort', state.sort);
   params.set('dir', state.dir);
@@ -216,6 +219,42 @@ const isGroup = (r) => r.positions !== undefined;
 const ellipsisCell = (text, badge) =>
   badge ? `<div class="cell-flex"><span class="ellipsis-text">${text}</span>${badge}</div>` : text;
 
+// Откуда трата: чек, ручная запись или банк — те же значки, что в телефоне
+const icon = (shape) =>
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg>`;
+
+const SOURCES = {
+  receipt: { title: 'Из чека', icon: groupIcon('receipt') },
+  manual: {
+    title: 'Вручную',
+    icon: icon(
+      '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/>' +
+        '<path d="M18 8h.01"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/><path d="M7 16h10"/>',
+    ),
+  },
+  bank: {
+    title: 'Из банка',
+    icon: icon(
+      '<path d="M10 18v-7"/><path d="M11.12 2.198a2 2 0 0 1 1.76.006l7.866 3.847c.476.233.31.949-.22.949H3.474c-.53 0-.695-.716-.22-.949z"/>' +
+        '<path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M3 22h18"/><path d="M6 18v-7"/>',
+    ),
+  },
+};
+
+const sourceCell = (r) => {
+  const s = SOURCES[r.source];
+  return s ? `<span class="src-ic" title="${s.title}">${s.icon}</span>` : '';
+};
+
+const catCell = (name, group, byRule = false) =>
+  name
+    ? `${esc(name)}${byRule ? ' <span class="badge">по продавцу</span>' : ''}<div class="dim small">${esc(group ?? '')}</div>`
+    : '<span class="dim">не определена</span>';
+
+// Комментарий у строки — точкой после названия, как в телефоне
+const noteDot = (r) => (r.has_note ? ' <span class="note-dot" title="Есть комментарий"></span>' : '');
+
 const COLUMNS = {
   receipts: [
     { key: 'date', title: 'Дата', sort: 'date', render: (r) =>
@@ -229,13 +268,12 @@ const COLUMNS = {
   items: [
     { key: 'date', title: 'Дата', sort: 'date', render: (r) =>
       `<span class="nowrap">${dateRu(r.purchased_at)}</span> <span class="dim small">${timeRu(r.purchased_at)}</span>` },
-    { key: 'name', title: 'Товар', sort: 'name', cls: 'ellipsis', render: (r) => ellipsisCell(esc(r.name), moneyBadge(r)) },
-    { key: 'group', title: 'Группа', cls: 'group-cell dim', render: (r) => esc(r.group_name ?? '—') },
+    { key: 'name', title: 'Трата', sort: 'name', cls: 'ellipsis', render: (r) =>
+      ellipsisCell(sourceCell(r) + esc(r.name) + noteDot(r), moneyBadge(r)) },
+    // Группа — мелко под категорией: отдельной колонке в таблице не хватает места
     { key: 'category', title: 'Категория', cls: 'cat-cell', render: (r) =>
-      r.category_name
-        ? `${esc(r.category_name)}${r.category_source === 'rule-fallback' ? ' <span class="badge">по продавцу</span>' : ''}`
-        : '<span class="dim">не определена</span>' },
-    { key: 'quantity', title: 'Кол-во', sort: 'quantity', cls: 'num dim', render: (r) => qty(r.quantity) },
+      catCell(r.category_name, r.group_name, r.category_source === 'rule-fallback') },
+    { key: 'quantity', title: 'Кол-во', sort: 'quantity', cls: 'num dim', render: (r) => (r.source === 'bank' ? '' : qty(r.quantity)) },
     { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) =>
       isGroup(r) || r.counted ? `<b>${money(r.sum)}</b>` : `<span class="dim">${money(r.sum)}</span>` },
   ],
@@ -267,7 +305,7 @@ function rowsHtml(rows, startIndex) {
   return rows
     .map((row, i) => {
       // У схлопнутой строки своей карточки нет — открывается верхняя позиция группы
-      const card = prefix + (isGroup(row) ? row.first_id : row.id);
+      const card = row.source === 'bank' ? `o${row.op_id}` : prefix + (isGroup(row) ? row.first_id : row.id);
       const cells = columns.map((col) => `<td class="${col.cls ?? ''}">${col.render(row)}</td>`).join('');
       // name_norm — ключ ручной правки категории: по нему строки чинятся на месте, без перезагрузки
       const norm = row.name_norm ? ` data-norm="${esc(row.name_norm)}"` : '';
@@ -1071,6 +1109,7 @@ async function deleteNode() {
 }
 
 function renderSummary(totals) {
+  if (state.view === 'items') return renderSpendingSummary(totals);
   const isItems = state.view === 'items';
   const count = totals.count ?? 0;
   const receipts = isItems ? totals.receipts ?? 0 : count;
@@ -1097,10 +1136,25 @@ function renderSummary(totals) {
   $('totals-right').innerHTML = `${skipped}Итого: <b>${money(totals.sum)}</b>`;
 }
 
+/** Сводка «Расходов»: сколько покупок и откуда они — чеки, ручные записи, банк. */
+function renderSpendingSummary(totals) {
+  const n = totals.positions ?? 0;
+  const parts = Object.entries(totals.sources ?? {})
+    .filter(([, s]) => s.count)
+    .map(([key, s]) => `${SOURCES[key].title.toLowerCase()} ${int.format(s.count)}`);
+  $('totals-left').textContent =
+    `${int.format(n)} ${plural(n, 'покупка', 'покупки', 'покупок')}${parts.length > 1 ? ` · ${parts.join(' · ')}` : ''}`;
+  const skipped = totals.excluded_sum
+    ? ` <span class="dim" title="Возвраты и чеки, закрытые зачётом аванса: деньги по ним уже посчитаны">` +
+      `вне суммы ${money(totals.excluded_sum, true)}</span> · `
+    : '';
+  $('totals-right').innerHTML = `${skipped}Итого: <b>${money(totals.sum)}</b>`;
+}
+
 function renderFooter() {
   // В схлопнутом списке строки — это названия, а не отдельные покупки
   const noun = collapsed()
-    ? plural(total, 'названия', 'названий', 'названий')
+    ? plural(total, 'строки', 'строк', 'строк')
     : state.view === 'items'
       ? plural(total, 'позиции', 'позиций', 'позиций')
       : plural(total, 'чека', 'чеков', 'чеков');
@@ -1204,6 +1258,7 @@ const CATEGORY_SOURCES = {
   dictionary: 'взята из словаря',
   ngram: 'подобрана по похожему названию',
   llm: 'предложена моделью',
+  bank: 'взята из категории банка',
 };
 
 const catOption = (slug, name, selected) =>
@@ -1262,9 +1317,8 @@ function categorySection(it) {
 function patchRows(nameNorm, category) {
   const rows = document.querySelectorAll(`#tbody tr[data-norm="${CSS.escape(nameNorm)}"]`);
   for (const row of rows) {
-    row.querySelector('.group-cell').textContent = category ? category.group_name : '—';
     const cell = row.querySelector('.cat-cell');
-    cell.innerHTML = category ? esc(category.name) : '<span class="dim">не определена</span>';
+    if (cell) cell.innerHTML = category ? catCell(category.name, category.group_name) : catCell(null);
   }
   return rows.length;
 }
@@ -1327,9 +1381,14 @@ function itemCard(it) {
       ['Точка', esc(it.retail_place ?? '—')],
       ['Адрес', esc(it.retail_address ?? '')],
       ['Покупка', it.internet_sign ? 'в интернете — в чеке адрес продавца' : ''],
+      ['Источник', it.receipt_drive === 'manual' ? 'вручную' : 'чек'],
     ])}
     </div>
     ${categorySection(it)}
+    ${noteSection(`/api/items/${it.id}/note`, it.note)}
+    <div class="card-actions">
+      <button class="btn danger" type="button" data-hide="${it.id}">${it.receipt_drive === 'manual' ? 'Удалить запись' : 'Убрать из расходов'}</button>
+    </div>
     ${mappable(it) && meta?.maps?.key ? `
     <div class="card-section">Где куплено${it.place_qc > 1 ? ' <span class="dim">· примерно</span>' : ''}</div>
     <div class="card-map" id="card-map"><span class="map-wait">Загружаем карту…</span></div>
@@ -1340,12 +1399,161 @@ function itemCard(it) {
     </div>`;
 }
 
+/** Комментарий: к товару или к трате из банка. Сохраняется кнопкой — без неё легко потерять. */
+function noteSection(url, note) {
+  return `
+    <div class="card-section">Комментарий</div>
+    <div class="note-edit">
+      <textarea id="card-note" rows="2" maxlength="1000" placeholder="Добавить комментарий">${esc(note ?? '')}</textarea>
+      <button class="btn" type="button" data-note-save="${url}">Сохранить</button>
+      <span class="dim small" id="note-status"></span>
+    </div>`;
+}
+
+/** Трата из банка без чека: что известно от банка, категория, комментарий и вид. */
+function opCard(op) {
+  const n = op.same_count ?? 1;
+  const label = op.category_slug
+    ? `«${esc(op.category_name)}» ${CATEGORY_SOURCES[op.category_source] ?? ''}.`
+    : 'Категория не определена.';
+  const scope = n > 1 ? ` Изменение затронет ${int.format(n)} ${plural(n, 'трату', 'траты', 'трат')} этого продавца — и будущие тоже.` : '';
+  const groups = meta?.categories ?? [];
+  const groupSlug = op.group_slug ?? '';
+  const expense = op.kind === 'expense';
+  return `
+    <div class="card-head">
+      <div>
+        <div class="card-title">${money(op.amount)}</div>
+        <div class="dim">${dateRu(op.at)} ${timeRu(op.at)}</div>
+      </div>
+      <button class="btn" type="button" data-close>✕</button>
+    </div>
+    <div class="card-section">Трата из банка</div>
+    <div class="card-top">
+    <p class="card-name">${esc(op.merchant || op.description || 'Операция банка')}</p>
+    ${kv([
+      ['Описание', op.description && op.description !== op.merchant ? esc(op.description) : ''],
+      ['Категория банка', esc(op.bank_category ?? '')],
+      ['MCC', op.mcc ? String(op.mcc) : ''],
+      ['Счёт', esc(op.account_name ?? '')],
+      ['Карта', op.card ? `·${esc(op.card)}` : ''],
+      ['Списано', op.debited_at ? `${dateRu(op.debited_at)} ${timeRu(op.debited_at)}` : ''],
+      ['Источник', 'банк'],
+    ])}
+    </div>
+    ${expense ? `
+    <div class="card-section">Категория</div>
+    <div class="cat-edit" data-op="${op.id}">
+      <select id="cat-group" aria-label="Группа">
+        ${catOption('', '— не выбрана —', groupSlug)}${groups.map((g) => catOption(g.slug, g.name, groupSlug)).join('')}</select>
+      <select id="cat-slug" aria-label="Категория">
+        ${categoryOptions(groups, groupSlug, op.category_slug ?? '')}</select>
+      <div class="cat-note dim" id="cat-note">${label}${scope}</div>
+    </div>` : ''}
+    ${noteSection(`/api/bank/ops/${op.id}/note`, op.note)}
+    <div class="card-actions">
+      ${expense
+        ? `<button class="btn" type="button" data-op-kind="transfer" data-id="${op.id}">Это перевод себе</button>
+           <button class="btn danger" type="button" data-op-kind="excluded" data-id="${op.id}">Не учитывать</button>`
+        : `<button class="btn" type="button" data-op-kind="expense" data-id="${op.id}">Вернуть в расходы</button>`}
+    </div>
+    ${expense ? '<p class="dim small card-hint">Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.</p>' : ''}`;
+}
+
+/** POST с JSON; ошибка сервера — исключением с его текстом. */
+async function postJson(path, body) {
+  const res = await api(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  return data;
+}
+
+async function saveNote(button) {
+  const status = $('note-status');
+  button.disabled = true;
+  try {
+    const res = await postJson(button.dataset.noteSave, { note: $('card-note').value });
+    status.textContent = res.note ? 'Сохранено' : 'Комментарий удалён';
+    // Точка комментария у строки — чтобы было видно без открытия карточки
+    const row = document.querySelector(`#tbody tr[data-card="${state.card}"] .ellipsis-text, #tbody tr[data-card="${state.card}"] td.ellipsis`);
+    if (row) {
+      row.querySelector('.note-dot')?.remove();
+      if (res.note) row.insertAdjacentHTML('beforeend', noteDot({ has_note: true }));
+    }
+  } catch (err) {
+    status.textContent = `Не сохранилось: ${err.message}`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** Убрать товар из расходов (задвоение, учтено где-то ещё) или удалить ручную запись. */
+async function hideItem(button) {
+  const manual = button.textContent.includes('Удалить');
+  if (!confirm(manual ? 'Удалить эту запись?' : 'Убрать товар из расходов? Он перестанет учитываться в суммах.')) return;
+  try {
+    await postJson(`/api/items/${button.dataset.hide}/hide`);
+    state.card = '';
+    renderCard();
+    reload();
+  } catch (err) {
+    alert(`Не вышло: ${err.message}`);
+  }
+}
+
+/** Трата из банка: перевод себе, не учитывать или вернуть в расходы. */
+async function setOpKind(button) {
+  const kind = button.dataset.opKind;
+  const ask = {
+    transfer: 'Отметить как перевод себе? Он не будет считаться расходом.',
+    excluded: 'Не учитывать эту трату? Она пропадёт из расходов.',
+  }[kind];
+  if (ask && !confirm(ask)) return;
+  try {
+    await postJson(`/api/bank/ops/${button.dataset.id}/kind`, { kind });
+    if (kind !== 'expense') state.card = '';
+    renderCard();
+    reload();
+  } catch (err) {
+    alert(`Не вышло: ${err.message}`);
+  }
+}
+
+/** Категория траты из банка: запоминается для продавца — и прошлые, и будущие его траты. */
+async function applyOpCategory(opId, slug, box) {
+  const note = $('cat-note');
+  const selects = [...box.querySelectorAll('select')];
+  note.classList.remove('error');
+  note.textContent = 'Сохранение…';
+  selects.forEach((s) => (s.disabled = true));
+  try {
+    const data = await postJson(`/api/bank/ops/${opId}/category`, { category: slug });
+    const n = data.affected ?? 1;
+    note.textContent = data.category
+      ? `«${data.category.name}» — обновлено ${int.format(n)} ${plural(n, 'трата', 'траты', 'трат')} этого продавца.`
+      : 'Категория снята.';
+    const row = document.querySelector(`#tbody tr[data-card="o${opId}"]`);
+    const cell = row?.querySelector('.cat-cell');
+    if (cell) cell.innerHTML = data.category ? catCell(data.category.name, data.category.group_name) : catCell(null);
+    await loadMeta();
+  } catch (err) {
+    note.textContent = `Не удалось сохранить: ${err.message}`;
+    note.classList.add('error');
+  } finally {
+    selects.forEach((s) => (s.disabled = false));
+  }
+}
+
 async function renderCard() {
   const pane = $('detail');
   const seq = ++cardSeq;
 
   if (!state.card) {
-    pane.innerHTML = `<div class="card-empty">${state.view === 'items' ? 'Выберите товар' : 'Выберите чек'}</div>`;
+    pane.innerHTML = `<div class="card-empty">${state.view === 'items' ? 'Выберите трату' : 'Выберите чек'}</div>`;
     return;
   }
 
@@ -1354,11 +1562,12 @@ async function renderCard() {
   pane.innerHTML = '<div class="card-empty">Загрузка…</div>';
 
   try {
-    const res = await api(kind === 'r' ? `/api/receipts/${id}` : `/api/items/${id}`);
+    const path = { r: `/api/receipts/${id}`, i: `/api/items/${id}`, o: `/api/bank/ops/${id}` }[kind];
+    const res = await api(path);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (seq !== cardSeq) return;
-    pane.innerHTML = kind === 'r' ? receiptCard(data) : itemCard(data);
+    pane.innerHTML = kind === 'r' ? receiptCard(data) : kind === 'o' ? opCard(data) : itemCard(data);
     const box = $('card-map');
     if (box) {
       showPlace(box, {
@@ -1414,7 +1623,8 @@ async function fetchPage(seq = loadSeq) {
   if (nextPage === 1) pane.classList.add('is-loading');
 
   try {
-    const res = await api(`/api/${state.view}?${apiParams(nextPage)}`);
+    const endpoint = state.view === 'items' ? 'spending' : state.view;
+    const res = await api(`/api/${endpoint}?${apiParams(nextPage)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (seq !== loadSeq) return; // фильтры успели смениться
@@ -1470,7 +1680,7 @@ async function loadMeta() {
 
   const { stats, lastImport } = meta;
   $('data-period').textContent = stats.receipts
-    ? `${int.format(stats.receipts)} чеков · ${dateRu(stats.date_from)} — ${dateRu(stats.date_to)}`
+    ? `${int.format(stats.receipts)} чеков · ${dateRu(stats.receipts_from ?? stats.date_from)} — ${dateRu(stats.receipts_to ?? stats.date_to)}`
     : 'база пуста — запустите импорт';
 
   $('last-import').textContent = [
@@ -1512,7 +1722,7 @@ function syncControls() {
   });
 
   $('page-title').textContent =
-    { items: 'Товары', taxonomy: 'Категории', analysis: 'Анализ' }[state.view] ?? 'Чеки';
+    { items: 'Расходы', taxonomy: 'Категории', analysis: 'Анализ' }[state.view] ?? 'Чеки';
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.setAttribute('aria-current', String(item.dataset.view === state.view));
   });
@@ -1530,6 +1740,17 @@ function syncControls() {
   $('export-btn').hidden = isTaxonomy || isAnalysis;
 
   renderCategoryChips();
+  renderSourceChips();
+}
+
+/** Фильтр по источнику: все, из чеков, вручную, из банка — только в «Расходах». */
+function renderSourceChips() {
+  const row = $('chips-src');
+  row.hidden = state.view !== 'items';
+  if (row.hidden) return;
+  const chip = (key, label, ic = '') =>
+    `<button class="chip${ic ? ' with-ic' : ''}" type="button" data-src="${key}" aria-pressed="${state.src === key}">${ic}${label}</button>`;
+  row.innerHTML = chip('', 'Все') + Object.entries(SOURCES).map(([key, s]) => chip(key, s.title, s.icon)).join('');
 }
 
 function update(patch) {
@@ -1568,6 +1789,11 @@ function bind() {
   $('chips-category').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
     if (chip) update({ category: chip.dataset.category });
+  });
+
+  $('chips-src').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (chip) update({ src: chip.dataset.src });
   });
 
   $('chips-sum').addEventListener('click', (e) => {
@@ -1698,6 +1924,12 @@ function bind() {
     if (receiptBtn) return selectCard(`r${receiptBtn.dataset.receipt}`);
     const itemRow = e.target.closest('tr[data-item]');
     if (itemRow) return selectCard(`i${itemRow.dataset.item}`);
+    const noteSave = e.target.closest('[data-note-save]');
+    if (noteSave) return saveNote(noteSave);
+    const hide = e.target.closest('[data-hide]');
+    if (hide) return hideItem(hide);
+    const kind = e.target.closest('[data-op-kind]');
+    if (kind) return setOpKind(kind);
   });
 
   // выбор категории: смена группы только перезаполняет второй список, сохраняет — второй
@@ -1720,7 +1952,8 @@ function bind() {
       // выбор из полного списка подставляет свою группу в первый список
       const group = groups.find((g) => g.subcategories.some((s) => s.slug === e.target.value));
       $('cat-group').value = group?.slug ?? '';
-      applyCategory(box.dataset.item, e.target.value, box);
+      if (box.dataset.op) applyOpCategory(box.dataset.op, e.target.value, box);
+      else applyCategory(box.dataset.item, e.target.value, box);
     }
   });
 
