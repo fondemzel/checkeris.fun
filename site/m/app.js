@@ -2650,12 +2650,13 @@ async function onScreenClick(e) {
   const bank = e.target.closest('[data-bank]');
   if (bank) {
     const id = bank.dataset.bankId ?? 'tbank';
-    if (bank.dataset.bank === 'login') return window.Checker.bankLogin(); // окно банка открывает приложение
-    if (bank.dataset.bank === 'sync') {
-      bank.disabled = true;
-      bank.classList.add('spin');
-      return window.Checker.bankSync(token.get());
+    // Вход в банк (окно банка открывает приложение). После входа — в общие настройки и
+    // сразу обновление: ради него обычно и входят
+    if (bank.dataset.bank === 'login' || bank.dataset.bank === 'relogin') {
+      syncAfterLogin = id;
+      return window.Checker.bankLogin();
     }
+    if (bank.dataset.bank === 'sync') return startBankSync(id);
     if (bank.dataset.bank === 'forget') {
       if (!confirm('Отключить банк? Загруженные операции останутся, новые приходить не будут.')) return;
       window.Checker.bankForget();
@@ -2974,14 +2975,14 @@ function bankSection(bank) {
     const connected = connectedId === b.id;
     const expired = connected && appInfo().bankState === 'expired';
     const ops = link?.ops ?? 0;
-    const note = expired
-      ? 'нужен вход заново'
-      : connected
-        ? `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`
-        : b.ready ? 'не подключён' : 'скоро';
-    // Подключённый банк обновляют прямо отсюда, остальные открывают страницу банка
-    const action = connected && !expired
-      ? `<button class="row-icon" type="button" data-bank="sync" data-bank-id="${b.id}" aria-label="Обновить операции" title="Обновить операции">${UI.refresh}</button>`
+    // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
+    // что у подключённого, только значок серый; обновление само начнёт с входа
+    const note = connected
+      ? `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`
+      : b.ready ? 'не подключён' : 'скоро';
+    const syncing = bankSyncing === b.id;
+    const action = connected
+      ? `<button class="row-icon${syncing ? ' spin' : ''}" type="button" data-bank="${expired ? 'relogin' : 'sync'}" data-bank-id="${b.id}"${syncing ? ' disabled' : ''} aria-label="Обновить операции" title="Обновить операции">${UI.refresh}</button>`
       : `<button class="row-icon" type="button" data-bank-open="${b.id}" aria-label="Подключить" title="Подключить">${UI.plus}</button>`;
     return `
       <div class="member bank-row">
@@ -3326,11 +3327,33 @@ window.addEventListener('checker-resume', () => {
     }
     return;
   }
+  // Вернулись из окна банка с живой сессией — в настройки и обновить выписку
+  if (syncAfterLogin) {
+    const id = syncAfterLogin;
+    const info = appInfo();
+    if (info.bank === id && info.bankState === 'active') {
+      syncAfterLogin = null;
+      if (state.screen !== 'settings') go({ screen: 'settings' });
+      return startBankSync(id);
+    }
+  }
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
+// Какой банк сейчас обновляется: значок крутится и после перерисовки экрана
+let bankSyncing = null;
+// Вход начат ради обновления: после него сразу обновить
+let syncAfterLogin = null;
+
+function startBankSync(id) {
+  bankSyncing = id;
+  window.Checker.bankSync(token.get());
+  if (state.screen === 'settings') render();
+}
+
 // Итог выгрузки приходит от приложения событием: показываем и обновляем экран
 window.addEventListener('checker-bank', (e) => {
+  bankSyncing = null;
   const r = e.detail ?? {};
   // Показываем новое, а не всё проверенное: банк каждый раз отдаёт и последние дни
   toast(
