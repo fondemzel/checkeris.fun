@@ -12,6 +12,7 @@ import { groupIcon } from '/shared/icons.js';
 import { shades, edge, readableText } from '/shared/colors.js';
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
+import { T } from '/m/texts.js';
 
 const $ = (id) => document.getElementById(id);
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
@@ -2101,42 +2102,32 @@ const WIZ_SCREENS = {
   intro: (w, b) => `
     <div class="card wiz-hello">
       ${bankLogo(b, true)}
-      <h2>Загрузим всю историю из ${esc(b.from ?? b.name)}</h2>
-      <p class="note">Все траты и поступления за годы — в одном месте, разложенные по категориям.</p>
+      <h2>${T.wizard.intro.title(esc(b.from ?? b.name))}</h2>
+      <p class="note">${T.wizard.intro.subtitle}</p>
     </div>
     <div class="card">
-      <div class="card-label">Это безопасно</div>
-      <ul class="bank-facts">
-        <li><b>Вход — на вашем телефоне.</b> Телефон, код из СМС и пароль вы вводите в окне банка сами, Чекер их не видит.</li>
-        <li><b>Только чтение.</b> Чекер не может ничего перевести или оплатить — он лишь читает операции.</li>
-        <li><b>Только для вас.</b> Операции видны вам и участникам вашего бюджета, больше никому.</li>
-      </ul>
+      <div class="card-label">${T.wizard.intro.safetyLabel}</div>
+      <ul class="bank-facts">${facts(T.wizard.intro.safety)}</ul>
     </div>
     <div class="card">
-      <div class="card-label">Как это будет</div>
-      <ol class="wiz-plan">
-        <li>Входите в банк</li>
-        <li>Смотрим, какие у вас счета и с какого года</li>
-        <li>Вы выбираете, что загружать</li>
-        <li>Загружаем — обычно 10–15 минут</li>
-        <li>Показываем, что нашли и как разложили</li>
-      </ol>
+      <div class="card-label">${T.wizard.intro.planLabel}</div>
+      <ol class="wiz-plan">${T.wizard.intro.plan.map((step) => `<li>${step}</li>`).join('')}</ol>
     </div>`,
 
   analyze: (w) =>
     w.error
-      ? `<div class="card"><p class="note error">Не получилось: ${esc(w.error)}</p></div>`
-      : wizSpinner('Смотрим ваши счета…'),
+      ? `<div class="card"><p class="note error">${T.wizard.analyze.failed(esc(w.error))}</p></div>`
+      : wizSpinner(T.wizard.analyze.wait),
 
   found: async (w) => {
     const bankData = await api('/api/bank').catch(() => null);
     const have = bankData?.links?.find((l) => l.bank === w.bank)?.ops ?? 0;
     const thisYear = new Date().getFullYear();
     const rows = (w.accounts ?? []).map((a) => {
-      const kind = ACCOUNT_TYPES[a.type] ?? a.type ?? 'счёт';
+      const kind = ACCOUNT_TYPES[a.type] ?? a.type ?? T.bankCard.accounts.kind;
       const currency = a.currency && a.currency !== 'RUB' ? ` · ${a.currency}` : '';
       // У Сбера возраста счёта нет — показываем тип; у Т-Банка добавляем «с года»
-      const age = a.created ? ` · с ${new Date(a.created).getFullYear()} года` : '';
+      const age = a.created ? T.wizard.found.since(new Date(a.created).getFullYear()) : '';
       return `
         <label class="wiz-acc">
           <input type="checkbox" data-wiz-acc="${esc(a.id)}"${w.selected.includes(a.id) ? ' checked' : ''} />
@@ -2148,12 +2139,12 @@ const WIZ_SCREENS = {
     }).join('');
     return `
       <div class="card">
-        <h2 class="wiz-title">Нашли ${w.accounts?.length ?? 0} ${plural(w.accounts?.length ?? 0, 'счёт', 'счёта', 'счетов')}</h2>
-        <p class="note">Отметьте счета, с которых брать операции, — и сейчас, и при каждом обновлении. Выбор можно поменять потом на странице банка.</p>
+        <h2 class="wiz-title">${T.wizard.found.title(w.accounts?.length ?? 0, plural(w.accounts?.length ?? 0, ...T.common.accounts))}</h2>
+        <p class="note">${T.wizard.found.hint}</p>
         <div class="wiz-accs">${rows}</div>
       </div>
       <div class="card"><p class="note" id="wiz-estimate">${wizEstimate(w)}</p>${
-        have ? `<p class="note">Уже загружено ${int.format(have)} ${plural(have, 'операция', 'операции', 'операций')} — они не задвоятся, добавятся только недостающие.</p>` : ''
+        have ? `<p class="note">${T.wizard.found.already(int.format(have), plural(have, ...T.common.ops))}</p>` : ''
       }</div>`;
   },
 
@@ -2163,21 +2154,21 @@ const WIZ_SCREENS = {
     const paused = p.stage === 'paused' || p.stage === 'stopped';
     return `
       <div class="card wiz-load">
-        <h2 class="wiz-title">${failed ? 'Загрузка прервалась' : paused ? 'Загрузка на паузе' : 'Загружаем историю'}</h2>
+        <h2 class="wiz-title">${failed ? T.wizard.load.titleFailed : paused ? T.wizard.load.titleStopped : T.wizard.load.title}</h2>
         <div class="wiz-bar${p.total ? '' : ' flow'}"><span id="wiz-bar" style="width:${p.total ? Math.min(100, Math.round(((p.done ?? 0) / p.total) * 100)) : 0}%"></span></div>
         <div class="wiz-nums">
-          <div><b id="wiz-ops">0</b><small class="note">операций</small></div>
-          <div><b id="wiz-mid">—</b><small class="note" id="wiz-mid-label">частей</small></div>
-          <div><b id="wiz-eta">—</b><small class="note">осталось</small></div>
+          <div><b id="wiz-ops">0</b><small class="note">${T.wizard.load.ops}</small></div>
+          <div><b id="wiz-mid">—</b><small class="note" id="wiz-mid-label">${T.wizard.load.parts}</small></div>
+          <div><b id="wiz-eta">—</b><small class="note">${T.wizard.load.left}</small></div>
         </div>
         <p class="note" id="wiz-now"></p>
-        ${failed ? `<p class="note error">${esc(w.error ?? 'Ошибка')}. Всё загруженное сохранено — можно продолжить с того же места.</p>` : ''}
-        ${paused ? '<p class="note">Всё загруженное сохранено — продолжим с того же места.</p>' : ''}
+        ${failed ? `<p class="note error">${T.wizard.load.savedFailed(esc(w.error ?? ''))}</p>` : ''}
+        ${paused ? `<p class="note">${T.wizard.load.savedStopped}</p>` : ''}
       </div>
-      <p class="note wiz-hint">Можно свернуть приложение, но не закрывать его: загрузка идёт, пока оно открыто.</p>`;
+      <p class="note wiz-hint">${T.wizard.load.keepOpen}</p>`;
   },
 
-  marking: () => wizSpinner('Раскладываем: ищем чеки к операциям, переводы между своими счетами, категории…'),
+  marking: () => wizSpinner(T.wizard.marking),
 
   result: (w) => {
     const r = w.result ?? {};
@@ -2192,27 +2183,27 @@ const WIZ_SCREENS = {
     const row = (label, value, note = '') =>
       `<div class="wiz-row"><span>${label}${note ? `<small class="note">${note}</small>` : ''}</span><b>${value}</b></div>`;
     const accounts = (r.accounts ?? [])
-      .map((a) => row(esc(a.name ?? a.account), int.format(a.count), `с ${a.first?.slice(0, 4)} года`))
+      .map((a) => row(esc(a.name ?? a.account), int.format(a.count), T.wizard.result.since(a.first?.slice(0, 4))))
       .join('');
     return `
       <div class="card wiz-hello">
-        <h2>Готово: ${int.format(r.total?.count ?? 0)} ${plural(r.total?.count ?? 0, 'операция', 'операции', 'операций')}</h2>
-        <p class="note">${years ? `История за ${years} ${plural(years, 'год', 'года', 'лет')}: с ${first} по ${last}` : ''}</p>
+        <h2>${T.wizard.result.title(int.format(r.total?.count ?? 0), plural(r.total?.count ?? 0, ...T.common.ops))}</h2>
+        <p class="note">${years ? T.wizard.result.span(years, plural(years, ...T.common.years), first, last) : ''}</p>
       </div>
       <div class="card">
-        <div class="card-label">Что нашли</div>
-        ${row('Покупки с чеком', int.format(count('covered')), 'сумма — по чеку, с товарами')}
-        ${row('Траты без чека', int.format(expenses), `разложено по категориям: ${share}%`)}
-        ${row('Поступления', int.format(count('income')))}
-        ${row('Переводы между своими', int.format(count('transfer')), 'не трата и не доход')}
-        ${count('excluded') ? row('Не учитываются', int.format(count('excluded'))) : ''}
+        <div class="card-label">${T.wizard.result.foundLabel}</div>
+        ${row(T.wizard.result.covered, int.format(count('covered')), T.wizard.result.coveredHint)}
+        ${row(T.wizard.result.expense, int.format(expenses), T.wizard.result.expenseHint(share))}
+        ${row(T.wizard.result.income, int.format(count('income')))}
+        ${row(T.wizard.result.transfer, int.format(count('transfer')), T.wizard.result.transferHint)}
+        ${count('excluded') ? row(T.wizard.result.excluded, int.format(count('excluded'))) : ''}
       </div>
       ${expenses - sorted > 0 ? `
       <div class="card">
-        <p class="note">Без категории — ${int.format(expenses - sorted)} ${plural(expenses - sorted, 'трата', 'траты', 'трат')}: переводы людям, наличные, маркетплейсы. Их можно разложить в расходах — выбор для продавца запоминается на все его операции.</p>
+        <p class="note">${T.wizard.result.rest(int.format(expenses - sorted), plural(expenses - sorted, ...T.wizard.result.restWord))}</p>
       </div>` : ''}
       <div class="card">
-        <div class="card-label">По счетам</div>
+        <div class="card-label">${T.wizard.result.byAccount}</div>
         ${accounts}
       </div>`;
   },
@@ -2221,16 +2212,16 @@ const WIZ_SCREENS = {
 /** Сколько частей и времени займёт загрузка выбранных счетов. */
 function wizEstimate(w) {
   const chosen = (w.accounts ?? []).filter((a) => w.selected.includes(a.id));
-  if (!chosen.length) return 'Выберите хотя бы один счёт.';
-  const n = `${chosen.length} ${plural(chosen.length, 'счёт', 'счёта', 'счетов')}`;
+  if (!chosen.length) return T.wizard.found.pickOne;
+  const n = `${chosen.length} ${plural(chosen.length, ...T.common.accounts)}`;
   // У Сбера возраст счёта неизвестен и грузим единой историей — оценка общая
   if (chosen.some((a) => !a.created)) {
-    return `Выбрано ${n}. Загрузим все операции; это несколько минут, лучше по Wi-Fi.`;
+    return T.wizard.found.estimateRough(n);
   }
   const parts = chosen.reduce((count, a) => count + (a.years ?? 1), 0);
   const min = Math.max(1, Math.ceil((parts * WIZ_PART_SEC) / 60));
   const since = Math.min(...chosen.map((a) => new Date(a.created).getFullYear()));
-  return `Выбрано ${n}, история с ${since} года. Займёт около ${min} мин. Лучше по Wi-Fi — это десятки мегабайт.`;
+  return T.wizard.found.estimate(n, since, min);
 }
 
 /** Кнопки внизу — у каждого шага своя главная. */
@@ -2239,17 +2230,17 @@ function wizActions() {
   const p = wiz.progress ?? {};
   switch (wiz.step) {
     case 'intro':
-      return '<button class="btn primary big" type="button" data-wiz="begin">Начать</button>';
+      return `<button class="btn primary big" type="button" data-wiz="begin">${T.wizard.intro.start}</button>`;
     case 'analyze':
-      return wiz.error ? '<button class="btn primary big" type="button" data-wiz="begin">Попробовать ещё раз</button>' : '';
+      return wiz.error ? `<button class="btn primary big" type="button" data-wiz="begin">${T.wizard.analyze.retry}</button>` : '';
     case 'found':
-      return `<button class="btn primary big" type="button" data-wiz="sync"${wiz.selected.length ? '' : ' disabled'}>Начать синхронизацию</button>`;
+      return `<button class="btn primary big" type="button" data-wiz="sync"${wiz.selected.length ? '' : ' disabled'}>${T.wizard.found.go}</button>`;
     case 'load':
       return p.stage === 'load' || p.stage === 'wait'
-        ? '<button class="btn big" type="button" data-wiz="stop">Остановить</button>'
-        : '<button class="btn primary big" type="button" data-wiz="resume">Продолжить загрузку</button>';
+        ? `<button class="btn big" type="button" data-wiz="stop">${T.wizard.load.stop}</button>`
+        : `<button class="btn primary big" type="button" data-wiz="resume">${T.wizard.load.resume}</button>`;
     case 'result':
-      return '<button class="btn primary big" type="button" data-wiz="done">Готово</button>';
+      return `<button class="btn primary big" type="button" data-wiz="done">${T.wizard.result.done}</button>`;
     default:
       return '';
   }
@@ -2275,16 +2266,16 @@ function wizTick() {
   // Средняя плитка: у Т-Банка — куски плана, у Сбера — общее число операций
   const mid = $('wiz-mid');
   if (mid) {
-    mid.textContent = !total ? '—' : p.byOps ? int.format(total) : `${done} из ${total}`;
-    $('wiz-mid-label').textContent = p.byOps ? 'всего' : 'частей';
+    mid.textContent = !total ? '—' : p.byOps ? int.format(total) : T.bankCard.accounts.count(done, total);
+    $('wiz-mid-label').textContent = p.byOps ? T.wizard.load.total : T.wizard.load.parts;
   }
 
   if (p.stage === 'count') {
-    $('wiz-now').textContent = 'Считаем, сколько всего операций…';
+    $('wiz-now').textContent = T.wizard.load.counting;
     return;
   }
   if (!total) {
-    $('wiz-now').textContent = 'Загружаем операции…';
+    $('wiz-now').textContent = T.wizard.load.running;
     return;
   }
   bar.style.width = `${Math.min(100, Math.round((done / total) * 100))}%`;
@@ -2297,9 +2288,9 @@ function wizTick() {
     !left || eta == null ? '—' : eta < 60 ? `${Math.max(1, Math.round(eta))} с` : `${Math.ceil(eta / 60)} мин`;
   $('wiz-now').textContent =
     waitLeft > 0
-      ? `Банк просит подождать: продолжим через ${waitLeft} с`
+      ? T.wizard.load.waiting(waitLeft)
       : p.stage === 'load' && p.account
-        ? `Сейчас: ${p.account}, ${p.year} год`
+        ? T.wizard.load.now(p.account, p.year)
         : '';
 }
 
@@ -2369,7 +2360,7 @@ async function wizFinish() {
   } catch (err) {
     wiz.step = 'load';
     wiz.progress = { ...wiz.progress, stage: 'error' };
-    wiz.error = `Не удалось разложить: ${err.message}`;
+    wiz.error = T.wizard.result.markFailed(err.message);
     if (state.screen === 'bank_wizard') render();
   }
 }
@@ -2431,7 +2422,7 @@ $('screen').addEventListener('change', async (e) => {
   const box = e.target.closest('[data-bank-acc]');
   if (!box) return;
   const ops = Number(box.dataset.ops) || 0;
-  if (!box.checked && ops && !confirm(`Не брать операции с этого счёта? ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')} перестанут учитываться.`)) {
+  if (!box.checked && ops && !confirm(T.bankCard.accounts.offConfirm(int.format(ops), plural(ops, ...T.common.ops)))) {
     box.checked = true;
     return;
   }
@@ -2442,7 +2433,7 @@ $('screen').addEventListener('change', async (e) => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ accounts: [{ id: box.dataset.bankAcc, enabled: box.checked }] }),
     });
-    toast(box.checked ? 'Счёт снова учитывается' : 'Счёт больше не учитывается');
+    toast(box.checked ? T.bankCard.accounts.on : T.bankCard.accounts.off);
   } catch (err) {
     box.checked = !box.checked;
     toast(`Не сохранилось: ${err.message}`);
@@ -2495,7 +2486,7 @@ const SCREENS = {
   },
   settings: { title: 'Настройки', render: screenSettings },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
-  bank_add: { title: 'Подключить банк', render: screenBankAdd },
+  bank_add: { title: T.bankAdd.title, render: screenBankAdd },
   bank_wizard: {
     title: () => bankById(state.bank)?.name ?? 'Банк',
     render: screenBankWizard,
@@ -2719,16 +2710,16 @@ async function onScreenClick(e) {
     }
     if (bank.dataset.bank === 'sync') return startBankSync(id);
     if (bank.dataset.bank === 'forget') {
-      if (!confirm('Отключить банк? Загруженные операции останутся, новые приходить не будут.')) return;
+      if (!confirm(T.bankCard.manage.forgetConfirm)) return;
       bankBridge(id).forget();
       await api(`/api/bank?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
       return render();
     }
     if (bank.dataset.bank === 'wipe') {
-      if (!confirm('Удалить загруженные операции этого банка? Чеки и ручные траты останутся.')) return;
+      if (!confirm(T.bankCard.manage.wipeConfirm)) return;
       bankBridge(id).forget();
       const res = await api(`/api/bank/ops?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
-      toast(res ? `Операции удалены: ${int.format(res.ops ?? 0)}` : 'Не удалилось');
+      toast(res ? T.bankCard.manage.wiped(int.format(res.ops ?? 0)) : T.common.failed);
       bankLinked = false;
       return go({ screen: 'settings' });
     }
@@ -2970,18 +2961,23 @@ async function screenSettings() {
   ]);
   return `
     <div class="card profile">
-      <div class="card-label">Вход</div>
-      ${inlineEdit('name', me?.name ?? '', { cls: 'profile-name', label: 'Имя', placeholder: 'Ваше имя', max: 60 })}
+      <div class="card-label">${T.settings.login.label}</div>
+      ${inlineEdit('name', me?.name ?? '', {
+        cls: 'profile-name',
+        label: T.settings.login.nameLabel,
+        placeholder: T.settings.login.namePlaceholder,
+        max: 60,
+      })}
       <div class="login-row">
-        <span class="note">${me?.telegram ? 'Вход через Телеграм' : 'Вход по паролю'}</span>
-        <button class="row-icon" type="button" data-logout aria-label="Выйти на этом устройстве" title="Выйти на этом устройстве">${UI.logout}</button>
+        <span class="note">${me?.telegram ? T.settings.login.viaTelegram : T.settings.login.viaPassword}</span>
+        <button class="row-icon" type="button" data-logout aria-label="${T.settings.login.logout}" title="${T.settings.login.logout}">${UI.logout}</button>
       </div>
     </div>
     ${budgetSection(budget)}
     ${bankSection(bank)}
     <div class="settings-actions">
-      ${me?.role === 'admin' ? '' : '<button class="btn danger" type="button" data-delete-account>Удалить аккаунт и все данные</button>'}
-      <p class="note"><a href="/privacy.html">Какие данные хранит Чекер</a></p>
+      ${me?.role === 'admin' ? '' : `<button class="btn danger" type="button" data-delete-account>${T.settings.deleteAccount}</button>`}
+      <p class="note"><a href="/privacy.html">${T.common.privacy}</a></p>
     </div>`;
 }
 
@@ -3046,7 +3042,7 @@ function bankSection(bank) {
       const ops = link?.ops ?? 0;
       // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
       // что у подключённого, только значок серый; обновление само начнёт с входа
-      const note = `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`;
+      const note = `${link?.synced_at ? ago(link.synced_at) : T.settings.banks.neverSynced} · ${int.format(ops)} ${plural(ops, ...T.common.ops)}`;
       const syncing = bankSyncing === b.id;
       return `
         <div class="member bank-row">
@@ -3054,17 +3050,17 @@ function bankSection(bank) {
             ${bankLogo(b, !expired)}
             <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
           </button>
-          <button class="row-icon${syncing ? ' spin' : ''}" type="button" data-bank="${expired ? 'relogin' : 'sync'}" data-bank-id="${b.id}"${syncing ? ' disabled' : ''} aria-label="Обновить операции" title="Обновить операции">${UI.refresh}</button>
+          <button class="row-icon${syncing ? ' spin' : ''}" type="button" data-bank="${expired ? 'relogin' : 'sync'}" data-bank-id="${b.id}"${syncing ? ' disabled' : ''} aria-label="${T.settings.banks.refresh}" title="${T.settings.banks.refresh}">${UI.refresh}</button>
         </div>`;
     })
     .join('');
 
   return `
     <div class="card bank">
-      <div class="card-label">Банки</div>
+      <div class="card-label">${T.settings.banks.label}</div>
       ${rows}
       <button class="member member-invite" type="button" data-bank-add>
-        <span class="member-name">Подключить банк</span>
+        <span class="member-name">${T.settings.banks.add}</span>
         <span class="row-icon">${UI.plus}</span>
       </button>
     </div>`;
@@ -3077,18 +3073,21 @@ function screenBankAdd() {
     .map((b) => `
       <button class="member bank-row bank-add" type="button"${b.ready ? ` data-bank-open="${b.id}"` : ' disabled'}>
         ${bankLogo(b, false)}
-        <span class="member-name">${b.name}<small class="note">${b.ready ? 'можно подключить' : 'скоро'}</small></span>
+        <span class="member-name">${b.name}<small class="note">${b.ready ? T.bankAdd.ready : T.bankAdd.soon}</small></span>
         ${b.ready ? `<span class="row-icon">${UI.chevron}</span>` : ''}
       </button>`)
     .join('');
 
   return `
     <div class="card bank">
-      <div class="card-label">Не подключены</div>
-      ${rows || '<p class="note">Все банки уже подключены.</p>'}
+      <div class="card-label">${T.bankAdd.label}</div>
+      ${rows || `<p class="note">${T.bankAdd.allConnected}</p>`}
     </div>
-    <p class="note list-hint">Вход в банк проходит на вашем телефоне, в окне банка. Пароль Чекер не видит.</p>`;
+    <p class="note list-hint">${T.bankAdd.hint}</p>`;
 }
+
+/** Список фактов из текстов: у каждого жирное начало и пояснение. */
+const facts = (list) => list.map(([bold, rest]) => `<li><b>${bold}</b> ${rest}</li>`).join('');
 
 /** Хвост счёта: последние цифры карты, а если их нет — самого счёта. */
 function tail(a) {
@@ -3144,51 +3143,46 @@ async function screenBankCard() {
           <div class="budget-name">${b.name}</div>
           <p class="note${expired ? ' error' : ''}">${
             expired
-              ? 'Банк просит войти заново — сессия живёт несколько часов'
+              ? T.bankCard.expired
               : connected
-                ? `Подключён · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}${link?.synced_at ? ` · обновлено ${ago(link.synced_at)}` : ''}`
-                : b.ready ? 'Не подключён' : 'Подключение появится позже'
+                ? T.bankCard.connected(int.format(ops), plural(ops, ...T.common.ops), link?.synced_at ? ago(link.synced_at) : '')
+                : b.ready ? T.bankCard.notConnected : T.bankCard.soon
           }</p>
         </div>
       </div>
     </div>
 
-    ${fold(`${UI.shield} Что с данными`, `
-      <ul class="bank-facts">
-        <li><b>Вход в банк — на вашем телефоне.</b> Приложение открывает окно банка, вы вводите телефон, код из СМС и пароль сами.</li>
-        <li><b>Пароль не сохраняется нигде.</b> Сессия банка остаётся на телефоне в зашифрованном виде: ключ не покидает устройство.</li>
-        <li><b>На сервер приходят только операции:</b> дата, сумма, продавец, категория банка и последние четыре цифры карты.</li>
-        <li><b>Никому не передаём.</b> Операции видны только вам и участникам вашего бюджета.</li>
-      </ul>
-      <p class="note fold-link"><a href="/privacy.html">Какие данные хранит Чекер</a></p>`)}
+    ${fold(`${UI.shield} ${T.bankCard.safety.label}`, `
+      <ul class="bank-facts">${facts(T.bankCard.safety.facts)}</ul>
+      <p class="note fold-link"><a href="/privacy.html">${T.common.privacy}</a></p>`, true)}
 
-    ${accounts.length ? fold(`${UI.card} Счета<span class="fold-count">${accounts.filter((a) => a.enabled).length} из ${accounts.length}</span>`, `
-      <p class="note">Операции берём только с отмеченных. Снятая галочка убирает операции счёта из учёта, возвращённая — возвращает.</p>
+    ${accounts.length ? fold(`${UI.card} ${T.bankCard.accounts.label}<span class="fold-count">${T.bankCard.accounts.count(accounts.filter((a) => a.enabled).length, accounts.length)}</span>`, `
+      <p class="note">${T.bankCard.accounts.hint}</p>
       <div class="wiz-accs">${accounts.map((a) => `
         <label class="wiz-acc">
           <input type="checkbox" data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"${a.enabled ? ' checked' : ''} />
           <span class="wiz-acc-main">
             <span class="wiz-acc-name">${esc(a.name || a.id)}<span class="acc-tail">${esc(tail(a))}</span></span>
-            <small class="note">${esc(ACCOUNT_TYPES[a.type] ?? a.type ?? 'счёт')}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${plural(a.ops, 'операция', 'операции', 'операций')}</small>
+            <small class="note">${esc(ACCOUNT_TYPES[a.type] ?? a.type ?? T.bankCard.accounts.kind)}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${plural(a.ops, ...T.common.ops)}</small>
           </span>
         </label>`).join('')}
       </div>`) : ''}
 
     ${!b.ready
-      ? '<div class="settings-actions"><button class="btn big" type="button" disabled>Подключение появится позже</button></div>'
+      ? `<div class="settings-actions"><button class="btn big" type="button" disabled>${T.bankCard.soon}</button></div>`
       : !connected
         ? `<div class="settings-actions">${
             canWizard(b.id)
-              ? `<button class="btn primary big with-ic" type="button" data-wizard="${b.id}">${UI.login} Подключить</button>`
-              : `<button class="btn primary big with-ic" type="button" data-bank="login" data-bank-id="${b.id}">${UI.login} Подключить</button>`
+              ? `<button class="btn primary big with-ic" type="button" data-wizard="${b.id}">${UI.login} ${T.settings.banks.connect}</button>`
+              : `<button class="btn primary big with-ic" type="button" data-bank="login" data-bank-id="${b.id}">${UI.login} ${T.settings.banks.connect}</button>`
           }</div>`
-        : fold(`${UI.settings} Управление`, `
+        : fold(`${UI.settings} ${T.bankCard.manage.label}`, `
             <div class="acts">
-              ${!expired && canWizard(b.id) ? act('wizard', b.id, 'Загрузить всю историю', UI.history) : ''}
-              ${!expired ? act('sync', b.id, 'Обновить операции', UI.refresh) : ''}
-              ${act('login', b.id, 'Войти в банк заново', UI.login)}
-              ${act('forget', b.id, 'Отключить банк', UI.unlink)}
-              ${ops ? act('wipe', b.id, 'Удалить загруженные операции', UI.trash, true) : ''}
+              ${!expired && canWizard(b.id) ? act('wizard', b.id, T.bankCard.manage.history, UI.history) : ''}
+              ${!expired ? act('sync', b.id, T.bankCard.manage.sync, UI.refresh) : ''}
+              ${act('login', b.id, T.bankCard.manage.relogin, UI.login)}
+              ${act('forget', b.id, T.bankCard.manage.forget, UI.unlink)}
+              ${ops ? act('wipe', b.id, T.bankCard.manage.wipe, UI.trash, true) : ''}
             </div>`)}`;
 }
 
@@ -3231,15 +3225,15 @@ async function onSettingsClick(e) {
     }
 
     if (e.target.closest('[data-logout]')) {
-      if (!confirm('Выйти на этом устройстве?')) return;
+      if (!confirm(T.settings.login.logoutConfirm)) return;
       await api('/api/logout', { method: 'POST' }).catch(() => {});
       token.clear();
       location.reload();
     }
 
     if (e.target.closest('[data-delete-account]')) {
-      if (!confirm('Удалить аккаунт? Пропадут все чеки, ручные траты, категории и правки.')) return;
-      if (!confirm('Точно? Восстановить аккаунт будет нельзя.')) return;
+      if (!confirm(T.settings.deleteConfirm)) return;
+      if (!confirm(T.settings.deleteConfirm2)) return;
       try {
         await api('/api/account', { method: 'DELETE' });
         token.clear();
@@ -3478,13 +3472,7 @@ window.addEventListener('checker-bank', (e) => {
   bankSyncing = null;
   const r = e.detail ?? {};
   // Показываем новое, а не всё проверенное: банк каждый раз отдаёт и последние дни
-  toast(
-    r.ok
-      ? r.ops
-        ? `Новых операций: ${int.format(r.ops)}`
-        : 'Новых операций нет'
-      : `Банк: ${r.error ?? 'не вышло'}`,
-  );
+  toast(r.ok ? (r.ops ? T.bankCard.sync.added(int.format(r.ops)) : T.bankCard.sync.none) : T.bankCard.sync.failed(r.error));
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
