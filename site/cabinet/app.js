@@ -140,9 +140,12 @@ function writeUrl() {
 
 const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** Пресет периода → диапазон дат, отсчёт от сегодня. */
+/**
+ * Пресет периода → диапазон дат. Сразу после нажатия чипса — отсчёт от сегодня; после
+ * листания стрелками даты уже заданы, а пресет остаётся длиной шага и чипс не гаснет.
+ */
 function periodRange() {
-  if (!state.period) return { from: state.from, to: state.to };
+  if (!state.period || (state.from && state.to)) return { from: state.from, to: state.to };
   const days = { day: 0, week: 6, month: 29, year: 364 }[state.period];
   const to = new Date();
   const from = new Date();
@@ -161,7 +164,7 @@ function sumBounds() {
   return state.sum_dir === 'more' ? { min: state.sum, max: '' } : { min: '', max: state.sum };
 }
 
-/** Стрелки: сдвиг диапазона на его собственную длину назад или вперёд. */
+/** Стрелки: сдвиг диапазона на его собственную длину назад или вперёд. Пресет сохраняется. */
 function shiftPeriod(direction) {
   const { from, to } = periodRange();
   if (!from || !to) return;
@@ -170,7 +173,7 @@ function shiftPeriod(direction) {
   const span = Math.round((end - start) / 86400000) + 1;
   start.setDate(start.getDate() + direction * span);
   end.setDate(end.getDate() + direction * span);
-  update({ period: '', from: isoDate(start), to: isoDate(end) });
+  update({ from: isoDate(start), to: isoDate(end) });
 }
 
 function apiParams(page) {
