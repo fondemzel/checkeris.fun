@@ -76,7 +76,11 @@ const UI = {
   // Действия на странице банка
   login: svg('<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/>'),
   history: svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'),
-  unplug: svg('<path d="M12 22v-5"/><path d="M9 7V2"/><path d="M15 7V2"/><path d="M18 7v6a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V7Z"/>'),
+  unlink: svg(
+    '<path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>' +
+      '<path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71"/>' +
+      '<path d="M8 2v3"/><path d="M2 8h3"/><path d="M16 19v3"/><path d="M19 16h3"/>',
+  ),
   trash: svg('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
   shield: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
@@ -2993,7 +2997,7 @@ const bankById = (id) => BANKS.find((b) => b.id === id);
 /** Значок банка: официальный логотип, а если файла нет — буква названия. */
 const bankLogo = (b, connected) => `
   <span class="bank-logo${connected ? '' : ' off'}" data-letter="${esc(b.name[0])}">
-    <img src="${b.logo}" alt="" onerror="this.remove()" />
+    <img src="${b.logo}" alt="" onerror="this.remove()" onload="this.parentNode.classList.add('has-logo')" />
   </span>`;
 
 /**
@@ -3034,6 +3038,16 @@ function bankSection(bank) {
       ${rows}
     </div>`;
 }
+
+/**
+ * Строка действия: слева название, справа значок. Строками, а не кнопками, — их много
+ * и они однотипные, а строка читается сверху вниз одним списком.
+ * «Загрузить всю историю» открывает мастер (data-wizard), остальное — data-bank.
+ */
+const act = (what, bank, title, icon, danger = false) =>
+  `<button class="act${danger ? ' danger' : ''}" type="button" ${
+    what === 'wizard' ? `data-wizard="${bank}"` : `data-bank="${what}" data-bank-id="${bank}"`
+  }>${title}<span class="act-ic">${icon}</span></button>`;
 
 /**
  * Сворачиваемый блок: виден заголовок, содержимое открывается нажатием. Нативный
@@ -3097,7 +3111,7 @@ async function screenBankCard() {
         <label class="wiz-acc">
           <input type="checkbox" data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"${a.enabled ? ' checked' : ''} />
           <span class="wiz-acc-main">
-            <span class="wiz-acc-name">${esc(a.name ?? a.id)}</span>
+            <span class="wiz-acc-name">${esc(a.name || a.id)}</span>
             <small class="note">${esc(ACCOUNT_TYPES[a.type] ?? a.type ?? 'счёт')}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${plural(a.ops, 'операция', 'операции', 'операций')}</small>
           </span>
         </label>`).join('')}
@@ -3112,12 +3126,12 @@ async function screenBankCard() {
               : `<button class="btn primary big with-ic" type="button" data-bank="login" data-bank-id="${b.id}">${UI.login} Подключить</button>`
           }</div>`
         : fold(`${UI.settings} Управление`, `
-            <div class="settings-actions">
-              ${!expired && canWizard(b.id) ? `<button class="btn with-ic" type="button" data-wizard="${b.id}">${UI.history} Загрузить всю историю</button>` : ''}
-              ${!expired ? `<button class="btn with-ic" type="button" data-bank="sync" data-bank-id="${b.id}">${UI.refresh} Обновить операции</button>` : ''}
-              <button class="btn with-ic" type="button" data-bank="login" data-bank-id="${b.id}">${UI.login} Войти в банк заново</button>
-              <button class="btn with-ic" type="button" data-bank="forget" data-bank-id="${b.id}">${UI.unplug} Отключить банк</button>
-              ${ops ? `<button class="btn danger with-ic" type="button" data-bank="wipe" data-bank-id="${b.id}">${UI.trash} Удалить загруженные операции</button>` : ''}
+            <div class="acts">
+              ${!expired && canWizard(b.id) ? act('wizard', b.id, 'Загрузить всю историю', UI.history) : ''}
+              ${!expired ? act('sync', b.id, 'Обновить операции', UI.refresh) : ''}
+              ${act('login', b.id, 'Войти в банк заново', UI.login)}
+              ${act('forget', b.id, 'Отключить банк', UI.unlink)}
+              ${ops ? act('wipe', b.id, 'Удалить загруженные операции', UI.trash, true) : ''}
             </div>`)}`;
 }
 

@@ -901,6 +901,9 @@ button.bank-op { cursor: pointer; }
 }
 
 .bank-logo::before { content: attr(data-letter); }
+/* Логотип загрузился — подложка с буквой не нужна: у знаков с прозрачным фоном она просвечивает */
+.bank-logo.has-logo { background: none; }
+.bank-logo.has-logo::before { content: none; }
 .bank-logo img { position: absolute; inset: 0; width: 28px; height: 28px; border-radius: 6px; }
 .bank-logo.off img { filter: grayscale(1); opacity: 0.75; } /* не подключён — значок приглушён */
 
@@ -1362,3 +1365,26 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 /* Ссылка на политику — как в настройках: неприметная, по центру */
 .fold-link { margin-top: 12px; text-align: center; }
 .fold-link a { color: inherit; }
+
+/* Строки действий в свёрнутом блоке: слева название, справа значок */
+.acts { display: flex; flex-direction: column; }
+.act {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.act:first-child { border-top: 0; padding-top: 4px; }
+.act:active { color: var(--accent); }
+.act-ic { display: flex; flex: none; color: var(--muted); }
+.act-ic svg { width: 20px; height: 20px; }
+.act.danger, .act.danger .act-ic { color: var(--danger); }
