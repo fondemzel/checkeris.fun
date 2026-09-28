@@ -12,7 +12,7 @@ import { groupIcon } from '/shared/icons.js';
 import { shades, edge, readableText } from '/shared/colors.js';
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
-import { T } from '/m/texts.js';
+import { T, f, pl } from '/m/i18n/index.js';
 
 const $ = (id) => document.getElementById(id);
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
@@ -2012,15 +2012,6 @@ const WIZ_STEPS = ['intro', 'analyze', 'found', 'load', 'result'];
 const WIZ_DOT = { intro: 0, analyze: 1, found: 2, load: 3, marking: 3, result: 4 };
 const WIZ_PART_SEC = 13; // одна часть (счёт × год): пауза, запрос, отправка — так вышло на настоящей загрузке
 
-const ACCOUNT_TYPES = {
-  Current: 'Текущий счёт',
-  Credit: 'Кредитная карта',
-  Saving: 'Накопительный счёт',
-  CurrentKids: 'Детская карта',
-  BNPL: 'Оплата долями',
-  Deposit: 'Вклад',
-};
-
 let wiz = null; // { bank, step, accounts, selected, result, progress, error, awaitLogin }
 let wizTimer = null;
 
@@ -2102,21 +2093,21 @@ const WIZ_SCREENS = {
   intro: (w, b) => `
     <div class="card wiz-hello">
       ${bankLogo(b, true)}
-      <h2>${T.wizard.intro.title(esc(b.from ?? b.name))}</h2>
+      <h2>${f(T.wizard.intro.title, { bank: esc(b.from ?? b.name) })}</h2>
       <p class="note">${T.wizard.intro.subtitle}</p>
     </div>
     <div class="card">
       <div class="card-label">${T.wizard.intro.safetyLabel}</div>
-      <ul class="bank-facts">${facts(T.wizard.intro.safety)}</ul>
+      <ul class="bank-facts">${facts(T.wizard.intro, ['safetyLogin', 'safetyRead', 'safetyYours'])}</ul>
     </div>
     <div class="card">
       <div class="card-label">${T.wizard.intro.planLabel}</div>
-      <ol class="wiz-plan">${T.wizard.intro.plan.map((step) => `<li>${step}</li>`).join('')}</ol>
+      <ol class="wiz-plan">${[1, 2, 3, 4, 5].map((i) => `<li>${T.wizard.intro[`plan${i}`]}</li>`).join('')}</ol>
     </div>`,
 
   analyze: (w) =>
     w.error
-      ? `<div class="card"><p class="note error">${T.wizard.analyze.failed(esc(w.error))}</p></div>`
+      ? `<div class="card"><p class="note error">${f(T.wizard.analyze.failed, { why: esc(w.error) })}</p></div>`
       : wizSpinner(T.wizard.analyze.wait),
 
   found: async (w) => {
@@ -2124,10 +2115,10 @@ const WIZ_SCREENS = {
     const have = bankData?.links?.find((l) => l.bank === w.bank)?.ops ?? 0;
     const thisYear = new Date().getFullYear();
     const rows = (w.accounts ?? []).map((a) => {
-      const kind = ACCOUNT_TYPES[a.type] ?? a.type ?? T.bankCard.accounts.kind;
+      const kind = T.accountTypes[a.type] ?? a.type ?? T.bankCard.accounts.kind;
       const currency = a.currency && a.currency !== 'RUB' ? ` · ${a.currency}` : '';
       // У Сбера возраста счёта нет — показываем тип; у Т-Банка добавляем «с года»
-      const age = a.created ? T.wizard.found.since(new Date(a.created).getFullYear()) : '';
+      const age = a.created ? f(T.wizard.found.since, { year: new Date(a.created).getFullYear() }) : '';
       return `
         <label class="wiz-acc">
           <input type="checkbox" data-wiz-acc="${esc(a.id)}"${w.selected.includes(a.id) ? ' checked' : ''} />
@@ -2139,12 +2130,12 @@ const WIZ_SCREENS = {
     }).join('');
     return `
       <div class="card">
-        <h2 class="wiz-title">${T.wizard.found.title(w.accounts?.length ?? 0, plural(w.accounts?.length ?? 0, ...T.common.accounts))}</h2>
+        <h2 class="wiz-title">${f(T.wizard.found.title, { n: w.accounts?.length ?? 0, word: pl(w.accounts?.length ?? 0, T.common.accounts) })}</h2>
         <p class="note">${T.wizard.found.hint}</p>
         <div class="wiz-accs">${rows}</div>
       </div>
       <div class="card"><p class="note" id="wiz-estimate">${wizEstimate(w)}</p>${
-        have ? `<p class="note">${T.wizard.found.already(int.format(have), plural(have, ...T.common.ops))}</p>` : ''
+        have ? `<p class="note">${f(T.wizard.found.already, { n: int.format(have), word: pl(have, T.common.ops) })}</p>` : ''
       }</div>`;
   },
 
@@ -2162,7 +2153,7 @@ const WIZ_SCREENS = {
           <div><b id="wiz-eta">—</b><small class="note">${T.wizard.load.left}</small></div>
         </div>
         <p class="note" id="wiz-now"></p>
-        ${failed ? `<p class="note error">${T.wizard.load.savedFailed(esc(w.error ?? ''))}</p>` : ''}
+        ${failed ? `<p class="note error">${f(T.wizard.load.savedFailed, { why: esc(w.error ?? '') })}</p>` : ''}
         ${paused ? `<p class="note">${T.wizard.load.savedStopped}</p>` : ''}
       </div>
       <p class="note wiz-hint">${T.wizard.load.keepOpen}</p>`;
@@ -2183,24 +2174,24 @@ const WIZ_SCREENS = {
     const row = (label, value, note = '') =>
       `<div class="wiz-row"><span>${label}${note ? `<small class="note">${note}</small>` : ''}</span><b>${value}</b></div>`;
     const accounts = (r.accounts ?? [])
-      .map((a) => row(esc(a.name ?? a.account), int.format(a.count), T.wizard.result.since(a.first?.slice(0, 4))))
+      .map((a) => row(esc(a.name ?? a.account), int.format(a.count), f(T.wizard.result.since, { year: a.first?.slice(0, 4) })))
       .join('');
     return `
       <div class="card wiz-hello">
-        <h2>${T.wizard.result.title(int.format(r.total?.count ?? 0), plural(r.total?.count ?? 0, ...T.common.ops))}</h2>
-        <p class="note">${years ? T.wizard.result.span(years, plural(years, ...T.common.years), first, last) : ''}</p>
+        <h2>${f(T.wizard.result.title, { n: int.format(r.total?.count ?? 0), word: pl(r.total?.count ?? 0, T.common.ops) })}</h2>
+        <p class="note">${years ? f(T.wizard.result.span, { years, word: pl(years, T.common.years), from: first, to: last }) : ''}</p>
       </div>
       <div class="card">
         <div class="card-label">${T.wizard.result.foundLabel}</div>
         ${row(T.wizard.result.covered, int.format(count('covered')), T.wizard.result.coveredHint)}
-        ${row(T.wizard.result.expense, int.format(expenses), T.wizard.result.expenseHint(share))}
+        ${row(T.wizard.result.expense, int.format(expenses), f(T.wizard.result.expenseHint, { percent: share }))}
         ${row(T.wizard.result.income, int.format(count('income')))}
         ${row(T.wizard.result.transfer, int.format(count('transfer')), T.wizard.result.transferHint)}
         ${count('excluded') ? row(T.wizard.result.excluded, int.format(count('excluded'))) : ''}
       </div>
       ${expenses - sorted > 0 ? `
       <div class="card">
-        <p class="note">${T.wizard.result.rest(int.format(expenses - sorted), plural(expenses - sorted, ...T.wizard.result.restWord))}</p>
+        <p class="note">${f(T.wizard.result.rest, { n: int.format(expenses - sorted), word: pl(expenses - sorted, T.wizard.result.restWord) })}</p>
       </div>` : ''}
       <div class="card">
         <div class="card-label">${T.wizard.result.byAccount}</div>
@@ -2213,15 +2204,15 @@ const WIZ_SCREENS = {
 function wizEstimate(w) {
   const chosen = (w.accounts ?? []).filter((a) => w.selected.includes(a.id));
   if (!chosen.length) return T.wizard.found.pickOne;
-  const n = `${chosen.length} ${plural(chosen.length, ...T.common.accounts)}`;
+  const n = `${chosen.length} ${pl(chosen.length, T.common.accounts)}`;
   // У Сбера возраст счёта неизвестен и грузим единой историей — оценка общая
   if (chosen.some((a) => !a.created)) {
-    return T.wizard.found.estimateRough(n);
+    return f(T.wizard.found.estimateRough, { n });
   }
   const parts = chosen.reduce((count, a) => count + (a.years ?? 1), 0);
   const min = Math.max(1, Math.ceil((parts * WIZ_PART_SEC) / 60));
   const since = Math.min(...chosen.map((a) => new Date(a.created).getFullYear()));
-  return T.wizard.found.estimate(n, since, min);
+  return f(T.wizard.found.estimate, { n, since, min });
 }
 
 /** Кнопки внизу — у каждого шага своя главная. */
@@ -2266,7 +2257,7 @@ function wizTick() {
   // Средняя плитка: у Т-Банка — куски плана, у Сбера — общее число операций
   const mid = $('wiz-mid');
   if (mid) {
-    mid.textContent = !total ? '—' : p.byOps ? int.format(total) : T.bankCard.accounts.count(done, total);
+    mid.textContent = !total ? '—' : p.byOps ? int.format(total) : f(T.bankCard.accounts.count, { on: done, all: total });
     $('wiz-mid-label').textContent = p.byOps ? T.wizard.load.total : T.wizard.load.parts;
   }
 
@@ -2288,9 +2279,9 @@ function wizTick() {
     !left || eta == null ? '—' : eta < 60 ? `${Math.max(1, Math.round(eta))} с` : `${Math.ceil(eta / 60)} мин`;
   $('wiz-now').textContent =
     waitLeft > 0
-      ? T.wizard.load.waiting(waitLeft)
+      ? f(T.wizard.load.waiting, { sec: waitLeft })
       : p.stage === 'load' && p.account
-        ? T.wizard.load.now(p.account, p.year)
+        ? f(T.wizard.load.now, { account: p.account, year: p.year })
         : '';
 }
 
@@ -2360,7 +2351,7 @@ async function wizFinish() {
   } catch (err) {
     wiz.step = 'load';
     wiz.progress = { ...wiz.progress, stage: 'error' };
-    wiz.error = T.wizard.result.markFailed(err.message);
+    wiz.error = f(T.wizard.result.markFailed, { why: err.message });
     if (state.screen === 'bank_wizard') render();
   }
 }
@@ -2422,7 +2413,7 @@ $('screen').addEventListener('change', async (e) => {
   const box = e.target.closest('[data-bank-acc]');
   if (!box) return;
   const ops = Number(box.dataset.ops) || 0;
-  if (!box.checked && ops && !confirm(T.bankCard.accounts.offConfirm(int.format(ops), plural(ops, ...T.common.ops)))) {
+  if (!box.checked && ops && !confirm(f(T.bankCard.accounts.offConfirm, { ops: int.format(ops), opsWord: pl(ops, T.common.ops) }))) {
     box.checked = true;
     return;
   }
@@ -2719,7 +2710,7 @@ async function onScreenClick(e) {
       if (!confirm(T.bankCard.manage.wipeConfirm)) return;
       bankBridge(id).forget();
       const res = await api(`/api/bank/ops?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
-      toast(res ? T.bankCard.manage.wiped(int.format(res.ops ?? 0)) : T.common.failed);
+      toast(res ? f(T.bankCard.manage.wiped, { n: int.format(res.ops ?? 0) }) : T.common.failed);
       bankLinked = false;
       return go({ screen: 'settings' });
     }
@@ -3042,7 +3033,7 @@ function bankSection(bank) {
       const ops = link?.ops ?? 0;
       // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
       // что у подключённого, только значок серый; обновление само начнёт с входа
-      const note = `${link?.synced_at ? ago(link.synced_at) : T.settings.banks.neverSynced} · ${int.format(ops)} ${plural(ops, ...T.common.ops)}`;
+      const note = `${link?.synced_at ? ago(link.synced_at) : T.settings.banks.neverSynced} · ${int.format(ops)} ${pl(ops, T.common.ops)}`;
       const syncing = bankSyncing === b.id;
       return `
         <div class="member bank-row">
@@ -3086,8 +3077,12 @@ function screenBankAdd() {
     <p class="note list-hint">${T.bankAdd.hint}</p>`;
 }
 
-/** Список фактов из текстов: у каждого жирное начало и пояснение. */
-const facts = (list) => list.map(([bold, rest]) => `<li><b>${bold}</b> ${rest}</li>`).join('');
+/**
+ * Список фактов: у каждого жирное начало и пояснение. В текстах они лежат парами
+ * `<имя>Bold` и `<имя>Text` — так их проще переводить по одной строке.
+ */
+const facts = (node, names) =>
+  names.map((name) => `<li><b>${node[`${name}Bold`]}</b> ${node[`${name}Text`]}</li>`).join('');
 
 /** Хвост счёта: последние цифры карты, а если их нет — самого счёта. */
 function tail(a) {
@@ -3145,7 +3140,8 @@ async function screenBankCard() {
             expired
               ? T.bankCard.expired
               : connected
-                ? T.bankCard.connected(int.format(ops), plural(ops, ...T.common.ops), link?.synced_at ? ago(link.synced_at) : '')
+                ? f(T.bankCard.connected, { ops: int.format(ops), opsWord: pl(ops, T.common.ops) })
+                  + (link?.synced_at ? f(T.bankCard.connectedAt, { when: ago(link.synced_at) }) : '')
                 : b.ready ? T.bankCard.notConnected : T.bankCard.soon
           }</p>
         </div>
@@ -3153,17 +3149,17 @@ async function screenBankCard() {
     </div>
 
     ${fold(`${UI.shield} ${T.bankCard.safety.label}`, `
-      <ul class="bank-facts">${facts(T.bankCard.safety.facts)}</ul>
+      <ul class="bank-facts">${facts(T.bankCard.safety, ['login', 'password', 'server', 'private'])}</ul>
       <p class="note fold-link"><a href="/privacy.html">${T.common.privacy}</a></p>`, true)}
 
-    ${accounts.length ? fold(`${UI.card} ${T.bankCard.accounts.label}<span class="fold-count">${T.bankCard.accounts.count(accounts.filter((a) => a.enabled).length, accounts.length)}</span>`, `
+    ${accounts.length ? fold(`${UI.card} ${T.bankCard.accounts.label}<span class="fold-count">${f(T.bankCard.accounts.count, { on: accounts.filter((a) => a.enabled).length, all: accounts.length })}</span>`, `
       <p class="note">${T.bankCard.accounts.hint}</p>
       <div class="wiz-accs">${accounts.map((a) => `
         <label class="wiz-acc">
           <input type="checkbox" data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"${a.enabled ? ' checked' : ''} />
           <span class="wiz-acc-main">
             <span class="wiz-acc-name">${esc(a.name || a.id)}<span class="acc-tail">${esc(tail(a))}</span></span>
-            <small class="note">${esc(ACCOUNT_TYPES[a.type] ?? a.type ?? T.bankCard.accounts.kind)}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${plural(a.ops, ...T.common.ops)}</small>
+            <small class="note">${esc(T.accountTypes[a.type] ?? a.type ?? T.bankCard.accounts.kind)}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${pl(a.ops, T.common.ops)}</small>
           </span>
         </label>`).join('')}
       </div>`) : ''}
@@ -3190,9 +3186,9 @@ async function screenBankCard() {
 function ago(iso) {
   if (!iso) return '';
   const min = Math.round((Date.now() - Date.parse(iso)) / 60_000);
-  if (min < 1) return 'только что';
-  if (min < 60) return `${min} мин назад`;
-  if (min < 24 * 60) return `${Math.round(min / 60)} ч назад`;
+  if (min < 1) return T.common.agoNow;
+  if (min < 60) return f(T.common.agoMin, { n: min });
+  if (min < 24 * 60) return f(T.common.agoHour, { n: Math.round(min / 60) });
   return dateRu(iso.slice(0, 10));
 }
 
@@ -3472,7 +3468,13 @@ window.addEventListener('checker-bank', (e) => {
   bankSyncing = null;
   const r = e.detail ?? {};
   // Показываем новое, а не всё проверенное: банк каждый раз отдаёт и последние дни
-  toast(r.ok ? (r.ops ? T.bankCard.sync.added(int.format(r.ops)) : T.bankCard.sync.none) : T.bankCard.sync.failed(r.error));
+  toast(
+    r.ok
+      ? r.ops
+        ? f(T.bankCard.sync.added, { n: int.format(r.ops) })
+        : T.bankCard.sync.none
+      : f(T.bankCard.sync.failed, { why: r.error ?? T.bankCard.sync.failedUnknown }),
+  );
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
 
