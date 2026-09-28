@@ -63,8 +63,25 @@ public class BankLoginActivity extends Activity {
                 else handler.cancel();
             }
         });
-        web.loadUrl(bank.equals("sber") ? SberBank.LOGIN_URL : TBank.LOGIN_URL);
+        web.loadUrl(sber ? SberBank.LOGIN_URL : TBank.LOGIN_URL);
+
+        // Сбербанк Онлайн — одностраничное приложение: после входа целая страница не
+        // перезагружается, и onPageFinished больше не срабатывает. Поэтому опрашиваем сами
+        if (sber) handler.postDelayed(poll, POLL_MS);
     }
+
+    private static final long POLL_MS = 1500;
+    private boolean checking; // одна проверка за раз, чтобы запросы не наслаивались
+    private long lastNet; // когда последний раз ходили к банку — чтобы не частить впустую
+
+    private final Runnable poll = new Runnable() {
+        @Override
+        public void run() {
+            if (done) return;
+            check();
+            handler.postDelayed(this, POLL_MS);
+        }
+    };
 
     /** После каждой страницы смотрим: не появилась ли рабочая сессия. */
     private void check() {
@@ -88,10 +105,20 @@ public class BankLoginActivity extends Activity {
      */
     private void checkSber() {
         final String cookies = SberBank.cookies();
-        if (cookies == null) return;
+        if (cookies == null || checking) return;
+        // Как только появилась кука сессии, проверяем сразу — вход виден мгновенно. Без неё
+        // не дёргаем банк чаще раза в 5 c: у гостя куки тоже есть, но сессии ещё нет
+        boolean signedIn = cookies.contains("SBTSBOL_SESSION");
+        long now = System.currentTimeMillis();
+        if (!signedIn && now - lastNet < 5000) return;
+        lastNet = now;
+        checking = true;
         new Thread(() -> {
-            if (SberBank.check(cookies) != SberBank.ALIVE) return;
-            handler.post(() -> connected(SBER_SESSION, SberBank.cookies(), "Сбербанк Онлайн подключён"));
+            boolean alive = SberBank.check(cookies) == SberBank.ALIVE;
+            handler.post(() -> {
+                checking = false;
+                if (alive) connected(SBER_SESSION, SberBank.cookies(), "Сбербанк Онлайн подключён");
+            });
         }).start();
     }
 
@@ -117,6 +144,7 @@ public class BankLoginActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        handler.removeCallbacks(poll);
         if (web != null) {
             web.setVisibility(View.GONE);
             web.destroy();

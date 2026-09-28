@@ -44,6 +44,7 @@ public class BankJobService extends JobService {
         new Thread(() -> {
             String token = new Secrets(this).get(BankSync.TOKEN);
             if (token != null && BankSync.connected(this)) BankSync.run(this, token);
+            if (token != null && SberSync.connected(this)) SberSync.run(this, token);
             jobFinished(params, false);
         }).start();
         return true; // работа продолжается в потоке

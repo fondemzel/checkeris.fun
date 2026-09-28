@@ -2640,15 +2640,6 @@ async function onScreenClick(e) {
   const bankOpen = e.target.closest('[data-bank-open]');
   if (bankOpen) return go({ screen: 'bank_card', bank: bankOpen.dataset.bankOpen });
 
-  // Временная проверка связи со Сбером — до полноценного подключения
-  const sber = e.target.closest('[data-sber]');
-  if (sber) {
-    if (sber.dataset.sber === 'login') return window.Checker.sberLogin();
-    sber.disabled = true;
-    sber.textContent = 'Проверяем…';
-    return window.Checker.sberProbe(token.get());
-  }
-
   const wizButton = e.target.closest('[data-wiz]');
   if (wizButton) return onWizardClick(wizButton);
 
@@ -2663,18 +2654,18 @@ async function onScreenClick(e) {
     // сразу обновление: ради него обычно и входят
     if (bank.dataset.bank === 'login' || bank.dataset.bank === 'relogin') {
       syncAfterLogin = id;
-      return window.Checker.bankLogin();
+      return bankBridge(id).login();
     }
     if (bank.dataset.bank === 'sync') return startBankSync(id);
     if (bank.dataset.bank === 'forget') {
       if (!confirm('Отключить банк? Загруженные операции останутся, новые приходить не будут.')) return;
-      window.Checker.bankForget();
+      bankBridge(id).forget();
       await api(`/api/bank?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
       return render();
     }
     if (bank.dataset.bank === 'wipe') {
       if (!confirm('Удалить загруженные операции этого банка? Чеки и ручные траты останутся.')) return;
-      window.Checker.bankForget();
+      bankBridge(id).forget();
       const res = await api(`/api/bank/ops?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
       toast(res ? `Операции удалены: ${int.format(res.ops ?? 0)}` : 'Не удалилось');
       bankLinked = false;
@@ -2960,8 +2951,15 @@ const BANKS = [
   { id: 'tbank', name: 'Т-Банк', from: 'Т-Банка', logo: '/shared/brand/tbank.png', ready: true },
   { id: 'vtb', name: 'ВТБ', from: 'ВТБ', logo: '/shared/brand/vtb.svg' },
   { id: 'alfa', name: 'Альфа-Банк', from: 'Альфа-Банка', logo: '/shared/brand/alfa.svg' },
-  { id: 'sber', name: 'Сбербанк', from: 'Сбербанка', logo: '/shared/brand/sber.svg' },
+  { id: 'sber', name: 'Сбербанк', from: 'Сбербанка', logo: '/shared/brand/sber.svg', ready: true },
 ];
+
+// Состояние банка на этом устройстве: active | expired | off. У каждого банка своё —
+// приложение отдаёт карту banks; поле bank/bankState осталось для старых версий
+const bankState = (id) => {
+  const info = appInfo();
+  return info.banks?.[id] ?? (info.bank === id ? info.bankState : 'off') ?? 'off';
+};
 
 const bankById = (id) => BANKS.find((b) => b.id === id);
 
@@ -2978,11 +2976,11 @@ const bankLogo = (b, connected) => `
  */
 function bankSection(bank) {
   if (!inApp()) return '';
-  const connectedId = appInfo().bank;
   const rows = BANKS.map((b) => {
     const link = bank?.links?.find((l) => l.bank === b.id);
-    const connected = connectedId === b.id;
-    const expired = connected && appInfo().bankState === 'expired';
+    const state = bankState(b.id);
+    const connected = state !== 'off';
+    const expired = state === 'expired';
     const ops = link?.ops ?? 0;
     // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
     // что у подключённого, только значок серый; обновление само начнёт с входа
@@ -3025,8 +3023,9 @@ async function screenBankCard() {
     : [null, null];
   const link = data?.links?.find((l) => l.bank === b.id);
   const accounts = accs?.accounts ?? [];
-  const connected = inApp() && appInfo().bank === b.id;
-  const expired = connected && appInfo().bankState === 'expired';
+  const state = inApp() ? bankState(b.id) : 'off';
+  const connected = state !== 'off';
+  const expired = state === 'expired';
   const ops = link?.ops ?? 0;
 
   return `
@@ -3073,16 +3072,12 @@ async function screenBankCard() {
     </div>
 
     <div class="settings-actions">
-      ${b.id === 'sber' && window.Checker?.sberProbe
-        ? `<button class="btn primary big" type="button" data-sber="login">Войти в Сбербанк Онлайн</button>
-           <button class="btn" type="button" data-sber="probe">Проверить связь</button>
-           <p class="note">Проверка перед подключением: пускает ли Сбер запрос из приложения. Войдите, затем нажмите «Проверить связь».</p>`
-        : !b.ready
+      ${!b.ready
         ? '<button class="btn big" type="button" disabled>Подключение появится позже</button>'
-        : !connected && window.Checker?.historyStart
+        : !connected && b.id !== 'sber' && window.Checker?.historyStart
           ? `<button class="btn primary big" type="button" data-wizard="${b.id}">Подключить</button>`
           : `<button class="btn${connected ? '' : ' primary big'}" type="button" data-bank="login" data-bank-id="${b.id}">${connected ? 'Войти в банк заново' : 'Подключить'}</button>`}
-      ${connected && !expired && window.Checker?.historyStart ? `<button class="btn${ops ? '' : ' primary big'}" type="button" data-wizard="${b.id}">Загрузить всю историю</button>` : ''}
+      ${connected && !expired && b.id !== 'sber' && window.Checker?.historyStart ? `<button class="btn${ops ? '' : ' primary big'}" type="button" data-wizard="${b.id}">Загрузить всю историю</button>` : ''}
       ${connected && !expired ? `<button class="btn" type="button" data-bank="sync" data-bank-id="${b.id}">Обновить операции</button>` : ''}
       ${connected ? `<button class="btn" type="button" data-bank="forget" data-bank-id="${b.id}">Отключить банк</button>` : ''}
       ${ops ? `<button class="btn danger" type="button" data-bank="wipe" data-bank-id="${b.id}">Удалить загруженные операции</button>` : ''}
@@ -3343,8 +3338,7 @@ window.addEventListener('checker-resume', () => {
   // Вернулись из окна банка с живой сессией — в настройки и обновить выписку
   if (syncAfterLogin) {
     const id = syncAfterLogin;
-    const info = appInfo();
-    if (info.bank === id && info.bankState === 'active') {
+    if (bankState(id) === 'active') {
       syncAfterLogin = null;
       if (state.screen !== 'settings') go({ screen: 'settings' });
       return startBankSync(id);
@@ -3358,9 +3352,17 @@ let bankSyncing = null;
 // Вход начат ради обновления: после него сразу обновить
 let syncAfterLogin = null;
 
+// Мост к приложению для конкретного банка: у Сбера свои методы, у Т-Банка свои
+function bankBridge(id) {
+  const c = window.Checker;
+  return id === 'sber'
+    ? { login: () => c.sberLogin(), sync: () => c.sberSync(token.get()), forget: () => c.sberForget() }
+    : { login: () => c.bankLogin(), sync: () => c.bankSync(token.get()), forget: () => c.bankForget() };
+}
+
 function startBankSync(id) {
   bankSyncing = id;
-  window.Checker.bankSync(token.get());
+  bankBridge(id).sync();
   if (state.screen === 'settings') render();
 }
 
@@ -3377,13 +3379,6 @@ window.addEventListener('checker-bank', (e) => {
       : `Банк: ${r.error ?? 'не вышло'}`,
   );
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
-});
-
-// Временная проверка связи со Сбером: отчёт уже на сервере, тут только показываем итог
-window.addEventListener('checker-sber', (e) => {
-  const r = e.detail ?? {};
-  toast(r.ok ? `Сбер ответил: операций ${int.format(r.count ?? 0)}. Отчёт на сервере` : `Сбер: ${r.error ?? 'не вышло'}`);
-  if (state.screen === 'bank_card') render();
 });
 
 // ── запуск ───────────────────────────────────────────────

@@ -91,12 +91,21 @@ public class MainActivity extends android.app.Activity {
         @JavascriptInterface
         public String info() {
             try {
-                boolean connected = BankSync.connected(MainActivity.this);
+                MainActivity ctx = MainActivity.this;
+                boolean tbank = BankSync.connected(ctx);
+                boolean sber = SberSync.connected(ctx);
+                // По банку на строку: у каждого своё состояние. bank/bankState оставлены для
+                // прежней страницы — там первый подключённый
+                JSONObject banks = new JSONObject()
+                        .put("tbank", tbank ? (BankSync.expired(ctx) ? "expired" : "active") : "off")
+                        .put("sber", sber ? (SberSync.expired(ctx) ? "expired" : "active") : "off");
+                String primary = tbank ? "tbank" : sber ? "sber" : null;
                 return new JSONObject()
                         .put("app", "android")
                         .put("version", BuildInfo.VERSION)
-                        .put("bank", connected ? "tbank" : JSONObject.NULL)
-                        .put("bankState", connected ? (BankSync.expired(MainActivity.this) ? "expired" : "active") : "off")
+                        .put("banks", banks)
+                        .put("bank", primary == null ? JSONObject.NULL : primary)
+                        .put("bankState", primary == null ? "off" : banks.optString(primary))
                         .toString();
             } catch (Exception e) {
                 return "{}";
@@ -114,24 +123,26 @@ public class MainActivity extends android.app.Activity {
             startActivity(new Intent(MainActivity.this, BankLoginActivity.class).putExtra("bank", "sber"));
         }
 
-        /**
-         * Проверка связи со Сбером: пускает ли банк повтор запроса нашими куками и та ли нода.
-         * Берём пару свежих операций и шлём как есть на сервер человека для разбора.
-         * Временно: как только связь подтвердится, соберём полноценный адаптер и это уберём.
-         */
+        /** Обновить операции Сбера. Итог — тем же событием «checker-bank», что и у Т-Банка. */
         @JavascriptInterface
-        public void sberProbe(String checkerToken) {
+        public void sberSync(String checkerToken) {
             new Thread(() -> {
-                String detail;
+                BankSync.Result result = SberSync.run(MainActivity.this, checkerToken);
+                String json;
                 try {
-                    detail = SberProbe.run(MainActivity.this, checkerToken);
+                    json = result.json().toString();
                 } catch (Exception e) {
-                    detail = "{\"ok\":false,\"error\":\"сбой\"}";
+                    json = "{\"ok\":false,\"error\":\"сбой\"}";
                 }
-                final String payload = detail;
+                final String payload = json;
                 runOnUiThread(() -> web.evaluateJavascript(
-                        "window.dispatchEvent(new CustomEvent('checker-sber',{detail:" + payload + "}))", null));
+                        "window.dispatchEvent(new CustomEvent('checker-bank',{detail:" + payload + "}))", null));
             }).start();
+        }
+
+        @JavascriptInterface
+        public void sberForget() {
+            SberSync.forget(MainActivity.this);
         }
 
         @JavascriptInterface
@@ -248,7 +259,10 @@ public class MainActivity extends android.app.Activity {
         @Override
         public void run() {
             handler.removeCallbacks(this);
-            new Thread(() -> BankSync.ping(MainActivity.this)).start();
+            new Thread(() -> {
+                BankSync.ping(MainActivity.this);
+                SberSync.ping(MainActivity.this);
+            }).start();
             handler.postDelayed(this, 60_000);
         }
     };

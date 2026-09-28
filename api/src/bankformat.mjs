@@ -16,6 +16,18 @@ const moscow = (ms) =>
   ms ? new Date(ms).toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).replace(' ', 'T') : null;
 const kopecks = (money) => (money?.value == null ? null : Math.round(Math.abs(money.value) * 100));
 
+// Время Сбера: «31.05.2026T16:15:16», местное московское без зоны — приводим к нашему виду
+const sberTime = (s) => {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})T(\d{2}:\d{2}:\d{2})$/.exec(String(s ?? ''));
+  return m ? `${m[3]}-${m[2]}-${m[1]}T${m[4]}` : null;
+};
+// Сумма у Сбера — в рублях (может быть дробной); у нас всё в копейках
+const sberKopecks = (money) => (money?.amount == null ? null : Math.round(Math.abs(Number(money.amount)) * 100));
+const last4 = (s) => {
+  const digits = String(s ?? '').replace(/\D/g, '');
+  return digits.length >= 4 ? digits.slice(-4) : null;
+};
+
 const ADAPTERS = {
   tbank: {
     fields: [
@@ -88,6 +100,45 @@ const ADAPTERS = {
       'Финансы': 'finance.fees',
       'Гаджеты и техника': 'home.electronics',
     },
+  },
+
+  // Сбербанк Онлайн: объединённая история операций (uoh). Знак суммы — направление,
+  // correspondent — продавец, classificationCode — MCC. Категории банка в списке нет,
+  // раскладываем по правилам и MCC. Несостоявшиеся платежи (state.category = cancel)
+  // и нефинансовые записи не берём — см. valid.
+  sber: {
+    fields: [
+      'uohId', 'date', 'type', 'form', 'isFinancial', 'classificationCode', 'correspondent', 'description',
+      'operationAmount.amount', 'operationAmount.currencyCode', 'nationalAmount.amount', 'nationalAmount.currencyCode',
+      'billingAmount.id', 'billingAmount.name', 'fromResource.id', 'fromResource.displayedValue',
+      'attributes.cashReceipt', 'state.name', 'state.category',
+    ],
+    parse: (op) => {
+      const amount = op.operationAmount ?? op.nationalAmount;
+      const account = op.billingAmount?.id ?? String(op.fromResource?.id ?? '').replace(/^ct-account:/, '');
+      return {
+        ext_id: String(op.uohId),
+        account: String(account || ''),
+        account_name: op.billingAmount?.name ?? (String(op.fromResource?.displayedValue ?? '').replace(/\s*••.*/, '').trim() || null),
+        at: sberTime(op.date),
+        debited_at: null,
+        direction: Number(amount?.amount) < 0 ? 'debit' : 'credit',
+        amount: sberKopecks(amount) ?? 0,
+        currency: amount?.currencyCode ?? 'RUB',
+        account_amount: null,
+        status: op.state?.category ?? null,
+        op_group: op.type ?? op.form ?? null,
+        mcc: Number(op.classificationCode) || null,
+        description: op.description ?? null,
+        merchant: op.correspondent ?? null,
+        bank_category: null,
+        card: last4(op.fromResource?.displayedValue),
+        has_receipt: op.attributes?.cashReceipt ? 1 : 0,
+      };
+    },
+    // Берём только состоявшиеся финансовые операции: отклонённые (cancel) не движение денег
+    valid: (op) => Boolean(op?.uohId && op.date && op.isFinancial !== false && op.state?.category !== 'cancel'),
+    categories: {},
   },
 };
 

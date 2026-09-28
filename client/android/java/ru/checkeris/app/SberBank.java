@@ -58,7 +58,9 @@ final class SberBank {
                 .put("paginationSize", size)
                 .put("showHidden", false)
                 .put("showNotTransactionBonuses", true)
-                .put("showOpenBanking", true);
+                // Только счета Сбера: операции других банков, которые Сбер собирает по
+                // открытому банкингу, иначе задвоятся с их прямым подключением
+                .put("showOpenBanking", false);
         JSONObject answer = new JSONObject(post(cookies, OPERATIONS, body.toString()));
         if (!answer.optBoolean("success")) {
             throw new IllegalStateException(answer.optString("errorMessage", "Сбер отказал"));
