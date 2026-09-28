@@ -86,7 +86,7 @@ final class BankHistory {
         stopRequested = false;
         new Thread(() -> {
             try {
-                if (selected != null) makePlan(context, bank, new JSONArray(selected));
+                if (selected != null) makePlan(context, bank, new JSONArray(selected), checkerToken);
                 load(context, bank, checkerToken, listener);
             } catch (Exception e) {
                 try {
@@ -100,17 +100,23 @@ final class BankHistory {
         }).start();
     }
 
-    private static void makePlan(Context context, BankAdapter bank, JSONArray selected) throws Exception {
+    private static void makePlan(Context context, BankAdapter bank, JSONArray selected, String token) throws Exception {
         JSONArray accounts = accounts(context, bank).getJSONArray("accounts");
         JSONArray plan = new JSONArray();
         int thisYear = Calendar.getInstance().get(Calendar.YEAR);
         long now = System.currentTimeMillis();
+        // Докуда история уже загружена по каждому счёту: годы новее этого качать заново
+        // незачем. В базе пусто (банк отключали и стирали операции) — качаем всё
+        JSONObject loaded = loadedFrom(token, bank.id());
         for (int i = 0; i < accounts.length(); i++) {
             JSONObject a = accounts.getJSONObject(i);
             if (!contains(selected, a.getString("id"))) continue;
             long created = a.optLong("created");
+            // Год, в котором обрывается загруженное: он неполный, его перечитываем, а всё
+            // новее уже есть
+            int covered = loaded.optInt(a.getString("id"), thisYear + 1);
             // Свежие годы — первыми: человек сразу видит знакомые операции
-            for (int year = thisYear; year >= firstYear(created); year--) {
+            for (int year = Math.min(thisYear, covered); year >= firstYear(created); year--) {
                 long from = Math.max(yearStart(year), created > 0 ? created - 24L * 3600 * 1000 : 0);
                 long to = Math.min(yearStart(year + 1) - 1, now);
                 plan.put(new JSONObject()
@@ -235,6 +241,26 @@ final class BankHistory {
     private static boolean contains(JSONArray ids, String id) {
         for (int i = 0; i < ids.length(); i++) if (id.equals(ids.optString(i))) return true;
         return false;
+    }
+
+    /** Счёт → год самой старой загруженной операции. Пусто — счёт ещё не грузили. */
+    private static JSONObject loadedFrom(String token, String bank) {
+        JSONObject map = new JSONObject();
+        JSONArray accounts = BankSync.accounts(token, bank);
+        for (int i = 0; i < accounts.length(); i++) {
+            JSONObject a = accounts.optJSONObject(i);
+            if (a == null) continue;
+            long at = BankSync.millis(a.optString("first", null));
+            if (at == 0) continue;
+            Calendar c = Calendar.getInstance();
+            c.setTimeInMillis(at);
+            try {
+                map.put(a.optString("id"), c.get(Calendar.YEAR));
+            } catch (Exception ignored) {
+                // без счёта в списке просто перечитаем всё
+            }
+        }
+        return map;
     }
 
     private static int firstYear(long created) {

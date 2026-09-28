@@ -24,6 +24,9 @@ export function listAccounts(db, userId, bank) {
     .prepare(
       `SELECT a.account AS id, a.name, a.type, a.currency, a.created, a.enabled,
               (SELECT COUNT(*) FROM bank_ops o WHERE o.link_id = a.link_id AND o.account = a.account) AS ops,
+              -- Докуда история уже загружена: повторная выгрузка начинается отсюда, а не с нуля
+              (SELECT MIN(o.at) FROM bank_ops o WHERE o.link_id = a.link_id AND o.account = a.account) AS first,
+              (SELECT MAX(o.at) FROM bank_ops o WHERE o.link_id = a.link_id AND o.account = a.account) AS last,
               -- Последние цифры карты: в списке счетов их нет, зато они есть у операций
               (SELECT o.card FROM bank_ops o
                 WHERE o.link_id = a.link_id AND o.account = a.account AND o.card IS NOT NULL

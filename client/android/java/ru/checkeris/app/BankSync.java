@@ -21,7 +21,6 @@ final class BankSync {
     static final String EXPIRED = "tbank.expired"; // банк отказал: нужен новый вход руками
 
     private static final String CHECKER = "https://checkeris.fun/api/bank/ops";
-    private static final String ACCOUNTS = "https://checkeris.fun/api/bank/accounts?bank=tbank";
     private static final String LAST_SYNC = "tbank.lastSync";
     private static final long FIRST_DAYS = 90L * 24 * 3600 * 1000;
     private static final long OVERLAP = 3L * 24 * 3600 * 1000; // операции «в обработке» меняются задним числом
@@ -132,24 +131,47 @@ final class BankSync {
      */
     static java.util.Set<String> disabledAccounts(String token) {
         java.util.Set<String> off = new java.util.HashSet<>();
+        JSONArray list = accounts(token, "tbank");
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject a = list.optJSONObject(i);
+            if (a != null && !a.optBoolean("enabled", true)) off.add(a.optString("id"));
+        }
+        return off;
+    }
+
+    /**
+     * Что Чекер знает о счетах банка: выбор человека и докуда история уже загружена
+     * (поле first). Нужно, чтобы повторная выгрузка не качала заново то, что уже есть.
+     * Сервер не ответил — вернём пусто, и выгрузка пойдёт как в первый раз.
+     */
+    static JSONArray accounts(String token, String bank) {
         try {
-            HttpURLConnection http = (HttpURLConnection) new URL(ACCOUNTS).openConnection();
+            String url = "https://checkeris.fun/api/bank/accounts?bank=" + java.net.URLEncoder.encode(bank, "UTF-8");
+            HttpURLConnection http = (HttpURLConnection) new URL(url).openConnection();
             http.setRequestProperty("Authorization", "Bearer " + token);
             http.setConnectTimeout(15000);
             http.setReadTimeout(30000);
             int code = http.getResponseCode();
             String answer = TBank.read(code >= 400 ? http.getErrorStream() : http.getInputStream());
             http.disconnect();
-            if (code >= 400) return off;
+            if (code >= 400) return new JSONArray();
             JSONArray list = new JSONObject(answer).optJSONArray("accounts");
-            for (int i = 0; list != null && i < list.length(); i++) {
-                JSONObject a = list.getJSONObject(i);
-                if (!a.optBoolean("enabled", true)) off.add(a.optString("id"));
-            }
-        } catch (Exception ignored) {
-            // нет связи с Чекером — не страшно, см. выше
+            return list == null ? new JSONArray() : list;
+        } catch (Exception e) {
+            return new JSONArray();
         }
-        return off;
+    }
+
+    /** Время из Чекера («2026-09-28T19:37:33», московское) в миллисекунды. 0 — пусто. */
+    static long millis(String at) {
+        if (at == null || at.length() < 19) return 0;
+        try {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
+            f.setTimeZone(java.util.TimeZone.getTimeZone("Europe/Moscow"));
+            return f.parse(at.substring(0, 19)).getTime();
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     /**

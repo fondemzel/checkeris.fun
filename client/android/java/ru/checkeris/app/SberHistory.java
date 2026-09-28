@@ -105,7 +105,10 @@ final class SberHistory {
         SharedPreferences prefs = prefs(context);
         String cookies = new Secrets(context).get(BankLoginActivity.SBER_SESSION);
         if (cookies == null) throw new IllegalStateException("Сбер не подключён");
-        long now = System.currentTimeMillis();
+        // Докуда история уже загружена: повторную выгрузку начинаем оттуда, а не с сегодня —
+        // иначе заново качаются тысячи операций, которые сервер всё равно отбросит.
+        // В базе пусто (банк отключали и стирали операции) — качаем всё, как в первый раз
+        long now = oldestLoaded(token);
         int offset = prefs.getInt("offset", 0);
         long ops = prefs.getLong("ops", 0);
         long added = prefs.getLong("added", 0);
@@ -140,6 +143,23 @@ final class SberHistory {
         }
         prefs.edit().putBoolean("finished", true).apply();
         emit(listener, progress("loaded", ops, added, offset, total));
+    }
+
+    /**
+     * Правая граница выгрузки: самая старая уже загруженная операция минус секунда.
+     * Операции в Чекер приходят от свежих к старым, поэтому загруженное — это всегда
+     * «хвост от сегодня», и продолжать надо ровно с его конца. Пусто — берём с сегодня.
+     */
+    private static long oldestLoaded(String token) {
+        long oldest = 0;
+        JSONArray accounts = BankSync.accounts(token, "sber");
+        for (int i = 0; i < accounts.length(); i++) {
+            JSONObject a = accounts.optJSONObject(i);
+            if (a == null || !a.optBoolean("enabled", true)) continue;
+            long at = BankSync.millis(a.optString("first", null));
+            if (at > 0 && (oldest == 0 || at < oldest)) oldest = at;
+        }
+        return oldest > 0 ? oldest - 1000 : System.currentTimeMillis();
     }
 
     private static void reset(Context context) {
