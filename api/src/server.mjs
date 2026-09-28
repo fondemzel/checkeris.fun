@@ -34,7 +34,7 @@ import {
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
-import { listSpending } from './spending.mjs';
+import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -689,6 +689,7 @@ async function handleApi(req, res, url) {
   // collapse=1 — одна строка на название; раскрытие группы идёт обычным списком с name_norm
   // Все траты одной лентой: чеки, ручные записи и банк — для таблицы кабинета
   if (pathname === '/api/spending') return sendJson(res, 200, listSpending(db, user.budget_id, searchParams));
+  if (pathname === '/api/income') return sendJson(res, 200, listIncome(db, user.budget_id, searchParams));
 
   if (pathname === '/api/items') {
     const collapse = searchParams.get('collapse') === '1' && !searchParams.get('name_norm');
@@ -702,7 +703,7 @@ async function handleApi(req, res, url) {
   }
 
   if (pathname === '/api/export.csv') {
-    const type = searchParams.get('type') === 'receipts' ? 'receipts' : 'items';
+    const type = ['receipts', 'income'].includes(searchParams.get('type')) ? searchParams.get('type') : 'items';
     const params = new URLSearchParams(searchParams);
     params.set('per', '500');
     if (type === 'receipts') {
@@ -731,31 +732,53 @@ async function handleApi(req, res, url) {
         ]),
       );
     }
-    const rows = [];
-    for (let page = 1; ; page += 1) {
-      params.set('page', String(page));
-      const chunk = listItems(db, user.budget_id, params).rows;
-      rows.push(...chunk);
-      if (chunk.length < 500 || rows.length >= 50000) break;
+    if (type === 'income') {
+      params.set('per', '50000');
+      params.set('page', '1');
+      const { rows } = listIncome(db, user.budget_id, params);
+      return sendCsv(
+        res,
+        'income.csv',
+        ['Дата', 'Время', 'Откуда', 'Описание', 'Счёт', 'Сумма, ₽'],
+        rows.map((r) => [
+          r.purchased_at.slice(0, 10),
+          r.purchased_at.slice(11, 16),
+          r.name,
+          r.description ?? '',
+          r.account_name ?? '',
+          money(r.sum),
+        ]),
+      );
     }
+    // «Расходы» кабинета: каждая покупка строкой — позиции чеков, ручные записи и траты банка
+    const SOURCE_NAMES = { receipt: 'чек', manual: 'вручную', bank: 'банк' };
+    const rows = spendingPurchases(db, user.budget_id, params, listItems);
     return sendCsv(
       res,
-      'items.csv',
-      ['Дата', 'Время', 'Товар', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'НДС', 'GTIN', 'Продавец', 'ИНН', 'Точка', 'Чек'],
-      rows.map((r) => [
-        r.purchased_date,
-        r.purchased_at.slice(11, 16),
-        r.name,
-        String(r.quantity).replace('.', ','),
-        money(r.price),
-        money(r.sum),
-        ndsLabel(r.nds),
-        r.gtin ?? '',
-        r.seller,
-        r.seller_inn,
-        r.retail_place,
-        r.receipt_id,
-      ]),
+      'spending.csv',
+      ['Дата', 'Время', 'Источник', 'Трата', 'Группа', 'Категория', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'НДС', 'GTIN',
+        'Продавец', 'ИНН', 'Точка', 'Счёт', 'Чек'],
+      rows.map((r) => {
+        const bank = r.source === 'bank';
+        return [
+          r.purchased_at.slice(0, 10),
+          r.purchased_at.slice(11, 16),
+          SOURCE_NAMES[r.source],
+          r.name,
+          r.group_name ?? '',
+          r.category_name ?? '',
+          bank ? '' : String(r.quantity).replace('.', ','),
+          bank ? '' : money(r.price),
+          money(r.sum),
+          bank ? '' : ndsLabel(r.nds),
+          r.gtin ?? '',
+          bank ? '' : r.seller ?? '',
+          bank ? '' : r.seller_inn ?? '',
+          bank ? '' : r.retail_place ?? '',
+          r.account_name ?? '',
+          r.receipt_id ?? '',
+        ];
+      }),
     );
   }
 

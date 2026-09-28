@@ -134,3 +134,99 @@ export function listSpending(db, budgetId, params) {
     dir: asc ? 'asc' : 'desc',
   };
 }
+
+/**
+ * Для выгрузки: каждая покупка строкой, без схлопывания по названию. Позиции чеков и ручные
+ * записи — из /api/items, траты банка — как в ленте. Порядок — по дате, новые сверху.
+ */
+export function spendingPurchases(db, budgetId, params, listItems) {
+  const src = SOURCES.includes(params.get('src')) ? params.get('src') : '';
+  const rows = [];
+  if (src !== 'bank') {
+    const p = new URLSearchParams(params);
+    for (const key of ['src', 'collapse', 'sort', 'dir']) p.delete(key);
+    p.set('per', '500');
+    for (let page = 1; ; page += 1) {
+      p.set('page', String(page));
+      const chunk = listItems(db, budgetId, p).rows;
+      for (const r of chunk) {
+        const source = r.manual ? 'manual' : 'receipt';
+        if (!src || source === src) rows.push({ ...r, source });
+      }
+      if (chunk.length < 500 || rows.length >= 50000) break;
+    }
+  }
+  if (!src || src === 'bank') rows.push(...bankRows(db, budgetId, params));
+  return rows.sort((a, b) => (a.purchased_at < b.purchased_at ? 1 : -1));
+}
+
+/**
+ * Поступления: деньги пришли от других — зарплата, возвраты, переводы от людей. Переводы
+ * между своими счетами сюда не входят, но их итог показываем рядом: иначе непонятно, куда
+ * делась половина зачислений из выписки.
+ */
+export function listIncome(db, budgetId, params) {
+  const from = params.get('from');
+  const to = params.get('to');
+  const span = {
+    budgetId,
+    from: isDate(from) ? `${from}T00:00:00` : '0000',
+    to: isDate(to) ? `${to}T23:59:59` : '9999',
+  };
+  const all = db
+    .prepare(
+      `SELECT id, at, amount, merchant, description, account_name, card, bank_category, kind,
+              note IS NOT NULL AS has_note,
+              json_extract(raw, '$.senderDetails') AS sender
+         FROM bank_ops
+        WHERE budget_id = :budgetId AND direction = 'credit' AND kind = 'income'
+          AND at >= :from AND at <= :to`,
+    )
+    .all(span);
+
+  const q = norm(params.get('q')).trim();
+  const min = Number.parseFloat(params.get('min_sum') ?? '');
+  const max = Number.parseFloat(params.get('max_sum') ?? '');
+  const rows = all
+    .map((o) => ({
+      source: 'bank',
+      op_id: o.id,
+      name: o.sender || o.merchant || o.description || 'Поступление',
+      description: o.description,
+      purchased_at: o.at,
+      sum: o.amount,
+      account_name: o.account_name,
+      card: o.card,
+      bank_category: o.bank_category,
+      has_note: o.has_note,
+    }))
+    .filter((r) => !q || norm(r.name).includes(q) || norm(r.description).includes(q))
+    .filter((r) => !Number.isFinite(min) || r.sum >= Math.round(min * 100))
+    .filter((r) => !Number.isFinite(max) || r.sum <= Math.round(max * 100));
+
+  const sort = Object.hasOwn(SORT_KEYS, params.get('sort')) ? params.get('sort') : 'date';
+  const asc = params.get('dir') === 'asc';
+  const key = SORT_KEYS[sort];
+  rows.sort((a, b) => {
+    const x = key(a);
+    const y = key(b);
+    const order = x < y ? -1 : x > y ? 1 : 0;
+    return asc ? order : -order;
+  });
+
+  const transfers = db
+    .prepare(
+      `SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS sum FROM bank_ops
+        WHERE budget_id = :budgetId AND direction = 'credit' AND kind = 'transfer'
+          AND at >= :from AND at <= :to`,
+    )
+    .get(span);
+
+  const { page, per, offset } = parsePaging(params);
+  return {
+    rows: rows.slice(offset, offset + per),
+    totals: { count: rows.length, sum: rows.reduce((s, r) => s + r.sum, 0), transfers },
+    page,
+    per,
+  };
+}

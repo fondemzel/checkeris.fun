@@ -322,6 +322,7 @@ export function getBankOp(db, budgetId, id) {
       `SELECT o.id, o.at, o.debited_at, o.direction, o.amount, o.currency, o.account_name, o.status,
               o.op_group, o.mcc, o.description, o.merchant, o.bank_category, o.card, o.kind,
               o.receipt_id, o.category_slug, o.category_source, o.note,
+              json_extract(o.raw, '$.senderDetails') AS sender,
               c.name AS category_name, c.group_slug, g.name AS group_name,
               (SELECT COUNT(*) FROM bank_ops x WHERE x.budget_id = o.budget_id AND x.kind = 'expense'
                  AND COALESCE(x.merchant, x.description) = COALESCE(o.merchant, o.description)) AS same_count
@@ -348,9 +349,11 @@ export function setBankOpNote(db, budgetId, id, note) {
  * только операциям без вида.
  */
 export function setBankOpKind(db, budgetId, id, kind) {
-  if (!['transfer', 'excluded', 'expense'].includes(kind)) return { error: 'unknown kind', status: 400 };
-  const res = db
-    .prepare("UPDATE bank_ops SET kind = ?, kind_source = 'manual' WHERE id = ? AND budget_id = ? AND direction = 'debit'")
-    .run(kind, id, budgetId);
-  return res.changes ? { kind } : { error: 'operation not found', status: 404 };
+  const op = db.prepare('SELECT direction FROM bank_ops WHERE id = ? AND budget_id = ?').get(id, budgetId);
+  if (!op) return { error: 'operation not found', status: 404 };
+  // Поступление тоже бывает переводом себе — из другого банка, — тогда это не доход
+  const allowed = op.direction === 'debit' ? ['transfer', 'excluded', 'expense'] : ['transfer', 'excluded', 'income'];
+  if (!allowed.includes(kind)) return { error: 'unknown kind', status: 400 };
+  db.prepare("UPDATE bank_ops SET kind = ?, kind_source = 'manual' WHERE id = ?").run(kind, id);
+  return { kind };
 }

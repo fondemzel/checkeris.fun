@@ -663,7 +663,10 @@ export function getMeta(db, budgetId) {
   const rows = db
     .prepare(
       `SELECT c.slug, c.name, c.group_slug, g.name AS group_name, g.icon, g.color, g.shade_from, g.shade_to,
-              (SELECT COUNT(*) FROM item_labels l WHERE l.budget_id = c.budget_id AND l.category_slug = c.slug) AS items
+              -- Покупок в категории: позиции чеков и траты из банка без чека
+              (SELECT COUNT(*) FROM item_labels l WHERE l.budget_id = c.budget_id AND l.category_slug = c.slug)
+                + (SELECT COUNT(*) FROM bank_ops o WHERE o.budget_id = c.budget_id AND o.category_slug = c.slug
+                     AND o.kind = 'expense') AS items
          FROM categories c JOIN groups g ON g.budget_id = c.budget_id AND g.slug = c.group_slug
         WHERE c.budget_id = ?
         ORDER BY g.sort, g.slug, c.sort`,
@@ -691,9 +694,10 @@ export function getMeta(db, budgetId) {
     group.items += row.items;
   }
 
-  const uncategorized = db
-    .prepare('SELECT COUNT(*) c FROM v_items WHERE budget_id = ? AND category_slug IS NULL')
-    .get(budgetId).c;
+  const uncategorized =
+    db.prepare('SELECT COUNT(*) c FROM v_items WHERE budget_id = ? AND category_slug IS NULL').get(budgetId).c +
+    db.prepare("SELECT COUNT(*) c FROM bank_ops WHERE budget_id = ? AND kind = 'expense' AND category_slug IS NULL")
+      .get(budgetId).c;
 
   // Бюджет: клиенту нужно знать, общий ли он, — тогда у чеков показывается автор
   const budget = db

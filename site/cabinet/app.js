@@ -122,7 +122,7 @@ function readUrl() {
   for (const key of Object.keys(DEFAULTS)) {
     if (params.has(key)) state[key] = params.get(key);
   }
-  if (!['items', 'taxonomy', 'analysis'].includes(state.view)) state.view = 'receipts';
+  if (!['items', 'income', 'taxonomy', 'analysis'].includes(state.view)) state.view = 'receipts';
   if (!['', 'day', 'week', 'month', 'year'].includes(state.period)) state.period = '';
   if (!/^[rio]\d+$/.test(state.card)) state.card = '';
   if (!Object.hasOwn(SOURCES, state.src)) state.src = '';
@@ -267,6 +267,15 @@ const COLUMNS = {
     { key: 'items', title: 'Поз.', sort: 'items', cls: 'num dim', render: (r) => int.format(r.item_count) },
     { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) =>
       r.counted ? `<b>${money(r.total_sum)}</b>` : `<span class="dim">${money(r.total_sum)}</span>` },
+  ],
+  income: [
+    { key: 'date', title: 'Дата', sort: 'date', render: (r) =>
+      `<span class="nowrap">${dateRu(r.purchased_at)}</span> <span class="dim small">${timeRu(r.purchased_at)}</span>` },
+    { key: 'name', title: 'Откуда', sort: 'name', cls: 'ellipsis', render: (r) =>
+      ellipsisCell(esc(r.name) + noteDot(r), r.description && r.description !== r.name
+        ? ` <span class="badge">${esc(r.description.slice(0, 60))}</span>` : '') },
+    { key: 'account', title: 'Счёт', cls: 'cat-cell dim', render: (r) => esc(r.account_name ?? '') },
+    { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) => `<b>${money(r.sum)}</b>` },
   ],
   items: [
     { key: 'date', title: 'Дата', sort: 'date', render: (r) =>
@@ -1113,6 +1122,7 @@ async function deleteNode() {
 
 function renderSummary(totals) {
   if (state.view === 'items') return renderSpendingSummary(totals);
+  if (state.view === 'income') return renderIncomeSummary(totals);
   const isItems = state.view === 'items';
   const count = totals.count ?? 0;
   const receipts = isItems ? totals.receipts ?? 0 : count;
@@ -1139,6 +1149,18 @@ function renderSummary(totals) {
   $('totals-right').innerHTML = `${skipped}Итого: <b>${money(totals.sum)}</b>`;
 }
 
+/** Сводка «Доходов»: поступления и, рядом, переводы между своими — чтобы сходилось с выпиской. */
+function renderIncomeSummary(totals) {
+  const n = totals.count ?? 0;
+  const t = totals.transfers ?? {};
+  $('totals-left').innerHTML =
+    `${int.format(n)} ${plural(n, 'поступление', 'поступления', 'поступлений')}` +
+    (t.count
+      ? ` · <span class="dim" title="Переводы между своими счетами — не доход">переводы между своими: ${int.format(t.count)} на ${money(t.sum, true)}</span>`
+      : '');
+  $('totals-right').innerHTML = `Итого: <b>${money(totals.sum)}</b>`;
+}
+
 /** Сводка «Расходов»: сколько покупок и откуда они — чеки, ручные записи, банк. */
 function renderSpendingSummary(totals) {
   const n = totals.positions ?? 0;
@@ -1156,7 +1178,9 @@ function renderSpendingSummary(totals) {
 
 function renderFooter() {
   // В схлопнутом списке строки — это названия, а не отдельные покупки
-  const noun = collapsed()
+  const noun = state.view === 'income'
+    ? plural(total, 'поступления', 'поступлений', 'поступлений')
+    : collapsed()
     ? plural(total, 'строки', 'строк', 'строк')
     : state.view === 'items'
       ? plural(total, 'позиции', 'позиций', 'позиций')
@@ -1423,6 +1447,16 @@ function opCard(op) {
   const groups = meta?.categories ?? [];
   const groupSlug = op.group_slug ?? '';
   const expense = op.kind === 'expense';
+  const credit = op.direction === 'credit';
+  // Что можно сделать с операцией: поступление — перевод себе или не учитывать, трата — то же
+  // плюс категория. Уже убранную — вернуть обратно
+  const counted = expense || op.kind === 'income';
+  const actions = counted
+    ? `<button class="btn" type="button" data-op-kind="transfer" data-id="${op.id}">Это перевод себе</button>
+       <button class="btn danger" type="button" data-op-kind="excluded" data-id="${op.id}">Не учитывать</button>`
+    : op.kind === 'covered'
+      ? ''
+      : `<button class="btn" type="button" data-op-kind="${credit ? 'income' : 'expense'}" data-id="${op.id}">${credit ? 'Вернуть в доходы' : 'Вернуть в расходы'}</button>`;
   return `
     <div class="card-head">
       <div>
@@ -1431,9 +1465,9 @@ function opCard(op) {
       </div>
       <button class="btn" type="button" data-close>✕</button>
     </div>
-    <div class="card-section">Трата из банка</div>
+    <div class="card-section">${credit ? 'Поступление' : 'Трата из банка'}</div>
     <div class="card-top">
-    <p class="card-name">${esc(op.merchant || op.description || 'Операция банка')}</p>
+    <p class="card-name">${esc((credit && op.sender) || op.merchant || op.description || 'Операция банка')}</p>
     ${kv([
       ['Описание', op.description && op.description !== op.merchant ? esc(op.description) : ''],
       ['Категория банка', esc(op.bank_category ?? '')],
@@ -1454,13 +1488,9 @@ function opCard(op) {
       <div class="cat-note dim" id="cat-note">${label}${scope}</div>
     </div>` : ''}
     ${noteSection(`/api/bank/ops/${op.id}/note`, op.note)}
-    <div class="card-actions">
-      ${expense
-        ? `<button class="btn" type="button" data-op-kind="transfer" data-id="${op.id}">Это перевод себе</button>
-           <button class="btn danger" type="button" data-op-kind="excluded" data-id="${op.id}">Не учитывать</button>`
-        : `<button class="btn" type="button" data-op-kind="expense" data-id="${op.id}">Вернуть в расходы</button>`}
-    </div>
-    ${expense ? '<p class="dim small card-hint">Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.</p>' : ''}`;
+    ${actions ? `<div class="card-actions">${actions}</div>` : ''}
+    ${expense ? '<p class="dim small card-hint">Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.</p>' : ''}
+    ${credit && counted ? '<p class="dim small card-hint">Перевод себе — например, с карты другого банка: это не доход, а те же ваши деньги.</p>' : ''}`;
 }
 
 /** POST с JSON; ошибка сервера — исключением с его текстом. */
@@ -1511,14 +1541,15 @@ async function hideItem(button) {
 /** Трата из банка: перевод себе, не учитывать или вернуть в расходы. */
 async function setOpKind(button) {
   const kind = button.dataset.opKind;
+  const income = state.view === 'income';
   const ask = {
-    transfer: 'Отметить как перевод себе? Он не будет считаться расходом.',
-    excluded: 'Не учитывать эту трату? Она пропадёт из расходов.',
+    transfer: `Отметить как перевод себе? Он не будет считаться ${income ? 'доходом' : 'расходом'}.`,
+    excluded: income ? 'Не учитывать это поступление? Оно пропадёт из доходов.' : 'Не учитывать эту трату? Она пропадёт из расходов.',
   }[kind];
   if (ask && !confirm(ask)) return;
   try {
     await postJson(`/api/bank/ops/${button.dataset.id}/kind`, { kind });
-    if (kind !== 'expense') state.card = '';
+    if (kind !== 'expense' && kind !== 'income') state.card = '';
     renderCard();
     reload();
   } catch (err) {
@@ -1556,7 +1587,8 @@ async function renderCard() {
   const seq = ++cardSeq;
 
   if (!state.card) {
-    pane.innerHTML = `<div class="card-empty">${state.view === 'items' ? 'Выберите трату' : 'Выберите чек'}</div>`;
+    const hint = { items: 'Выберите трату', income: 'Выберите поступление' }[state.view] ?? 'Выберите чек';
+    pane.innerHTML = `<div class="card-empty">${hint}</div>`;
     return;
   }
 
@@ -1626,7 +1658,7 @@ async function fetchPage(seq = loadSeq) {
   if (nextPage === 1) pane.classList.add('is-loading');
 
   try {
-    const endpoint = state.view === 'items' ? 'spending' : state.view;
+    const endpoint = { items: 'spending', income: 'income' }[state.view] ?? state.view;
     const res = await api(`/api/${endpoint}?${apiParams(nextPage)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -1725,7 +1757,7 @@ function syncControls() {
   });
 
   $('page-title').textContent =
-    { items: 'Расходы', taxonomy: 'Категории', analysis: 'Анализ' }[state.view] ?? 'Чеки';
+    { items: 'Расходы', income: 'Доходы', taxonomy: 'Категории', analysis: 'Анализ' }[state.view] ?? 'Чеки';
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.setAttribute('aria-current', String(item.dataset.view === state.view));
   });
