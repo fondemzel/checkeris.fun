@@ -212,6 +212,38 @@ public class MainActivity extends android.app.Activity {
         public String historyStatus() {
             return BankHistory.status(MainActivity.this).toString();
         }
+
+        // Мастер Сбера: у него единая история страницами (SberHistory), но события те же
+        @JavascriptInterface
+        public void sberAccounts() {
+            new Thread(() -> {
+                try {
+                    history(SberHistory.accounts(MainActivity.this).put("stage", "accounts"));
+                } catch (Exception e) {
+                    try {
+                        history(new JSONObject().put("stage", "error").put("error", String.valueOf(e.getMessage())));
+                    } catch (Exception ignored) {
+                        // нечего показать
+                    }
+                }
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void sberHistoryStart(String checkerToken, String selected) {
+            if (checkerToken == null || checkerToken.isEmpty()) return;
+            SberHistory.start(MainActivity.this, checkerToken, selected, MainActivity.this::history);
+        }
+
+        @JavascriptInterface
+        public void sberHistoryStop() {
+            SberHistory.stop();
+        }
+
+        @JavascriptInterface
+        public String sberHistoryStatus() {
+            return SberHistory.status(MainActivity.this).toString();
+        }
     }
 
     /** Ход загрузки истории — на страницу. Страницы нет — событие теряется, загрузка идёт. */
