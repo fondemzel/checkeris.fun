@@ -1328,3 +1328,37 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .wiz-bar.flow { position: relative; overflow: hidden; }
 .wiz-bar.flow span { position: absolute; left: 0; width: 40% !important; border-radius: 5px; animation: wiz-flow 1.1s ease-in-out infinite; }
 @keyframes wiz-flow { 0% { left: -40%; } 100% { left: 100%; } }
+
+/* ── сворачиваемые блоки (страница банка) ───────────────────
+   Заголовок виден всегда, содержимое раскрывается нажатием. Стрелка — тот же chevron,
+   что и в остальном интерфейсе, поворачивается при раскрытии. */
+
+.card.fold { padding: 0; overflow: hidden; }
+
+.fold-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.fold-head::-webkit-details-marker { display: none; }
+.fold-head:active { background: #f7f8fa; }
+
+/* Заголовок блока: значок, название и, если нужно, счётчик справа */
+.fold-head .card-label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0; }
+.fold-head .card-label svg { flex: none; width: 16px; height: 16px; }
+.fold-count { margin-left: auto; text-transform: none; letter-spacing: 0; }
+
+/* Стрелка раскрытия */
+.fold-head > svg { flex: none; width: 18px; height: 18px; color: var(--muted); transition: transform 0.2s; }
+.fold[open] > .fold-head > svg { transform: rotate(180deg); }
+
+.fold-body { padding: 0 16px 16px; }
+.fold-body > :first-child { margin-top: 0; }
+.fold .settings-actions { margin-top: 0; }
+
+/* Ссылка на политику — как в настройках: неприметная, по центру */
+.fold-link { margin-top: 12px; text-align: center; }
+.fold-link a { color: inherit; }

@@ -73,6 +73,12 @@ const UI = {
   arrow: svg('<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>'),
   refresh: svg('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'),
   plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
+  // Действия на странице банка
+  login: svg('<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/>'),
+  history: svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'),
+  unplug: svg('<path d="M12 22v-5"/><path d="M9 7V2"/><path d="M15 7V2"/><path d="M18 7v6a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V7Z"/>'),
+  trash: svg('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
+  shield: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   income: svg('<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>'),
@@ -3030,6 +3036,16 @@ function bankSection(bank) {
 }
 
 /**
+ * Сворачиваемый блок: виден заголовок, содержимое открывается нажатием. Нативный
+ * <details> — состояние хранит сам браузер, скрипт не нужен; стрелку поворачивает CSS.
+ */
+const fold = (title, body, open = false) => `
+  <details class="card fold"${open ? ' open' : ''}>
+    <summary class="fold-head"><span class="card-label">${title}</span>${UI.chevron}</summary>
+    <div class="fold-body">${body}</div>
+  </details>`;
+
+/**
  * Страница банка: что происходит с данными, и все действия по нему. Вход в интернет-банк
  * проходит на телефоне, поэтому здесь же и объяснение — человек видит его до того,
  * как вводить что-то в окне банка.
@@ -3066,9 +3082,16 @@ async function screenBankCard() {
       </div>
     </div>
 
-    ${accounts.length ? `
-    <div class="card">
-      <div class="card-label">Счета</div>
+    ${fold(`${UI.shield} Что с данными`, `
+      <ul class="bank-facts">
+        <li><b>Вход в банк — на вашем телефоне.</b> Приложение открывает окно банка, вы вводите телефон, код из СМС и пароль сами.</li>
+        <li><b>Пароль не сохраняется нигде.</b> Сессия банка остаётся на телефоне в зашифрованном виде: ключ не покидает устройство.</li>
+        <li><b>На сервер приходят только операции:</b> дата, сумма, продавец, категория банка и последние четыре цифры карты.</li>
+        <li><b>Никому не передаём.</b> Операции видны только вам и участникам вашего бюджета.</li>
+      </ul>
+      <p class="note fold-link"><a href="/privacy.html">Какие данные хранит Чекер</a></p>`)}
+
+    ${accounts.length ? fold(`${UI.card} Счета<span class="fold-count">${accounts.filter((a) => a.enabled).length} из ${accounts.length}</span>`, `
       <p class="note">Операции берём только с отмеченных. Снятая галочка убирает операции счёта из учёта, возвращённая — возвращает.</p>
       <div class="wiz-accs">${accounts.map((a) => `
         <label class="wiz-acc">
@@ -3078,31 +3101,24 @@ async function screenBankCard() {
             <small class="note">${esc(ACCOUNT_TYPES[a.type] ?? a.type ?? 'счёт')}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${plural(a.ops, 'операция', 'операции', 'операций')}</small>
           </span>
         </label>`).join('')}
-      </div>
-    </div>` : ''}
+      </div>`) : ''}
 
-    <div class="card">
-      <div class="card-label">Что с данными</div>
-      <ul class="bank-facts">
-        <li><b>Вход в банк — на вашем телефоне.</b> Приложение открывает окно банка, вы вводите телефон, код из СМС и пароль сами.</li>
-        <li><b>Пароль не сохраняется нигде.</b> Сессия банка остаётся на телефоне в зашифрованном виде: ключ не покидает устройство.</li>
-        <li><b>На сервер приходят только операции:</b> дата, сумма, продавец, категория банка и последние четыре цифры карты.</li>
-        <li><b>Никому не передаём.</b> Операции видны только вам и участникам вашего бюджета.</li>
-      </ul>
-      <p class="note"><a href="/privacy.html">Какие данные хранит Чекер</a></p>
-    </div>
-
-    <div class="settings-actions">
-      ${!b.ready
-        ? '<button class="btn big" type="button" disabled>Подключение появится позже</button>'
-        : !connected && canWizard(b.id)
-          ? `<button class="btn primary big" type="button" data-wizard="${b.id}">Подключить</button>`
-          : `<button class="btn${connected ? '' : ' primary big'}" type="button" data-bank="login" data-bank-id="${b.id}">${connected ? 'Войти в банк заново' : 'Подключить'}</button>`}
-      ${connected && !expired && canWizard(b.id) ? `<button class="btn${ops ? '' : ' primary big'}" type="button" data-wizard="${b.id}">Загрузить всю историю</button>` : ''}
-      ${connected && !expired ? `<button class="btn" type="button" data-bank="sync" data-bank-id="${b.id}">Обновить операции</button>` : ''}
-      ${connected ? `<button class="btn" type="button" data-bank="forget" data-bank-id="${b.id}">Отключить банк</button>` : ''}
-      ${ops ? `<button class="btn danger" type="button" data-bank="wipe" data-bank-id="${b.id}">Удалить загруженные операции</button>` : ''}
-    </div>`;
+    ${!b.ready
+      ? '<div class="settings-actions"><button class="btn big" type="button" disabled>Подключение появится позже</button></div>'
+      : !connected
+        ? `<div class="settings-actions">${
+            canWizard(b.id)
+              ? `<button class="btn primary big with-ic" type="button" data-wizard="${b.id}">${UI.login} Подключить</button>`
+              : `<button class="btn primary big with-ic" type="button" data-bank="login" data-bank-id="${b.id}">${UI.login} Подключить</button>`
+          }</div>`
+        : fold(`${UI.settings} Управление`, `
+            <div class="settings-actions">
+              ${!expired && canWizard(b.id) ? `<button class="btn with-ic" type="button" data-wizard="${b.id}">${UI.history} Загрузить всю историю</button>` : ''}
+              ${!expired ? `<button class="btn with-ic" type="button" data-bank="sync" data-bank-id="${b.id}">${UI.refresh} Обновить операции</button>` : ''}
+              <button class="btn with-ic" type="button" data-bank="login" data-bank-id="${b.id}">${UI.login} Войти в банк заново</button>
+              <button class="btn with-ic" type="button" data-bank="forget" data-bank-id="${b.id}">${UI.unplug} Отключить банк</button>
+              ${ops ? `<button class="btn danger with-ic" type="button" data-bank="wipe" data-bank-id="${b.id}">${UI.trash} Удалить загруженные операции</button>` : ''}
+            </div>`)}`;
 }
 
 /** «10 мин назад», «3 ч назад», иначе дата. */
