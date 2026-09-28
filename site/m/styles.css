@@ -1366,25 +1366,27 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .fold-link { margin-top: 12px; text-align: center; }
 .fold-link a { color: inherit; }
 
-/* Строки действий в свёрнутом блоке: слева название, справа значок */
-.acts { display: flex; flex-direction: column; }
-.act {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+/* Строки действий в свёрнутом блоке — тем же складом, что строки в настройках:
+   название слева, круглый значок справа */
+.act, .bank-add {
   width: 100%;
-  padding: 13px 0;
-  border: 0;
-  border-top: 1px solid var(--border);
+  align-items: center;
+  border: none;
+  border-top: 1px solid #f0f1f3;
   background: none;
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
 }
-.act:first-child { border-top: 0; padding-top: 4px; }
-.act:active { color: var(--accent); }
-.act-ic { display: flex; flex: none; color: var(--muted); }
-.act-ic svg { width: 20px; height: 20px; }
-.act.danger, .act.danger .act-ic { color: var(--danger); }
+.act:first-child { border-top: 0; }
+.act:active, .bank-add:active { background: #eef2f9; }
+.act.danger { color: var(--danger); }
+.act.danger .row-icon { background: #fdeceb; color: var(--danger); }
+.act[disabled], .bank-add[disabled] { opacity: 0.55; pointer-events: none; }
+
+/* Стрелка «дальше» в списке неподключённых банков */
+.bank-add .row-icon svg { transform: rotate(-90deg); }
+
+/* Последние цифры карты или счёта — приглушённо, рядом с названием */
+.acc-tail { color: var(--muted); font-weight: 400; }

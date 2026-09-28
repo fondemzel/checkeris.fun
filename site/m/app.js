@@ -227,7 +227,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'stats', 'bank', 'bank_card', 'bank_wizard', 'op'];
+  'settings', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_wizard', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -2469,6 +2469,7 @@ const SCREENS = {
   },
   settings: { title: 'Настройки', render: screenSettings },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
+  bank_add: { title: 'Подключить банк', render: screenBankAdd },
   bank_wizard: {
     title: () => bankById(state.bank)?.name ?? 'Банк',
     render: screenBankWizard,
@@ -2496,7 +2497,8 @@ const soon = (icon, title, text) => `
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
 const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
-  income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_wizard: 'settings', op: 'summary',
+  income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
+  bank_wizard: 'settings', op: 'summary',
 };
 
 /**
@@ -2667,6 +2669,8 @@ async function onScreenClick(e) {
 
   const opCat = e.target.closest('[data-op-cat]');
   if (opCat) return openCategoryPicker(Number(opCat.dataset.opCat), saveOpCategory);
+
+  if (e.target.closest('[data-bank-add]')) return go({ screen: 'bank_add' });
 
   const bankOpen = e.target.closest('[data-bank-open]');
   if (bankOpen) return go({ screen: 'bank_card', bank: bankOpen.dataset.bankOpen });
@@ -3007,36 +3011,63 @@ const bankLogo = (b, connected) => `
  */
 function bankSection(bank) {
   if (!inApp()) return '';
-  const rows = BANKS.map((b) => {
-    const link = bank?.links?.find((l) => l.bank === b.id);
-    const conn = bankState(b.id);
-    const connected = conn !== 'off';
-    const expired = conn === 'expired';
-    const ops = link?.ops ?? 0;
-    // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
-    // что у подключённого, только значок серый; обновление само начнёт с входа
-    const note = connected
-      ? `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`
-      : b.ready ? 'не подключён' : 'скоро';
-    const syncing = bankSyncing === b.id;
-    const action = connected
-      ? `<button class="row-icon${syncing ? ' spin' : ''}" type="button" data-bank="${expired ? 'relogin' : 'sync'}" data-bank-id="${b.id}"${syncing ? ' disabled' : ''} aria-label="Обновить операции" title="Обновить операции">${UI.refresh}</button>`
-      : `<button class="row-icon" type="button" data-bank-open="${b.id}" aria-label="Подключить" title="Подключить">${UI.plus}</button>`;
-    return `
-      <div class="member bank-row">
-        <button class="bank-open" type="button" data-bank-open="${b.id}">
-          ${bankLogo(b, connected && !expired)}
-          <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
-        </button>
-        ${action}
-      </div>`;
-  }).join('');
+  // В списке только подключённые: остальные — за строкой «Подключить банк», чтобы
+  // настройки не заполнялись банками, которыми человек не пользуется
+  const rows = BANKS.filter((b) => bankState(b.id) !== 'off')
+    .map((b) => {
+      const link = bank?.links?.find((l) => l.bank === b.id);
+      const expired = bankState(b.id) === 'expired';
+      const ops = link?.ops ?? 0;
+      // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
+      // что у подключённого, только значок серый; обновление само начнёт с входа
+      const note = `${link?.synced_at ? ago(link.synced_at) : 'ещё не обновляли'} · ${int.format(ops)} ${plural(ops, 'операция', 'операции', 'операций')}`;
+      const syncing = bankSyncing === b.id;
+      return `
+        <div class="member bank-row">
+          <button class="bank-open" type="button" data-bank-open="${b.id}">
+            ${bankLogo(b, !expired)}
+            <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
+          </button>
+          <button class="row-icon${syncing ? ' spin' : ''}" type="button" data-bank="${expired ? 'relogin' : 'sync'}" data-bank-id="${b.id}"${syncing ? ' disabled' : ''} aria-label="Обновить операции" title="Обновить операции">${UI.refresh}</button>
+        </div>`;
+    })
+    .join('');
 
   return `
     <div class="card bank">
       <div class="card-label">Банки</div>
       ${rows}
+      <button class="member member-invite" type="button" data-bank-add>
+        <span class="member-name">Подключить банк</span>
+        <span class="row-icon">${UI.plus}</span>
+      </button>
     </div>`;
+}
+
+/** Экран выбора банка: те, что ещё не подключены. Готовые сверху, «скоро» — ниже. */
+function screenBankAdd() {
+  const rows = BANKS.filter((b) => !inApp() || bankState(b.id) === 'off')
+    .sort((x, y) => Number(Boolean(y.ready)) - Number(Boolean(x.ready)))
+    .map((b) => `
+      <button class="member bank-row bank-add" type="button"${b.ready ? ` data-bank-open="${b.id}"` : ' disabled'}>
+        ${bankLogo(b, false)}
+        <span class="member-name">${b.name}<small class="note">${b.ready ? 'можно подключить' : 'скоро'}</small></span>
+        ${b.ready ? `<span class="row-icon">${UI.chevron}</span>` : ''}
+      </button>`)
+    .join('');
+
+  return `
+    <div class="card bank">
+      <div class="card-label">Не подключены</div>
+      ${rows || '<p class="note">Все банки уже подключены.</p>'}
+    </div>
+    <p class="note list-hint">Вход в банк проходит на вашем телефоне, в окне банка. Пароль Чекер не видит.</p>`;
+}
+
+/** Хвост счёта: последние цифры карты, а если их нет — самого счёта. */
+function tail(a) {
+  const digits = String(a.card || a.id || '').replace(/\D/g, '');
+  return digits.length >= 4 ? ` •••• ${digits.slice(-4)}` : '';
 }
 
 /**
@@ -3045,9 +3076,9 @@ function bankSection(bank) {
  * «Загрузить всю историю» открывает мастер (data-wizard), остальное — data-bank.
  */
 const act = (what, bank, title, icon, danger = false) =>
-  `<button class="act${danger ? ' danger' : ''}" type="button" ${
+  `<button class="member act${danger ? ' danger' : ''}" type="button" ${
     what === 'wizard' ? `data-wizard="${bank}"` : `data-bank="${what}" data-bank-id="${bank}"`
-  }>${title}<span class="act-ic">${icon}</span></button>`;
+  }><span class="member-name">${title}</span><span class="row-icon">${icon}</span></button>`;
 
 /**
  * Сворачиваемый блок: виден заголовок, содержимое открывается нажатием. Нативный
@@ -3111,7 +3142,7 @@ async function screenBankCard() {
         <label class="wiz-acc">
           <input type="checkbox" data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"${a.enabled ? ' checked' : ''} />
           <span class="wiz-acc-main">
-            <span class="wiz-acc-name">${esc(a.name || a.id)}</span>
+            <span class="wiz-acc-name">${esc(a.name || a.id)}<span class="acc-tail">${esc(tail(a))}</span></span>
             <small class="note">${esc(ACCOUNT_TYPES[a.type] ?? a.type ?? 'счёт')}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${plural(a.ops, 'операция', 'операции', 'операций')}</small>
           </span>
         </label>`).join('')}

@@ -23,7 +23,11 @@ export function listAccounts(db, userId, bank) {
   const accounts = db
     .prepare(
       `SELECT a.account AS id, a.name, a.type, a.currency, a.created, a.enabled,
-              (SELECT COUNT(*) FROM bank_ops o WHERE o.link_id = a.link_id AND o.account = a.account) AS ops
+              (SELECT COUNT(*) FROM bank_ops o WHERE o.link_id = a.link_id AND o.account = a.account) AS ops,
+              -- Последние цифры карты: в списке счетов их нет, зато они есть у операций
+              (SELECT o.card FROM bank_ops o
+                WHERE o.link_id = a.link_id AND o.account = a.account AND o.card IS NOT NULL
+                ORDER BY o.at DESC LIMIT 1) AS card
          FROM bank_accounts a WHERE a.link_id = ?
         ORDER BY a.enabled DESC, ops DESC, a.name`,
     )
