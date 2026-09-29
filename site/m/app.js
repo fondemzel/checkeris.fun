@@ -1555,6 +1555,10 @@ let scanner = null; // { el, stream, stop } — открытая камера, �
 
 const scanSupported = () => 'BarcodeDetector' in window && Boolean(navigator.mediaDevices?.getUserMedia);
 
+// Прозрачная картинка вместо заставки видео. Без неё Android WebView, пока камера не дала
+// первый кадр, рисует свою серую кнопку «play», растянутую на весь экран сканера
+const NO_POSTER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 function closeScanner() {
   if (!scanner) return;
   scanner.stop = true;
@@ -1568,7 +1572,7 @@ function openScanner() {
   const el = document.createElement('div');
   el.className = 'scanner';
   el.innerHTML = `
-    <video playsinline muted autoplay></video>
+    <video playsinline muted autoplay poster="${NO_POSTER}"></video>
     <div class="scanner-frame"><p class="scanner-frame-status" id="scanner-frame-status"></p></div>
     <button class="scanner-close" type="button" data-close aria-label="Закрыть">×</button>
     <div class="scanner-bottom">
