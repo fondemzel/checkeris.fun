@@ -2583,6 +2583,18 @@ function pulse(name) {
   setTimeout(() => el.classList.remove('pulse'), 1100);
 }
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
+
+// Готовые экраны — чтобы вернуться на знакомый мгновенно. Ключ — адрес экрана со всеми
+// параметрами (месяц, категория, банк). Только списки и настройки: у форм, карточек с
+// картой и мастера после отрисовки своя жизнь (поля, таймеры), прошлый вид им не годится.
+// Живут до перезагрузки страницы; свежий вид всё равно приходит следом и заменяет прошлый
+const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'bank_card', 'bank_add', 'bank_safety'];
+const screenCache = new Map();
+function remember(key, html) {
+  screenCache.delete(key); // свежий — в конец очереди
+  screenCache.set(key, html);
+  if (screenCache.size > 40) screenCache.delete(screenCache.keys().next().value);
+}
 const EXPENSE = ['summary', 'receipts', 'bank']; // один раздел: переключатель в шапке, общая шапка
 const NONE = '-'; // «Без категории»: у неразмеченного нет кода, но открывать его список нужно
 
@@ -2610,20 +2622,33 @@ async function render() {
   const shown = Boolean($('screen').firstChild);
   const sameScreen = shown && state.screen === shownScreen;
   const sameKind = shown && EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen);
-  if (!sameScreen && !sameKind) {
+  // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
+  // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
+  const key = location.search;
+  const cached = !sameScreen && CACHED.includes(state.screen) ? screenCache.get(key) : null;
+  if (cached) {
+    $('screen').innerHTML = cached;
+    window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
+    shownScreen = state.screen;
+  } else if (!sameScreen && !sameKind) {
     $('screen').innerHTML = loading();
     window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
   }
-  // Ответ задерживается — показываем это не пустотой, а приглушением списка
-  const dim = setTimeout(() => seq === renderSeq && $('screen').classList.add('busy'), 250);
+  // Ответ задерживается — показываем это не пустотой, а приглушением списка. Если на экране
+  // уже прошлый вид, не гасим: он почти наверняка верный, свежий тихо его заменит
+  const dim = setTimeout(() => seq === renderSeq && !cached && $('screen').classList.add('busy'), 250);
 
   try {
     const html = await screen.render();
     if (seq !== renderSeq) return;
+    if (CACHED.includes(state.screen)) remember(key, html);
     // Тот же список — остаёмся там же, где листали; другой — смотрим с начала
-    const keepScroll = sameScreen ? window.scrollY : 0;
-    $('screen').innerHTML = html;
-    window.scrollTo(0, keepScroll);
+    const keepScroll = sameScreen || cached ? window.scrollY : 0;
+    // Ничего не изменилось — не трогаем: перерисовка сбросила бы нажатие и фокус
+    if (html !== cached) {
+      $('screen').innerHTML = html;
+      window.scrollTo(0, keepScroll);
+    }
     shownScreen = state.screen;
     screen.after?.();
     if (pulseNext) pulse(pulseNext);
@@ -2634,6 +2659,77 @@ async function render() {
     if (seq === renderSeq) $('screen').classList.remove('busy');
   }
 }
+
+// ── обновление свайпом вниз ──────────────────────────────
+// Потянули страницу вниз от самого верха — перечитываем экран с сервера, как в любом
+// приложении. Кружок со стрелкой выезжает из-под шапки и поворачивается по мере натяжения;
+// отпустили за порогом — крутится, пока не придёт свежий вид. Формы и мастер не трогаем:
+// там перерисовка сбросила бы введённое.
+
+const PULLABLE = [...CACHED, 'item', 'op'];
+const PULL_AT = 70; // столько протянуть (с учётом тугости), чтобы обновить
+const PULL_MAX = 96; // дальше кружок не едет
+const puller = document.createElement('div');
+puller.className = 'puller';
+puller.innerHTML = UI.refresh;
+$('app').append(puller);
+
+let pullFrom = null; // где палец коснулся экрана; null — это не натяжение
+let pullBy = 0;
+let pulling = false;
+
+function pullReset() {
+  puller.classList.add('back');
+  puller.classList.remove('spin', 'ready');
+  puller.style.transform = '';
+  puller.style.opacity = '';
+  setTimeout(() => puller.classList.remove('back'), 220);
+}
+
+addEventListener('touchstart', (e) => {
+  const allowed = window.scrollY <= 0 && e.touches.length === 1 && !pulling && !$('app').hidden
+    && PULLABLE.includes(state.screen) && !document.querySelector('.sheet, .picker');
+  pullFrom = allowed ? e.touches[0].clientY : null;
+  pullBy = 0;
+}, { passive: true });
+
+addEventListener('touchmove', (e) => {
+  if (pullFrom == null) return;
+  const dy = e.touches[0].clientY - pullFrom;
+  pullBy = dy > 0 && window.scrollY <= 0 ? Math.min(PULL_MAX, dy * 0.5) : 0; // тянется туже пальца
+  puller.style.transform = `translateY(${pullBy}px) rotate(${pullBy * 3.5}deg)`;
+  puller.style.opacity = String(Math.min(1, pullBy / PULL_AT));
+  puller.classList.toggle('ready', pullBy >= PULL_AT);
+}, { passive: true });
+
+addEventListener('touchend', async () => {
+  if (pullFrom == null) return;
+  pullFrom = null;
+  if (pullBy < PULL_AT) return pullReset();
+  pulling = true;
+  puller.classList.add('spin', 'back');
+  puller.style.transform = `translateY(${PULL_AT}px)`;
+  try {
+    // Свежие данные и справочники; кружок крутится хотя бы мгновение — иначе не видно, что было
+    screenCache.delete(location.search);
+    reloadIfUpdated();
+    await Promise.all([
+      api('/api/meta').then((m) => (meta = m)).catch(() => {}),
+      new Promise((r) => setTimeout(r, 450)),
+    ]);
+    await render();
+  } finally {
+    pulling = false;
+    pullReset();
+  }
+});
+
+// Жест перехватила система (например, шторка уведомлений) — просто прячем кружок
+addEventListener('touchcancel', () => {
+  if (pullFrom == null) return;
+  pullFrom = null;
+  pullReset();
+});
 
 // ── события ──────────────────────────────────────────────
 
