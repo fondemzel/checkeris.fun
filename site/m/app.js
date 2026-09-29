@@ -3119,15 +3119,16 @@ async function screenSettings() {
 // значок слева (необязательно), название, подстрочник (необязательно) и действие справа
 // (необязательно). Один вид на весь экран и на экраны банка — читается одним списком.
 
-/** Раздел: карточка с названием и подстрочником (оба необязательны). */
+/**
+ * Раздел — как в Telegram: название мелким цветным шрифтом внутри карточки, пояснение —
+ * серым текстом под ней, между блоками. Оба необязательны.
+ */
 const section = (title, note, rows) => `
   <section class="card sec">
-    ${title || note ? `<div class="sec-head">
-      ${title ? `<div class="sec-title">${title}</div>` : ''}
-      ${note ? `<div class="note sec-note">${note}</div>` : ''}
-    </div>` : ''}
+    ${title ? `<div class="sec-title">${title}</div>` : ''}
     ${rows}
-  </section>`;
+  </section>
+  ${note ? `<p class="sec-foot">${note}</p>` : ''}`;
 
 /**
  * Строка раздела.

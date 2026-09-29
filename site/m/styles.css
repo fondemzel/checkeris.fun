@@ -628,14 +628,26 @@ button, input, select { font: inherit; color: inherit; }
 .settings-actions .note a { color: inherit; }
 
 /* ── Настройки: разделы и строки ──────────────────────────
-   Раздел — карточка с названием и подстрочником. Внутри строки одного вида: значок
-   слева (необязательно), название, подстрочник (необязательно), действие справа */
-.sec { padding: 14px 16px 4px; }
-.sec-head { margin-bottom: 6px; }
-.sec-title { font-size: 16px; font-weight: 600; }
-.sec-note { margin-top: 2px; font-size: 13px; }
+   Как в Telegram: название раздела — мелким цветным шрифтом внутри карточки, пояснение —
+   серым текстом под карточкой. Внутри строки одного вида: значок слева (необязательно),
+   название, подстрочник (необязательно), действие справа */
+.sec { padding: 12px 16px 2px; }
+.sec:has(+ .sec-foot) { margin-bottom: 6px; } /* пояснение держится у своего блока */
+.sec-title { margin-bottom: 2px; font-size: 14px; font-weight: 600; color: var(--accent); }
+.sec-foot { margin: 0 16px 18px; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
-.srow { display: flex; align-items: center; gap: 8px; min-height: 54px; border-top: 1px solid #f0f1f3; }
+/* Разделитель между строками — от текста, а не от края, как в Telegram */
+.srow { position: relative; display: flex; align-items: center; gap: 8px; min-height: 54px; }
+.srow + .srow::before, .bank-head + .srow::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-top: 1px solid #eceef1;
+}
+.srow + .srow:has(> .srow-main > .srow-ic)::before,
+.bank-head + .srow:has(> .srow-main > .srow-ic)::before { left: 46px; }
 .srow-main {
   flex: 1;
   display: flex;
