@@ -161,6 +161,16 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   const remember = db.prepare(
     `INSERT OR IGNORE INTO bank_accounts (link_id, account, name, enabled, updated_at) VALUES (?, ?, ?, 1, ?)`,
   );
+  // Т-Банк меняет номер операции, когда проводит её: у покупки «в обработке» один id, у
+  // списанной — другой. По номеру она выглядит новой и ложится второй строкой. Узнаём её по
+  // двойнику: тот же счёт, та же секунда, сумма и направление, а двойник ещё не списан.
+  // Двойнику отдаём новый номер — строка обновляется на месте, с чеком, категорией и
+  // комментарием. У Сбера времени списания нет вовсе, и его это не касается
+  const same = `link_id = :link AND account = :account AND at = :at AND amount = :amount
+    AND direction = :direction AND ext_id <> :ext`;
+  const pendingTwin = db.prepare(`SELECT id FROM bank_ops WHERE ${same} AND debited_at IS NULL ORDER BY id LIMIT 1`);
+  const settledTwin = db.prepare(`SELECT 1 FROM bank_ops WHERE ${same} AND debited_at IS NOT NULL LIMIT 1`);
+  const adopt = db.prepare('UPDATE bank_ops SET ext_id = ? WHERE id = ?');
   let count = 0;
   let added = 0; // сколько операций человек видит впервые: остальные приехали на повторную проверку
   let skipped = 0;
@@ -174,7 +184,21 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
         continue;
       }
       remember.run(link.id, row.account, row.account_name, at);
-      if (!known.get(link.id, String(op.id))) added += 1;
+      if (!known.get(link.id, row.ext_id)) {
+        const key = { link: link.id, account: row.account, at: row.at, amount: row.amount, direction: row.direction, ext: row.ext_id };
+        if (row.debited_at) {
+          // Списанная, а у нас она ещё «в обработке» под старым номером — это она же
+          const pending = pendingTwin.get(key);
+          if (pending) adopt.run(row.ext_id, pending.id);
+          else added += 1;
+        } else if (settledTwin.get(key)) {
+          // Банк снова прислал вариант «в обработке», а проведённая уже есть — не плодим
+          count += 1;
+          continue;
+        } else {
+          added += 1;
+        }
+      }
       upsert.run({ ...row, now: at });
       count += 1;
     }
@@ -189,6 +213,53 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   // Сразу разбираем: что покрыто чеком, что перевод между своими, что доход
   const marks = matchBank(db, budgetId);
   return { ops: count, added, total, skipped, ...marks };
+}
+
+/**
+ * Пары, которые легли двумя строками до того, как приём научился узнавать проведённую
+ * операцию (см. importOps): одна «в обработке», другая списанная, под разными номерами.
+ * Оставляем строку «в обработке» — к ней уже привязаны чек, категория, комментарий, — а
+ * номер, время списания и ответ банка берём у проведённой. Проведённую убираем.
+ * Идемпотентно: когда пар нет, ничего не делает.
+ */
+export function mergeSettledTwins(db) {
+  const pairs = db
+    .prepare(
+      `SELECT a.id AS keepId, b.id AS dropId FROM bank_ops a
+         JOIN bank_ops b ON b.link_id = a.link_id AND b.account = a.account AND b.at = a.at
+          AND b.amount = a.amount AND b.direction = a.direction AND b.id <> a.id
+        WHERE a.debited_at IS NULL AND b.debited_at IS NOT NULL`,
+    )
+    .all();
+  if (!pairs.length) return 0;
+  const read = db.prepare('SELECT ext_id, debited_at, status, raw, receipt_id, note FROM bank_ops WHERE id = ?');
+  const drop = db.prepare('DELETE FROM bank_ops WHERE id = ?');
+  const take = db.prepare(
+    `UPDATE bank_ops SET ext_id = :ext_id, debited_at = :debited_at, status = :status, raw = :raw,
+       -- Что человек или разметка успели сделать с проведённой — не теряем
+       receipt_id = COALESCE(receipt_id, :receipt_id), note = COALESCE(note, :note), updated_at = :now
+     WHERE id = :keepId`,
+  );
+  const repoint = db.prepare('UPDATE bank_ops SET pair_id = :keepId WHERE pair_id = :dropId');
+  const at = now();
+  const done = new Set();
+  db.exec('BEGIN');
+  try {
+    for (const { keepId, dropId } of pairs) {
+      if (done.has(keepId) || done.has(dropId)) continue; // строка уже склеена с другой
+      done.add(keepId).add(dropId);
+      // Номер у операции уникален: проведённую сначала убираем, потом отдаём её номер
+      const settled = read.get(dropId);
+      drop.run(dropId);
+      take.run({ ...settled, keepId, now: at });
+      repoint.run({ keepId, dropId });
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return done.size / 2;
 }
 
 /** Загрузка операций одного подключения. Повторы не плодят строк: ключ — id операции в банке. */

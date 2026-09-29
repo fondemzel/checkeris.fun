@@ -29,7 +29,7 @@ import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
 import {
   banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank, getBankOp,
-  setBankOpNote, setBankOpKind,
+  setBankOpNote, setBankOpKind, mergeSettledTwins,
 } from './banks.mjs';
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
@@ -865,6 +865,8 @@ setTimeout(() => {
   try {
     const merged = mergePrefixedAccounts(db);
     if (merged) console.log(`банк: операции переведены на номер счёта без приставки — ${merged}`);
+    const twins = mergeSettledTwins(db);
+    if (twins) console.log(`банк: склеены операции, пришедшие под двумя номерами — ${twins}`);
     rememberLoadedAccounts(db);
     const trimmed = trimStoredOps(db);
     if (trimmed) console.log(`банк: сокращено операций до нужных полей — ${trimmed}`);
