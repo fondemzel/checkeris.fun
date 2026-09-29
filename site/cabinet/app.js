@@ -5,7 +5,7 @@ import { columns, bars, sunburst, bindTooltip } from '/cabinet/charts.js';
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin, requestLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
 
-const CHART_COLOR = '#2563eb'; // один ряд — один цвет; величину несёт длина марки
+const CHART_COLOR = '#3b7bce'; // один ряд — один цвет (синий интерфейса, --accent); величину несёт длина марки
 
 const DEFAULT_GROUP_COLOR = '#7c9cd6'; // чем красить группу, которой цвет ещё не задали
 

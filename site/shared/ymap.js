@@ -48,13 +48,19 @@ export async function showPlace(element, { key, lat, lon, qc = 0, title = '' }) 
   } else {
     map.geoObjects.add(
       new ymaps.Circle([[lat, lon], qc === 2 ? 250 : 900], { hintContent: title }, {
-        fillColor: '#2563eb22',
-        strokeColor: '#2563eb',
+        fillColor: `${accent()}22`,
+        strokeColor: accent(),
         strokeWidth: 2,
       }),
     );
   }
   return map;
+}
+
+/** Синий интерфейса — из переменной страницы, чтобы круг на карте был того же цвета. */
+function accent() {
+  const value = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : '#3b7bce';
 }
 
 /** Показывать ли карту вообще: точность до города и хуже — только адрес текстом. */

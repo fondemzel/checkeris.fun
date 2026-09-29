@@ -47,7 +47,7 @@ export function monthLabel(key) {
  * Столбцы по времени. Один ряд — значит один цвет и никакой легенды:
  * заголовок уже говорит, что отложено.
  */
-export function columns(rows, { height = 220, color = '#2563eb', label = monthLabel, width: given = 0 } = {}) {
+export function columns(rows, { height = 220, color = '#3b7bce', label = monthLabel, width: given = 0 } = {}) {
   if (!rows.length) return '<div class="chart-empty">Нет данных за период</div>';
 
   const pad = { top: 18, right: 8, bottom: 22, left: 52 };
@@ -105,7 +105,7 @@ export function columns(rows, { height = 220, color = '#2563eb', label = monthLa
  * Горизонтальные полосы. Названия длинные, поэтому лежат слева отдельной колонкой,
  * а не внутри полосы: подпись, которую обрезает марка, хуже, чем её отсутствие.
  */
-export function bars(rows, { color = '#2563eb', max: forced = null, showShare = false } = {}) {
+export function bars(rows, { color = '#3b7bce', max: forced = null, showShare = false } = {}) {
   if (!rows.length) return '<div class="chart-empty">Нет данных за период</div>';
 
   const max = forced ?? Math.max(...rows.map((r) => r.sum), 1);

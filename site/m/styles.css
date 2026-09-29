@@ -7,7 +7,12 @@
   --text: #1f2328;
   --muted: #6b7280;
   --border: #e1e4e8;
-  --accent: #2563eb;
+  /* Синий интерфейса — один на всё: кнопки, ссылки, переключатели, названия разделов.
+     Приглушённый, ближе к Telegram. Светлые подложки — производные от него, отдельно не задаются.
+     Тот же цвет — в кабинете (site/cabinet/styles.css) */
+  --accent: #3b7bce;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, #fff);
+  --accent-faint: color-mix(in srgb, var(--accent) 8%, #fff);
   --danger: #b42318;
   --bar: #131a26;
 }
@@ -223,7 +228,7 @@ button, input, select { font: inherit; color: inherit; }
   color: #fff;
   font-size: 30px;
   line-height: 1;
-  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 35%, transparent);
   cursor: pointer;
 }
 .tab-add:active { transform: scale(0.95); }
@@ -432,7 +437,7 @@ button, input, select { font: inherit; color: inherit; }
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: #e8effd;
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -1014,9 +1019,9 @@ button.bank-op { cursor: pointer; }
 }
 
 /* Диапазон — сплошная полоса, края — кружки на ней */
-.cal-day.in { background: #dbe6fc; }
-.cal-day.from { background: linear-gradient(90deg, transparent 50%, #dbe6fc 50%); }
-.cal-day.to { background: linear-gradient(90deg, #dbe6fc 50%, transparent 50%); }
+.cal-day.in { background: var(--accent-soft); }
+.cal-day.from { background: linear-gradient(90deg, transparent 50%, var(--accent-soft) 50%); }
+.cal-day.to { background: linear-gradient(90deg, var(--accent-soft) 50%, transparent 50%); }
 .cal-day.edge span { background: var(--accent); color: #fff; font-weight: 600; }
 .cal-day.today:not(.edge) { color: var(--accent); font-weight: 600; }
 .cal-day.future:not(.edge) { color: #b6bcc6; }
@@ -1147,7 +1152,7 @@ button.bank-op { cursor: pointer; }
 .sheet-top + .sheet-list { margin-top: 12px; }
 
 /* Позиция, из карточки которой открыли чек */
-.sheet-row.current { background: #eef4ff; }
+.sheet-row.current { background: var(--accent-faint); }
 
 /* Одна позиция — одна строка: значок, название с подстрочником категории, сумма */
 .sheet-row {
