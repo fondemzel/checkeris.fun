@@ -3243,8 +3243,10 @@ async function screenBankCard() {
 
     ${accounts.length ? section(T.bankCard.accounts.label, T.bankCard.accounts.hint, accounts.map((a) => srow({
       ...accountIcon(a),
-      title: `${esc(a.name || a.id)}<span class="acc-tail">${esc(tail(a))}</span>`,
-      note: `${esc(T.accountTypes[a.type] ?? a.type ?? T.bankCard.accounts.kind)}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${pl(a.ops, T.common.ops)}`,
+      // Цифры счёта не обрезаются: у Сбера три «Сберегательных счёта» различаются только ими
+      title: `<span class="acc-title"><span class="acc-name">${esc(a.name || a.id)}</span><span class="acc-tail">${esc(tail(a))}</span></span>`,
+      // Вид счёта: у Т-Банка — тип от банка, у Сбера типа нет — по тому, что узнал сервер
+      note: `${esc(T.accountTypes[a.type] ?? T.bankCard.accounts.kinds[a.kind] ?? a.type ?? T.bankCard.accounts.kind)}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${pl(a.ops, T.common.ops)}`,
       end: toggle(`data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"`, a.enabled, T.bankCard.accounts.toggle),
     })).join('')) : ''}
 

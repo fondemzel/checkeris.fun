@@ -36,7 +36,9 @@ export function listAccounts(db, userId, bank) {
                 WHERE o.link_id = a.link_id AND o.account = a.account
                   AND json_extract(o.raw, '$.cardNumber') IS NOT NULL
                 ORDER BY o.at DESC LIMIT 1) AS mask
-         FROM bank_accounts a WHERE a.link_id = ?
+         -- Операции без счёта (Сбер так отдаёт, например, погашение ипотеки) в выписке
+         -- остаются, но строкой-счётом без названия список не засоряем
+         FROM bank_accounts a WHERE a.link_id = ? AND a.account <> ''
         ORDER BY a.enabled DESC, ops DESC, a.name`,
     )
     .all(link.id)
@@ -139,6 +141,23 @@ function applyChoice(db, link) {
 }
 
 /** Счета, по которым операции уже есть, а записи о счёте ещё нет: заводим включёнными. */
+/**
+ * Один счёт — один номер. Сбер у части операций пишет номер с приставкой («card:1100…»),
+ * и до исправления разбора такие операции легли отдельным счётом. Переводим их на номер
+ * без приставки, а лишнюю строку счёта убираем. Идемпотентно: второй запуск ничего не меняет.
+ */
+export function mergePrefixedAccounts(db) {
+  const sber = "SELECT id FROM bank_links WHERE bank = 'sber'";
+  const moved = db
+    .prepare(
+      `UPDATE bank_ops SET account = substr(account, instr(account, ':') + 1)
+        WHERE link_id IN (${sber}) AND account GLOB '[a-zA-Z]*:*'`,
+    )
+    .run().changes;
+  db.prepare(`DELETE FROM bank_accounts WHERE link_id IN (${sber}) AND account GLOB '[a-zA-Z]*:*'`).run();
+  return moved;
+}
+
 export function rememberLoadedAccounts(db) {
   return db
     .prepare(

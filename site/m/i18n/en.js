@@ -112,6 +112,12 @@ export const en = {
       hint: 'Operations are taken only from accounts that are on. Turning an account off removes its operations from the totals; turning it back on returns them.',
       toggle: 'Count this account’s operations',
       kind: 'account',
+      kinds: {
+        card: 'Card',
+        saving: 'Savings account',
+        loan: 'Instalments',
+        account: 'Account',
+      },
       offConfirm: 'Stop using operations from this account? {ops} {opsWord} will no longer count.',
       on: 'The account counts again',
       off: 'The account no longer counts',

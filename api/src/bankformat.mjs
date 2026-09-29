@@ -23,6 +23,8 @@ const sberTime = (s) => {
 };
 // Сумма у Сбера — в рублях (может быть дробной); у нас всё в копейках
 const sberKopecks = (money) => (money?.amount == null ? null : Math.round(Math.abs(Number(money.amount)) * 100));
+// Номер счёта Сбера без приставки вида: «card:1100…» → «1100…», «ct-account:3200…» → «3200…»
+export const accountId = (id) => String(id ?? '').replace(/^[a-z-]+:/i, '');
 const last4 = (s) => {
   const digits = String(s ?? '').replace(/\D/g, '');
   return digits.length >= 4 ? digits.slice(-4) : null;
@@ -115,7 +117,9 @@ const ADAPTERS = {
     ],
     parse: (op) => {
       const amount = op.operationAmount ?? op.nationalAmount;
-      const account = op.billingAmount?.id ?? String(op.fromResource?.id ?? '').replace(/^ct-account:/, '');
+      // Один и тот же счёт Сбер называет то «1100…», то «card:1100…» или «ct-account:3200…»:
+      // приставку отрезаем, иначе одна карта в списке счетов становится двумя
+      const account = op.billingAmount?.id ?? accountId(op.fromResource?.id);
       return {
         ext_id: String(op.uohId),
         account: String(account || ''),

@@ -35,7 +35,7 @@ import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
-import { listAccounts, saveAccounts, rememberLoadedAccounts } from './bankaccounts.mjs';
+import { listAccounts, saveAccounts, rememberLoadedAccounts, mergePrefixedAccounts } from './bankaccounts.mjs';
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
@@ -863,6 +863,8 @@ if (geocoderReady()) {
 // что покрыто чеком, что перевод между своими счетами, что доход
 setTimeout(() => {
   try {
+    const merged = mergePrefixedAccounts(db);
+    if (merged) console.log(`банк: операции переведены на номер счёта без приставки — ${merged}`);
     rememberLoadedAccounts(db);
     const trimmed = trimStoredOps(db);
     if (trimmed) console.log(`банк: сокращено операций до нужных полей — ${trimmed}`);

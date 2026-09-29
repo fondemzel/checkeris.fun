@@ -1384,3 +1384,7 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 
 /* Последние цифры карты или счёта — приглушённо, рядом с названием */
 .acc-tail { color: var(--muted); font-weight: 400; }
+/* В строке счёта сжимается название, а цифры остаются целиком */
+.acc-title { display: flex; min-width: 0; }
+.acc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.acc-title .acc-tail { flex: none; white-space: pre; }
