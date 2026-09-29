@@ -30,13 +30,48 @@ export function listAccounts(db, userId, bank) {
               -- Последние цифры карты: в списке счетов их нет, зато они есть у операций
               (SELECT o.card FROM bank_ops o
                 WHERE o.link_id = a.link_id AND o.account = a.account AND o.card IS NOT NULL
-                ORDER BY o.at DESC LIMIT 1) AS card
+                ORDER BY o.at DESC LIMIT 1) AS card,
+              -- Маска карты («553691******9315»): по первым цифрам видна платёжная система
+              (SELECT json_extract(o.raw, '$.cardNumber') FROM bank_ops o
+                WHERE o.link_id = a.link_id AND o.account = a.account
+                  AND json_extract(o.raw, '$.cardNumber') IS NOT NULL
+                ORDER BY o.at DESC LIMIT 1) AS mask
          FROM bank_accounts a WHERE a.link_id = ?
         ORDER BY a.enabled DESC, ops DESC, a.name`,
     )
     .all(link.id)
-    .map((a) => ({ ...a, enabled: Boolean(a.enabled) }));
+    .map(({ mask, ...a }) => {
+      const kind = accountKind(a, mask);
+      return { ...a, enabled: Boolean(a.enabled), kind, network: kind === 'card' ? network(mask, a.name) : null };
+    });
   return { accounts };
+}
+
+/**
+ * Платёжная система карты: по первым цифрам номера, а если номера нет — по названию
+ * счёта (у Сбера карта так и называется: «MasterCard Mass»). null — не узнали.
+ */
+export function network(mask, name) {
+  const digits = String(mask ?? '').replace(/\D.*$/, '');
+  if (/^220[0-4]/.test(digits)) return 'mir';
+  if (/^4/.test(digits)) return 'visa';
+  if (/^(5[1-5]|222[1-9]|22[3-9]\d|2[3-6]\d\d|27[01]\d|2720)/.test(digits)) return 'mastercard';
+  const n = String(name ?? '');
+  if (/master\s*card/i.test(n)) return 'mastercard';
+  if (/visa/i.test(n)) return 'visa';
+  if (/(^|[^\p{L}])(мир|mir)([^\p{L}]|$)/iu.test(n)) return 'mir';
+  return null;
+}
+
+/**
+ * Вид счёта для значка: карта, накопительный, рассрочка или просто счёт. У Т-Банка вид
+ * приходит типом (Saving, BNPL), у Сбера его нет — смотрим на название.
+ */
+export function accountKind(a, mask) {
+  if (a.type === 'Saving' || /сберегат|накопит|копилк|вклад/i.test(a.name ?? '')) return 'saving';
+  if (a.type === 'BNPL') return 'loan';
+  if (mask || network(null, a.name)) return 'card';
+  return 'account';
 }
 
 /**

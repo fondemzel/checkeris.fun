@@ -86,6 +86,24 @@ const UI = {
   shield: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+  user: svg('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+  phone: svg('<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>'),
+  lock: svg('<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+  upload: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>'),
+  eyeOff: svg(
+    '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/>' +
+      '<path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/>' +
+      '<path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/>' +
+      '<path d="m2 2 20 20"/>',
+  ),
+  piggy: svg(
+    '<path d="M11 17h3v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-3a3.16 3.16 0 0 0 2-2h1a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-1a5 5 0 0 0-2-4V3a4 4 0 0 0-3.2 1.6l-.3.4H11a6 6 0 0 0-6 6v1a5 5 0 0 0 2 4v3a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1z"/>' +
+      '<path d="M16 10h.01"/><path d="M2 8v1a2 2 0 0 0 2 2h1"/>',
+  ),
+  userPlus: svg(
+    '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>' +
+      '<path d="M19 8v6"/><path d="M22 11h-6"/>',
+  ),
   income: svg('<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>'),
   settings: svg(
     '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>' +
@@ -2856,36 +2874,29 @@ const shared = () => (meta?.budget?.members ?? 1) > 1;
 /** Раздел «Бюджет» в листе аккаунта: состав, приглашение, выход. */
 function budgetSection(budget) {
   if (!budget) return '';
+  const B = T.settings.budget;
+  const name = srow({
+    icon: UI.wallet,
+    title: budget.is_owner
+      ? inlineEdit('budget', budget.name, { cls: 'srow-input', label: B.nameLabel, max: 60 })
+      : esc(budget.name),
+    note: B.nameNote,
+  });
   const members = budget.members
-    .map(
-      (m) => `
-      <div class="member">
-        <span class="member-name">${esc(m.name)}${m.is_me ? ' <span class="note">(вы)</span>' : ''}</span>
-        <span class="note">${m.is_owner ? 'владелец' : `${int.format(m.receipts)} ${plural(m.receipts, 'чек', 'чека', 'чеков')}`}</span>
-        ${budget.is_owner && !m.is_me ? `<button class="link" type="button" data-remove-member="${m.id}">Исключить</button>` : ''}
-      </div>`,
+    .map((m) =>
+      srow({
+        icon: UI.user,
+        title: esc(m.name),
+        note: [m.is_me ? B.you : '', m.is_owner ? B.owner : `${int.format(m.receipts)} ${pl(m.receipts, B.receipts)}`]
+          .filter(Boolean)
+          .join(' · '),
+        end: budget.is_owner && !m.is_me ? endBtn(`data-remove-member="${m.id}"`, UI.close, B.remove) : '',
+      }),
     )
     .join('');
-
-  return `
-    <div class="card budget">
-      <div class="card-label">Бюджет</div>
-      ${budget.is_owner
-        ? inlineEdit('budget', budget.name, { cls: 'budget-name', label: 'Название бюджета', max: 60 })
-        : `<div class="budget-name">${esc(budget.name)}</div>`}
-      ${members}
-      ${budget.is_owner ? `
-        <button class="member member-invite" type="button" data-invite>
-          <span class="member-name">Добавить</span>
-          <span class="note">нажмите, чтобы пригласить</span>
-        </button>` : ''}
-      <p class="note budget-hint">${
-        budget.members.length > 1
-          ? 'Все участники видят и добавляют траты в этот бюджет.'
-          : 'Пригласите семью — будете вести один бюджет на всех.'
-      }</p>
-      ${!budget.is_home ? '<button class="btn" type="button" data-leave>Выйти из общего бюджета</button>' : ''}
-    </div>`;
+  const invite = budget.is_owner ? srow({ icon: UI.userPlus, title: B.invite, note: B.inviteNote, attrs: 'data-invite' }) : '';
+  const leave = budget.is_home ? '' : srow({ icon: UI.logout, title: B.leave, note: B.leaveNote, attrs: 'data-leave', danger: true });
+  return section(B.label, budget.members.length > 1 ? B.noteShared : B.noteAlone, name + members + invite + leave);
 }
 
 /**
@@ -2966,27 +2977,69 @@ async function screenSettings() {
     api('/api/budget').catch(() => null),
     inApp() ? api('/api/bank').catch(() => null) : null,
   ]);
-  return `
-    <div class="card profile">
-      <div class="card-label">${T.settings.login.label}</div>
-      ${inlineEdit('name', me?.name ?? '', {
-        cls: 'profile-name',
-        label: T.settings.login.nameLabel,
-        placeholder: T.settings.login.namePlaceholder,
-        max: 60,
-      })}
-      <div class="login-row">
-        <span class="note">${me?.telegram ? T.settings.login.viaTelegram : T.settings.login.viaPassword}</span>
-        <button class="row-icon" type="button" data-logout aria-label="${T.settings.login.logout}" title="${T.settings.login.logout}">${UI.logout}</button>
-      </div>
-    </div>
-    ${budgetSection(budget)}
-    ${bankSection(bank)}
-    <div class="settings-actions">
-      ${me?.role === 'admin' ? '' : `<button class="btn danger" type="button" data-delete-account>${T.settings.deleteAccount}</button>`}
-      <p class="note"><a href="/privacy.html">${T.common.privacy}</a></p>
-    </div>`;
+  const P = T.settings.profile;
+  const D = T.settings.data;
+  const profile = section(
+    P.label,
+    me?.telegram ? P.viaTelegram : P.viaPassword,
+    srow({
+      icon: UI.user,
+      title: inlineEdit('name', me?.name ?? '', { cls: 'srow-input', label: P.nameLabel, placeholder: P.namePlaceholder, max: 60 }),
+      note: P.nameNote,
+    }) + srow({ icon: UI.logout, title: P.logout, attrs: 'data-logout' }),
+  );
+  const data = section(
+    D.label,
+    D.note,
+    srow({ icon: UI.shield, title: D.privacy, note: D.privacyNote, href: '/privacy.html', end: GO }) +
+      (me?.role === 'admin'
+        ? ''
+        : srow({ icon: UI.trash, title: T.settings.deleteAccount, note: D.deleteNote, attrs: 'data-delete-account', danger: true })),
+  );
+  return profile + budgetSection(budget) + bankSection(bank) + data;
 }
+
+// ── разделы и строки настроек ────────────────────────────
+// Настройки — это разделы, в разделе — строки. Раздел: название и подстрочник. Строка:
+// значок слева (необязательно), название, подстрочник (необязательно) и действие справа
+// (необязательно). Один вид на весь экран и на экраны банка — читается одним списком.
+
+/** Раздел: карточка с названием и подстрочником. */
+const section = (title, note, rows) => `
+  <section class="card sec">
+    <div class="sec-head">
+      <div class="sec-title">${title}</div>
+      ${note ? `<div class="note sec-note">${note}</div>` : ''}
+    </div>
+    ${rows}
+  </section>`;
+
+/**
+ * Строка раздела.
+ *   icon  — значок или логотип банка (bare — без подложки: у логотипа она своя);
+ *   title — текст или поле правки на месте, note — подстрочник (wrap — в несколько строк,
+ *           для пояснений; обычно подстрочник в одну строку и обрезается);
+ *   attrs — строка становится кнопкой с этими data-атрибутами, href — ссылкой;
+ *   end   — действие справа: отдельная кнопка, её нажатие не открывает строку.
+ */
+function srow({ icon = '', bare = false, title, note = '', wrap = false, attrs = '', href = '', end = '', danger = false, off = false }) {
+  const body =
+    (icon ? `<span class="srow-ic${bare ? ' bare' : ''}">${icon}</span>` : '') +
+    `<span class="srow-text"><span class="srow-title">${title}</span>${note ? `<small class="note srow-note">${note}</small>` : ''}</span>`;
+  const main = href
+    ? `<a class="srow-main" href="${href}">${body}</a>`
+    : attrs
+      ? `<button class="srow-main" type="button" ${attrs}${off ? ' disabled' : ''}>${body}</button>`
+      : `<div class="srow-main">${body}</div>`;
+  return `<div class="srow${danger ? ' danger' : ''}${off ? ' off' : ''}${wrap ? ' wrap' : ''}">${main}${end}</div>`;
+}
+
+/** Круглая кнопка справа: обновить, исключить. Крутится — значит, занята. */
+const endBtn = (attrs, icon, label, spin = false) =>
+  `<button class="row-icon${spin ? ' spin' : ''}" type="button" ${attrs} aria-label="${esc(label)}" title="${esc(label)}"${spin ? ' disabled' : ''}>${icon}</button>`;
+
+/** Стрелка «дальше»: строка ведёт на другой экран. */
+const GO = `<span class="srow-go">${UI.chevron}</span>`;
 
 /**
  * Приложение для Android: страница живёт внутри него и через мост window.Checker умеет то,
@@ -3040,6 +3093,7 @@ const bankLogo = (b, connected) => `
  */
 function bankSection(bank) {
   if (!inApp()) return '';
+  const S = T.settings.banks;
   // В списке только подключённые: остальные — за строкой «Подключить банк», чтобы
   // настройки не заполнялись банками, которыми человек не пользуется
   const rows = BANKS.filter((b) => bankState(b.id) !== 'off')
@@ -3049,48 +3103,50 @@ function bankSection(bank) {
       const ops = link?.ops ?? 0;
       // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
       // что у подключённого, только значок серый; обновление само начнёт с входа
-      const note = `${link?.synced_at ? ago(link.synced_at) : T.settings.banks.neverSynced} · ${int.format(ops)} ${pl(ops, T.common.ops)}`;
-      const syncing = bankSyncing === b.id;
-      return `
-        <div class="member bank-row">
-          <button class="bank-open" type="button" data-bank-open="${b.id}">
-            ${bankLogo(b, !expired)}
-            <span class="member-name">${b.name}<small class="note">${esc(note)}</small></span>
-          </button>
-          <button class="row-icon${syncing ? ' spin' : ''}" type="button" data-bank="${expired ? 'relogin' : 'sync'}" data-bank-id="${b.id}"${syncing ? ' disabled' : ''} aria-label="${T.settings.banks.refresh}" title="${T.settings.banks.refresh}">${UI.refresh}</button>
-        </div>`;
+      const note = `${link?.synced_at ? ago(link.synced_at) : S.neverSynced} · ${int.format(ops)} ${pl(ops, T.common.ops)}`;
+      return srow({
+        icon: bankLogo(b, !expired),
+        bare: true,
+        title: b.name,
+        note: esc(note),
+        attrs: `data-bank-open="${b.id}"`,
+        end: endBtn(`data-bank="${expired ? 'relogin' : 'sync'}" data-bank-id="${b.id}"`, UI.refresh, S.refresh, bankSyncing === b.id),
+      });
     })
     .join('');
-
-  return `
-    <div class="card bank">
-      <div class="card-label">${T.settings.banks.label}</div>
-      ${rows}
-      <button class="member member-invite" type="button" data-bank-add>
-        <span class="member-name">${T.settings.banks.add}</span>
-        <span class="row-icon">${UI.plus}</span>
-      </button>
-    </div>`;
+  // Подстрочник — какие банки можно подключить, а если все готовые уже есть — какие скоро
+  const off = BANKS.filter((b) => bankState(b.id) === 'off');
+  const free = off.filter((b) => b.ready).map((b) => b.name);
+  const soon = off.filter((b) => !b.ready).map((b) => b.name);
+  const add = srow({
+    icon: UI.plus,
+    title: S.add,
+    note: free.length
+      ? f(S.addNote, { names: free.join(', ') })
+      : soon.length ? f(S.addNoteSoon, { names: soon.join(', ') }) : S.addNoteNone,
+    attrs: 'data-bank-add',
+    end: GO,
+  });
+  return section(S.label, S.note, rows + add);
 }
 
 /** Экран выбора банка: те, что ещё не подключены. Готовые сверху, «скоро» — ниже. */
 function screenBankAdd() {
   const rows = BANKS.filter((b) => !inApp() || bankState(b.id) === 'off')
     .sort((x, y) => Number(Boolean(y.ready)) - Number(Boolean(x.ready)))
-    .map((b) => `
-      <button class="member bank-row bank-add" type="button"${b.ready ? ` data-bank-open="${b.id}"` : ' disabled'}>
-        ${bankLogo(b, false)}
-        <span class="member-name">${b.name}<small class="note">${b.ready ? T.bankAdd.ready : T.bankAdd.soon}</small></span>
-        ${b.ready ? `<span class="row-icon">${UI.chevron}</span>` : ''}
-      </button>`)
+    .map((b) =>
+      srow({
+        icon: bankLogo(b, false),
+        bare: true,
+        title: b.name,
+        note: b.ready ? T.bankAdd.ready : T.bankAdd.soon,
+        attrs: b.ready ? `data-bank-open="${b.id}"` : 'data-bank-soon',
+        off: !b.ready,
+        end: b.ready ? GO : '',
+      }),
+    )
     .join('');
-
-  return `
-    <div class="card bank">
-      <div class="card-label">${T.bankAdd.label}</div>
-      ${rows || `<p class="note">${T.bankAdd.allConnected}</p>`}
-    </div>
-    <p class="note list-hint">${T.bankAdd.hint}</p>`;
+  return section(T.bankAdd.label, T.bankAdd.hint, rows || `<p class="note">${T.bankAdd.allConnected}</p>`);
 }
 
 /**
@@ -3107,24 +3163,37 @@ function tail(a) {
 }
 
 /**
- * Строка действия: слева название, справа значок. Строками, а не кнопками, — их много
- * и они однотипные, а строка читается сверху вниз одним списком.
+ * Строка действия на странице банка — та же строка, что в настройках: значок слева.
  * «Загрузить всю историю» открывает мастер (data-wizard), остальное — data-bank.
  */
 const act = (what, bank, title, icon, danger = false) =>
-  `<button class="member act${danger ? ' danger' : ''}" type="button" ${
-    what === 'wizard' ? `data-wizard="${bank}"` : `data-bank="${what}" data-bank-id="${bank}"`
-  }><span class="member-name">${title}</span><span class="row-icon">${icon}</span></button>`;
+  srow({
+    icon,
+    title,
+    danger,
+    attrs: what === 'wizard' ? `data-wizard="${bank}"` : `data-bank="${what}" data-bank-id="${bank}"`,
+  });
+
+// Названия платёжных систем — для подсказки у значка карты
+const NETWORKS = { mastercard: 'Mastercard', visa: 'Visa', mir: 'Мир' };
 
 /**
- * Сворачиваемый блок: виден заголовок, содержимое открывается нажатием. Нативный
- * <details> — состояние хранит сам браузер, скрипт не нужен; стрелку поворачивает CSS.
+ * Значок счёта: у карты — знак платёжной системы, у остального — значок вида счёта.
+ * Систему и вид определяет сервер: по первым цифрам карты или по названию счёта.
  */
-const fold = (title, body, open = false) => `
-  <details class="card fold"${open ? ' open' : ''}>
-    <summary class="fold-head"><span class="card-label">${title}</span>${UI.chevron}</summary>
-    <div class="fold-body">${body}</div>
-  </details>`;
+function accountIcon(a) {
+  if (a.network) {
+    return { icon: `<img class="pay-logo" src="/shared/brand/${a.network}.svg" alt="${NETWORKS[a.network]}" />`, bare: true };
+  }
+  return { icon: a.kind === 'saving' ? UI.piggy : a.kind === 'loan' ? UI.calendar : UI.bank };
+}
+
+/** Переключатель справа в строке: включает и выключает счёт. */
+const toggle = (attrs, on, label) => `
+  <label class="switch" title="${esc(label)}">
+    <input type="checkbox" ${attrs}${on ? ' checked' : ''} aria-label="${esc(label)}" />
+    <span class="switch-track"></span>
+  </label>`;
 
 /**
  * Страница банка: что происходит с данными, и все действия по нему. Вход в интернет-банк
@@ -3164,21 +3233,20 @@ async function screenBankCard() {
       </div>
     </div>
 
-    ${fold(`${UI.shield} ${T.bankCard.safety.label}`, `
-      <ul class="bank-facts">${facts(T.bankCard.safety, ['login', 'password', 'server', 'private'])}</ul>
-      <p class="note fold-link"><a href="/privacy.html">${T.common.privacy}</a></p>`, true)}
+    ${section(T.bankCard.safety.label, '', [
+      [UI.phone, 'login'],
+      [UI.lock, 'password'],
+      [UI.upload, 'server'],
+      [UI.eyeOff, 'private'],
+    ].map(([icon, name]) => srow({ icon, title: T.bankCard.safety[`${name}Bold`], note: T.bankCard.safety[`${name}Text`], wrap: true })).join('')
+      + srow({ icon: UI.shield, title: T.common.privacy, href: '/privacy.html', end: GO }))}
 
-    ${accounts.length ? fold(`${UI.card} ${T.bankCard.accounts.label}<span class="fold-count">${f(T.bankCard.accounts.count, { on: accounts.filter((a) => a.enabled).length, all: accounts.length })}</span>`, `
-      <p class="note">${T.bankCard.accounts.hint}</p>
-      <div class="wiz-accs">${accounts.map((a) => `
-        <label class="wiz-acc">
-          <input type="checkbox" data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"${a.enabled ? ' checked' : ''} />
-          <span class="wiz-acc-main">
-            <span class="wiz-acc-name">${esc(a.name || a.id)}<span class="acc-tail">${esc(tail(a))}</span></span>
-            <small class="note">${esc(T.accountTypes[a.type] ?? a.type ?? T.bankCard.accounts.kind)}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${pl(a.ops, T.common.ops)}</small>
-          </span>
-        </label>`).join('')}
-      </div>`) : ''}
+    ${accounts.length ? section(T.bankCard.accounts.label, T.bankCard.accounts.hint, accounts.map((a) => srow({
+      ...accountIcon(a),
+      title: `${esc(a.name || a.id)}<span class="acc-tail">${esc(tail(a))}</span>`,
+      note: `${esc(T.accountTypes[a.type] ?? a.type ?? T.bankCard.accounts.kind)}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${pl(a.ops, T.common.ops)}`,
+      end: toggle(`data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"`, a.enabled, T.bankCard.accounts.toggle),
+    })).join('')) : ''}
 
     ${!b.ready
       ? `<div class="settings-actions"><button class="btn big" type="button" disabled>${T.bankCard.soon}</button></div>`
@@ -3188,14 +3256,12 @@ async function screenBankCard() {
               ? `<button class="btn primary big with-ic" type="button" data-wizard="${b.id}">${UI.login} ${T.settings.banks.connect}</button>`
               : `<button class="btn primary big with-ic" type="button" data-bank="login" data-bank-id="${b.id}">${UI.login} ${T.settings.banks.connect}</button>`
           }</div>`
-        : fold(`${UI.settings} ${T.bankCard.manage.label}`, `
-            <div class="acts">
-              ${!expired && canWizard(b.id) ? act('wizard', b.id, T.bankCard.manage.history, UI.history) : ''}
-              ${!expired ? act('sync', b.id, T.bankCard.manage.sync, UI.refresh) : ''}
-              ${act('login', b.id, T.bankCard.manage.relogin, UI.login)}
-              ${act('forget', b.id, T.bankCard.manage.forget, UI.unlink)}
-              ${ops ? act('wipe', b.id, T.bankCard.manage.wipe, UI.trash, true) : ''}
-            </div>`)}`;
+        : section(T.bankCard.manage.label, '',
+            (!expired && canWizard(b.id) ? act('wizard', b.id, T.bankCard.manage.history, UI.history) : '')
+            + (!expired ? act('sync', b.id, T.bankCard.manage.sync, UI.refresh) : '')
+            + act('login', b.id, T.bankCard.manage.relogin, UI.login)
+            + act('forget', b.id, T.bankCard.manage.forget, UI.unlink)
+            + (ops ? act('wipe', b.id, T.bankCard.manage.wipe, UI.trash, true) : ''))}`;
 }
 
 /** «10 мин назад», «3 ч назад», иначе дата. */
@@ -3213,7 +3279,7 @@ async function onSettingsClick(e) {
     if (invite) return shareInvite(invite);
 
     if (e.target.closest('[data-leave]')) {
-      if (!confirm('Выйти из общего бюджета? Вы вернётесь в свой. Ваши траты останутся в общем.')) return;
+      if (!confirm(T.settings.budget.leaveConfirm)) return;
       try {
         await api('/api/budget/leave', { method: 'POST' });
         location.reload();
@@ -3225,7 +3291,7 @@ async function onSettingsClick(e) {
 
     const remove = e.target.closest('[data-remove-member]');
     if (remove) {
-      if (!confirm('Исключить из бюджета? Человек вернётся в свой бюджет, его траты останутся здесь.')) return;
+      if (!confirm(T.settings.budget.removeConfirm)) return;
       try {
         await api(`/api/budget/members/${remove.dataset.removeMember}`, { method: 'DELETE' });
         meta = await api('/api/meta');
@@ -3237,7 +3303,7 @@ async function onSettingsClick(e) {
     }
 
     if (e.target.closest('[data-logout]')) {
-      if (!confirm(T.settings.login.logoutConfirm)) return;
+      if (!confirm(T.settings.profile.logoutConfirm)) return;
       await api('/api/logout', { method: 'POST' }).catch(() => {});
       token.clear();
       location.reload();
@@ -3289,7 +3355,7 @@ const INLINE_SAVE = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    toast('Название сохранено');
+    toast(T.settings.budget.nameSaved);
     return data.name;
   },
 };

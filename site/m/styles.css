@@ -327,7 +327,6 @@ button, input, select { font: inherit; color: inherit; }
 .kv span { color: var(--muted); }
 .kv b { font-weight: 500; text-align: right; }
 
-
 /* ── место покупки ─────────────────────────────────────── */
 
 .place-card .map {
@@ -556,7 +555,6 @@ button, input, select { font: inherit; color: inherit; }
 .soon-title { font-size: 17px; font-weight: 600; }
 
 /* Настройки */
-.profile { margin-bottom: 12px; }
 /* Правка на месте: нажатие на текст открывает поле, пунктир — идёт правка */
 .inline-input {
   display: block;
@@ -573,10 +571,6 @@ button, input, select { font: inherit; color: inherit; }
 
 .inline-input:not([readonly]) { border-bottom-color: var(--accent); cursor: text; }
 .budget-name { margin-bottom: 6px; font-size: 16px; font-weight: 600; } /* как имя в «Входе» */
-
-
-/* Выход — единственное действие со значком: строка входа сама по себе не нажимается */
-.login-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
 
 .row-icon {
   flex: none;
@@ -597,6 +591,69 @@ button, input, select { font: inherit; color: inherit; }
 .settings-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .settings-actions .note { margin-top: 4px; text-align: center; }
 .settings-actions .note a { color: inherit; }
+
+/* ── Настройки: разделы и строки ──────────────────────────
+   Раздел — карточка с названием и подстрочником. Внутри строки одного вида: значок
+   слева (необязательно), название, подстрочник (необязательно), действие справа */
+.sec { padding: 14px 16px 4px; }
+.sec-head { margin-bottom: 6px; }
+.sec-title { font-size: 16px; font-weight: 600; }
+.sec-note { margin-top: 2px; font-size: 13px; }
+
+.srow { display: flex; align-items: center; gap: 8px; min-height: 54px; border-top: 1px solid #f0f1f3; }
+.srow-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+button.srow-main, a.srow-main { cursor: pointer; }
+button.srow-main:active, a.srow-main:active { background: #eef2f9; }
+
+/* Значок — на мягкой подложке; у логотипа банка подложка своя */
+.srow-ic {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: #eef1f5;
+  color: var(--muted);
+}
+
+.srow-ic svg { width: 18px; height: 18px; }
+.srow-ic.bare { background: none; }
+.srow-ic .bank-logo, .srow-ic .bank-logo img { width: 34px; height: 34px; border-radius: 9px; }
+
+.srow-text { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.srow-title, .srow-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow-title { font-size: 15px; }
+.srow-note { margin-top: 1px; font-size: 12.5px; }
+.srow .inline-input { padding: 0; font-size: 15px; font-weight: 400; }
+
+.srow.danger .srow-title { color: var(--danger); }
+.srow.danger .srow-ic { background: #fdeceb; color: var(--danger); }
+.srow.off { opacity: 0.55; }
+.srow.off .srow-main { pointer-events: none; }
+
+/* Стрелка «дальше»: строка ведёт на другой экран */
+.srow-go { flex: none; display: flex; color: var(--muted); }
+.srow-go svg { width: 18px; height: 18px; transform: rotate(-90deg); }
+
+/* Пояснение в несколько строк: значок держится у первой строки текста */
+.srow.wrap .srow-main { align-items: flex-start; }
+.srow.wrap .srow-title, .srow.wrap .srow-note { white-space: normal; }
 .btn.with-ic { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .btn.with-ic svg { width: 18px; height: 18px; }
 
@@ -846,43 +903,6 @@ button.bank-op { cursor: pointer; }
 
 .sheet-scroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .budget { display: flex; flex-direction: column; gap: 2px; }
-.member { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-top: 1px solid #f0f1f3; }
-.member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* «Пригласить пользователя» — такая же строка списка, только нажимается */
-.member-invite {
-  width: 100%;
-  border: none;
-  border-top: 1px solid #f0f1f3;
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.member-invite:active { background: #eef2f9; }
-
-/* Банки — только в приложении: в браузере страница до банка не дотянется.
-   Строка банка устроена как строка участника бюджета: значок, название, действие */
-.bank-row { align-items: center; gap: 8px; border-top: 1px solid #f0f1f3; }
-
-/* Строка банка: слева — переход на его страницу, справа — обновление или подключение */
-.bank-open {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.bank-open:active { background: #eef2f9; }
 
 /* Логотип: пока файла нет — кружок с буквой банка */
 .bank-logo {
@@ -914,14 +934,9 @@ button.bank-op { cursor: pointer; }
 .bank-facts { margin: 0; padding-left: 18px; font-size: 14px; }
 .bank-facts li { margin: 6px 0; }
 .bank-facts b { font-weight: 600; }
-.bank-row .member-name { display: flex; flex-direction: column; }
-.bank-row .member-name small { font-size: 12px; }
-.bank .member-invite { color: var(--muted); }
 .row-icon.spin svg { animation: spin 1s linear infinite; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
-.budget-hint { margin: 8px 0; }
-.budget .btn { width: 100%; margin-top: 6px; }
 
 /* ── календарь ─────────────────────────────────────────── */
 
@@ -1278,7 +1293,6 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .picker-item:active { background: #eef2f9; }
 .picker-item .dot { width: 14px; height: 14px; margin: 0; }
 
-
 /* Подпись под категорией в карточке: пустая — без отступа */
 #pick-note:empty { display: none; }
 
@@ -1332,61 +1346,41 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .wiz-bar.flow span { position: absolute; left: 0; width: 40% !important; border-radius: 5px; animation: wiz-flow 1.1s ease-in-out infinite; }
 @keyframes wiz-flow { 0% { left: -40%; } 100% { left: 100%; } }
 
-/* ── сворачиваемые блоки (страница банка) ───────────────────
-   Заголовок виден всегда, содержимое раскрывается нажатием. Стрелка — тот же chevron,
-   что и в остальном интерфейсе, поворачивается при раскрытии. */
+/* ── счета на странице банка ────────────────────────────────
+   Слева знак платёжной системы (у карты) на белой плашке, справа переключатель */
 
-.card.fold { padding: 0; overflow: hidden; }
-
-.fold-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  cursor: pointer;
-  list-style: none;
+.pay-logo {
+  display: block;
+  width: 34px;
+  height: 24px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  object-fit: contain;
+  box-sizing: border-box;
 }
-.fold-head::-webkit-details-marker { display: none; }
-.fold-head:active { background: #f7f8fa; }
 
-/* Заголовок блока: значок, название и, если нужно, счётчик справа */
-.fold-head .card-label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0; }
-.fold-head .card-label svg { flex: none; width: 16px; height: 16px; }
-.fold-count { margin-left: auto; text-transform: none; letter-spacing: 0; }
-
-/* Стрелка раскрытия */
-.fold-head > svg { flex: none; width: 18px; height: 18px; color: var(--muted); transition: transform 0.2s; }
-.fold[open] > .fold-head > svg { transform: rotate(180deg); }
-
-.fold-body { padding: 0 16px 16px; }
-.fold-body > :first-child { margin-top: 0; }
-.fold .settings-actions { margin-top: 0; }
-
-/* Ссылка на политику — как в настройках: неприметная, по центру */
-.fold-link { margin-top: 12px; text-align: center; }
-.fold-link a { color: inherit; }
-
-/* Строки действий в свёрнутом блоке — тем же складом, что строки в настройках:
-   название слева, круглый значок справа */
-.act, .bank-add {
-  width: 100%;
-  align-items: center;
-  border: none;
-  border-top: 1px solid #f0f1f3;
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
+/* Переключатель: настоящий чекбокс, спрятанный под дорожкой с бегунком */
+.switch { position: relative; flex: none; display: inline-flex; width: 44px; height: 26px; cursor: pointer; }
+.switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.switch-track { position: relative; flex: 1; border-radius: 13px; background: #d5dae1; transition: background 0.2s; }
+.switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
 }
-.act:first-child { border-top: 0; }
-.act:active, .bank-add:active { background: #eef2f9; }
-.act.danger { color: var(--danger); }
-.act.danger .row-icon { background: #fdeceb; color: var(--danger); }
-.act[disabled], .bank-add[disabled] { opacity: 0.55; pointer-events: none; }
-
-/* Стрелка «дальше» в списке неподключённых банков */
-.bank-add .row-icon svg { transform: rotate(-90deg); }
+.switch input:checked + .switch-track { background: var(--accent); }
+.switch input:checked + .switch-track::after { transform: translateX(18px); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch input:disabled + .switch-track { opacity: 0.6; }
 
 /* Последние цифры карты или счёта — приглушённо, рядом с названием */
 .acc-tail { color: var(--muted); font-weight: 400; }
