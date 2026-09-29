@@ -632,9 +632,10 @@ button, input, select { font: inherit; color: inherit; }
    серым текстом под карточкой. Внутри строки одного вида: значок слева (необязательно),
    название, подстрочник (необязательно), действие справа */
 .sec { padding: 12px 16px 2px; }
-.sec:has(+ .sec-foot) { margin-bottom: 6px; } /* пояснение держится у своего блока */
+/* Пояснение между блоками: отступ сверху и снизу одинаковый — текст ровно посередине */
+.sec:has(+ .sec-foot) { margin-bottom: 0; }
 .sec-title { margin-bottom: 2px; font-size: 14px; font-weight: 600; color: var(--accent); }
-.sec-foot { margin: 0 16px 18px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.sec-foot { margin: 12px 16px; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* Разделитель между строками — от текста, а не от края, как в Telegram */
 .srow { position: relative; display: flex; align-items: center; gap: 8px; min-height: 54px; }
