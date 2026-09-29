@@ -236,12 +236,11 @@ function tail(card, account) {
   return digits.length >= 4 ? `•••• ${digits.slice(-4)}` : '';
 }
 
-/** Чем трата попала в Чекер: чек, ручная запись или банк с цифрами карты. */
-function sourceName(op) {
-  const name = BANK_NAMES[op.bank] ?? 'банк';
-  const digits = tail(op.card, op.account);
-  return digits ? `${name} (${digits})` : name;
-}
+/** Чем трата попала в Чекер: чек, ручная запись или конкретный банк. */
+const sourceName = (op) => BANK_NAMES[op.bank] ?? 'банк';
+
+/** С какого счёта прошла операция: название и цифры — «Black •••• 9315». */
+const accountName = (op) => [op.account_name, tail(op.card, op.account)].filter(Boolean).join(' ');
 
 const SOURCES = {
   receipt: { title: 'Из чека', icon: groupIcon('receipt') },
@@ -1488,9 +1487,8 @@ function opCard(op) {
       ['Описание', op.description && op.description !== op.merchant ? esc(op.description) : ''],
       ['Категория банка', esc(op.bank_category ?? '')],
       ['MCC', op.mcc ? String(op.mcc) : ''],
-      ['Счёт', esc(op.account_name ?? '')],
+      ['Счёт', esc(accountName(op))],
       ['Списано', op.debited_at ? `${dateRu(op.debited_at)} ${timeRu(op.debited_at)}` : ''],
-      // Цифры карты стоят здесь же, поэтому отдельной строки «Карта» нет
       ['Источник', esc(sourceName(op))],
     ])}
     </div>
