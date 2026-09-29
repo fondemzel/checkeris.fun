@@ -3448,14 +3448,18 @@ window.addEventListener('checker-resume', () => {
     }
     return;
   }
-  // Вернулись из окна банка с живой сессией — в настройки и обновить выписку
+  // Вернулись из окна банка — в настройки. Сессия уже рабочая — обновляем сразу; ещё нет
+  // (банк дозавершает вход в фоне) — крутим стрелку и ждём события checker-bank-ready
   if (syncAfterLogin) {
     const id = syncAfterLogin;
+    if (state.screen !== 'settings') go({ screen: 'settings' });
     if (bankState(id) === 'active') {
       syncAfterLogin = null;
-      if (state.screen !== 'settings') go({ screen: 'settings' });
       return startBankSync(id);
     }
+    bankSyncing = id;
+    if (state.screen === 'settings') render();
+    return;
   }
   if (state.screen === 'settings' || state.screen === 'bank_card') render();
 });
@@ -3478,6 +3482,19 @@ function startBankSync(id) {
   bankBridge(id).sync();
   if (state.screen === 'settings') render();
 }
+
+// Банк дозавершил вход уже после того, как окно ушло с экрана
+window.addEventListener('checker-bank-ready', (e) => {
+  const id = e.detail?.bank ?? 'tbank';
+  syncAfterLogin = null;
+  if (!e.detail?.ok) {
+    bankSyncing = null;
+    if (state.screen === 'settings' || state.screen === 'bank_card') render();
+    return;
+  }
+  if (state.screen !== 'settings') go({ screen: 'settings' });
+  startBankSync(id);
+});
 
 // Итог выгрузки приходит от приложения событием: показываем и обновляем экран
 window.addEventListener('checker-bank', (e) => {

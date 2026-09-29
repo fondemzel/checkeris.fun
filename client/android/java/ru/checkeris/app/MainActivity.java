@@ -77,6 +77,9 @@ public class MainActivity extends android.app.Activity {
             }
         });
 
+        // Запросы к банку из кода должны выглядеть так же, как из окна: иначе защита отбивает
+        SberBank.useAgent(WebSettings.getDefaultUserAgent(this));
+        current = this;
         web.addJavascriptInterface(new Bridge(), "Checker");
         web.loadUrl(startUrl(getIntent()));
     }
@@ -114,13 +117,13 @@ public class MainActivity extends android.app.Activity {
 
         @JavascriptInterface
         public void bankLogin() {
-            startActivity(new Intent(MainActivity.this, BankLoginActivity.class));
+            startActivity(login(null));
         }
 
         /** Окно входа в Сбербанк Онлайн. */
         @JavascriptInterface
         public void sberLogin() {
-            startActivity(new Intent(MainActivity.this, BankLoginActivity.class).putExtra("bank", "sber"));
+            startActivity(login("sber"));
         }
 
         /** Обновить операции Сбера. Итог — тем же событием «checker-bank», что и у Т-Банка. */
@@ -246,6 +249,30 @@ public class MainActivity extends android.app.Activity {
         }
     }
 
+    /**
+     * Окно входа живёт отдельной задачей: тогда его можно убрать с экрана, не закрывая, —
+     * банк успевает дозавершить вход, пока человек уже вернулся в приложение.
+     */
+    private Intent login(String bank) {
+        Intent i = new Intent(this, BankLoginActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return bank == null ? i : i.putExtra("bank", bank);
+    }
+
+    // Окно входа ушло в фон, а вход дозавершился уже там — странице нужно об этом узнать
+    private static volatile MainActivity current;
+
+    static void bankReady(String bank, boolean ok) {
+        MainActivity m = current;
+        if (m == null) return;
+        String detail = "{bank:'" + bank + "',ok:" + ok + "}";
+        m.runOnUiThread(() -> {
+            if (m.web != null) {
+                m.web.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('checker-bank-ready',{detail:" + detail + "}))", null);
+            }
+        });
+    }
+
     /** Ход загрузки истории — на страницу. Страницы нет — событие теряется, загрузка идёт. */
     private void history(JSONObject event) {
         String detail = event.toString();
@@ -330,6 +357,7 @@ public class MainActivity extends android.app.Activity {
 
     @Override
     protected void onDestroy() {
+        if (current == this) current = null;
         if (web != null) {
             web.setVisibility(View.GONE);
             web.destroy();

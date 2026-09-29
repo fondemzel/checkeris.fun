@@ -15,6 +15,12 @@ import org.json.JSONArray;
 final class SberSync {
 
     static final String EXPIRED = "sber.expired"; // Сбер отказал: нужен новый вход руками
+    static final String SINCE = "sber.since"; // когда вошли: первые секунды сессия ещё не готова
+
+    // Сразу после входа банк дозаводит сессию, и первые запросы за выпиской получают отказ.
+    // Столько ждём, прежде чем поверить, что сессия и правда негодная
+    private static final long SETUP_MS = 25_000;
+    private static final long FRESH_MS = 120_000; // сколько вход считается свежим
 
     private static final int PAGE = 50;
     private static final int PAGES = 6; // ~300 недавних операций за обычное обновление
@@ -33,6 +39,12 @@ final class SberSync {
         secrets.put(EXPIRED, null);
     }
 
+    /** Вход был только что — сессия ещё может не отвечать, и это не повод её хоронить. */
+    private static boolean fresh(Secrets secrets) {
+        long at = secrets.getLong(SINCE, 0);
+        return at > 0 && System.currentTimeMillis() - at < FRESH_MS;
+    }
+
     /** Короткое обращение — держит сессию живой; только в фоновом потоке. */
     static void ping(Context context) {
         Secrets secrets = new Secrets(context);
@@ -40,7 +52,26 @@ final class SberSync {
         if (cookies == null) return;
         int state = SberBank.check(cookies);
         if (state == SberBank.ALIVE) secrets.put(EXPIRED, null);
-        else if (state == SberBank.EXPIRED) secrets.put(EXPIRED, "1");
+        else if (state == SberBank.EXPIRED && !fresh(secrets)) secrets.put(EXPIRED, "1");
+    }
+
+    /**
+     * Жива ли сессия. Сразу после входа даём банку время дозавести её: спрашиваем
+     * несколько раз, а не объявляем негодной с первой попытки.
+     */
+    private static int waitAlive(Secrets secrets, String cookies) {
+        int state = SberBank.check(cookies);
+        if (state == SberBank.ALIVE || !fresh(secrets)) return state;
+        long until = System.currentTimeMillis() + SETUP_MS;
+        while (state != SberBank.ALIVE && System.currentTimeMillis() < until) {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                break;
+            }
+            state = SberBank.check(cookies);
+        }
+        return state;
     }
 
     /** Забрать недавние операции и отдать Чекеру. Только в фоновом потоке. */
@@ -49,7 +80,7 @@ final class SberSync {
         String cookies = secrets.get(BankLoginActivity.SBER_SESSION);
         if (cookies == null) return new BankSync.Result(false, 0, 0, "Сбер не подключён");
 
-        int state = SberBank.check(cookies);
+        int state = waitAlive(secrets, cookies);
         if (state == SberBank.OFFLINE) return new BankSync.Result(false, 0, 0, "Сбер не отвечает — попробуйте позже");
         if (state == SberBank.EXPIRED) {
             secrets.put(EXPIRED, "1");
