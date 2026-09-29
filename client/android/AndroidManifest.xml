@@ -67,8 +67,6 @@
             android:exported="false"
             android:label="Вход в банк"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
-            android:windowSoftInputMode="adjustResize"
-            android:excludeFromRecents="true"
-            android:taskAffinity="ru.checkeris.app.login" />
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

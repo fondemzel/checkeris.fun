@@ -82,6 +82,7 @@ final class BankSync {
         if (session == null) return new Result(false, 0, 0, "Т-Банк не подключён");
 
         int state = TBank.check(session);
+        Trace.log("tbank обновление: сессия " + Trace.mark(session) + " → " + state);
         if (state == TBank.OFFLINE) return new Result(false, 0, 0, "Банк не отвечает — попробуйте позже");
         if (state == TBank.EXPIRED) {
             // Подключение остаётся, но нужен новый вход: стирать сессию и показывать

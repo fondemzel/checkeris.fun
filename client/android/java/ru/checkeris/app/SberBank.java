@@ -130,12 +130,15 @@ final class SberBank {
                 continue; // до узла не достучались — пробуем следующий
             }
             answered = true;
+            Trace.log("sber api " + candidate + apiPath + " → " + a.code
+                    + (a.body == null ? "" : " " + a.body.substring(0, Math.min(80, a.body.length())).replaceAll("\s+", " ")));
             // При отказе оставляем начало ответа: по нему видно, кто отбил — банк или защита
             lastDetail = candidate + ": " + a.code
                     + (a.code >= 400 && a.body != null ? " " + a.body.replaceAll("\s+", " ").trim() : "");
             if (lastDetail.length() > 160) lastDetail = lastDetail.substring(0, 160) + "…";
-            // Сессия кончилась — банк так и говорит; перебирать остальные узлы незачем
-            if (a.code == 401 || a.code == 403) throw needLogin();
+            // Отказ может значить и «сессия кончилась», и «сессия живёт на другом узле» —
+            // Сбер отвечает одинаково. Поэтому пробуем остальные; не пустил никто — см. ниже
+            if (a.code == 401 || a.code == 403) continue;
             if (a.code >= 500) {
                 trouble = "Сбер не отвечает";
                 continue;

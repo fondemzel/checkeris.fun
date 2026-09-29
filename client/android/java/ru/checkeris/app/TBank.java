@@ -27,6 +27,8 @@ final class TBank {
     /** Ответ банка: { resultCode, payload }. Payload возвращаем как есть. */
     private static Object call(String session, String method, String query) throws Exception {
         JSONObject body = new JSONObject(body(session, method, query));
+        Trace.log("tbank api " + method + " " + Trace.mark(session) + " → " + body.optString("resultCode")
+                + (body.has("errorMessage") ? " «" + body.optString("errorMessage") + "»" : ""));
         if ("REQUEST_RATE_LIMIT_EXCEEDED".equals(body.optString("resultCode"))) throw new IllegalStateException(RATE_LIMIT);
         if (!"OK".equals(body.optString("resultCode"))) {
             throw new IllegalStateException(body.optString("errorMessage", body.optString("resultCode")));
@@ -67,11 +69,15 @@ final class TBank {
     /**
      * Жива ли сессия. Три ответа, а не два: «банк не пустил» и «до банка не достучались» —
      * разные вещи. Из-за отсутствия сети сессию терять нельзя.
+     *
+     * Спрашиваем счета, а не ping: ping отвечает «CLIENT» и по сессии, которая данные уже
+     * не отдаёт. Из-за этого окно входа закрывалось через секунду после открытия — считало
+     * старую куку за вход, ввести пин человек не успевал, — а первое же обновление упиралось
+     * в отказ банка. Проверять надо тем самым запросом, ради которого сессия и нужна.
      */
     static int check(String session) {
         try {
-            return "CLIENT".equals(((JSONObject) call(session, "ping", null)).optString("accessLevel"))
-                    ? ALIVE : EXPIRED;
+            return accounts(session) != null ? ALIVE : EXPIRED;
         } catch (IllegalStateException e) {
             if (RATE_LIMIT.equals(e.getMessage())) return OFFLINE; // «подождите» — не повод просить вход
             return EXPIRED; // банк ответил, но отказал

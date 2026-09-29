@@ -250,11 +250,11 @@ public class MainActivity extends android.app.Activity {
     }
 
     /**
-     * Окно входа живёт отдельной задачей: тогда его можно убрать с экрана, не закрывая, —
-     * банк успевает дозавершить вход, пока человек уже вернулся в приложение.
+     * Окно входа — одно на все банки: обычное окно внутри приложения, как у Т-Банка.
+     * Своя задача Сберу не помогла, а в переключателе появлялся второй Чекер.
      */
     private Intent login(String bank) {
-        Intent i = new Intent(this, BankLoginActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent i = new Intent(this, BankLoginActivity.class);
         return bank == null ? i : i.putExtra("bank", bank);
     }
 

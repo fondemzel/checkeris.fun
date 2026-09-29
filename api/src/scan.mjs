@@ -15,6 +15,7 @@
 // на всё приложение, и цикл «спрашивать раз в секунду» съел бы его за час.
 import { parseQr, requestTicket, fetchTicket, fnsReady, fnsUsage } from './fns.mjs';
 import { saveReceipt, importStatements } from './import.mjs';
+import { matchBank } from './bankmatch.mjs';
 import { classifyItems, fillNames } from './classify.mjs';
 import { takeModelQuota } from './quota.mjs';
 
@@ -189,6 +190,14 @@ async function step(db, job) {
   if (!saved?.id) {
     fail(db, job, 'чек получен, но не разобрался');
     return true;
+  }
+
+  // Операция банка по этой покупке могла прийти раньше чека. Сопоставляем сразу, а не
+  // при следующей загрузке из банка: иначе до неё покупка видна дважды — чеком и операцией
+  try {
+    matchBank(db, job.budget_id);
+  } catch (err) {
+    console.error('банк, разбор после чека:', err.message);
   }
 
   classifyItems(db, saved.itemIds);

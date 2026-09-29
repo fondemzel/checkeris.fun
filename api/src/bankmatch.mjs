@@ -31,6 +31,21 @@ function markTransfers(db, budgetId) {
       WHERE budget_id = ? AND json_extract(raw, '$.isInner') = 1 AND kind_source IS NULL`,
   ).run(budgetId);
 
+  // Внутренняя запись банка — зеркало настоящего перевода, а не он сам. Округление в
+  // копилку Т-Банк отдаёт трижды: «Магнит» с пометкой isInner, «Перевод округлений»
+  // с карты и зачисление в копилку. Если зачисление сцепится с зеркалом, настоящее
+  // списание останется без пары и попадёт в траты. Поэтому зеркала в пары не берём,
+  // а уже сцепленные с ними зачисления освобождаем — пусть найдут настоящую пару
+  db.prepare(
+    `UPDATE bank_ops SET pair_id = NULL
+      WHERE budget_id = ? AND kind_source IS NULL AND pair_id IN (
+        SELECT id FROM bank_ops WHERE budget_id = ? AND json_extract(raw, '$.isInner') = 1)`,
+  ).run(budgetId, budgetId);
+  db.prepare(
+    `UPDATE bank_ops SET pair_id = NULL
+      WHERE budget_id = ? AND pair_id IS NOT NULL AND json_extract(raw, '$.isInner') = 1`,
+  ).run(budgetId);
+
   // Пара: то же число копеек ушло и пришло почти в ту же секунду — это перекладывание
   // из кармана в карман, например «Перевод округлений» в копилку.
   // Ищем группировкой по сумме, а не сравнением «каждая с каждой»: история банка — это
@@ -38,7 +53,9 @@ function markTransfers(db, budgetId) {
   const unpaired = db
     .prepare(
       `SELECT id, at, amount, direction FROM bank_ops
-        WHERE budget_id = ? AND pair_id IS NULL AND kind_source IS NULL ORDER BY at, id`,
+        WHERE budget_id = ? AND pair_id IS NULL AND kind_source IS NULL
+          AND COALESCE(json_extract(raw, '$.isInner'), 0) <> 1
+        ORDER BY at, id`,
     )
     .all(budgetId);
   const credits = new Map(); // сумма → зачисления
@@ -111,8 +128,8 @@ function matchReceipts(db, budgetId) {
 }
 
 // Перевод себе: банк так и пишет — «Себе в другой банк», «На свою карту»,
-// «Перевод собственных средств»
-const SELF = /(^|\s)себе(\s|$)|сво(ю|й|и|его)\s+(карт|сч[её]т)|между\s+сво|собственных\s+средств/i;
+// «Перевод собственных средств». «Перевод округлений» — сдача с покупки в свою копилку
+const SELF = /(^|\s)себе(\s|$)|сво(ю|й|и|его)\s+(карт|сч[её]т)|между\s+сво|собственных\s+средств|перевод\s+округлени/i;
 
 /**
  * Переводы себе в другие банки: по описанию, а ещё по получателю — человек, которому
@@ -155,7 +172,7 @@ function classifyRest(db, budgetId) {
   ).run(budgetId);
 }
 
-/** Полный проход по бюджету. Вызывается после загрузки операций из приложения. */
+/** Полный проход по бюджету. Вызывается после загрузки операций и после нового чека. */
 export function matchBank(db, budgetId) {
   db.exec('BEGIN');
   try {

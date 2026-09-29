@@ -81,6 +81,7 @@ final class SberSync {
         if (cookies == null) return new BankSync.Result(false, 0, 0, "Сбер не подключён");
 
         int state = waitAlive(secrets, cookies);
+        Trace.log("sber обновление: куки " + Trace.mark(cookies) + " → " + state + " " + SberBank.lastDetail);
         if (state == SberBank.OFFLINE) return new BankSync.Result(false, 0, 0, "Сбер не отвечает — попробуйте позже");
         if (state == SberBank.EXPIRED) {
             secrets.put(EXPIRED, "1");
