@@ -246,7 +246,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_wizard', 'op'];
+  'settings', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -2512,6 +2512,7 @@ const SCREENS = {
   settings: { title: 'Настройки', render: screenSettings },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
   bank_add: { title: T.bankAdd.title, render: screenBankAdd },
+  bank_safety: { title: T.bankCard.safety.label, render: screenBankSafety },
   bank_wizard: {
     title: () => bankById(state.bank)?.name ?? 'Банк',
     render: screenBankWizard,
@@ -2540,7 +2541,7 @@ const soon = (icon, title, text) => `
 const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
-  bank_wizard: 'settings', op: 'summary',
+  bank_safety: 'settings', bank_wizard: 'settings', op: 'summary',
 };
 
 /**
@@ -2716,6 +2717,9 @@ async function onScreenClick(e) {
 
   const bankOpen = e.target.closest('[data-bank-open]');
   if (bankOpen) return go({ screen: 'bank_card', bank: bankOpen.dataset.bankOpen });
+
+  const bankSafety = e.target.closest('[data-bank-safety]');
+  if (bankSafety) return go({ screen: 'bank_safety', bank: bankSafety.dataset.bankSafety });
 
   const wizButton = e.target.closest('[data-wiz]');
   if (wizButton) return onWizardClick(wizButton);
@@ -3004,13 +3008,13 @@ async function screenSettings() {
 // значок слева (необязательно), название, подстрочник (необязательно) и действие справа
 // (необязательно). Один вид на весь экран и на экраны банка — читается одним списком.
 
-/** Раздел: карточка с названием и подстрочником. */
+/** Раздел: карточка с названием и подстрочником (оба необязательны). */
 const section = (title, note, rows) => `
   <section class="card sec">
-    <div class="sec-head">
-      <div class="sec-title">${title}</div>
+    ${title || note ? `<div class="sec-head">
+      ${title ? `<div class="sec-title">${title}</div>` : ''}
       ${note ? `<div class="note sec-note">${note}</div>` : ''}
-    </div>
+    </div>` : ''}
     ${rows}
   </section>`;
 
@@ -3216,7 +3220,7 @@ async function screenBankCard() {
   const ops = link?.ops ?? 0;
 
   return `
-    <div class="card bank-card">
+    <section class="card sec bank-card">
       <div class="bank-head">
         ${bankLogo(b, connected)}
         <div>
@@ -3231,15 +3235,8 @@ async function screenBankCard() {
           }</p>
         </div>
       </div>
-    </div>
-
-    ${section(T.bankCard.safety.label, '', [
-      [UI.phone, 'login'],
-      [UI.lock, 'password'],
-      [UI.upload, 'server'],
-      [UI.eyeOff, 'private'],
-    ].map(([icon, name]) => srow({ icon, title: T.bankCard.safety[`${name}Bold`], note: T.bankCard.safety[`${name}Text`], wrap: true })).join('')
-      + srow({ icon: UI.shield, title: T.common.privacy, href: '/privacy.html', end: GO }))}
+      ${srow({ icon: UI.shield, title: T.bankCard.safety.label, note: T.bankCard.safety.rowNote, attrs: `data-bank-safety="${b.id}"`, end: GO })}
+    </section>
 
     ${accounts.length ? section(T.bankCard.accounts.label, T.bankCard.accounts.hint, accounts.map((a) => srow({
       ...accountIcon(a),
@@ -3264,6 +3261,22 @@ async function screenBankCard() {
             + act('login', b.id, T.bankCard.manage.relogin, UI.login)
             + act('forget', b.id, T.bankCard.manage.forget, UI.unlink)
             + (ops ? act('wipe', b.id, T.bankCard.manage.wipe, UI.trash, true) : ''))}`;
+}
+
+/**
+ * «Безопасность данных» — своим экраном, из строки в шапке страницы банка: как проходит
+ * вход и что попадает на сервер. Одинаково для всех банков.
+ */
+function screenBankSafety() {
+  const S = T.bankCard.safety;
+  const rows = [
+    [UI.phone, 'login'],
+    [UI.lock, 'password'],
+    [UI.upload, 'server'],
+    [UI.eyeOff, 'private'],
+  ].map(([icon, name]) => srow({ icon, title: S[`${name}Bold`], note: S[`${name}Text`], wrap: true }));
+  // Название раздела уже в шапке экрана — здесь только подстрочник
+  return section('', S.note, rows.join('') + srow({ icon: UI.shield, title: T.common.privacy, href: '/privacy.html', end: GO }));
 }
 
 /** «10 мин назад», «3 ч назад», иначе дата. */

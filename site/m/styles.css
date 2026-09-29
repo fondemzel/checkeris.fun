@@ -929,6 +929,7 @@ button.bank-op { cursor: pointer; }
 
 /* Страница банка */
 .bank-head { display: flex; align-items: center; gap: 12px; }
+.bank-card .bank-head { margin: 2px 0 12px; } /* под шапкой — строка «Безопасность данных» */
 .bank-head .bank-logo { width: 40px; height: 40px; border-radius: 8px; font-size: 18px; }
 .bank-head .bank-logo img { width: 40px; height: 40px; border-radius: 8px; }
 .bank-facts { margin: 0; padding-left: 18px; font-size: 14px; }

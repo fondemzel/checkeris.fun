@@ -98,6 +98,8 @@ export const en = {
     connectedAt: ' · updated {when}',
     safety: {
       label: 'Data safety',
+      rowNote: 'how sign-in works and what Checker sees',
+      note: 'The same for every bank',
       loginBold: 'You sign in on your own phone',
       loginText: 'The app opens the bank’s window; you type the phone number, the SMS code and the password yourself',
       passwordBold: 'The password is never stored',

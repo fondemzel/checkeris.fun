@@ -91,6 +91,8 @@
  "bankCard.connected": "Подключён · {ops} {opsWord}",
  "bankCard.connectedAt": " · обновлено {when}",
  "bankCard.safety.label": "Безопасность данных",
+ "bankCard.safety.rowNote": "как проходит вход и что видит Чекер",
+ "bankCard.safety.note": "Одинаково для всех банков",
  "bankCard.safety.loginBold": "Вход в банк — на вашем телефоне",
  "bankCard.safety.loginText": "Приложение открывает окно банка, вы вводите телефон, код из СМС и пароль сами",
  "bankCard.safety.passwordBold": "Пароль нигде не сохраняется",
