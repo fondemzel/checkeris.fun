@@ -946,7 +946,20 @@ async function screenOp() {
     note: op.note,
     card: op.card,
     account_name: op.account_name,
+    account: op.account,
+    bank: op.bank,
   });
+}
+
+/**
+ * Чем трата попала в Чекер: чек, ручная запись или конкретный банк с цифрами карты —
+ * «Т-Банк (•••• 6454)». Цифры берём у карты, а если её нет — у счёта.
+ */
+function sourceName(it) {
+  if (it.source !== 'bank') return T.sources[it.source];
+  const name = bankById(it.bank)?.name ?? T.sources.bank;
+  const digits = tail({ card: it.card, id: it.account });
+  return digits ? `${name} (${digits.trim()})` : name;
 }
 
 /** Карточка траты — одна для всех источников. Отличается только строка «Источник». */
@@ -974,9 +987,10 @@ function itemCard(it) {
         // Адрес текстом — когда карты нет. У интернет-покупки это адрес продавца, а не магазина
         ['Адрес', !onMap && !it.internet_sign ? esc(it.retail_address ?? '') : ''],
         ['Покупка', it.internet_sign ? 'в интернете' : ''],
-        ['Карта', it.card ? `·${esc(it.card)}` : ''],
+        // У траты из банка цифры карты стоят в «Источнике», отдельная строка не нужна
+        ['Карта', !bank && it.card ? `·${esc(it.card)}` : ''],
         ['Счёт', esc(it.account_name ?? '')],
-        ['Источник', `${SOURCES[it.source].icon} ${SOURCES[it.source].title.toLowerCase()}`],
+        ['Источник', `${SOURCES[it.source].icon} ${esc(sourceName(it))}`],
       ])}
     </div>
 

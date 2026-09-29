@@ -334,14 +334,16 @@ export function forgetBank(db, userId, bank) {
 export function getBankOp(db, budgetId, id) {
   const op = db
     .prepare(
-      `SELECT o.id, o.at, o.debited_at, o.direction, o.amount, o.currency, o.account_name, o.status,
+      `SELECT o.id, o.at, o.debited_at, o.direction, o.amount, o.currency, o.account, o.account_name, o.status,
               o.op_group, o.mcc, o.description, o.merchant, o.bank_category, o.card, o.kind,
               o.receipt_id, o.category_slug, o.category_source, o.note,
               json_extract(o.raw, '$.senderDetails') AS sender,
+              l.bank, -- какой именно банк: в карточке это видно в строке «Источник»
               c.name AS category_name, c.group_slug, g.name AS group_name,
               (SELECT COUNT(*) FROM bank_ops x WHERE x.budget_id = o.budget_id AND x.kind = 'expense'
                  AND COALESCE(x.merchant, x.description) = COALESCE(o.merchant, o.description)) AS same_count
          FROM bank_ops o
+         JOIN bank_links l ON l.id = o.link_id
          LEFT JOIN categories c ON c.budget_id = o.budget_id AND c.slug = o.category_slug
          LEFT JOIN groups g ON g.budget_id = o.budget_id AND g.slug = c.group_slug
         WHERE o.id = ? AND o.budget_id = ?`,

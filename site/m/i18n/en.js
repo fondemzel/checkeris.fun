@@ -17,6 +17,11 @@ export const en = {
     agoMin: '{n} min ago',
     agoHour: '{n} h ago',
   },
+  sources: {
+    receipt: 'receipt',
+    manual: 'manual entry',
+    bank: 'bank',
+  },
   accountTypes: {
     Current: 'Current account',
     Credit: 'Credit card',

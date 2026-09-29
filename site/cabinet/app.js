@@ -227,6 +227,22 @@ const icon = (shape) =>
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
   `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg>`;
 
+// Названия банков для строки «Источник». Те же, что в приложении на телефоне
+const BANK_NAMES = { tbank: 'Т-Банк', sber: 'Сбербанк', vtb: 'ВТБ', alfa: 'Альфа-Банк' };
+
+/** Последние цифры карты, а если её нет — счёта: «•••• 6454». */
+function tail(card, account) {
+  const digits = String(card || account || '').replace(/\D/g, '');
+  return digits.length >= 4 ? `•••• ${digits.slice(-4)}` : '';
+}
+
+/** Чем трата попала в Чекер: чек, ручная запись или банк с цифрами карты. */
+function sourceName(op) {
+  const name = BANK_NAMES[op.bank] ?? 'банк';
+  const digits = tail(op.card, op.account);
+  return digits ? `${name} (${digits})` : name;
+}
+
 const SOURCES = {
   receipt: { title: 'Из чека', icon: groupIcon('receipt') },
   manual: {
@@ -1473,9 +1489,9 @@ function opCard(op) {
       ['Категория банка', esc(op.bank_category ?? '')],
       ['MCC', op.mcc ? String(op.mcc) : ''],
       ['Счёт', esc(op.account_name ?? '')],
-      ['Карта', op.card ? `·${esc(op.card)}` : ''],
       ['Списано', op.debited_at ? `${dateRu(op.debited_at)} ${timeRu(op.debited_at)}` : ''],
-      ['Источник', 'банк'],
+      // Цифры карты стоят здесь же, поэтому отдельной строки «Карта» нет
+      ['Источник', esc(sourceName(op))],
     ])}
     </div>
     ${expense ? `
