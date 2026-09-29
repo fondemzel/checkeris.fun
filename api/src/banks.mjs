@@ -248,14 +248,19 @@ export async function syncAll(db) {
 
 /** Что показать в настройках: подключения человека, без самих сессий. */
 export function listLinks(db, userId) {
+  // Сегодня — по Москве: время операций хранится московским, без зоны
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
   return db
     .prepare(
       `SELECT l.bank, l.status, l.login_at, l.last_ok_at, l.expired_at, l.synced_at, l.last_error,
               (SELECT COUNT(*) FROM bank_ops o WHERE o.link_id = l.id) AS ops,
+              -- За сегодня: столько новых операций видно в строке банка. Выключенные счета не в счёт
+              (SELECT COUNT(*) FROM bank_ops o
+                WHERE o.link_id = l.id AND o.at >= :today AND COALESCE(o.kind, '') <> 'excluded') AS today,
               (SELECT MAX(at) FROM bank_ops o WHERE o.link_id = l.id) AS last_op_at
-         FROM bank_links l WHERE l.user_id = ?`,
+         FROM bank_links l WHERE l.user_id = :user`,
     )
-    .all(userId);
+    .all({ today, user: userId });
 }
 
 /** Отключить банк: операции остаются, связь с источником обрывается. */

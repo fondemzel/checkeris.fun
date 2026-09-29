@@ -69,6 +69,8 @@
  "settings.banks.addNoteSoon": "скоро: {names}",
  "settings.banks.addNoteNone": "все банки уже подключены",
  "settings.banks.neverSynced": "ещё не обновляли",
+ "settings.banks.today": "сегодня {n} {word}",
+ "settings.banks.todayNone": "сегодня операций нет",
  "settings.banks.refresh": "Обновить операции",
  "settings.banks.connect": "Подключить",
  "settings.data.label": "Данные",

@@ -3200,10 +3200,14 @@ function bankSection(bank) {
     .map((b) => {
       const link = bank?.links?.find((l) => l.bank === b.id);
       const expired = bankState(b.id) === 'expired';
-      const ops = link?.ops ?? 0;
+      // В подстрочнике — операции за сегодня: общее число за годы ничего не говорит, а
+      // сегодняшние видно сразу после обновления
+      const today = link?.today ?? 0;
       // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
       // что у подключённого, только значок серый; обновление само начнёт с входа
-      const note = `${link?.synced_at ? ago(link.synced_at) : S.neverSynced} · ${int.format(ops)} ${pl(ops, T.common.ops)}`;
+      const note = `${link?.synced_at ? ago(link.synced_at) : S.neverSynced} · ${
+        today ? f(S.today, { n: int.format(today), word: pl(today, T.common.ops) }) : S.todayNone
+      }`;
       return srow({
         icon: bankLogo(b, !expired),
         bare: true,

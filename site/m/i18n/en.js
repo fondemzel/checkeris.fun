@@ -68,6 +68,8 @@ export const en = {
       addNoteSoon: 'coming soon: {names}',
       addNoteNone: 'all banks are connected',
       neverSynced: 'not updated yet',
+      today: '{n} {word} today',
+      todayNone: 'no operations today',
       refresh: 'Update operations',
       connect: 'Connect',
     },
