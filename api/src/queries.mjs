@@ -245,15 +245,20 @@ const GROUP_SORTS = {
  *
  * `first_id` — позиция, чью карточку открывает клик по строке. SQLite при MAX() отдаёт
  * значения остальных колонок из той же строки, поэтому это ровно верхняя позиция группы.
+ *
+ * collapse=day — склеиваем одинаковые товары только внутри дня. Для ленты по дням: иначе
+ * пиво за весь месяц стоит под «Сегодня» одной строкой с месячной суммой, и итог дня врёт.
  */
 export function listItemGroups(db, budgetId, params) {
   const { sql: whereSql, args } = buildFilters(params, { budgetId, searchItems: true });
   const { sort, dir } = parseSort(params, GROUP_SORTS, 'date');
   const { page, per, offset } = parsePaging(params);
+  const byDay = params.get('collapse') === 'day';
 
   const rows = db
     .prepare(
       `SELECT name_norm,
+              ${byDay ? 'purchased_date AS day,' : ''}
               name,
               -- Карточку строки открывает последняя покупка. Голая колонка рядом с MAX()
               -- тут не годится: в запросе есть и MIN(), и SQLite вправе взять id любой строки
@@ -271,7 +276,7 @@ export function listItemGroups(db, budgetId, params) {
               category_slug, category_name, category_source, group_slug, group_name
          FROM v_items
          ${whereSql}
-        GROUP BY name_norm
+        GROUP BY name_norm${byDay ? ', purchased_date' : ''}
         ORDER BY ${GROUP_SORTS[sort]} ${dir}, name_norm ${dir}
         LIMIT :limit OFFSET :offset`,
     )
@@ -280,7 +285,7 @@ export function listItemGroups(db, budgetId, params) {
   const totals = db
     .prepare(
       `SELECT COUNT(*) AS count,
-              COUNT(DISTINCT name_norm) AS names,
+              COUNT(DISTINCT ${byDay ? "name_norm || '|' || purchased_date" : 'name_norm'}) AS names,
               COALESCE(SUM(CASE WHEN counted = 1 THEN sum ELSE 0 END), 0) AS sum,
               COALESCE(SUM(CASE WHEN counted = 1 THEN 0 ELSE sum END), 0) AS excluded_sum,
               COALESCE(SUM(CASE WHEN counted = 1 THEN 0 ELSE 1 END), 0) AS excluded_count,

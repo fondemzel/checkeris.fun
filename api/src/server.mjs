@@ -722,13 +722,14 @@ async function handleApi(req, res, url) {
     return receipt ? sendJson(res, 200, receipt) : sendJson(res, 404, { error: 'receipt not found' });
   }
 
-  // collapse=1 — одна строка на название; раскрытие группы идёт обычным списком с name_norm
+  // collapse=1 — одна строка на название за весь период, collapse=day — на название в каждом
+  // дне; раскрытие группы идёт обычным списком с name_norm
   // Все траты одной лентой: чеки, ручные записи и банк — для таблицы кабинета
   if (pathname === '/api/spending') return sendJson(res, 200, listSpending(db, user.budget_id, searchParams));
   if (pathname === '/api/income') return sendJson(res, 200, listIncome(db, user.budget_id, searchParams));
 
   if (pathname === '/api/items') {
-    const collapse = searchParams.get('collapse') === '1' && !searchParams.get('name_norm');
+    const collapse = ['1', 'day'].includes(searchParams.get('collapse')) && !searchParams.get('name_norm');
     return sendJson(res, 200, (collapse ? listItemGroups : listItems)(db, user.budget_id, searchParams));
   }
 

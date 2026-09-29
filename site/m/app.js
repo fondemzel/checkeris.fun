@@ -488,7 +488,7 @@ async function screenSummary() {
   // Все траты периода: товары из чеков и ручные записи — по названиям, траты из банка —
   // по операциям. Покупки, у которых нашёлся чек, приходят один раз — чеком
   const params = new URLSearchParams({
-    from: state.from, to: state.to, collapse: '1', per: '20000',
+    from: state.from, to: state.to, collapse: collapseMode(), per: '20000',
     sort: ['date', 'name', 'sum'].includes(state.sort) ? state.sort : 'date', dir: state.dir,
   });
   const opsQuery = new URLSearchParams({
@@ -583,6 +583,12 @@ async function screenGroup() {
  * При сортировке по дате лента делится на дни, по категориям — на категории; у каждого
  * заголовка — подытог.
  */
+/**
+ * Как склеивать одинаковые товары: в ленте по дням — внутри дня (иначе покупки за месяц
+ * встают под последний день одной строкой, и итог дня врёт), в остальных — за весь период.
+ */
+const collapseMode = () => (state.sort === 'date' ? 'day' : '1');
+
 async function spendingFeed(itemRows, bankRows) {
   const spendings = [
     ...itemRows.map((r) => ({
@@ -594,7 +600,11 @@ async function spendingFeed(itemRows, bankRows) {
       positions: r.positions,
       outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
       action: `data-item="${r.first_id}"`,
-      group: r.positions > 1 ? r.name_norm : null, // несколько покупок одного товара — можно развернуть
+      // Несколько покупок одного товара — можно развернуть. В ленте по дням группа живёт
+      // внутри дня: у пива за сегодня и пива за вчера разные ключи и разное раскрытие
+      group: r.positions > 1 ? (r.day ? `${r.day}|${r.name_norm}` : r.name_norm) : null,
+      norm: r.name_norm,
+      day: r.day ?? null,
       noted: Boolean(r.has_note),
     })),
     ...bankRows.map((op) => ({
@@ -636,7 +646,8 @@ async function spendingFeed(itemRows, bankRows) {
     await Promise.all(
       open.map(async (r) => {
         const q = new URLSearchParams({
-          from: state.from, to: state.to, name_norm: r.group, sort: 'date', dir: 'desc', per: '100',
+          // Группа дня раскрывается покупками только этого дня
+          from: r.day ?? state.from, to: r.day ?? state.to, name_norm: r.norm, sort: 'date', dir: 'desc', per: '100',
           ...(state.category ? { category: state.category } : state.group ? { group: state.group } : {}),
         });
         const res = await api(`/api/items?${q}`).catch(() => ({ rows: [], totals: { count: 0 } }));
@@ -746,7 +757,7 @@ async function spendingFeed(itemRows, bankRows) {
 
 async function screenCategory() {
   const params = new URLSearchParams({
-    from: state.from, to: state.to, collapse: '1', sort: state.sort, dir: state.dir, per: '100',
+    from: state.from, to: state.to, collapse: collapseMode(), sort: state.sort, dir: state.dir, per: '100',
   });
   if (state.category) params.set('category', state.category);
   else params.set('group', state.group);
