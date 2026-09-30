@@ -22,6 +22,11 @@ const MINUTES = 30;
 // Время у операций и чеков — московское без зоны; для разницы в минутах зона не важна
 const minutes = (at) => Date.parse(`${String(at).slice(0, 19)}Z`) / 60_000;
 
+/** Зачисление — возврат этой покупки: тот же продавец или то же описание. */
+const same = (a, b) => Boolean(a && b) && a.trim().toLowerCase() === b.trim().toLowerCase();
+const refund = (debit, credit) =>
+  same(debit.merchant, credit.merchant) || same(debit.description, credit.description);
+
 /** Переводы между своими счетами: банк помечает их сам, плюс пары «списание — зачисление». */
 function markTransfers(db, budgetId) {
   // Банк знает про свои внутренние переводы. Вид, поставленный человеком или выключенным
@@ -46,13 +51,32 @@ function markTransfers(db, budgetId) {
       WHERE budget_id = ? AND pair_id IS NOT NULL AND json_extract(raw, '$.isInner') = 1`,
   ).run(budgetId);
 
+  // Оплата картой — покупка, а не перекладывание денег. В пару её берём, только если
+  // зачисление — возврат от того же продавца (купили и вернули — в расходах ноль). Иначе
+  // совпадение суммы и минуты с любым пополнением прятало покупку: так пропали из расходов
+  // госуслуги на 10 000 ₽, «Автодор», АЗС. Уже сведённые по ошибке пары расцепляем
+  const wrong = db
+    .prepare(
+      `SELECT a.id AS debit, b.id AS credit, a.description AS d1, a.merchant AS m1, b.description AS d2, b.merchant AS m2
+         FROM bank_ops a JOIN bank_ops b ON b.id = a.pair_id
+        WHERE a.budget_id = ? AND a.op_group = 'PAY' AND a.direction = 'debit'
+          AND a.kind_source IS NULL AND b.kind_source IS NULL`,
+    )
+    .all(budgetId)
+    .filter((p) => !refund({ description: p.d1, merchant: p.m1 }, { description: p.d2, merchant: p.m2 }));
+  const unpair = db.prepare('UPDATE bank_ops SET pair_id = NULL, kind = NULL WHERE id = ?');
+  for (const p of wrong) {
+    unpair.run(p.debit);
+    unpair.run(p.credit);
+  }
+
   // Пара: то же число копеек ушло и пришло почти в ту же секунду — это перекладывание
   // из кармана в карман, например «Перевод округлений» в копилку.
   // Ищем группировкой по сумме, а не сравнением «каждая с каждой»: история банка — это
   // десятки тысяч операций, и попарное сравнение занимало минуты, пока сервер стоял
   const unpaired = db
     .prepare(
-      `SELECT id, at, amount, direction FROM bank_ops
+      `SELECT id, at, amount, direction, op_group, description, merchant FROM bank_ops
         WHERE budget_id = ? AND pair_id IS NULL AND kind_source IS NULL
           AND COALESCE(json_extract(raw, '$.isInner'), 0) <> 1
         ORDER BY at, id`,
@@ -62,15 +86,21 @@ function markTransfers(db, budgetId) {
   for (const op of unpaired) {
     if (op.direction !== 'credit') continue;
     if (!credits.has(op.amount)) credits.set(op.amount, []);
-    credits.get(op.amount).push({ id: op.id, t: minutes(op.at) });
+    credits.get(op.amount).push({ ...op, t: minutes(op.at) });
   }
 
-  const link = db.prepare("UPDATE bank_ops SET pair_id = ?, kind = 'transfer' WHERE id = ? AND pair_id IS NULL");
+  // Перевод не бывает покупкой по чеку: если операции по ошибке достался чек, отпускаем его —
+  // сопоставление ниже отдаст чек настоящей покупке
+  const link = db.prepare(
+    "UPDATE bank_ops SET pair_id = ?, kind = 'transfer', receipt_id = NULL WHERE id = ? AND pair_id IS NULL",
+  );
   const taken = new Set();
   for (const op of unpaired) {
     if (op.direction !== 'debit') continue;
     const t = minutes(op.at);
-    const match = (credits.get(op.amount) ?? []).find((c) => !taken.has(c.id) && Math.abs(c.t - t) <= 5);
+    const match = (credits.get(op.amount) ?? []).find(
+      (c) => !taken.has(c.id) && Math.abs(c.t - t) <= 5 && (op.op_group !== 'PAY' || refund(op, c)),
+    );
     if (!match) continue;
     taken.add(op.id);
     taken.add(match.id);
@@ -128,8 +158,9 @@ function matchReceipts(db, budgetId) {
 }
 
 // Перевод себе: банк так и пишет — «Себе в другой банк», «На свою карту»,
-// «Перевод собственных средств». «Перевод округлений» — сдача с покупки в свою копилку
-const SELF = /(^|\s)себе(\s|$)|сво(ю|й|и|его)\s+(карт|сч[её]т)|между\s+сво|собственных\s+средств|перевод\s+округлени/i;
+// «Перевод собственных средств». Округление — сдача с покупки в свою копилку, банк называет
+// его то «Перевод округлений», то «Округление покупки»
+const SELF = /(^|\s)себе(\s|$)|сво(ю|й|и|его)\s+(карт|сч[её]т)|между\s+сво|собственных\s+средств|округлени/i;
 
 /**
  * Переводы себе в другие банки: по описанию, а ещё по получателю — человек, которому
@@ -146,13 +177,14 @@ function markSelfTransfers(db, budgetId) {
               json_extract(raw, '$.senderDetails') AS sender
          FROM bank_ops
         WHERE budget_id = ? AND op_group IN ('TRANSFER', 'INCOME') AND kind_source IS NULL
-          AND (kind IS NULL OR kind IN ('expense', 'income'))`,
+          AND (kind IS NULL OR kind IN ('expense', 'income', 'covered'))`,
     )
     .all(budgetId);
   const self = (op) => SELF.test(op.description ?? '') || SELF.test(op.subcategory ?? '');
   const me = new Set(ops.filter((op) => op.direction === 'debit' && self(op) && op.recipient).map((op) => op.recipient));
 
-  const mark = db.prepare("UPDATE bank_ops SET kind = 'transfer' WHERE id = ?");
+  // Перевод себе чеком не оплачивают: если он по совпадению суммы забрал чек, чек отпускаем
+  const mark = db.prepare("UPDATE bank_ops SET kind = 'transfer', receipt_id = NULL WHERE id = ?");
   let marked = 0;
   for (const op of ops) {
     const person = op.direction === 'debit' ? op.recipient : op.sender;

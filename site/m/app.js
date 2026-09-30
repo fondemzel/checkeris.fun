@@ -3546,8 +3546,24 @@ async function reloadIfUpdated() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') reloadIfUpdated();
+  if (document.visibilityState !== 'visible') return;
+  reloadIfUpdated();
+  rollMonth();
 });
+
+// Приложение открыто со вчера, а месяц за ночь сменился: на экране так и остаётся прошлый,
+// и сегодняшних трат не видно. Если человек смотрел «текущий месяц», переводим на новый;
+// выбранный руками период не трогаем
+let shownMonth = monthPeriod(new Date().getFullYear(), new Date().getMonth());
+function rollMonth() {
+  const now = monthPeriod(new Date().getFullYear(), new Date().getMonth());
+  const was = shownMonth;
+  shownMonth = now;
+  if (now.from === was.from) return;
+  if (state.from !== was.from || state.to !== was.to) return;
+  screenCache.clear(); // «Сегодня» и подытоги дней посчитаны вчерашним днём
+  go(now, true);
+}
 
 /**
  * Длинный тап по строке «6 покупок» разворачивает их: стрелка была слишком мелкой, чтобы
@@ -3637,6 +3653,7 @@ $('screen').addEventListener('focusout', async (e) => {
 // Вернулись в приложение (например, из окна банка) — состояние могло измениться
 window.addEventListener('checker-resume', () => {
   reloadIfUpdated();
+  rollMonth();
   if (state.screen === 'bank_wizard' && wiz?.awaitLogin) {
     if (bankState(wiz.bank) === 'active') {
       wiz.awaitLogin = false;
