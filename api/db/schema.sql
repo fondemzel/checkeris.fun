@@ -553,16 +553,6 @@ CREATE TABLE IF NOT EXISTS bank_rules (
   PRIMARY KEY (budget_id, key)
 );
 
--- Вид операций по продавцу или описанию, когда по самой операции его не понять: шаблон
--- «Карта Оли» — перевод жене, то есть внутри семьи, а не трата. Ключ — как у bank_rules.
-CREATE TABLE IF NOT EXISTS bank_kind_rules (
-  budget_id  INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
-  key        TEXT NOT NULL,
-  kind       TEXT NOT NULL,             -- transfer | expense | income | excluded
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (budget_id, key)
-);
-
 -- Счета банка и выбор человека, с каких брать операции (bankaccounts.mjs). Счёт, которого
 -- здесь нет, берётся: новая карта не должна молча выпасть из учёта.
 CREATE TABLE IF NOT EXISTS bank_accounts (

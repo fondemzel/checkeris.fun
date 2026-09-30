@@ -166,19 +166,18 @@ function matchReceipts(db, budgetId) {
 const SELF = /(^|\s)себе(\s|$)|сво(ю|й|и|его)\s+(карт|сч[её]т)|между\s+сво|собственных\s+средств|округлени/i;
 
 /**
- * Переводы своих денег — не трата и не доход. Узнаём их так:
+ * Переводы своих денег — не трата и не доход. Узнаём их только по тому, что общее для всех:
  *   — по описанию: «Себе в другой банк», «Перевод собственных средств», округления;
- *   — по получателю: кому уходят переводы «себе», тот и есть владелец («Дмитрий Ч.»);
- *   — семья: участник бюджета с фамилией владельца («Ольга Ч.») — деньги остаются в бюджете,
- *     а её покупки и так видны по её чекам;
- *   — своё ИП: «Пополнение. ИП Черемнов Дмитрий …» — бизнес владельца, это его же деньги;
- *   — правила бюджета (bank_kind_rules): шаблоны вроде «Карта Оли», по которым не понять.
+ *   — по получателю: кому уходят переводы «себе», тот и есть владелец, и все переводы ему
+ *     и от него — перекладывание своих денег.
+ * Как считать наличные, переводы родным, пополнения со своего ИП — у каждого по-своему:
+ * это решает сам человек в карточке операции (kind_source = manual), а не общая разметка.
  * Вид, выбранный человеком, не трогаем.
  */
 function markSelfTransfers(db, budgetId) {
   const ops = db
     .prepare(
-      `SELECT id, direction, description, merchant,
+      `SELECT id, direction, description,
               json_extract(raw, '$.subcategory') AS subcategory,
               json_extract(raw, '$.payment.fieldsValues.maskedFIO') AS recipient,
               json_extract(raw, '$.senderDetails') AS sender
@@ -190,54 +189,16 @@ function markSelfTransfers(db, budgetId) {
   const self = (op) => SELF.test(op.description ?? '') || SELF.test(op.subcategory ?? '');
   const me = new Set(ops.filter((op) => op.direction === 'debit' && self(op) && op.recipient).map((op) => op.recipient));
 
-  // Владелец в банке записан «Имя Ф.»: отсюда имя и первая буква фамилии — для семьи и ИП
-  const owner = [...me].map((p) => p.match(/^(\S+)\s+(\S)\.$/)).find(Boolean);
-  const initial = owner?.[2].toUpperCase();
-  const family = new Set(
-    initial
-      ? db.prepare('SELECT name FROM users WHERE budget_id = ?').all(budgetId)
-          .map((u) => String(u.name ?? '').trim().split(/\s+/)[0])
-          .filter(Boolean)
-          .map((name) => `${name} ${initial}.`)
-      : [],
-  );
-  const ownBusiness = (op) => {
-    const m = String(op.description ?? '').match(/ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ\s+(\S+)\s+(\S+)/i);
-    return Boolean(m && owner && m[2].toLowerCase() === owner[1].toLowerCase() && m[1][0].toUpperCase() === initial);
-  };
-  const rules = new Map(
-    db.prepare('SELECT key, kind FROM bank_kind_rules WHERE budget_id = ?').all(budgetId).map((r) => [r.key, r.kind]),
-  );
-
   // Перевод себе чеком не оплачивают: если он по совпадению суммы забрал чек, чек отпускаем
   const mark = db.prepare("UPDATE bank_ops SET kind = 'transfer', receipt_id = NULL WHERE id = ?");
   let marked = 0;
   for (const op of ops) {
     const person = op.direction === 'debit' ? op.recipient : op.sender;
-    const named = [person, op.description?.trim()].filter(Boolean);
-    // У перевода по шаблону продавец — банк получателя («Сбербанк»), а имя шаблона — в
-    // описании: правило ищем по обоим
-    const ruled = [ruleKey(op), ruleKey({ description: op.description })].some((k) => rules.get(k) === 'transfer');
-    const own = self(op) || named.some((p) => me.has(p) || family.has(p)) || ownBusiness(op) || ruled;
-    if (!own) continue;
+    if (!self(op) && !(person && me.has(person))) continue;
     mark.run(op.id);
     marked += 1;
   }
   return marked;
-}
-
-/**
- * Наличные — перевод в свой кошелёк, а не трата: деньги ещё у человека. Снятие в банкомате
- * и взнос наличных банк помечает группой CASH.
- */
-function markCash(db, budgetId) {
-  return db
-    .prepare(
-      `UPDATE bank_ops SET kind = 'transfer', receipt_id = NULL
-        WHERE budget_id = ? AND op_group = 'CASH' AND kind_source IS NULL
-          AND (kind IS NULL OR kind IN ('expense', 'income', 'covered'))`,
-    )
-    .run(budgetId).changes;
 }
 
 /** Остальное: приход — доход, расход без чека — трата. */
@@ -255,13 +216,12 @@ export function matchBank(db, budgetId) {
   try {
     const transfers = markTransfers(db, budgetId);
     const self = markSelfTransfers(db, budgetId);
-    const cash = markCash(db, budgetId);
     const receipts = matchReceipts(db, budgetId);
     classifyRest(db, budgetId);
     const categorized = applyRules(db, budgetId);
     const byBank = applyBankCategories(db, budgetId);
     db.exec('COMMIT');
-    return { transfers, self, cash, receipts, categorized, byBank };
+    return { transfers, self, receipts, categorized, byBank };
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
