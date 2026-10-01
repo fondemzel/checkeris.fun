@@ -392,9 +392,18 @@ function openPopup(el) {
 function closePopup(el) {
   el.remove();
   if (document.querySelector('.sheet, .picker')) return; // под ним ещё один — историю не трогаем
-  if (history.state?.popup) history.back(); // экран перерисует обработчик «назад»
-  else render();
+  if (history.state?.popup) {
+    closingPopup = true; // попап уже убран — обработчик «назад» узнает о нём по этой пометке
+    history.back(); // экран перерисует обработчик «назад»
+  } else if (!keepsForm()) render();
 }
+let closingPopup = false;
+
+/**
+ * На экране форма, и он уже показан: перерисовка стёрла бы введённое. Попап (выбор
+ * категории, календарь) закрылся — поля остаются как есть, своё значение попап вписал сам.
+ */
+const keepsForm = () => Boolean(SCREENS[state.screen]?.form) && shownScreen === state.screen;
 
 /**
  * Попап уступает место переходу: запись истории не снимаем — её заменит сам переход
@@ -411,8 +420,11 @@ window.addEventListener('popstate', (e) => {
   if (e.state) Object.assign(state, screenState);
   else readUrl();
   // «Назад» закрывает открытый попап — и лист, и выбор категории, и календарь
-  const hadPopup = document.querySelector('.sheet, .picker');
+  const hadPopup = closingPopup || Boolean(document.querySelector('.sheet, .picker'));
+  closingPopup = false;
   for (const el of document.querySelectorAll('.sheet, .picker')) el.remove();
+  // Закрыли попап над формой — форму не трогаем: иначе сумма и название сотрутся
+  if (hadPopup && keepsForm()) return;
   // Вернулись к списку — туда же, где его оставили. Закрытие попапа экран не двигает
   const back = render();
   if (scroll && !hadPopup) back.then(() => window.scrollTo(0, scroll));
@@ -2500,7 +2512,8 @@ const SCREENS = {
   summary: { title: 'Расходы', render: screenSummary },
   receipts: { title: 'Чеки', render: screenReceipts },
   add: { title: 'Добавить', render: screenAdd },
-  manual: { title: 'Вручную', render: screenManual, after: () => $('m-sum')?.focus() },
+  // form — на экране поля, которые человек заполняет: закрытие попапа его не перерисовывает
+  manual: { title: 'Вручную', render: screenManual, after: () => $('m-sum')?.focus(), form: true },
   added: {
     title: 'Добавлено',
     render: screenAdded,
