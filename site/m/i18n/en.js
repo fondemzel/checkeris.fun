@@ -55,7 +55,6 @@ export const en = {
       group: 'Group',
       groupSettings: 'Group settings',
       shade: 'Category gradient',
-      shadeNote: 'shades of the group colour for its categories',
       shadeFrom: 'Lightest',
       shadeTo: 'Most saturated',
       catsBlock: 'Categories',

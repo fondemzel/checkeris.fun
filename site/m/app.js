@@ -9,7 +9,7 @@
 // в приложении на Rust, поэтому вся логика здесь про экраны, а всё, что можно
 // посчитать в базе, считает сервер (/api/summary).
 import { groupIcon, searchIcons } from '/shared/icons.js';
-import { shades, edge, readableText, hslToHex, hexToHsl } from '/shared/colors.js';
+import { shades, edge, readableText, hslToHex, hexToHsl, tint } from '/shared/colors.js';
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
 import { T, f, pl } from '/m/i18n/index.js';
@@ -3264,11 +3264,12 @@ async function screenSetGroup() {
   if (!g) return `<div class="empty">${C.gone}</div>`;
   const tones = catTones(g);
   const busy = g.categories.length > 0;
-  const ramp = `<span class="ramp" style="background:linear-gradient(90deg, ${shades(g.color ?? '#3b7bce', 2, g.shade_from, g.shade_to).join(', ')})"></span>`;
+  const color = g.color ?? NEW_GROUP_COLOR;
+  const { h, s, l } = pleasant(color);
   const cats = g.categories.map((c, i) => {
     const n = catUsed(c);
     return srow({
-      icon: catDot(tones[i] ?? g.color),
+      icon: catDot(tones[i] ?? g.color).replace('class="cat-dot"', 'class="cat-dot" data-tone'),
       bare: true,
       title: esc(c.name),
       note: n ? `${int.format(n)} ${pl(n, C.spendsW)}` : C.unused,
@@ -3276,11 +3277,22 @@ async function screenSetGroup() {
       end: GO,
     });
   });
+  // Цвет и градиент — полосами прямо здесь: двигаешь ползунок — значок группы и кружки
+  // категорий ниже перекрашиваются сразу, сохраняется при отпускании
+  const bars = `
+    <div class="bar-row" style="--pick:${color}">
+      <div class="bar-label">${C.color}</div>
+      <input class="hue" type="range" min="0" max="359" value="${Math.round(h)}" data-ghue data-s="${s}" data-l="${l}" aria-label="${esc(C.color)}" />
+      <div class="bar-label">${C.shade}</div>
+      <div class="dual" style="background:linear-gradient(90deg, ${tint(color, 5)}, ${color})">
+        <input type="range" min="5" max="100" value="${g.shade_from}" data-shade="shade_from" aria-label="${esc(C.shadeFrom)}" />
+        <input type="range" min="5" max="100" value="${g.shade_to}" data-shade="shade_to" aria-label="${esc(C.shadeTo)}" />
+      </div>
+    </div>`;
   return section(C.groupSettings, '',
     srow({ icon: groupBadge(g), bare: true, title: inlineEdit('tgroup', g.name, { cls: 'srow-input', label: C.group, max: 40 }), note: C.nameNote })
-    + srow({ icon: catDot(g.color), bare: true, title: C.color, attrs: 'data-tgroup-color', end: GO })
-    + srow({ icon: ramp, bare: true, title: C.shade, note: C.shadeNote, attrs: 'data-tgroup-shade', end: GO })
-    + srow({ icon: UI.grid, title: C.icon, attrs: 'data-tgroup-icon', end: GO }))
+    + srow({ icon: UI.grid, title: C.icon, attrs: 'data-tgroup-icon', end: GO })
+    + bars)
     + section(C.catsBlock, '', cats.join('') + srow({ icon: UI.plus, title: C.addCat, attrs: `data-tcat-add="${esc(g.slug)}"` }))
     + section('', '', srow({
       icon: UI.trash, title: C.deleteGroup, note: busy ? C.deleteGroupBusy : '', attrs: 'data-tgroup-delete', danger: !busy, off: busy,
@@ -3335,10 +3347,49 @@ function openChoice(title, body, onClick) {
 
 const NEW_GROUP_COLOR = '#3b7bce';
 
+/** Тон, насыщенность и светлота цвета группы — в коридоре, где любой тон смотрится ровно. */
+function pleasant(color) {
+  const hsl = hexToHsl(color) ?? { h: 212, s: 60, l: 52 };
+  return { h: hsl.h, s: Math.min(Math.max(hsl.s, 50), 80), l: Math.min(Math.max(hsl.l, 42), 58) };
+}
+
+// Полосы на экране группы: что сейчас выставлено и как это выглядит
+function groupBars() {
+  const hue = document.querySelector('#screen [data-ghue]');
+  if (!hue) return null;
+  const [a, b] = [...document.querySelectorAll('#screen [data-shade]')].map((i) => Number(i.value));
+  return {
+    color: hslToHex(Number(hue.value), Number(hue.dataset.s), Number(hue.dataset.l)),
+    shade_from: Math.min(a, b),
+    shade_to: Math.max(a, b),
+  };
+}
+
+$('screen').addEventListener('input', (e) => {
+  if (!e.target.matches('[data-ghue], [data-shade]')) return;
+  const { color, shade_from, shade_to } = groupBars();
+  const row = e.target.closest('.bar-row');
+  row.style.setProperty('--pick', color);
+  row.querySelector('.dual').style.background = `linear-gradient(90deg, ${tint(color, 5)}, ${color})`;
+  const badge = document.querySelector('#screen .gic');
+  badge.style.background = color;
+  badge.style.color = readableText(color);
+  const dots = [...document.querySelectorAll('#screen [data-tone]')];
+  shades(color, dots.length, shade_from, shade_to).forEach((tone, i) => (dots[i].style.background = tone));
+});
+
+$('screen').addEventListener('change', (e) => {
+  if (!e.target.matches('[data-ghue], [data-shade]')) return;
+  const bars = groupBars();
+  // Сохраняем то, что двигали: цвет или границы градиента. Экран уже выглядит как надо
+  const body = e.target.matches('[data-ghue]') ? { color: bars.color } : { shade_from: bars.shade_from, shade_to: bars.shade_to };
+  taxoCall('PATCH', `/groups/${encodeURIComponent(state.tg)}`, body).catch((err) => toast(`${T.common.failed}: ${err.message}`));
+});
+
 /**
  * Цвет и значок группы. Цвет — радужная полоса: двигаем тон, насыщенность и светлота
  * остаются в приятном коридоре, чтобы любой выбор хорошо смотрелся рядом с остальными.
- * what: both — из списка групп (и полоса, и значки), color или icon — из настроек группы.
+ * what: both — из списка групп (и полоса, и значки), icon — из настроек группы (только значки).
  */
 async function openLook(slug, what) {
   const C = T.settings.cats;
@@ -3346,20 +3397,18 @@ async function openLook(slug, what) {
   if (!g) return;
   let color = g.color ?? NEW_GROUP_COLOR;
   let icon = g.icon ?? 'dots';
-  const hsl = hexToHsl(color) ?? { h: 212, s: 60, l: 52 };
-  const sat = Math.min(Math.max(hsl.s, 50), 80);
-  const lig = Math.min(Math.max(hsl.l, 42), 58);
+  const { h: hue0, s: sat, l: lig } = pleasant(color);
   const save = (body) => taxoCall('PATCH', `/groups/${encodeURIComponent(slug)}`, body)
     .catch((err) => toast(`${T.common.failed}: ${err.message}`));
   const grid = (names) => names
     .map((n) => `<button class="icon-cell${n === icon ? ' on' : ''}" type="button" data-icon="${esc(n)}">${groupIcon(n)}</button>`)
     .join('');
 
-  const el = openChoice(what === 'color' ? C.color : what === 'icon' ? C.icon : C.look, `
+  const el = openChoice(what === 'icon' ? C.icon : C.look, `
     <div class="look-head"><span class="gic big" id="look-badge"></span><b>${esc(g.name)}</b></div>
-    ${what === 'icon' ? '' : `<input class="hue" type="range" min="0" max="359" value="${Math.round(hsl.h)}" aria-label="${esc(C.color)}" />`}
-    ${what === 'color' ? '' : `<input class="icon-search" type="search" placeholder="${esc(C.iconSearch)}" />
-      <div class="icon-cells">${grid(searchIcons(''))}</div>`}`,
+    ${what === 'icon' ? '' : `<input class="hue" type="range" min="0" max="359" value="${Math.round(hue0)}" aria-label="${esc(C.color)}" />`}
+    <input class="icon-search" type="search" placeholder="${esc(C.iconSearch)}" />
+    <div class="icon-cells">${grid(searchIcons(''))}</div>`,
   async (ev, close) => {
     const picked = ev.target.closest('[data-icon]')?.dataset.icon;
     if (!picked) return;
@@ -3391,39 +3440,6 @@ async function openLook(slug, what) {
   });
 }
 
-/**
- * Градиент категорий: от какого до какого оттенка цвета группы раскладываются её
- * категории. Два ползунка и живой образец — кружки категорий, как они будут выглядеть.
- */
-async function openShade(slug) {
-  const C = T.settings.cats;
-  const g = (await taxo()).groups.find((x) => x.slug === slug);
-  if (!g) return;
-  const color = g.color ?? NEW_GROUP_COLOR;
-  const n = Math.max(g.categories.length, 4);
-  const range = (name, value, label) => `
-    <label class="slide-row"><span>${esc(label)}</span>
-      <input class="slide" type="range" min="5" max="100" step="5" value="${value}" data-shade="${name}" /></label>`;
-  const el = openChoice(C.shade, `
-    <div class="shade-dots" id="shade-dots"></div>
-    ${range('shade_from', g.shade_from, C.shadeFrom)}
-    ${range('shade_to', g.shade_to, C.shadeTo)}`, () => {});
-  const values = () => {
-    const [a, b] = [...el.querySelectorAll('[data-shade]')].map((i) => Number(i.value));
-    return { shade_from: Math.min(a, b), shade_to: Math.max(a, b) };
-  };
-  const paint = () => {
-    const { shade_from, shade_to } = values();
-    el.querySelector('#shade-dots').innerHTML = shades(color, n, shade_from, shade_to).map((c) => catDot(c)).join('');
-  };
-  paint();
-  el.addEventListener('input', paint);
-  el.addEventListener('change', (ev) => {
-    if (!ev.target.matches('[data-shade]')) return;
-    taxoCall('PATCH', `/groups/${encodeURIComponent(slug)}`, values()).catch((err) => toast(`${T.common.failed}: ${err.message}`));
-  });
-}
-
 async function onCatsClick(e) {
   const C = T.settings.cats;
   const hit = (sel) => e.target.closest(sel);
@@ -3450,9 +3466,7 @@ async function onCatsClick(e) {
     return;
   }
 
-  if (hit('[data-tgroup-color]')) return openLook(state.tg, 'color');
   if (hit('[data-tgroup-icon]')) return openLook(state.tg, 'icon');
-  if (hit('[data-tgroup-shade]')) return openShade(state.tg);
   if (hit('[data-tgroup-delete]')) {
     const g = (await taxo()).groups.find((x) => x.slug === state.tg);
     if (!g || !confirm(f(C.deleteGroupConfirm, { name: g.name }))) return;
@@ -3843,7 +3857,7 @@ $('screen').addEventListener('click', (e) => {
   const set = e.target.closest('[data-set]');
   if (set) return go({ screen: `set_${set.dataset.set}` });
   if (!state.screen.startsWith('set')) return;
-  if (e.target.closest('[data-tlook], [data-tgroup-shade], [data-tcat], [data-tgroup], [data-tcat-add], [data-tgroup-add], [data-tgroup-icon], [data-tgroup-color], [data-tgroup-delete], [data-tcat-move], [data-tcat-delete]')) return onCatsClick(e);
+  if (e.target.closest('[data-tlook], [data-tcat], [data-tgroup], [data-tcat-add], [data-tgroup-add], [data-tgroup-icon], [data-tgroup-delete], [data-tcat-move], [data-tcat-delete]')) return onCatsClick(e);
   onSettingsClick(e);
 });
 

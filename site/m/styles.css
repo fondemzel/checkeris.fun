@@ -715,12 +715,12 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
 .gic.big svg { width: 26px; height: 26px; }
 .look-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; font-size: 16px; }
 /* Радужная полоса: тон цвета группы */
-.hue, .slide { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 26px; margin: 0 0 16px; border-radius: 13px; outline: none; }
+.hue { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 26px; margin: 0 0 16px; border-radius: 13px; outline: none; }
 .hue {
   background: linear-gradient(90deg, hsl(0 68% 52%), hsl(45 68% 52%), hsl(90 68% 52%), hsl(135 68% 52%), hsl(180 68% 52%),
     hsl(225 68% 52%), hsl(270 68% 52%), hsl(315 68% 52%), hsl(359 68% 52%));
 }
-.hue::-webkit-slider-thumb, .slide::-webkit-slider-thumb {
+.hue::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 30px;
   height: 30px;
@@ -729,12 +729,22 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
   background: var(--pick, var(--accent));
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
-/* Градиент категорий: два ползунка и образец */
-.slide { height: 8px; margin: 12px 0 4px; background: #dfe3e9; }
-.slide-row { display: block; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
-.shade-dots { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.shade-dots .cat-dot { width: 26px; height: 26px; }
-.ramp { width: 34px; height: 18px; border-radius: 9px; }
+/* Полосы цвета и градиента на экране группы */
+.bar-row { padding: 12px 0 2px; border-top: 1px solid #eceef1; }
+.bar-label { margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+/* Градиент категорий: одна полоса, два ползунка — от какого до какого оттенка */
+.dual { position: relative; height: 26px; margin-bottom: 14px; border-radius: 13px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06); }
+.dual input { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 26px; margin: 0; background: none; outline: none; pointer-events: none; }
+.dual input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--pick, var(--accent));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  pointer-events: auto; /* полоса под ползунками не перехватывает касание соседнего */
+}
 .icon-cell.on { background: var(--pick, var(--accent)); color: #fff; }
 .icon-search { width: 100%; margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font: inherit; }
 .icon-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }

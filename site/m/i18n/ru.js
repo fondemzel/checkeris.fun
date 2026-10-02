@@ -80,7 +80,6 @@ export const ru = {
       group: 'Группа',
       groupSettings: 'Настройки группы',
       shade: 'Градиент категорий',
-      shadeNote: 'оттенки цвета группы для её категорий',
       shadeFrom: 'Самый светлый',
       shadeTo: 'Самый насыщенный',
       catsBlock: 'Категории',
