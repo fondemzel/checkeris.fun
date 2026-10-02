@@ -3364,7 +3364,8 @@ async function screenSetCats() {
     icon: lookBadge(g),
     bare: true,
     title: esc(g.name),
-    note: `${int.format(g.categories.length)} ${pl(g.categories.length, C.catsW)}`,
+    // Подстрочник — сами категории группы; не поместились — строка обрежется многоточием
+    note: g.categories.length ? esc(g.categories.map((c) => c.name).join(', ')) : C.unused,
     attrs: `data-tgroup="${esc(g.slug)}"`,
     end: GO,
   }));
