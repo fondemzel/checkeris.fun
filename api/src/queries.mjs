@@ -6,7 +6,7 @@
 // и без бюджета он не работает вовсе: забытый фильтр — это чужие чеки на экране,
 // поэтому такой запрос должен падать, а не молча отдавать всё.
 import { classifyItems } from './classify.mjs';
-import { listIncomeCats } from './incomecats.mjs';
+import { incomeMeta } from './incomecats.mjs';
 
 export const RECEIPT_SORTS = {
   date: 'r.purchased_at',
@@ -713,6 +713,6 @@ export function getMeta(db, budgetId) {
     )
     .get(budgetId);
 
-  // income — категории доходов: плоский список, без групп
-  return { stats, sellers, months, lastImport, categories: groups, income: listIncomeCats(db, budgetId), uncategorized, budget };
+  // income — справочник доходов: группы с категориями, как categories у расходов
+  return { stats, sellers, months, lastImport, categories: groups, income: incomeMeta(db, budgetId), uncategorized, budget };
 }

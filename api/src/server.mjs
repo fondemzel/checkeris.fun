@@ -35,7 +35,9 @@ import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
-import { listIncomeCats, createIncomeCat, updateIncomeCat, deleteIncomeCat } from './incomecats.mjs';
+import {
+  getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat,
+} from './incomecats.mjs';
 import { listAccounts, saveAccounts, rememberLoadedAccounts, mergePrefixedAccounts } from './bankaccounts.mjs';
 import { loadEnv } from './llm.mjs';
 import {
@@ -727,11 +729,17 @@ async function handleApi(req, res, url) {
   // дне; раскрытие группы идёт обычным списком с name_norm
   // Все траты одной лентой: чеки, ручные записи и банк — для таблицы кабинета
   if (pathname === '/api/spending') return sendJson(res, 200, listSpending(db, user.budget_id, searchParams));
-  // Категории доходов: список и правка из настроек приложения
-  const incomeCat = pathname.match(/^\/api\/income\/categories(?:\/(.+))?$/);
-  if (incomeCat) {
-    const slug = incomeCat[1] ? decodeURIComponent(incomeCat[1]) : '';
-    if (req.method === 'GET' && !slug) return sendJson(res, 200, { categories: listIncomeCats(db, user.budget_id) });
+  // Справочник доходов: те же запросы, что у справочника расходов (/api/taxonomy)
+  const incomeTax = pathname.match(/^\/api\/income\/taxonomy(?:\/(groups|categories)(?:\/(.+))?)?$/);
+  if (incomeTax) {
+    const [, kind, slugRaw] = incomeTax;
+    const slug = slugRaw ? decodeURIComponent(slugRaw) : '';
+    if (!kind) {
+      return req.method === 'GET'
+        ? sendJson(res, 200, getIncomeTaxonomy(db, user.budget_id))
+        : sendJson(res, 405, { error: 'method not allowed' });
+    }
+    const isGroup = kind === 'groups';
     let body = {};
     if (req.method === 'POST' || req.method === 'PATCH') {
       try {
@@ -741,10 +749,11 @@ async function handleApi(req, res, url) {
       }
     }
     let result;
-    if (req.method === 'POST' && !slug) result = createIncomeCat(db, user.budget_id, body);
-    else if (req.method === 'PATCH' && slug) result = updateIncomeCat(db, user.budget_id, slug, body);
-    else if (req.method === 'DELETE' && slug) result = deleteIncomeCat(db, user.budget_id, slug, searchParams.get('move_to'));
-    else return sendJson(res, 405, { error: 'method not allowed' });
+    if (req.method === 'POST' && !slug) result = (isGroup ? createIncomeGroup : createIncomeCat)(db, user.budget_id, body);
+    else if (req.method === 'PATCH' && slug) result = (isGroup ? updateIncomeGroup : updateIncomeCat)(db, user.budget_id, slug, body);
+    else if (req.method === 'DELETE' && slug) {
+      result = isGroup ? deleteIncomeGroup(db, user.budget_id, slug) : deleteIncomeCat(db, user.budget_id, slug, searchParams.get('move_to'));
+    } else return sendJson(res, 405, { error: 'method not allowed' });
     return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
   }
 

@@ -36,7 +36,8 @@ export function migrate(db) {
   prepareMove(db);
   // Категории доходов появились позже бюджетов: уже существующим выдаём стартовый набор один
   // раз, в момент появления таблицы. Потом — только новым бюджетам (budgets.mjs)
-  const seedIncome = !tableExists(db, 'income_categories');
+  const seedIncome = !tableExists(db, 'income_groups');
+  db.exec('DROP TABLE IF EXISTS income_categories'); // первая, плоская версия справочника — без групп
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
   if (seedIncome && tableExists(db, 'budgets')) {
     for (const { id } of db.prepare('SELECT id FROM budgets').all()) provisionIncome(db, id);
