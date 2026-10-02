@@ -9,7 +9,7 @@
 // в приложении на Rust, поэтому вся логика здесь про экраны, а всё, что можно
 // посчитать в базе, считает сервер (/api/summary).
 import { groupIcon, searchIcons } from '/shared/icons.js';
-import { shades, edge, readableText } from '/shared/colors.js';
+import { shades, edge, readableText, hslToHex, hexToHsl } from '/shared/colors.js';
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
 import { T, f, pl } from '/m/i18n/index.js';
@@ -3239,38 +3239,49 @@ const catDot = (color) => `<span class="cat-dot" style="background:${color ?? '#
 const catTones = (g) => shades(g.color ?? '', g.categories.length, g.shade_from, g.shade_to);
 const catUsed = (c) => c.items + (c.ops ?? 0);
 
+// Значок группы в списке нажимается сам по себе: открывает выбор цвета и значка
+const lookBadge = (g) => groupBadge(g).replace('class="gic"', `class="gic" data-tlook="${esc(g.slug)}"`);
+
+/** Группы — одним списком: строка ведёт внутрь группы, значок слева — в выбор цвета и значка. */
 async function screenSetCats() {
   const C = T.settings.cats;
   const { groups } = await taxo();
-  const blocks = groups.map((g) => {
-    const tones = catTones(g);
-    const rows = g.categories.map((c, i) => {
-      const n = catUsed(c);
-      return srow({
-        icon: catDot(tones[i] ?? g.color),
-        bare: true,
-        title: esc(c.name),
-        note: n ? `${int.format(n)} ${pl(n, C.spendsW)}` : C.unused,
-        attrs: `data-tcat="${esc(c.slug)}"`,
-        end: GO,
-      });
-    });
-    return section(esc(g.name), '', rows.join('')
-      + srow({ icon: UI.plus, title: C.addCat, attrs: `data-tcat-add="${esc(g.slug)}"` })
-      + srow({ icon: groupBadge(g), bare: true, title: C.setupGroup, note: C.setupGroupNote, attrs: `data-tgroup="${esc(g.slug)}"`, end: GO }));
-  });
-  return blocks.join('') + section(C.groups, C.listNote, srow({ icon: UI.plus, title: C.addGroup, attrs: 'data-tgroup-add' }));
+  const rows = groups.map((g) => srow({
+    icon: lookBadge(g),
+    bare: true,
+    title: esc(g.name),
+    note: `${int.format(g.categories.length)} ${pl(g.categories.length, C.catsW)}`,
+    attrs: `data-tgroup="${esc(g.slug)}"`,
+    end: GO,
+  }));
+  return section('', C.listNote, rows.join('') + srow({ icon: UI.plus, title: C.addGroup, attrs: 'data-tgroup-add' }));
 }
 
+/** Внутри группы: её настройки и её категории. */
 async function screenSetGroup() {
   const C = T.settings.cats;
   const g = (await taxo()).groups.find((x) => x.slug === state.tg);
   if (!g) return `<div class="empty">${C.gone}</div>`;
+  const tones = catTones(g);
   const busy = g.categories.length > 0;
-  return section(C.group, '',
+  const ramp = `<span class="ramp" style="background:linear-gradient(90deg, ${shades(g.color ?? '#3b7bce', 2, g.shade_from, g.shade_to).join(', ')})"></span>`;
+  const cats = g.categories.map((c, i) => {
+    const n = catUsed(c);
+    return srow({
+      icon: catDot(tones[i] ?? g.color),
+      bare: true,
+      title: esc(c.name),
+      note: n ? `${int.format(n)} ${pl(n, C.spendsW)}` : C.unused,
+      attrs: `data-tcat="${esc(c.slug)}"`,
+      end: GO,
+    });
+  });
+  return section(C.groupSettings, '',
     srow({ icon: groupBadge(g), bare: true, title: inlineEdit('tgroup', g.name, { cls: 'srow-input', label: C.group, max: 40 }), note: C.nameNote })
-    + srow({ icon: UI.grid, title: C.icon, attrs: 'data-tgroup-icon', end: GO })
-    + srow({ icon: catDot(g.color), bare: true, title: C.color, attrs: 'data-tgroup-color', end: GO }))
+    + srow({ icon: catDot(g.color), bare: true, title: C.color, attrs: 'data-tgroup-color', end: GO })
+    + srow({ icon: ramp, bare: true, title: C.shade, note: C.shadeNote, attrs: 'data-tgroup-shade', end: GO })
+    + srow({ icon: UI.grid, title: C.icon, attrs: 'data-tgroup-icon', end: GO }))
+    + section(C.catsBlock, '', cats.join('') + srow({ icon: UI.plus, title: C.addCat, attrs: `data-tcat-add="${esc(g.slug)}"` }))
     + section('', '', srow({
       icon: UI.trash, title: C.deleteGroup, note: busy ? C.deleteGroupBusy : '', attrs: 'data-tgroup-delete', danger: !busy, off: busy,
     }));
@@ -3322,18 +3333,103 @@ function openChoice(title, body, onClick) {
   return el;
 }
 
-// Цвета групп: спокойная палитра, из которой категории получают свои оттенки
-const GROUP_COLORS = [
-  '#e5484d', '#f76b15', '#f5a524', '#e2c044', '#99c24d', '#46a758', '#12a594', '#00a2c7',
-  '#3b7bce', '#5b6cd6', '#8e4ec6', '#c2569b', '#d6409f', '#a18072', '#7c8894', '#4b5563',
-];
+const NEW_GROUP_COLOR = '#3b7bce';
+
+/**
+ * Цвет и значок группы. Цвет — радужная полоса: двигаем тон, насыщенность и светлота
+ * остаются в приятном коридоре, чтобы любой выбор хорошо смотрелся рядом с остальными.
+ * what: both — из списка групп (и полоса, и значки), color или icon — из настроек группы.
+ */
+async function openLook(slug, what) {
+  const C = T.settings.cats;
+  const g = (await taxo()).groups.find((x) => x.slug === slug);
+  if (!g) return;
+  let color = g.color ?? NEW_GROUP_COLOR;
+  let icon = g.icon ?? 'dots';
+  const hsl = hexToHsl(color) ?? { h: 212, s: 60, l: 52 };
+  const sat = Math.min(Math.max(hsl.s, 50), 80);
+  const lig = Math.min(Math.max(hsl.l, 42), 58);
+  const save = (body) => taxoCall('PATCH', `/groups/${encodeURIComponent(slug)}`, body)
+    .catch((err) => toast(`${T.common.failed}: ${err.message}`));
+  const grid = (names) => names
+    .map((n) => `<button class="icon-cell${n === icon ? ' on' : ''}" type="button" data-icon="${esc(n)}">${groupIcon(n)}</button>`)
+    .join('');
+
+  const el = openChoice(what === 'color' ? C.color : what === 'icon' ? C.icon : C.look, `
+    <div class="look-head"><span class="gic big" id="look-badge"></span><b>${esc(g.name)}</b></div>
+    ${what === 'icon' ? '' : `<input class="hue" type="range" min="0" max="359" value="${Math.round(hsl.h)}" aria-label="${esc(C.color)}" />`}
+    ${what === 'color' ? '' : `<input class="icon-search" type="search" placeholder="${esc(C.iconSearch)}" />
+      <div class="icon-cells">${grid(searchIcons(''))}</div>`}`,
+  async (ev, close) => {
+    const picked = ev.target.closest('[data-icon]')?.dataset.icon;
+    if (!picked) return;
+    icon = picked;
+    paint();
+    for (const cell of el.querySelectorAll('.icon-cell')) cell.classList.toggle('on', cell.dataset.icon === icon);
+    await save({ icon });
+    if (what === 'icon') close();
+  });
+
+  // Значок в шапке попапа показывает выбор сразу, ещё до сохранения
+  function paint() {
+    const badge = el.querySelector('#look-badge');
+    badge.style.background = color;
+    badge.style.color = readableText(color);
+    badge.innerHTML = groupIcon(icon);
+    el.style.setProperty('--pick', color);
+  }
+  paint();
+
+  const hue = el.querySelector('.hue');
+  hue?.addEventListener('input', () => {
+    color = hslToHex(Number(hue.value), sat, lig);
+    paint();
+  });
+  hue?.addEventListener('change', () => save({ color })); // отпустили ползунок — сохраняем
+  el.querySelector('.icon-search')?.addEventListener('input', (ev) => {
+    el.querySelector('.icon-cells').innerHTML = grid(searchIcons(ev.target.value));
+  });
+}
+
+/**
+ * Градиент категорий: от какого до какого оттенка цвета группы раскладываются её
+ * категории. Два ползунка и живой образец — кружки категорий, как они будут выглядеть.
+ */
+async function openShade(slug) {
+  const C = T.settings.cats;
+  const g = (await taxo()).groups.find((x) => x.slug === slug);
+  if (!g) return;
+  const color = g.color ?? NEW_GROUP_COLOR;
+  const n = Math.max(g.categories.length, 4);
+  const range = (name, value, label) => `
+    <label class="slide-row"><span>${esc(label)}</span>
+      <input class="slide" type="range" min="5" max="100" step="5" value="${value}" data-shade="${name}" /></label>`;
+  const el = openChoice(C.shade, `
+    <div class="shade-dots" id="shade-dots"></div>
+    ${range('shade_from', g.shade_from, C.shadeFrom)}
+    ${range('shade_to', g.shade_to, C.shadeTo)}`, () => {});
+  const values = () => {
+    const [a, b] = [...el.querySelectorAll('[data-shade]')].map((i) => Number(i.value));
+    return { shade_from: Math.min(a, b), shade_to: Math.max(a, b) };
+  };
+  const paint = () => {
+    const { shade_from, shade_to } = values();
+    el.querySelector('#shade-dots').innerHTML = shades(color, n, shade_from, shade_to).map((c) => catDot(c)).join('');
+  };
+  paint();
+  el.addEventListener('input', paint);
+  el.addEventListener('change', (ev) => {
+    if (!ev.target.matches('[data-shade]')) return;
+    taxoCall('PATCH', `/groups/${encodeURIComponent(slug)}`, values()).catch((err) => toast(`${T.common.failed}: ${err.message}`));
+  });
+}
 
 async function onCatsClick(e) {
   const C = T.settings.cats;
   const hit = (sel) => e.target.closest(sel);
-  const patchGroup = (body) => taxoCall('PATCH', `/groups/${encodeURIComponent(state.tg)}`, body);
   const failed = (err) => toast(`${T.common.failed}: ${err.message}`);
 
+  if (hit('[data-tlook]')) return openLook(hit('[data-tlook]').dataset.tlook, 'both');
   if (hit('[data-tcat]')) return go({ screen: 'set_cat', tc: hit('[data-tcat]').dataset.tcat });
   if (hit('[data-tgroup]')) return go({ screen: 'set_group', tg: hit('[data-tgroup]').dataset.tgroup });
 
@@ -3347,37 +3443,16 @@ async function onCatsClick(e) {
   }
   if (hit('[data-tgroup-add]')) {
     try {
-      const { group } = await taxoCall('POST', '/groups', { name: C.newGroup, icon: 'dots', color: GROUP_COLORS[8] });
+      const { group } = await taxoCall('POST', '/groups', { name: C.newGroup, icon: 'dots', color: NEW_GROUP_COLOR });
       focusNewNext = true;
       go({ screen: 'set_group', tg: group.slug });
     } catch (err) { failed(err); }
     return;
   }
 
-  if (hit('[data-tgroup-color]')) {
-    const body = `<div class="swatches">${GROUP_COLORS.map((c) => `<button class="swatch" type="button" data-color="${c}" style="background:${c}" aria-label="${c}"></button>`).join('')}</div>`;
-    openChoice(C.color, body, async (ev, close) => {
-      const color = ev.target.closest('[data-color]')?.dataset.color;
-      if (!color) return;
-      await patchGroup({ color }).catch(failed);
-      close();
-    });
-    return;
-  }
-  if (hit('[data-tgroup-icon]')) {
-    const grid = (names) => names.map((n) => `<button class="icon-cell" type="button" data-icon="${esc(n)}">${groupIcon(n)}</button>`).join('');
-    const el = openChoice(C.icon, `<input class="icon-search" type="search" placeholder="${esc(C.iconSearch)}" /><div class="icon-cells">${grid(searchIcons(''))}</div>`,
-      async (ev, close) => {
-        const icon = ev.target.closest('[data-icon]')?.dataset.icon;
-        if (!icon) return;
-        await patchGroup({ icon }).catch(failed);
-        close();
-      });
-    el.querySelector('.icon-search').addEventListener('input', (ev) => {
-      el.querySelector('.icon-cells').innerHTML = grid(searchIcons(ev.target.value));
-    });
-    return;
-  }
+  if (hit('[data-tgroup-color]')) return openLook(state.tg, 'color');
+  if (hit('[data-tgroup-icon]')) return openLook(state.tg, 'icon');
+  if (hit('[data-tgroup-shade]')) return openShade(state.tg);
   if (hit('[data-tgroup-delete]')) {
     const g = (await taxo()).groups.find((x) => x.slug === state.tg);
     if (!g || !confirm(f(C.deleteGroupConfirm, { name: g.name }))) return;
@@ -3768,7 +3843,7 @@ $('screen').addEventListener('click', (e) => {
   const set = e.target.closest('[data-set]');
   if (set) return go({ screen: `set_${set.dataset.set}` });
   if (!state.screen.startsWith('set')) return;
-  if (e.target.closest('[data-tcat], [data-tgroup], [data-tcat-add], [data-tgroup-add], [data-tgroup-icon], [data-tgroup-color], [data-tgroup-delete], [data-tcat-move], [data-tcat-delete]')) return onCatsClick(e);
+  if (e.target.closest('[data-tlook], [data-tgroup-shade], [data-tcat], [data-tgroup], [data-tcat-add], [data-tgroup-add], [data-tgroup-icon], [data-tgroup-color], [data-tgroup-delete], [data-tcat-move], [data-tcat-delete]')) return onCatsClick(e);
   onSettingsClick(e);
 });
 
