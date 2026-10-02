@@ -246,7 +246,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -2541,6 +2541,7 @@ const SCREENS = {
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
   set_banks: { title: T.settings.banks.label, render: screenSetBanks },
+  privacy: { title: T.settings.data.label, render: screenPrivacy },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
   bank_add: { title: T.bankAdd.title, render: screenBankAdd },
   bank_safety: { title: T.bankCard.safety.label, render: screenBankSafety },
@@ -2573,7 +2574,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary',
-  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings',
+  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings',
 };
 
 /**
@@ -2620,7 +2621,7 @@ let shownScreen = null; // что сейчас на экране: по нему 
 // параметрами (месяц, категория, банк). Только списки и настройки: у форм, карточек с
 // картой и мастера после отрисовки своя жизнь (поля, таймеры), прошлый вид им не годится.
 // Живут до перезагрузки страницы; свежий вид всё равно приходит следом и заменяет прошлый
-const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'bank_card', 'bank_add', 'bank_safety'];
+const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'privacy', 'bank_card', 'bank_add', 'bank_safety'];
 const screenCache = new Map();
 function remember(key, html) {
   screenCache.delete(key); // свежий — в конец очереди
@@ -3140,7 +3141,7 @@ async function screenSettings() {
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
     + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
     // «Данные» — сразу страница о данных, без промежуточного экрана
-    + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, href: '/privacy.html', end: GO }));
+    + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO }));
 }
 
 async function screenSetProfile() {
@@ -3167,6 +3168,32 @@ async function screenSetBanks() {
 
 /** Стрелка «дальше» в сером кружке: строка ведёт на другой экран. */
 const GO = `<span class="srow-go">${UI.chevron}</span>`;
+
+/**
+ * «Какие данные хранит Чекер» — экраном приложения, а не отдельной страницей: уход на
+ * /privacy.html выгружал приложение, и возврат назад запускал его заново. Текст тот же —
+ * site/privacy.md; разбор намеренно простой: заголовки, списки, абзацы и **жирный**.
+ */
+let privacyText = null;
+async function screenPrivacy() {
+  privacyText ??= await fetch('/privacy.md').then((r) => (r.ok ? r.text() : Promise.reject(new Error(T.common.failed))));
+  const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  const html = [];
+  let list = false;
+  for (const line of privacyText.split('\n')) {
+    const text = line.trim();
+    const item = text.startsWith('- ');
+    if (list && !item) html.push('</ul>');
+    if (item && !list) html.push('<ul>');
+    list = item;
+    if (item) html.push(`<li>${inline(text.slice(2))}</li>`);
+    else if (text.startsWith('## ')) html.push(`<h2>${inline(text.slice(3))}</h2>`);
+    else if (text.startsWith('# ')) html.push(`<h1>${inline(text.slice(2))}</h1>`);
+    else if (text) html.push(`<p>${inline(text)}</p>`);
+  }
+  if (list) html.push('</ul>');
+  return `<article class="card doc">${html.join('')}</article>`;
+}
 
 // ── разделы и строки настроек ────────────────────────────
 // Настройки — это разделы, в разделе — строки. Раздел: название и подстрочник. Строка:
@@ -3303,7 +3330,7 @@ function bankSection(bank) {
     end: GO,
   });
   return section(S.block, '', rows + add)
-    + `<p class="note sec-link"><a href="/privacy.html">${T.common.privacy}</a></p>`;
+    + `<p class="note sec-link"><button class="link" type="button" data-privacy>${T.common.privacy}</button></p>`;
 }
 
 /** Экран выбора банка: те, что ещё не подключены. Готовые сверху, «скоро» — ниже. */
@@ -3448,7 +3475,7 @@ function screenBankSafety() {
     [UI.eyeOff, 'private'],
   ].map(([icon, name]) => srow({ icon, title: S[`${name}Bold`], note: S[`${name}Text`], wrap: true }));
   // Название раздела уже в шапке экрана — здесь только подстрочник
-  return section('', S.note, rows.join('') + srow({ icon: UI.shield, title: T.common.privacy, href: '/privacy.html', end: GO }));
+  return section('', S.note, rows.join('') + srow({ icon: UI.shield, title: T.common.privacy, attrs: 'data-privacy', end: GO }));
 }
 
 /** «10 мин назад», «3 ч назад», иначе дата. */
@@ -3510,6 +3537,7 @@ async function onSettingsClick(e) {
 }
 
 $('screen').addEventListener('click', (e) => {
+  if (e.target.closest('[data-privacy]')) return go({ screen: 'privacy' });
   const set = e.target.closest('[data-set]');
   if (set) return go({ screen: `set_${set.dataset.set}` });
   if (state.screen.startsWith('set')) onSettingsClick(e);
