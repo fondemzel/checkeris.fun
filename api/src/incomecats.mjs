@@ -92,14 +92,19 @@ export function deleteIncomeCat(db, budgetId, slug, moveTo) {
   return { deleted: slug, moved_to: target || null, moved: used };
 }
 
-/** Ключ правила для поступления: кто прислал. Приставка отделяет его от правил расходов. */
+/**
+ * Ключ правила для поступления — его описание: «Проценты на остаток», «Кэшбэк за обычные
+ * покупки», имя отправителя перевода. Поле «продавец» у поступлений не годится: это общий
+ * канал («Бонусы», «Входящий перевод», «Сбербанк»), под которым лежит совсем разное.
+ * Приставка отделяет ключ от правил расходов.
+ */
 export function incomeKey(op) {
-  const raw = String(op.sender || op.merchant || op.description || '').toLowerCase().replace(/ё/g, 'е');
+  const raw = String(op.description || op.sender || op.merchant || '').toLowerCase().replace(/ё/g, 'е');
   const key = raw.replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
   return key.length >= 2 ? `in:${key}` : null;
 }
 
-/** Разложить поступления по категориям, которые человек уже выбирал для этих отправителей. */
+/** Разложить поступления по категориям, которые человек уже выбирал для таких же поступлений. */
 export function applyIncomeRules(db, budgetId) {
   const ops = db
     .prepare(
@@ -118,7 +123,7 @@ export function applyIncomeRules(db, budgetId) {
   return done;
 }
 
-/** Категория поступления: человек выбрал её сам. Запоминаем для этого отправителя. */
+/** Категория поступления: человек выбрал её сам. Запоминаем для поступлений с тем же описанием. */
 export function setIncomeCategory(db, budgetId, op, slug) {
   const category = slug ? find(db, budgetId, slug) : null;
   if (slug && !category) return fail(400, 'unknown category');

@@ -992,10 +992,12 @@ async function screenOp() {
     source: 'bank',
     income,
     sum: op.amount,
-    name: (income && op.sender) || op.merchant || op.description || 'Без названия',
+    // У поступления главное — описание («Проценты на остаток», имя отправителя), а «продавец»
+    // — лишь канал, которым оно пришло («Бонусы», «Входящий перевод»)
+    name: income ? op.description || op.sender || op.merchant || T.income.one : op.merchant ?? op.description ?? 'Без названия',
     purchased_at: op.at,
     quantity: 1,
-    seller: op.merchant && op.description && op.description !== op.merchant ? op.description : null,
+    seller: op.merchant && op.description && op.description !== op.merchant ? (income ? op.merchant : op.description) : null,
     category_slug: op.category_slug,
     same_name_count: op.same_count,
     note: op.note,
@@ -1039,7 +1041,7 @@ function itemCard(it) {
         ['Дата', `${dateRu(it.purchased_at)} ${esc(timeRu(it.purchased_at))}`],
         ['Количество', it.quantity !== 1 ? `${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''],
         // У ручной записи продавца нет — «Ручная запись» уже сказано строкой «Источник»
-        ['Продавец', it.source === 'manual' ? '' : esc(it.seller ?? '')],
+        [it.income ? T.income.channel : 'Продавец', it.source === 'manual' ? '' : esc(it.seller ?? '')],
         ['Точка', esc(it.retail_place ?? '')],
         // Адрес текстом — когда карты нет. У интернет-покупки это адрес продавца, а не магазина
         ['Адрес', !onMap && !it.internet_sign ? esc(it.retail_address ?? '') : ''],

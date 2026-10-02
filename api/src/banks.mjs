@@ -417,12 +417,16 @@ export function getBankOp(db, budgetId, id) {
               l.bank, -- какой именно банк: в карточке это видно в строке «Источник»
               c.name AS category_name, c.group_slug, g.name AS group_name,
               -- Сколько операций затронет выбор категории: у траты — того же продавца,
-              -- у поступления — того же отправителя
+              -- у поступления — с тем же описанием
               (SELECT COUNT(*) FROM bank_ops x
                 WHERE x.budget_id = o.budget_id
                   AND x.kind = CASE WHEN o.direction = 'credit' THEN 'income' ELSE 'expense' END
-                  AND COALESCE(CASE WHEN o.direction = 'credit' THEN json_extract(x.raw, '$.senderDetails') END, x.merchant, x.description)
-                    = COALESCE(CASE WHEN o.direction = 'credit' THEN json_extract(o.raw, '$.senderDetails') END, o.merchant, o.description)
+                  AND CASE WHEN o.direction = 'credit'
+                        THEN COALESCE(x.description, json_extract(x.raw, '$.senderDetails'), x.merchant)
+                        ELSE COALESCE(x.merchant, x.description) END
+                    = CASE WHEN o.direction = 'credit'
+                        THEN COALESCE(o.description, json_extract(o.raw, '$.senderDetails'), o.merchant)
+                        ELSE COALESCE(o.merchant, o.description) END
               ) AS same_count
          FROM bank_ops o
          JOIN bank_links l ON l.id = o.link_id
