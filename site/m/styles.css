@@ -700,9 +700,12 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
 .srow.off { opacity: 0.55; }
 .srow.off .srow-main { pointer-events: none; }
 
-/* Стрелка «дальше»: строка ведёт на другой экран */
-.srow-go { flex: none; display: flex; color: var(--muted); }
-.srow-go svg { width: 18px; height: 18px; transform: rotate(-90deg); }
+/* Стрелка «дальше» — в сером кружке, как кнопки справа */
+.srow-go { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #eef1f5; color: var(--muted); }
+.srow-go svg { width: 17px; height: 17px; transform: rotate(-90deg); }
+/* Ссылка под блоками — по центру, неприметная */
+.sec-link { margin: 16px 0; text-align: center; }
+.sec-link a { color: inherit; }
 
 /* Пояснение в несколько строк: значок держится у первой строки текста */
 .srow.wrap .srow-main { align-items: flex-start; }

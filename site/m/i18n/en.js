@@ -33,11 +33,13 @@ export const en = {
   settings: {
     title: 'Settings',
     menu: {
+      label: 'General',
       members: ['member', 'members', 'members'],
       banksNone: 'no banks connected',
     },
     profile: {
       label: 'Profile',
+      block: 'Account',
       viaTelegram: 'Signed in with Telegram',
       viaPassword: 'Signed in with a password',
       nameLabel: 'Name',
@@ -48,6 +50,8 @@ export const en = {
     },
     budget: {
       label: 'Budget',
+      main: 'General',
+      members: 'Members',
       noteShared: 'All members see and add expenses in this budget',
       noteAlone: 'Invite your family to keep one budget together',
       nameLabel: 'Budget name',
@@ -66,6 +70,7 @@ export const en = {
     },
     banks: {
       label: 'Banks',
+      block: 'Connected',
       note: 'Operations come through this phone; Checker never sees your bank password',
       add: 'Connect a bank',
       addNote: 'available: {names}',

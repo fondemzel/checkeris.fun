@@ -246,7 +246,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_data', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -2541,7 +2541,6 @@ const SCREENS = {
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
   set_banks: { title: T.settings.banks.label, render: screenSetBanks },
-  set_data: { title: T.settings.data.label, render: screenSetData },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
   bank_add: { title: T.bankAdd.title, render: screenBankAdd },
   bank_safety: { title: T.bankCard.safety.label, render: screenBankSafety },
@@ -2574,7 +2573,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary',
-  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', set_data: 'settings',
+  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings',
 };
 
 /**
@@ -2621,7 +2620,7 @@ let shownScreen = null; // что сейчас на экране: по нему 
 // параметрами (месяц, категория, банк). Только списки и настройки: у форм, карточек с
 // картой и мастера после отрисовки своя жизнь (поля, таймеры), прошлый вид им не годится.
 // Живут до перезагрузки страницы; свежий вид всё равно приходит следом и заменяет прошлый
-const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'set_data', 'bank_card', 'bank_add', 'bank_safety'];
+const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'bank_card', 'bank_add', 'bank_safety'];
 const screenCache = new Map();
 function remember(key, html) {
   screenCache.delete(key); // свежий — в конец очереди
@@ -3029,7 +3028,8 @@ function budgetSection(budget) {
     .join('');
   const invite = budget.is_owner ? srow({ icon: UI.userPlus, title: B.invite, note: B.inviteNote, attrs: 'data-invite' }) : '';
   const leave = budget.is_home ? '' : srow({ icon: UI.logout, title: B.leave, note: B.leaveNote, attrs: 'data-leave', danger: true });
-  return section('', budget.members.length > 1 ? B.noteShared : B.noteAlone, name + members + invite + leave);
+  return section(B.main, '', name + leave)
+    + section(B.members, budget.members.length > 1 ? B.noteShared : B.noteAlone, members + invite);
 }
 
 /**
@@ -3116,22 +3116,26 @@ async function screenSettings() {
   const link = (id, icon, title, note) => srow({ icon, title, note: esc(note), attrs: `data-set="${id}"`, end: GO });
   // Разделы — строками: каждая ведёт на свой экран. Так в настройки помещаются новые
   // разделы, а главный экран остаётся коротким
-  return section('', '',
+  return section(S.menu.label, '',
     link('profile', UI.user, S.profile.label, me?.name || (me?.telegram ? S.profile.viaTelegram : S.profile.viaPassword))
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
     + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
-    + link('data', UI.shield, S.data.label, S.data.note));
+    // «Данные» — сразу страница о данных, без промежуточного экрана
+    + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, href: '/privacy.html', end: GO }));
 }
 
 async function screenSetProfile() {
   const me = await api('/api/session').catch(() => null);
   const P = T.settings.profile;
-  return section('', me?.telegram ? P.viaTelegram : P.viaPassword,
+  return section(P.block, me?.telegram ? P.viaTelegram : P.viaPassword,
     srow({
       icon: UI.user,
       title: inlineEdit('name', me?.name ?? '', { cls: 'srow-input', label: P.nameLabel, placeholder: P.namePlaceholder, max: 60 }),
       note: P.nameNote,
-    }) + srow({ icon: UI.logout, title: P.logout, attrs: 'data-logout' }));
+    }) + srow({ icon: UI.logout, title: P.logout, attrs: 'data-logout' })
+      + (me?.role === 'admin'
+        ? ''
+        : srow({ icon: UI.trash, title: T.settings.deleteAccount, note: T.settings.data.deleteNote, attrs: 'data-delete-account', danger: true })));
 }
 
 async function screenSetBudget() {
@@ -3142,15 +3146,8 @@ async function screenSetBanks() {
   return bankSection(inApp() ? await api('/api/bank').catch(() => null) : null);
 }
 
-async function screenSetData() {
-  const me = await api('/api/session').catch(() => null);
-  const D = T.settings.data;
-  return section('', D.note,
-    srow({ icon: UI.shield, title: D.privacy, note: D.privacyNote, href: '/privacy.html', end: GO }) +
-      (me?.role === 'admin'
-        ? ''
-        : srow({ icon: UI.trash, title: T.settings.deleteAccount, note: D.deleteNote, attrs: 'data-delete-account', danger: true })));
-}
+/** Стрелка «дальше» в сером кружке: строка ведёт на другой экран. */
+const GO = `<span class="srow-go">${UI.chevron}</span>`;
 
 // ── разделы и строки настроек ────────────────────────────
 // Настройки — это разделы, в разделе — строки. Раздел: название и подстрочник. Строка:
@@ -3177,9 +3174,11 @@ const section = (title, note, rows) => `
  *   end   — действие справа: отдельная кнопка, её нажатие не открывает строку.
  */
 function srow({ icon = '', bare = false, title, note = '', wrap = false, attrs = '', href = '', end = '', danger = false, off = false }) {
-  const body =
+  let body =
     (icon ? `<span class="srow-ic${bare ? ' bare' : ''}">${icon}</span>` : '') +
-    `<span class="srow-text"><span class="srow-title">${title}</span>${note ? `<small class="note srow-note">${note}</small>` : ''}</span>`;
+    `<span class="srow-text"><span class="srow-title">${title}</span>${note ? `<small class="note srow-note">${note}</small>` : ''}</span>` +
+    (end === GO ? GO : ''); // стрелка «дальше» — часть строки: нажимается вместе с ней
+  if (end === GO) end = '';
   const main = href
     ? `<a class="srow-main" href="${href}">${body}</a>`
     : attrs
@@ -3192,8 +3191,7 @@ function srow({ icon = '', bare = false, title, note = '', wrap = false, attrs =
 const endBtn = (attrs, icon, label, spin = false) =>
   `<button class="row-icon${spin ? ' spin' : ''}" type="button" ${attrs} aria-label="${esc(label)}" title="${esc(label)}"${spin ? ' disabled' : ''}>${icon}</button>`;
 
-/** Стрелка «дальше»: строка ведёт на другой экран. */
-const GO = `<span class="srow-go">${UI.chevron}</span>`;
+
 
 /**
  * Приложение для Android: страница живёт внутри него и через мост window.Checker умеет то,
@@ -3285,7 +3283,8 @@ function bankSection(bank) {
     attrs: 'data-bank-add',
     end: GO,
   });
-  return section('', S.note, rows + add);
+  return section(S.block, '', rows + add)
+    + `<p class="note sec-link"><a href="/privacy.html">${T.common.privacy}</a></p>`;
 }
 
 /** Экран выбора банка: те, что ещё не подключены. Готовые сверху, «скоро» — ниже. */
