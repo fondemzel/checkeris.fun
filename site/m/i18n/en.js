@@ -34,6 +34,8 @@ export const en = {
     one: 'Income',
     many: ['income', 'incomes', 'incomes'],
     noCategory: 'No category',
+    all: 'All income',
+    emptyFilter: 'No such income in this period',
     pick: 'Choose a category',
     pickFor: 'Choose a category for the income “{name}”',
     saved: 'Category set',

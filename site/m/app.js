@@ -59,6 +59,10 @@ const UI = {
   ),
   check: svg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
+  sort: svg('<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>'),
+  filter: svg('<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>'),
+  layers: svg('<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>'
+    + '<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'),
   mail: svg('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>'),
   card: svg('<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>'),
   grid: svg('<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>'),
@@ -243,6 +247,7 @@ const state = {
   tc: '', // настройка категорий: открытая категория
   op: '', // операция банка, чья карточка открыта
   src: '', // фильтр ленты по источнику: '' | receipt | bank | manual
+  inf: '', // фильтр доходов: '' | '-' (без категории) | код группы доходов
   added: '', // чек, только что добавленный сканом или руками
   sort: 'date', // списки: date | name | sum
   dir: 'desc',
@@ -263,8 +268,9 @@ const SORTS = {
 };
 
 /**
-  * Шапка списка: сумма и подпись слева, сортировка справа от них, ниже период и фильтры.
-  * Всё выровнено по левому краю — так в двух строках помещается больше, чем по центру.
+  * Шапка списка: сумма и подпись слева, справа две кнопки — сортировка и фильтр; ниже период.
+  * Кнопка открывает список прямо под собой: строка — значок и название. Так в шапке две
+  * кнопки вместо восьми, а что выбрано, видно в подписи под суммой.
   */
 const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '' }) => `
   <div class="total compact">
@@ -273,17 +279,32 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '' }) 
         <span class="total-sum">${sum}</span>
         <span class="total-note">${note}</span>
       </div>
-      ${filters}
+      <div class="head-btns">
+        ${sorts ? sortDrop(sorts === true ? undefined : sorts) : ''}
+        ${filters}
+      </div>
     </div>
     <div class="head-line">
       ${periodNav(true)}
-      ${sorts ? sortChips(sorts === true ? undefined : sorts) : ''}
     </div>
   </div>`;
 
+/** Кнопка с выпадающим списком. on — выбрано не то, что по умолчанию: кнопка подсвечена. */
+const drop = (icon, label, rows, on = false) => `
+  <div class="drop">
+    <button class="drop-btn${on ? ' on' : ''}" type="button" data-drop aria-label="${label}" title="${label}">${icon}</button>
+    <div class="drop-menu" role="menu" hidden>${rows}</div>
+  </div>`;
+
+/** Строка списка: значок, название и отметка справа у выбранной. */
+const dropRow = (attrs, icon, text, on, mark = UI.ok) => `
+  <button class="drop-row${on ? ' on' : ''}" type="button" role="menuitem" ${attrs}>
+    <span class="drop-ic">${icon}</span><span class="drop-text">${esc(text)}</span>${on ? `<span class="drop-mark">${mark}</span>` : ''}
+  </button>`;
+
 /**
- * Фильтр по источнику: только из банка, только чеки или только ручные записи. Нажатие
- * включает, повторное — снимает. Значки те же, что у сумм в ленте, — их уже узнают.
+ * Фильтр расходов по источнику: только из банка, только чеки или только ручные записи.
+ * Значки те же, что у сумм в ленте, — их уже узнают.
  */
 const SOURCE_FILTERS = [
   ['receipt', 'Только чеки'],
@@ -291,25 +312,30 @@ const SOURCE_FILTERS = [
   ['manual', 'Только вручную'],
 ];
 
-const sourceChips = () => `
-  <div class="sorts src-filters">
-    <button class="sort-chip chip-all${state.src ? '' : ' on'}" type="button" data-src="" aria-label="Все источники" title="Все источники">Все</button>${SOURCE_FILTERS
-    .map(([key, label]) => `
-      <button class="sort-chip${state.src === key ? ' on' : ''}" type="button" data-src="${key}"
-        aria-label="${label}" title="${label}">${SOURCES[key].icon}</button>`)
-    .join('')}</div>`;
+const sourceChips = () => drop(UI.filter, 'Фильтр',
+  dropRow('data-src=""', UI.layers, 'Все источники', !state.src)
+  + SOURCE_FILTERS.map(([key, label]) => dropRow(`data-src="${key}"`, SOURCES[key].icon, label, state.src === key)).join(''),
+  Boolean(state.src));
 
-/** Ряд значков сортировки. Повторное нажатие на выбранный разворачивает порядок. */
-const sortChips = (keys = ['date', 'name', 'sum']) => `
-  <div class="sorts">${keys
-    .map((key) => {
-      const [label, , icon] = SORTS[key];
-      const on = state.sort === key;
-      // Стрелка — значком, а не символом: символ ↓ телефон может нарисовать цветным эмодзи
-      const arrow = on ? `<span class="sort-dir${state.dir === 'asc' ? ' asc' : ''}">${UI.arrow}</span>` : '';
-      return `<button class="sort-chip${on ? ' on' : ''}" type="button" data-sort="${key}" aria-label="${label}" title="${label}">${UI[icon]}${arrow}</button>`;
-    })
-    .join('')}</div>`;
+/** Сортировка. Выбранная строка показывает направление; повторное нажатие его разворачивает. */
+const sortDrop = (keys = ['date', 'name', 'sum']) => drop(UI.sort, 'Сортировка', keys
+  .map((key) => {
+    const [label, , icon] = SORTS[key];
+    // Стрелка — значком, а не символом: символ ↓ телефон может нарисовать цветным эмодзи
+    const arrow = `<span class="sort-dir${state.dir === 'asc' ? ' asc' : ''}">${UI.arrow}</span>`;
+    return dropRow(`data-sort="${key}"`, UI[icon], label, state.sort === key, arrow);
+  })
+  .join(''));
+
+// Список открывается под своей кнопкой; нажатие мимо или на другую кнопку закрывает его.
+// Выбор строки перерисовывает шапку — список закрывается сам
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-drop]');
+  const own = btn?.nextElementSibling;
+  for (const menu of document.querySelectorAll('.drop-menu')) if (menu !== own) menu.hidden = true;
+  if (own) own.hidden = !own.hidden;
+});
+
 // Корневые экраны: у них нет «назад». «Банк» — такой же вид «Расхода», как чеки,
 // в него приходят переключателем, а не вглубь
 const TOP = ['summary', 'receipts', 'bank', 'income', 'settings', 'stats'];
@@ -349,6 +375,7 @@ function go(patch, replace = false) {
   if (['set_cats', 'set_group', 'set_cat'].includes(state.screen) && state.tk) params.set('tk', state.tk);
   if (state.op) params.set('op', state.op);
   if (state.screen === 'summary' && state.src) params.set('src', state.src);
+  if (state.screen === 'income' && state.inf) params.set('inf', state.inf);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   if (['summary', 'category', 'receipts', 'bank'].includes(state.screen) && (state.sort !== 'date' || state.dir !== 'desc')) {
@@ -379,6 +406,7 @@ function readUrl() {
   state.tc = p.get('tc') ?? '';
   state.op = p.get('op') ?? '';
   state.src = ['receipt', 'bank', 'manual'].includes(p.get('src')) ? p.get('src') : '';
+  state.inf = p.get('inf') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
   state.sort = Object.hasOwn(SORTS, p.get('sort') ?? '') ? p.get('sort') : 'date';
@@ -903,7 +931,7 @@ async function screenIncome() {
 
   const q = new URLSearchParams({
     from: state.from, to: state.to, direction: 'credit', kind: 'income',
-    per: '300', sort: state.sort, dir: state.dir,
+    per: '5000', sort: state.sort, dir: state.dir,
   });
   const [data, bank] = await Promise.all([
     api(`/api/bank/ops?${q}`),
@@ -911,17 +939,39 @@ async function screenIncome() {
   ]);
   const transfers = (bank?.totals ?? []).find((t) => t.kind === 'transfer');
 
+  // Фильтр: группа доходов или «без категории». Итог и число считаем по тому, что осталось
+  const groups = meta?.income ?? [];
+  const picked = groups.find((g) => g.slug === state.inf);
+  const filter = state.inf === '-' ? '-' : picked ? picked.slug : '';
+  const all = data.rows;
+  data.rows = !filter ? all : all.filter((op) => {
+    const found = incomeCat(op.category_slug);
+    return filter === '-' ? !found : found?.group.slug === filter;
+  });
+  const sum = filter ? data.rows.reduce((n, op) => n + op.amount, 0) : data.totals.sum;
+  const count = filter ? data.rows.length : data.totals.count;
+  const filters = drop(UI.filter, 'Фильтр',
+    dropRow('data-inf=""', UI.layers, T.income.all, !filter)
+    + groups.map((g) => dropRow(`data-inf="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, filter === g.slug)).join('')
+    + dropRow('data-inf="-"', groupIcon('none'), T.income.noCategory, filter === '-'),
+    Boolean(filter));
+
   const head = `
     <div class="stuck-head">
       ${listHead({
-        sum: money(data.totals.sum),
-        note: `${int.format(data.totals.count)} ${plural(data.totals.count, 'поступление', 'поступления', 'поступлений')}${
-          transfers ? ` · ${int.format(transfers.count)} переводов между своими` : ''}`,
-        sorts: data.rows.length > 0,
+        sum: money(sum),
+        note: [
+          `${int.format(count)} ${pl(count, T.income.many)}`,
+          SORTS[state.sort] ? SORTS[state.sort][0].toLowerCase() : '',
+          filter ? (picked?.name ?? T.income.noCategory).toLowerCase() : '',
+          !filter && transfers ? `${int.format(transfers.count)} переводов между своими` : '',
+        ].filter(Boolean).map(esc).join(' · '),
+        sorts: all.length > 0,
+        filters: all.length > 0 ? filters : '',
       })}
     </div>`;
 
-  if (!data.rows.length) return `${head}<div class="empty">Поступлений за период нет</div>`;
+  if (!data.rows.length) return `${head}<div class="empty">${filter ? T.income.emptyFilter : 'Поступлений за период нет'}</div>`;
 
   const byDate = state.sort === 'date';
   let day = '';
@@ -2835,6 +2885,9 @@ async function onScreenClick(e) {
 
   // Категория в карточке товара
   // Фильтр по источнику: повторное нажатие снимает
+  const inf = e.target.closest('[data-inf]');
+  if (inf) return go({ inf: inf.dataset.inf }, true);
+
   const src = e.target.closest('[data-src]');
   if (src) {
     const next = !src.dataset.src || state.src === src.dataset.src ? '' : src.dataset.src;

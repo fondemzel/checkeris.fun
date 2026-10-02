@@ -795,6 +795,59 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
 /* Верх шапки: сумма слева, фильтр по источнику справа */
 .head-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .src-filters { margin-top: 4px; }
+
+/* Две кнопки в верхнем ряду шапки — сортировка и фильтр, у каждой список под ней */
+.head-btns { display: flex; flex: none; gap: 6px; }
+.drop { position: relative; }
+.drop-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #eef1f5;
+  color: var(--muted);
+  cursor: pointer;
+}
+.drop-btn svg { width: 17px; height: 17px; }
+.drop-btn.on { background: var(--accent); color: #fff; } /* фильтр включён */
+.drop-menu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  z-index: 20;
+  min-width: 210px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+.drop-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.drop-row:active { background: #eef2f9; }
+.drop-row.on { color: var(--accent); font-weight: 600; }
+.drop-ic { display: flex; flex: none; width: 18px; color: var(--muted); }
+.drop-row.on .drop-ic { color: var(--accent); }
+.drop-ic svg, .drop-mark svg { width: 17px; height: 17px; }
+.drop-text { flex: 1; }
+.drop-mark { display: flex; flex: none; }
+.drop-mark .sort-dir { position: static; display: flex; background: none; color: inherit; }
+.drop-mark .sort-dir.asc { transform: rotate(180deg); }
 /* Часть подписи, которую только что изменил значок: расходящийся тающий круг */
 .note-part { position: relative; display: inline-block; }
 .note-part.pulse { animation: note-bold 1s ease-out; }
