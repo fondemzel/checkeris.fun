@@ -2744,6 +2744,7 @@ addEventListener('touchend', async () => {
   try {
     // Свежие данные и справочники; кружок крутится хотя бы мгновение — иначе не видно, что было
     screenCache.delete(location.search);
+    kept.clear();
     reloadIfUpdated();
     await Promise.all([
       api('/api/meta').then((m) => (meta = m)).catch(() => {}),
@@ -3104,11 +3105,29 @@ async function shareInvite(button) {
 }
 
 /** Настройки: кто вошёл, бюджет, выход и удаление аккаунта. */
+/**
+ * Данные настроек — профиль, бюджет, банки — держим в памяти: экраны настроек простые, и
+ * ждать сеть при каждом переходе между ними незачем. Экран рисуется сразу из того, что уже
+ * знаем, а свежий ответ приходит следом и перерисовывает экран, только если что-то изменилось.
+ */
+const kept = new Map();
+function apiKept(path) {
+  const had = kept.get(path);
+  const fresh = api(path).then((value) => {
+    kept.set(path, value);
+    if (had !== undefined && JSON.stringify(had) !== JSON.stringify(value) && state.screen.startsWith('set')) render();
+    return value;
+  });
+  if (had === undefined) return fresh;
+  fresh.catch(() => {});
+  return Promise.resolve(had);
+}
+
 async function screenSettings() {
   const [me, budget, bank] = await Promise.all([
-    api('/api/session').catch(() => null),
-    api('/api/budget').catch(() => null),
-    inApp() ? api('/api/bank').catch(() => null) : null,
+    apiKept('/api/session').catch(() => null),
+    apiKept('/api/budget').catch(() => null),
+    inApp() ? apiKept('/api/bank').catch(() => null) : null,
   ]);
   const S = T.settings;
   const members = budget?.members.length ?? 0;
@@ -3125,7 +3144,7 @@ async function screenSettings() {
 }
 
 async function screenSetProfile() {
-  const me = await api('/api/session').catch(() => null);
+  const me = await apiKept('/api/session').catch(() => null);
   const P = T.settings.profile;
   return section(P.block, me?.telegram ? P.viaTelegram : P.viaPassword,
     srow({
@@ -3139,11 +3158,11 @@ async function screenSetProfile() {
 }
 
 async function screenSetBudget() {
-  return budgetSection(await api('/api/budget').catch(() => null));
+  return budgetSection(await apiKept('/api/budget').catch(() => null));
 }
 
 async function screenSetBanks() {
-  return bankSection(inApp() ? await api('/api/bank').catch(() => null) : null);
+  return bankSection(inApp() ? await apiKept('/api/bank').catch(() => null) : null);
 }
 
 /** Стрелка «дальше» в сером кружке: строка ведёт на другой экран. */
