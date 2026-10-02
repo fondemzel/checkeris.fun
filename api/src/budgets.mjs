@@ -9,6 +9,7 @@
 // Участники добавляют траты, правят категории и могут выйти сами.
 import { randomBytes, createHash } from 'node:crypto';
 import { provisionTaxonomy } from './taxonomy.mjs';
+import { provisionIncome } from './incomecats.mjs';
 import { classifyItems } from './classify.mjs';
 
 const INVITE_DAYS = 7;
@@ -28,6 +29,7 @@ export function createBudget(db, userId, name = 'Мой бюджет') {
   const res = db.prepare('INSERT INTO budgets (name, owner_id, created_at) VALUES (?, ?, ?)').run(name, userId, now());
   const budgetId = Number(res.lastInsertRowid);
   provisionTaxonomy(db, budgetId);
+  provisionIncome(db, budgetId);
   db.prepare('UPDATE users SET budget_id = ?, home_budget_id = COALESCE(home_budget_id, ?) WHERE id = ?')
     .run(budgetId, budgetId, userId);
   return budgetId;

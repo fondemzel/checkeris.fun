@@ -555,6 +555,18 @@ CREATE TABLE IF NOT EXISTS bank_rules (
   PRIMARY KEY (budget_id, key)
 );
 
+-- Категории доходов бюджета: плоский список, без групп (incomecats.mjs). Код начинается
+-- с «in.» и лежит у поступления в bank_ops.category_slug, как категория у траты без чека.
+CREATE TABLE IF NOT EXISTS income_categories (
+  budget_id INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
+  slug      TEXT NOT NULL,
+  name      TEXT NOT NULL,
+  icon      TEXT,
+  color     TEXT,
+  sort      INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (budget_id, slug)
+);
+
 -- Счета банка и выбор человека, с каких брать операции (bankaccounts.mjs). Счёт, которого
 -- здесь нет, берётся: новая карта не должна молча выпасть из учёта.
 CREATE TABLE IF NOT EXISTS bank_accounts (

@@ -1,4 +1,5 @@
 import { bankCategories } from './bankformat.mjs';
+import { applyIncomeRules, setIncomeCategory } from './incomecats.mjs';
 
 // Разбор операций банка: что из них трата, что доход, а что вообще не движение денег.
 //
@@ -219,6 +220,7 @@ export function matchBank(db, budgetId) {
     const receipts = matchReceipts(db, budgetId);
     classifyRest(db, budgetId);
     const categorized = applyRules(db, budgetId);
+    applyIncomeRules(db, budgetId);
     const byBank = applyBankCategories(db, budgetId);
     db.exec('COMMIT');
     return { transfers, self, receipts, categorized, byBank };
@@ -294,6 +296,8 @@ function applyBankCategories(db, budgetId) {
 export function setOpCategory(db, budgetId, id, slug) {
   const op = db.prepare('SELECT * FROM bank_ops WHERE id = ? AND budget_id = ?').get(id, budgetId);
   if (!op) return { error: 'operation not found', status: 404 };
+  // Поступление: у доходов свой справочник и свои правила — по отправителю
+  if (op.direction === 'credit') return setIncomeCategory(db, budgetId, op, slug);
 
   const category = slug
     ? db

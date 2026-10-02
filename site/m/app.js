@@ -248,7 +248,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'set_incats', 'set_incat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -344,7 +344,7 @@ function go(patch, replace = false) {
   if (state.item) params.set('item', state.item);
   if (state.bank) params.set('bank', state.bank);
   if (state.screen === 'set_group' && state.tg) params.set('tg', state.tg);
-  if (state.screen === 'set_cat' && state.tc) params.set('tc', state.tc);
+  if (['set_cat', 'set_incat'].includes(state.screen) && state.tc) params.set('tc', state.tc);
   if (state.op) params.set('op', state.op);
   if (state.screen === 'summary' && state.src) params.set('src', state.src);
   if (state.added) params.set('added', state.added);
@@ -929,15 +929,20 @@ async function screenIncome() {
         ? ''
         : dayHead(opDay, daySum(data.rows, opDay, (x) => x.at, (x) => x.amount));
       day = opDay;
-      const note = [timeRu(op.at), op.account_name].filter(Boolean).join(' · ');
+      const cat = incomeCat(op.category_slug);
+      const note = [
+        `<span class="op-cat" style="background:${cat?.color ?? '#d7dbe2'}"></span>${esc(cat?.name ?? T.income.noCategory)}`,
+        esc(timeRu(op.at)),
+        esc(op.account_name ?? ''),
+      ].filter(Boolean).join(' · ');
       return `${header}
-        <div class="row bank-op">
+        <button class="row item bank-op" type="button" data-op="${op.id}">
           <span class="row-main">
-            <span class="row-title">${esc(op.description ?? op.merchant ?? 'Поступление')}</span>
-            <span class="row-note">${esc(note)}</span>
+            <span class="row-title">${esc(op.description ?? op.merchant ?? T.income.one)}</span>
+            <span class="row-note">${note}</span>
           </span>
           <span class="row-sum income">+${money(op.amount)}</span>
-        </div>`;
+        </button>`;
     })
     .join('');
 
@@ -980,11 +985,14 @@ async function screenItem() {
  */
 async function screenOp() {
   const op = await api(`/api/bank/ops/${state.op}`);
+  const income = op.direction === 'credit';
+  $('title').textContent = income ? T.income.one : 'Товар'; // вид операции известен только теперь
   return itemCard({
     id: op.id,
     source: 'bank',
+    income,
     sum: op.amount,
-    name: op.merchant ?? op.description ?? 'Без названия',
+    name: (income && op.sender) || op.merchant || op.description || 'Без названия',
     purchased_at: op.at,
     quantity: 1,
     seller: op.merchant && op.description && op.description !== op.merchant ? op.description : null,
@@ -1025,7 +1033,7 @@ function itemCard(it) {
 
   return `
     <div class="card">
-      <div class="card-sum">${money(it.sum, true)}</div>
+      <div class="card-sum${it.income ? ' income' : ''}">${it.income ? '+' : ''}${money(it.sum, true)}</div>
       <div class="card-name">${esc(it.name)}</div>
       ${kv([
         ['Дата', `${dateRu(it.purchased_at)} ${esc(timeRu(it.purchased_at))}`],
@@ -1045,10 +1053,12 @@ function itemCard(it) {
 
     <div class="card">
       <div class="card-label">Категория</div>
-      <button class="cat-pick" id="item-cat" type="button" ${bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`}>${categoryButton(it.category_slug)}</button>
+      <button class="cat-pick" id="item-cat" type="button" ${it.income ? `data-op-incat="${it.id}"` : bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`}>${it.income ? incomeButton(it.category_slug) : categoryButton(it.category_slug)}</button>
       <p class="note" id="pick-note">${
         it.same_name_count > 1
-          ? bank
+          ? it.income
+            ? f(T.income.affects, { n: int.format(it.same_name_count), word: pl(it.same_name_count, T.income.many) })
+            : bank
             ? `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'трату', 'траты', 'трат')} этого продавца`
             : `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позицию', 'позиции', 'позиций')} с таким же названием`
           : ''
@@ -1068,7 +1078,7 @@ function itemCard(it) {
       ${bank
         ? `<button class="btn" type="button" data-op-kind="transfer" data-id="${it.id}">Это перевод себе</button>
            <button class="btn danger" type="button" data-op-kind="excluded" data-id="${it.id}">Не учитывать</button>
-           <p class="note">Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.</p>`
+           <p class="note">${it.income ? T.income.transferHint : 'Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.'}</p>`
         : `<button class="btn danger" type="button" data-item-hide="${it.id}">${it.source === 'manual' ? 'Удалить запись' : 'Убрать из расходов'}</button>`}
     </div>
 
@@ -1759,6 +1769,148 @@ let manualCarry = null;
 /** Копейки → строка для поля суммы: «3300» или «479,94». */
 const rublesInput = (kopecks) =>
   kopecks % 100 ? (kopecks / 100).toFixed(2).replace('.', ',') : String(kopecks / 100);
+
+// ── категории доходов ────────────────────────────────────
+// Плоский список без групп: у каждой свой значок и цвет. Приходит вместе с meta.
+
+const incomeCat = (slug) => (meta?.income ?? []).find((c) => c.slug === slug) ?? null;
+const incomeBadge = (c, attrs = '') => {
+  const color = c?.color ?? '#eef1f5';
+  return `<span class="gic" ${attrs} style="background:${color};color:${readableText(color)}">${groupIcon(c?.icon ?? 'none')}</span>`;
+};
+
+function incomeButton(slug) {
+  const c = incomeCat(slug);
+  if (!c) {
+    return `<span class="pick-ic" style="background:#eef1f5;color:#6b7280">${groupIcon('none')}</span>
+      <span class="cat-name muted">${T.income.pick}</span>`;
+  }
+  return `<span class="pick-ic" style="background:${c.color ?? '#eef1f5'};color:${readableText(c.color ?? '#eef1f5')}">${groupIcon(c.icon ?? 'none')}</span>
+    <span class="cat-name">${esc(c.name)}</span>`;
+}
+
+/** Выбор категории дохода — одним списком. except — категория, которую выбрать нельзя. */
+function pickIncomeCat(title, except, onPick) {
+  const rows = (meta?.income ?? []).filter((c) => c.slug !== except).map((c) => `
+    <button class="picker-item" type="button" data-incat="${esc(c.slug)}">${incomeBadge(c)}<span>${esc(c.name)}</span></button>`);
+  openChoice(title, `<div class="picker-list">${rows.join('')}</div>`, (ev, close) => {
+    const slug = ev.target.closest('[data-incat]')?.dataset.incat;
+    if (!slug) return;
+    close();
+    setTimeout(() => onPick(slug), 150); // лист закрывается шагом «назад» — ждём его
+  });
+}
+
+async function saveIncomeCategory(id, slug) {
+  try {
+    const res = await post(`/api/bank/ops/${id}/category`, { category: slug });
+    screenCache.clear();
+    toast(res.affected > 1 ? f(T.income.savedMore, { n: int.format(res.affected - 1) }) : T.income.saved);
+    render();
+  } catch (err) {
+    toast(`Не сохранилось: ${err.message}`);
+  }
+}
+
+/** Правка справочника доходов: после неё свежий список категорий во всём приложении. */
+async function incCall(method, path, body) {
+  const res = await api(`/api/income/categories${path}`, {
+    method,
+    headers: body ? { 'content-type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  screenCache.clear();
+  meta = await api('/api/meta');
+  return res;
+}
+
+async function screenSetIncats() {
+  const I = T.settings.incats;
+  const rows = (meta?.income ?? []).map((c) => srow({
+    icon: incomeBadge(c, `data-ilook="${esc(c.slug)}"`),
+    bare: true,
+    title: esc(c.name),
+    note: c.ops ? `${int.format(c.ops)} ${pl(c.ops, T.income.many)}` : T.settings.cats.unused,
+    attrs: `data-incat-open="${esc(c.slug)}"`,
+    end: GO,
+  }));
+  return section(I.block, T.settings.cats.listNote, rows.join('') + srow({ icon: UI.plus, title: I.add, attrs: 'data-incat-add' }));
+}
+
+async function screenSetIncat() {
+  const I = T.settings.incats;
+  const C = T.settings.cats;
+  const c = incomeCat(state.tc);
+  if (!c) return `<div class="empty">${C.gone}</div>`;
+  const color = c.color ?? NEW_GROUP_COLOR;
+  const { h, s, l } = pleasant(color);
+  return section(I.settings, '',
+    srow({ icon: incomeBadge(c), bare: true, title: inlineEdit('incat', c.name, { cls: 'srow-input', label: C.category, max: 40 }), note: C.nameNote })
+    + srow({ icon: UI.grid, title: C.icon, attrs: 'data-incat-icon', end: GO })
+    + `<div class="bar-row" style="--pick:${color}">
+        <div class="bar-label">${C.color}</div>
+        <input class="hue" type="range" min="0" max="359" value="${Math.round(h)}" data-ihue data-s="${s}" data-l="${l}" aria-label="${esc(C.color)}" />
+      </div>`)
+    + section(C.manage, '', srow({
+      icon: UI.trash, title: C.deleteCat, note: c.ops ? I.deleteNote : '', attrs: 'data-incat-delete', danger: true,
+    }));
+}
+
+async function onIncatsClick(e) {
+  const I = T.settings.incats;
+  const hit = (sel) => e.target.closest(sel);
+  const failed = (err) => toast(`${T.common.failed}: ${err.message}`);
+  const patch = (slug) => (body) => incCall('PATCH', `/${encodeURIComponent(slug)}`, body);
+
+  if (hit('[data-ilook]')) {
+    const c = incomeCat(hit('[data-ilook]').dataset.ilook);
+    return c && openLook({ ...c, save: patch(c.slug) }, 'both');
+  }
+  if (hit('[data-incat-open]')) return go({ screen: 'set_incat', tc: hit('[data-incat-open]').dataset.incatOpen });
+  if (hit('[data-incat-icon]')) {
+    const c = incomeCat(state.tc);
+    return c && openLook({ ...c, save: patch(c.slug) }, 'icon');
+  }
+  if (hit('[data-incat-add]')) {
+    try {
+      const { category } = await incCall('POST', '', { name: I.newCat, icon: 'dots', color: NEW_GROUP_COLOR });
+      focusNewNext = true;
+      go({ screen: 'set_incat', tc: category.slug });
+    } catch (err) { failed(err); }
+    return;
+  }
+  if (hit('[data-incat-delete]')) {
+    const c = incomeCat(state.tc);
+    if (!c) return;
+    const remove = async (moveTo) => {
+      try {
+        await incCall('DELETE', `/${encodeURIComponent(c.slug)}${moveTo ? `?move_to=${encodeURIComponent(moveTo)}` : ''}`);
+        history.back();
+      } catch (err) { failed(err); }
+    };
+    // В категории есть поступления — сначала выбираем, куда их перенести
+    if (c.ops) {
+      pickIncomeCat(I.moveTitle, c.slug, (slug) => {
+        if (confirm(f(I.moveConfirm, { name: c.name, to: incomeCat(slug)?.name ?? '' }))) remove(slug);
+      });
+    } else if (confirm(f(T.settings.cats.deleteCatConfirm, { name: c.name }))) remove('');
+  }
+}
+
+// Цвет категории дохода — та же радужная полоса, что у группы расходов
+$('screen').addEventListener('input', (e) => {
+  if (!e.target.matches('[data-ihue]')) return;
+  const color = hslToHex(Number(e.target.value), Number(e.target.dataset.s), Number(e.target.dataset.l));
+  e.target.closest('.bar-row').style.setProperty('--pick', color);
+  const badge = document.querySelector('#screen .gic');
+  badge.style.background = color;
+  badge.style.color = readableText(color);
+});
+$('screen').addEventListener('change', (e) => {
+  if (!e.target.matches('[data-ihue]')) return;
+  const color = hslToHex(Number(e.target.value), Number(e.target.dataset.s), Number(e.target.dataset.l));
+  incCall('PATCH', `/${encodeURIComponent(state.tc)}`, { color }).catch((err) => toast(`${T.common.failed}: ${err.message}`));
+});
 
 function categoryButton(slug) {
   const found = findCategory(slug);
@@ -2551,6 +2703,8 @@ const SCREENS = {
   set_cats: { title: T.settings.cats.label, render: screenSetCats },
   set_group: { title: T.settings.cats.group, render: screenSetGroup, after: focusNew },
   set_cat: { title: T.settings.cats.category, render: screenSetCat, after: focusNew },
+  set_incats: { title: T.settings.incats.title, render: screenSetIncats },
+  set_incat: { title: T.settings.cats.category, render: screenSetIncat, after: focusNew },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
   bank_add: { title: T.bankAdd.title, render: screenBankAdd },
   bank_safety: { title: T.bankCard.safety.label, render: screenBankSafety },
@@ -2583,7 +2737,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary',
-  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
+  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings', set_incats: 'settings', set_incat: 'settings',
 };
 
 /**
@@ -2630,7 +2784,7 @@ let shownScreen = null; // что сейчас на экране: по нему 
 // параметрами (месяц, категория, банк). Только списки и настройки: у форм, карточек с
 // картой и мастера после отрисовки своя жизнь (поля, таймеры), прошлый вид им не годится.
 // Живут до перезагрузки страницы; свежий вид всё равно приходит следом и заменяет прошлый
-const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'privacy', 'bank_card', 'bank_add', 'bank_safety'];
+const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_incats', 'privacy', 'bank_card', 'bank_add', 'bank_safety'];
 const screenCache = new Map();
 function remember(key, html) {
   screenCache.delete(key); // свежий — в конец очереди
@@ -2824,12 +2978,13 @@ async function onScreenClick(e) {
   const opKind = e.target.closest('[data-op-kind]');
   if (opKind) {
     const transfer = opKind.dataset.opKind === 'transfer';
+    const income = itemShown?.income;
     if (!confirm(transfer
-      ? 'Отметить как перевод себе? Он не будет считаться расходом.'
-      : 'Не учитывать эту трату? Она пропадёт из расходов.')) return;
+      ? income ? T.income.transferConfirm : 'Отметить как перевод себе? Он не будет считаться расходом.'
+      : income ? T.income.excludeConfirm : 'Не учитывать эту трату? Она пропадёт из расходов.')) return;
     try {
       await post(`/api/bank/ops/${opKind.dataset.id}/kind`, { kind: opKind.dataset.opKind });
-      toast(transfer ? 'Отмечено как перевод себе' : 'Трата больше не учитывается');
+      toast(transfer ? 'Отмечено как перевод себе' : income ? T.income.excluded : 'Трата больше не учитывается');
       return history.back();
     } catch (err) {
       return toast(`Не вышло: ${err.message}`);
@@ -2848,6 +3003,9 @@ async function onScreenClick(e) {
   // Трата из банка открывается карточкой, как товар; категория меняется уже в ней
   const opOpen = e.target.closest('[data-op]');
   if (opOpen) return go({ screen: 'op', op: opOpen.dataset.op });
+
+  const opIncat = e.target.closest('[data-op-incat]');
+  if (opIncat) return pickIncomeCat(T.income.pick, null, (slug) => saveIncomeCategory(Number(opIncat.dataset.opIncat), slug));
 
   const opCat = e.target.closest('[data-op-cat]');
   if (opCat) return openCategoryPicker(Number(opCat.dataset.opCat), saveOpCategory);
@@ -3144,6 +3302,7 @@ async function screenSettings() {
   const banks = BANKS.filter((b) => inApp() && bankState(b.id) !== 'off').map((b) => b.name);
   const groupsN = meta?.categories?.length ?? 0;
   const catsN = (meta?.categories ?? []).reduce((n, g) => n + g.subcategories.length, 0);
+  const incomeN = meta?.income?.length ?? 0;
   const link = (id, icon, title, note) => srow({ icon, title, note: esc(note), attrs: `data-set="${id}"`, end: GO });
   // Разделы — строками: каждая ведёт на свой экран. Так в настройки помещаются новые
   // разделы, а главный экран остаётся коротким
@@ -3157,8 +3316,7 @@ async function screenSettings() {
       link('cats', UI.wallet, S.cats.expense, f(S.cats.expenseNote, {
         groups: int.format(groupsN), gw: pl(groupsN, S.cats.groupsW), cats: int.format(catsN), cw: pl(catsN, S.cats.catsW),
       }))
-      // Категорий доходов пока нет: строка на месте, чтобы раздел не переезжал потом
-      + srow({ icon: UI.income, title: S.cats.income, note: S.cats.incomeNote, attrs: 'data-soon', off: true }));
+      + link('incats', UI.income, S.cats.income, `${int.format(incomeN)} ${pl(incomeN, S.cats.catsW)}`));
 }
 
 async function screenSetProfile() {
@@ -3391,15 +3549,18 @@ $('screen').addEventListener('change', (e) => {
  * остаются в приятном коридоре, чтобы любой выбор хорошо смотрелся рядом с остальными.
  * what: both — из списка групп (и полоса, и значки), icon — из настроек группы (только значки).
  */
-async function openLook(slug, what) {
-  const C = T.settings.cats;
+async function openGroupLook(slug, what) {
   const g = (await taxo()).groups.find((x) => x.slug === slug);
-  if (!g) return;
+  if (g) openLook({ ...g, save: (body) => taxoCall('PATCH', `/groups/${encodeURIComponent(slug)}`, body) }, what);
+}
+
+/** g — у чего меняем вид: название, цвет, значок и save(изменения) — куда сохранять. */
+function openLook(g, what) {
+  const C = T.settings.cats;
   let color = g.color ?? NEW_GROUP_COLOR;
   let icon = g.icon ?? 'dots';
   const { h: hue0, s: sat, l: lig } = pleasant(color);
-  const save = (body) => taxoCall('PATCH', `/groups/${encodeURIComponent(slug)}`, body)
-    .catch((err) => toast(`${T.common.failed}: ${err.message}`));
+  const save = (body) => g.save(body).catch((err) => toast(`${T.common.failed}: ${err.message}`));
   const grid = (names) => names
     .map((n) => `<button class="icon-cell${n === icon ? ' on' : ''}" type="button" data-icon="${esc(n)}">${groupIcon(n)}</button>`)
     .join('');
@@ -3445,7 +3606,7 @@ async function onCatsClick(e) {
   const hit = (sel) => e.target.closest(sel);
   const failed = (err) => toast(`${T.common.failed}: ${err.message}`);
 
-  if (hit('[data-tlook]')) return openLook(hit('[data-tlook]').dataset.tlook, 'both');
+  if (hit('[data-tlook]')) return openGroupLook(hit('[data-tlook]').dataset.tlook, 'both');
   if (hit('[data-tcat]')) return go({ screen: 'set_cat', tc: hit('[data-tcat]').dataset.tcat });
   if (hit('[data-tgroup]')) return go({ screen: 'set_group', tg: hit('[data-tgroup]').dataset.tgroup });
 
@@ -3466,7 +3627,7 @@ async function onCatsClick(e) {
     return;
   }
 
-  if (hit('[data-tgroup-icon]')) return openLook(state.tg, 'icon');
+  if (hit('[data-tgroup-icon]')) return openGroupLook(state.tg, 'icon');
   if (hit('[data-tgroup-delete]')) {
     const g = (await taxo()).groups.find((x) => x.slug === state.tg);
     if (!g || !confirm(f(C.deleteGroupConfirm, { name: g.name }))) return;
@@ -3857,6 +4018,7 @@ $('screen').addEventListener('click', (e) => {
   const set = e.target.closest('[data-set]');
   if (set) return go({ screen: `set_${set.dataset.set}` });
   if (!state.screen.startsWith('set')) return;
+  if (e.target.closest('[data-ilook], [data-incat-open], [data-incat-add], [data-incat-icon], [data-incat-delete]')) return onIncatsClick(e);
   if (e.target.closest('[data-tlook], [data-tcat], [data-tgroup], [data-tcat-add], [data-tgroup-add], [data-tgroup-icon], [data-tgroup-delete], [data-tcat-move], [data-tcat-delete]')) return onCatsClick(e);
   onSettingsClick(e);
 });
@@ -3893,6 +4055,8 @@ const INLINE_SAVE = {
     toast(T.settings.budget.nameSaved);
     return data.name;
   },
+  // Категория дохода
+  incat: async (name) => (await incCall('PATCH', `/${encodeURIComponent(state.tc)}`, { name })).category.name,
   // Справочник категорий: название группы, название и подсказка категории
   tgroup: async (name) => (await taxoCall('PATCH', `/groups/${encodeURIComponent(state.tg)}`, { name })).group.name,
   tcat: async (name) => (await taxoCall('PATCH', `/categories/${encodeURIComponent(state.tc)}`, { name })).category.name,

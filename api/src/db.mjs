@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { provisionTaxonomy } from './taxonomy.mjs';
 import { placeKey } from './geo.mjs';
+import { provisionIncome } from './incomecats.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -33,7 +34,13 @@ export function openDb({ readonly = false } = {}) {
  */
 export function migrate(db) {
   prepareMove(db);
+  // Категории доходов появились позже бюджетов: уже существующим выдаём стартовый набор один
+  // раз, в момент появления таблицы. Потом — только новым бюджетам (budgets.mjs)
+  const seedIncome = !tableExists(db, 'income_categories');
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
+  if (seedIncome && tableExists(db, 'budgets')) {
+    for (const { id } of db.prepare('SELECT id FROM budgets').all()) provisionIncome(db, id);
+  }
   addUserColumns(db);
   finishMove(db);
   fillPlaceKeys(db); // после переноса: иначе у перенесённых чеков ключей не будет до следующего запуска
