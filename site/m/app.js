@@ -987,6 +987,7 @@ async function screenOp() {
   const op = await api(`/api/bank/ops/${state.op}`);
   const income = op.direction === 'credit';
   $('title').textContent = income ? T.income.one : 'Товар'; // вид операции известен только теперь
+  for (const tab of document.querySelectorAll('[data-tab]')) tab.classList.toggle('on', tab.dataset.tab === (income ? 'income' : 'summary'));
   return itemCard({
     id: op.id,
     source: 'bank',
