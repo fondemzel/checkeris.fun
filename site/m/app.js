@@ -246,7 +246,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_data', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -2538,6 +2538,10 @@ const SCREENS = {
     render: () => soon(UI.stats, 'Статистика', 'Здесь будут графики: как меняются траты по месяцам и категориям.'),
   },
   settings: { title: 'Настройки', render: screenSettings },
+  set_profile: { title: T.settings.profile.label, render: screenSetProfile },
+  set_budget: { title: T.settings.budget.label, render: screenSetBudget },
+  set_banks: { title: T.settings.banks.label, render: screenSetBanks },
+  set_data: { title: T.settings.data.label, render: screenSetData },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
   bank_add: { title: T.bankAdd.title, render: screenBankAdd },
   bank_safety: { title: T.bankCard.safety.label, render: screenBankSafety },
@@ -2570,6 +2574,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary',
+  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', set_data: 'settings',
 };
 
 /**
@@ -2616,7 +2621,7 @@ let shownScreen = null; // что сейчас на экране: по нему 
 // параметрами (месяц, категория, банк). Только списки и настройки: у форм, карточек с
 // картой и мастера после отрисовки своя жизнь (поля, таймеры), прошлый вид им не годится.
 // Живут до перезагрузки страницы; свежий вид всё равно приходит следом и заменяет прошлый
-const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'bank_card', 'bank_add', 'bank_safety'];
+const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'set_data', 'bank_card', 'bank_add', 'bank_safety'];
 const screenCache = new Map();
 function remember(key, html) {
   screenCache.delete(key); // свежий — в конец очереди
@@ -2874,7 +2879,7 @@ async function onScreenClick(e) {
       const res = await api(`/api/bank/ops?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
       toast(res ? f(T.bankCard.manage.wiped, { n: int.format(res.ops ?? 0) }) : T.common.failed);
       bankLinked = false;
-      return go({ screen: 'settings' });
+      return go({ screen: 'set_banks' });
     }
   }
 
@@ -3024,7 +3029,7 @@ function budgetSection(budget) {
     .join('');
   const invite = budget.is_owner ? srow({ icon: UI.userPlus, title: B.invite, note: B.inviteNote, attrs: 'data-invite' }) : '';
   const leave = budget.is_home ? '' : srow({ icon: UI.logout, title: B.leave, note: B.leaveNote, attrs: 'data-leave', danger: true });
-  return section(B.label, budget.members.length > 1 ? B.noteShared : B.noteAlone, name + members + invite + leave);
+  return section('', budget.members.length > 1 ? B.noteShared : B.noteAlone, name + members + invite + leave);
 }
 
 /**
@@ -3105,26 +3110,46 @@ async function screenSettings() {
     api('/api/budget').catch(() => null),
     inApp() ? api('/api/bank').catch(() => null) : null,
   ]);
+  const S = T.settings;
+  const members = budget?.members.length ?? 0;
+  const banks = BANKS.filter((b) => inApp() && bankState(b.id) !== 'off').map((b) => b.name);
+  const link = (id, icon, title, note) => srow({ icon, title, note: esc(note), attrs: `data-set="${id}"`, end: GO });
+  // Разделы — строками: каждая ведёт на свой экран. Так в настройки помещаются новые
+  // разделы, а главный экран остаётся коротким
+  return section('', '',
+    link('profile', UI.user, S.profile.label, me?.name || (me?.telegram ? S.profile.viaTelegram : S.profile.viaPassword))
+    + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
+    + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
+    + link('data', UI.shield, S.data.label, S.data.note));
+}
+
+async function screenSetProfile() {
+  const me = await api('/api/session').catch(() => null);
   const P = T.settings.profile;
-  const D = T.settings.data;
-  const profile = section(
-    P.label,
-    me?.telegram ? P.viaTelegram : P.viaPassword,
+  return section('', me?.telegram ? P.viaTelegram : P.viaPassword,
     srow({
       icon: UI.user,
       title: inlineEdit('name', me?.name ?? '', { cls: 'srow-input', label: P.nameLabel, placeholder: P.namePlaceholder, max: 60 }),
       note: P.nameNote,
-    }) + srow({ icon: UI.logout, title: P.logout, attrs: 'data-logout' }),
-  );
-  const data = section(
-    D.label,
-    D.note,
+    }) + srow({ icon: UI.logout, title: P.logout, attrs: 'data-logout' }));
+}
+
+async function screenSetBudget() {
+  return budgetSection(await api('/api/budget').catch(() => null));
+}
+
+async function screenSetBanks() {
+  return bankSection(inApp() ? await api('/api/bank').catch(() => null) : null);
+}
+
+async function screenSetData() {
+  const me = await api('/api/session').catch(() => null);
+  const D = T.settings.data;
+  return section('', D.note,
     srow({ icon: UI.shield, title: D.privacy, note: D.privacyNote, href: '/privacy.html', end: GO }) +
       (me?.role === 'admin'
         ? ''
-        : srow({ icon: UI.trash, title: T.settings.deleteAccount, note: D.deleteNote, attrs: 'data-delete-account', danger: true })),
-  );
-  return profile + budgetSection(budget) + bankSection(bank) + data;
+        : srow({ icon: UI.trash, title: T.settings.deleteAccount, note: D.deleteNote, attrs: 'data-delete-account', danger: true })));
 }
 
 // ── разделы и строки настроек ────────────────────────────
@@ -3260,7 +3285,7 @@ function bankSection(bank) {
     attrs: 'data-bank-add',
     end: GO,
   });
-  return section(S.label, S.note, rows + add);
+  return section('', S.note, rows + add);
 }
 
 /** Экран выбора банка: те, что ещё не подключены. Готовые сверху, «скоро» — ниже. */
@@ -3467,7 +3492,9 @@ async function onSettingsClick(e) {
 }
 
 $('screen').addEventListener('click', (e) => {
-  if (state.screen === 'settings') onSettingsClick(e);
+  const set = e.target.closest('[data-set]');
+  if (set) return go({ screen: `set_${set.dataset.set}` });
+  if (state.screen.startsWith('set')) onSettingsClick(e);
 });
 
 /**
@@ -3679,16 +3706,16 @@ window.addEventListener('checker-resume', () => {
   // (банк дозавершает вход в фоне) — крутим стрелку и ждём события checker-bank-ready
   if (syncAfterLogin) {
     const id = syncAfterLogin;
-    if (state.screen !== 'settings') go({ screen: 'settings' });
+    if (state.screen !== 'set_banks') go({ screen: 'set_banks' });
     if (bankState(id) === 'active') {
       syncAfterLogin = null;
       return startBankSync(id);
     }
     bankSyncing = id;
-    if (state.screen === 'settings') render();
+    if (state.screen === 'set_banks') render();
     return;
   }
-  if (state.screen === 'settings' || state.screen === 'bank_card') render();
+  if (state.screen === 'set_banks' || state.screen === 'bank_card') render();
 });
 
 // Какой банк сейчас обновляется: значок крутится и после перерисовки экрана
@@ -3707,7 +3734,7 @@ function bankBridge(id) {
 function startBankSync(id) {
   bankSyncing = id;
   bankBridge(id).sync();
-  if (state.screen === 'settings') render();
+  if (state.screen === 'set_banks') render();
 }
 
 // Банк дозавершил вход уже после того, как окно ушло с экрана
@@ -3716,10 +3743,10 @@ window.addEventListener('checker-bank-ready', (e) => {
   syncAfterLogin = null;
   if (!e.detail?.ok) {
     bankSyncing = null;
-    if (state.screen === 'settings' || state.screen === 'bank_card') render();
+    if (state.screen === 'set_banks' || state.screen === 'bank_card') render();
     return;
   }
-  if (state.screen !== 'settings') go({ screen: 'settings' });
+  if (state.screen !== 'set_banks') go({ screen: 'set_banks' });
   startBankSync(id);
 });
 
@@ -3735,7 +3762,7 @@ window.addEventListener('checker-bank', (e) => {
         : T.bankCard.sync.none
       : f(T.bankCard.sync.failed, { why: r.error ?? T.bankCard.sync.failedUnknown }),
   );
-  if (state.screen === 'settings' || state.screen === 'bank_card') render();
+  if (state.screen === 'set_banks' || state.screen === 'bank_card') render();
 });
 
 // ── запуск ───────────────────────────────────────────────

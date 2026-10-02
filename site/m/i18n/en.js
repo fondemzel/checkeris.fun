@@ -32,6 +32,10 @@ export const en = {
   },
   settings: {
     title: 'Settings',
+    menu: {
+      members: ['member', 'members', 'members'],
+      banksNone: 'no banks connected',
+    },
     profile: {
       label: 'Profile',
       viaTelegram: 'Signed in with Telegram',

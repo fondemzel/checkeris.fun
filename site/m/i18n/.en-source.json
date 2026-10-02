@@ -34,6 +34,12 @@
  "accountTypes.BNPL": "Оплата долями",
  "accountTypes.Deposit": "Вклад",
  "settings.title": "Настройки",
+ "settings.menu.members": [
+  "участник",
+  "участника",
+  "участников"
+ ],
+ "settings.menu.banksNone": "банки не подключены",
  "settings.profile.label": "Профиль",
  "settings.profile.viaTelegram": "Вход через Телеграм",
  "settings.profile.viaPassword": "Вход по паролю",
