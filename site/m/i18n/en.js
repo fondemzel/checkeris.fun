@@ -48,6 +48,8 @@ export const en = {
       spendsW: ['expense', 'expenses', 'expenses'],
       unused: 'empty so far',
       listNote: 'Categories are shared by all budget members',
+      groupsBlock: 'Groups',
+      manage: 'Manage',
       addGroup: 'Add a new group',
       newGroup: 'New group',
       newCat: 'New category',
@@ -149,6 +151,7 @@ export const en = {
     safety: {
       label: 'Data safety',
       rowNote: 'how sign-in works and what Checker sees',
+      block: 'How it works',
       note: 'The same for every bank',
       loginBold: 'You sign in on your own phone',
       loginText: 'The app opens the bank’s window; you type the phone number, the SMS code and the password yourself',

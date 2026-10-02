@@ -3254,7 +3254,7 @@ async function screenSetCats() {
     attrs: `data-tgroup="${esc(g.slug)}"`,
     end: GO,
   }));
-  return section('', C.listNote, rows.join('') + srow({ icon: UI.plus, title: C.addGroup, attrs: 'data-tgroup-add' }));
+  return section(C.groupsBlock, C.listNote, rows.join('') + srow({ icon: UI.plus, title: C.addGroup, attrs: 'data-tgroup-add' }));
 }
 
 /** Внутри группы: её настройки и её категории. */
@@ -3294,7 +3294,7 @@ async function screenSetGroup() {
     + srow({ icon: UI.grid, title: C.icon, attrs: 'data-tgroup-icon', end: GO })
     + bars)
     + section(C.catsBlock, '', cats.join('') + srow({ icon: UI.plus, title: C.addCat, attrs: `data-tcat-add="${esc(g.slug)}"` }))
-    + section('', '', srow({
+    + section(C.manage, '', srow({
       icon: UI.trash, title: C.deleteGroup, note: busy ? C.deleteGroupBusy : '', attrs: 'data-tgroup-delete', danger: !busy, off: busy,
     }));
 }
@@ -3310,7 +3310,7 @@ async function screenSetCat() {
     srow({ icon: catDot(tone), bare: true, title: inlineEdit('tcat', c.name, { cls: 'srow-input', label: C.category, max: 40 }), note: C.nameNote })
     + srow({ icon: groupBadge(g), bare: true, title: C.inGroup, note: esc(g.name), attrs: 'data-tcat-move', end: GO })
     + srow({ icon: UI.pen, title: inlineEdit('thint', c.hint ?? '', { cls: 'srow-input', label: C.hintPlaceholder, placeholder: C.hintPlaceholder, max: 200 }), note: C.hintNote }))
-    + section('', '', srow({
+    + section(C.manage, '', srow({
       icon: UI.trash, title: C.deleteCat, note: catUsed(c) + c.dictionary + c.links ? C.deleteCatNote : '', attrs: 'data-tcat-delete', danger: true,
     }));
 }
@@ -3791,7 +3791,7 @@ function screenBankSafety() {
     [UI.eyeOff, 'private'],
   ].map(([icon, name]) => srow({ icon, title: S[`${name}Bold`], note: S[`${name}Text`], wrap: true }));
   // Название раздела уже в шапке экрана — здесь только подстрочник
-  return section('', S.note, rows.join('') + srow({ icon: UI.shield, title: T.common.privacy, attrs: 'data-privacy', end: GO }));
+  return section(S.block, S.note, rows.join('') + srow({ icon: UI.shield, title: T.common.privacy, attrs: 'data-privacy', end: GO }));
 }
 
 /** «10 мин назад», «3 ч назад», иначе дата. */
