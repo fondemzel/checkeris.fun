@@ -529,6 +529,8 @@ CREATE TABLE IF NOT EXISTS bank_ops (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bank_ops_budget_at ON bank_ops (budget_id, at);
+-- Сколько трат в категории: справочник категорий считает это для каждой строки
+CREATE INDEX IF NOT EXISTS idx_bank_ops_category ON bank_ops (budget_id, category_slug);
 -- Чей это чек: разметка проверяет, не отдан ли чек другой операции, а карточка товара ищет его оплату
 CREATE INDEX IF NOT EXISTS idx_bank_ops_receipt ON bank_ops (receipt_id);
 
