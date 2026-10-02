@@ -703,6 +703,21 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
 /* Стрелка «дальше» — в сером кружке, как кнопки справа */
 .srow-go { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #eef1f5; color: var(--muted); }
 .srow-go svg { width: 17px; height: 17px; transform: rotate(-90deg); }
+/* ── настройка категорий ── */
+/* Значок группы в её цвете и кружок оттенка категории — на месте значка строки */
+.gic { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; }
+.gic svg { width: 18px; height: 18px; }
+.cat-dot { width: 18px; height: 18px; border-radius: 50%; }
+.picker-item .gic { flex: none; }
+/* Выбор цвета и значка группы */
+.swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; padding: 4px 2px 8px; }
+.swatch { aspect-ratio: 1; border: none; border-radius: 50%; cursor: pointer; }
+.icon-search { width: 100%; margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font: inherit; }
+.icon-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
+.icon-cell { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border: none; border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; }
+.icon-cell svg { width: 22px; height: 22px; }
+.icon-cell:active, .swatch:active { opacity: 0.6; }
+
 /* Текст-документ внутри приложения («Какие данные хранит Чекер») */
 .doc { line-height: 1.5; -webkit-user-select: text; user-select: text; }
 .doc h1 { margin: 0 0 8px; font-size: 19px; }

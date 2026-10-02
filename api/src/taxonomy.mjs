@@ -92,7 +92,10 @@ export function getTaxonomy(db, budgetId) {
               (SELECT COUNT(*) FROM budget_dictionary d
                 WHERE d.budget_id = c.budget_id AND d.category_slug = c.slug) AS dictionary,
               (SELECT COUNT(*) FROM category_links k
-                WHERE k.budget_id = c.budget_id AND k.slug = c.slug) AS links
+                WHERE k.budget_id = c.budget_id AND k.slug = c.slug) AS links,
+              -- Траты без чека из банка, разложенные в эту категорию, и правила по продавцам
+              (SELECT COUNT(*) FROM bank_ops o
+                WHERE o.budget_id = c.budget_id AND o.category_slug = c.slug) AS ops
          FROM categories c WHERE c.budget_id = ? ORDER BY c.sort, c.slug`,
     )
     .all(budgetId);
@@ -256,6 +259,8 @@ export function categoryUsage(db, budgetId, slug) {
     items: count('SELECT COUNT(*) c FROM item_labels WHERE budget_id = ? AND category_slug = ?'),
     dictionary: count('SELECT COUNT(*) c FROM budget_dictionary WHERE budget_id = ? AND category_slug = ?'),
     links: count('SELECT COUNT(*) c FROM category_links WHERE budget_id = ? AND slug = ?'),
+    ops: count('SELECT COUNT(*) c FROM bank_ops WHERE budget_id = ? AND category_slug = ?')
+      + count('SELECT COUNT(*) c FROM bank_rules WHERE budget_id = ? AND category_slug = ?'),
   };
 }
 
@@ -269,7 +274,7 @@ export function deleteCategory(db, budgetId, slug, moveTo) {
   if (!findCategory(db, budgetId, slug)) return fail(404, 'категория не найдена');
 
   const usage = categoryUsage(db, budgetId, slug);
-  const total = usage.items + usage.dictionary + usage.links;
+  const total = usage.items + usage.dictionary + usage.links + usage.ops;
   const target = trim(moveTo);
 
   if (total && !target) return { error: 'нужен перенос', status: 409, usage };
@@ -287,6 +292,11 @@ export function deleteCategory(db, budgetId, slug, moveTo) {
       db.prepare('UPDATE budget_dictionary SET category_slug = ?, updated_at = ? WHERE budget_id = ? AND category_slug = ?')
         .run(target, now, budgetId, slug);
       db.prepare('UPDATE category_links SET slug = ? WHERE budget_id = ? AND slug = ?').run(target, budgetId, slug);
+      // Траты из банка и правила по продавцам переезжают туда же — иначе они остались бы
+      // с категорией, которой больше нет
+      db.prepare('UPDATE bank_ops SET category_slug = ? WHERE budget_id = ? AND category_slug = ?').run(target, budgetId, slug);
+      db.prepare('UPDATE bank_rules SET category_slug = ?, updated_at = ? WHERE budget_id = ? AND category_slug = ?')
+        .run(target, now, budgetId, slug);
     }
     db.prepare('DELETE FROM categories WHERE budget_id = ? AND slug = ?').run(budgetId, slug);
     db.exec('COMMIT');

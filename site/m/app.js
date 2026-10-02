@@ -8,7 +8,7 @@
 // Клиент намеренно маленький и самодостаточный: именно его предстоит повторить
 // в приложении на Rust, поэтому вся логика здесь про экраны, а всё, что можно
 // посчитать в базе, считает сервер (/api/summary).
-import { groupIcon } from '/shared/icons.js';
+import { groupIcon, searchIcons } from '/shared/icons.js';
 import { shades, edge, readableText } from '/shared/colors.js';
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
@@ -238,6 +238,8 @@ const state = {
   item: '',
   filter: 'all', // список чеков: all | failed | pending | manual
   bank: '', // банк, чья страница открыта
+  tg: '', // настройка категорий: открытая группа
+  tc: '', // настройка категорий: открытая категория
   op: '', // операция банка, чья карточка открыта
   src: '', // фильтр ленты по источнику: '' | receipt | bank | manual
   added: '', // чек, только что добавленный сканом или руками
@@ -246,7 +248,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -341,6 +343,8 @@ function go(patch, replace = false) {
   if (state.category) params.set('category', state.category);
   if (state.item) params.set('item', state.item);
   if (state.bank) params.set('bank', state.bank);
+  if (state.screen === 'set_group' && state.tg) params.set('tg', state.tg);
+  if (state.screen === 'set_cat' && state.tc) params.set('tc', state.tc);
   if (state.op) params.set('op', state.op);
   if (state.screen === 'summary' && state.src) params.set('src', state.src);
   if (state.added) params.set('added', state.added);
@@ -368,6 +372,8 @@ function readUrl() {
   state.category = p.get('category') ?? '';
   state.item = p.get('item') ?? '';
   state.bank = p.get('bank') ?? '';
+  state.tg = p.get('tg') ?? '';
+  state.tc = p.get('tc') ?? '';
   state.op = p.get('op') ?? '';
   state.src = ['receipt', 'bank', 'manual'].includes(p.get('src')) ? p.get('src') : '';
   state.added = p.get('added') ?? '';
@@ -2542,6 +2548,9 @@ const SCREENS = {
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
   set_banks: { title: T.settings.banks.label, render: screenSetBanks },
   privacy: { title: T.settings.data.label, render: screenPrivacy },
+  set_cats: { title: T.settings.cats.label, render: screenSetCats },
+  set_group: { title: T.settings.cats.group, render: screenSetGroup, after: focusNew },
+  set_cat: { title: T.settings.cats.category, render: screenSetCat, after: focusNew },
   bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
   bank_add: { title: T.bankAdd.title, render: screenBankAdd },
   bank_safety: { title: T.bankCard.safety.label, render: screenBankSafety },
@@ -2574,7 +2583,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary',
-  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings',
+  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
 };
 
 /**
@@ -2621,7 +2630,7 @@ let shownScreen = null; // что сейчас на экране: по нему 
 // параметрами (месяц, категория, банк). Только списки и настройки: у форм, карточек с
 // картой и мастера после отрисовки своя жизнь (поля, таймеры), прошлый вид им не годится.
 // Живут до перезагрузки страницы; свежий вид всё равно приходит следом и заменяет прошлый
-const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'privacy', 'bank_card', 'bank_add', 'bank_safety'];
+const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'privacy', 'bank_card', 'bank_add', 'bank_safety'];
 const screenCache = new Map();
 function remember(key, html) {
   screenCache.delete(key); // свежий — в конец очереди
@@ -3133,6 +3142,8 @@ async function screenSettings() {
   const S = T.settings;
   const members = budget?.members.length ?? 0;
   const banks = BANKS.filter((b) => inApp() && bankState(b.id) !== 'off').map((b) => b.name);
+  const groupsN = meta?.categories?.length ?? 0;
+  const catsN = (meta?.categories ?? []).reduce((n, g) => n + g.subcategories.length, 0);
   const link = (id, icon, title, note) => srow({ icon, title, note: esc(note), attrs: `data-set="${id}"`, end: GO });
   // Разделы — строками: каждая ведёт на свой экран. Так в настройки помещаются новые
   // разделы, а главный экран остаётся коротким
@@ -3141,7 +3152,13 @@ async function screenSettings() {
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
     + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
     // «Данные» — сразу страница о данных, без промежуточного экрана
-    + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO }));
+    + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO }))
+    + section(S.cats.label, S.cats.listNote,
+      link('cats', UI.wallet, S.cats.expense, f(S.cats.expenseNote, {
+        groups: int.format(groupsN), gw: pl(groupsN, S.cats.groupsW), cats: int.format(catsN), cw: pl(catsN, S.cats.catsW),
+      }))
+      // Категорий доходов пока нет: строка на месте, чтобы раздел не переезжал потом
+      + srow({ icon: UI.income, title: S.cats.income, note: S.cats.incomeNote, attrs: 'data-soon', off: true }));
 }
 
 async function screenSetProfile() {
@@ -3193,6 +3210,216 @@ async function screenPrivacy() {
   }
   if (list) html.push('</ul>');
   return `<article class="card doc">${html.join('')}</article>`;
+}
+
+// ── настройка категорий ──────────────────────────────────
+// Справочник у бюджета свой: группы (название, значок, цвет) и категории в них (название,
+// группа, подсказка). То же, что в разделе «Категории» кабинета, без перетаскивания.
+
+const taxo = () => apiKept('/api/taxonomy');
+
+/** Правка справочника: после неё свежие и сам справочник, и категории во всём приложении. */
+async function taxoCall(method, path, body) {
+  const res = await api(`/api/taxonomy${path}`, {
+    method,
+    headers: body ? { 'content-type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  kept.delete('/api/taxonomy');
+  screenCache.clear();
+  meta = await api('/api/meta');
+  return res;
+}
+
+const groupBadge = (g) => {
+  const color = g.color ?? '#eef1f5';
+  return `<span class="gic" style="background:${color};color:${readableText(color)}">${groupIcon(g.icon ?? 'none')}</span>`;
+};
+const catDot = (color) => `<span class="cat-dot" style="background:${color ?? '#d7dbe2'}"></span>`;
+const catTones = (g) => shades(g.color ?? '', g.categories.length, g.shade_from, g.shade_to);
+const catUsed = (c) => c.items + (c.ops ?? 0);
+
+async function screenSetCats() {
+  const C = T.settings.cats;
+  const { groups } = await taxo();
+  const blocks = groups.map((g) => {
+    const tones = catTones(g);
+    const rows = g.categories.map((c, i) => {
+      const n = catUsed(c);
+      return srow({
+        icon: catDot(tones[i] ?? g.color),
+        bare: true,
+        title: esc(c.name),
+        note: n ? `${int.format(n)} ${pl(n, C.spendsW)}` : C.unused,
+        attrs: `data-tcat="${esc(c.slug)}"`,
+        end: GO,
+      });
+    });
+    return section(esc(g.name), '', rows.join('')
+      + srow({ icon: UI.plus, title: C.addCat, attrs: `data-tcat-add="${esc(g.slug)}"` })
+      + srow({ icon: groupBadge(g), bare: true, title: C.setupGroup, note: C.setupGroupNote, attrs: `data-tgroup="${esc(g.slug)}"`, end: GO }));
+  });
+  return blocks.join('') + section(C.groups, C.listNote, srow({ icon: UI.plus, title: C.addGroup, attrs: 'data-tgroup-add' }));
+}
+
+async function screenSetGroup() {
+  const C = T.settings.cats;
+  const g = (await taxo()).groups.find((x) => x.slug === state.tg);
+  if (!g) return `<div class="empty">${C.gone}</div>`;
+  const busy = g.categories.length > 0;
+  return section(C.group, '',
+    srow({ icon: groupBadge(g), bare: true, title: inlineEdit('tgroup', g.name, { cls: 'srow-input', label: C.group, max: 40 }), note: C.nameNote })
+    + srow({ icon: UI.grid, title: C.icon, attrs: 'data-tgroup-icon', end: GO })
+    + srow({ icon: catDot(g.color), bare: true, title: C.color, attrs: 'data-tgroup-color', end: GO }))
+    + section('', '', srow({
+      icon: UI.trash, title: C.deleteGroup, note: busy ? C.deleteGroupBusy : '', attrs: 'data-tgroup-delete', danger: !busy, off: busy,
+    }));
+}
+
+async function screenSetCat() {
+  const C = T.settings.cats;
+  const { groups } = await taxo();
+  const g = groups.find((x) => x.categories.some((c) => c.slug === state.tc));
+  const c = g?.categories.find((x) => x.slug === state.tc);
+  if (!c) return `<div class="empty">${C.gone}</div>`;
+  const tone = catTones(g)[g.categories.indexOf(c)] ?? g.color;
+  return section(C.category, '',
+    srow({ icon: catDot(tone), bare: true, title: inlineEdit('tcat', c.name, { cls: 'srow-input', label: C.category, max: 40 }), note: C.nameNote })
+    + srow({ icon: groupBadge(g), bare: true, title: C.inGroup, note: esc(g.name), attrs: 'data-tcat-move', end: GO })
+    + srow({ icon: UI.pen, title: inlineEdit('thint', c.hint ?? '', { cls: 'srow-input', label: C.hintPlaceholder, placeholder: C.hintPlaceholder, max: 200 }), note: C.hintNote }))
+    + section('', '', srow({
+      icon: UI.trash, title: C.deleteCat, note: catUsed(c) + c.dictionary + c.links ? C.deleteCatNote : '', attrs: 'data-tcat-delete', danger: true,
+    }));
+}
+
+// Только что созданная группа или категория открывается с названием в правке
+let focusNewNext = false;
+function focusNew() {
+  if (!focusNewNext) return;
+  focusNewNext = false;
+  const input = document.querySelector('#screen [data-inline]');
+  if (!input) return;
+  input.readOnly = false;
+  input.focus();
+  input.select();
+}
+
+/** Лист выбора поверх экрана: заголовок, содержимое, закрытие крестиком и нажатием мимо. */
+function openChoice(title, body, onClick) {
+  const el = document.createElement('div');
+  el.className = 'picker';
+  el.innerHTML = `
+    <div class="picker-box" role="dialog" aria-label="${esc(title)}">
+      <div class="picker-top"><div class="picker-title">${esc(title)}</div>
+        <button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button></div>
+      ${body}
+    </div>`;
+  openPopup(el);
+  el.addEventListener('click', (e) => {
+    if (e.target === el || e.target.closest('[data-close]')) return closePopup(el);
+    onClick(e, () => closePopup(el));
+  });
+  return el;
+}
+
+// Цвета групп: спокойная палитра, из которой категории получают свои оттенки
+const GROUP_COLORS = [
+  '#e5484d', '#f76b15', '#f5a524', '#e2c044', '#99c24d', '#46a758', '#12a594', '#00a2c7',
+  '#3b7bce', '#5b6cd6', '#8e4ec6', '#c2569b', '#d6409f', '#a18072', '#7c8894', '#4b5563',
+];
+
+async function onCatsClick(e) {
+  const C = T.settings.cats;
+  const hit = (sel) => e.target.closest(sel);
+  const patchGroup = (body) => taxoCall('PATCH', `/groups/${encodeURIComponent(state.tg)}`, body);
+  const failed = (err) => toast(`${T.common.failed}: ${err.message}`);
+
+  if (hit('[data-tcat]')) return go({ screen: 'set_cat', tc: hit('[data-tcat]').dataset.tcat });
+  if (hit('[data-tgroup]')) return go({ screen: 'set_group', tg: hit('[data-tgroup]').dataset.tgroup });
+
+  if (hit('[data-tcat-add]')) {
+    try {
+      const { category } = await taxoCall('POST', '/categories', { name: C.newCat, group_slug: hit('[data-tcat-add]').dataset.tcatAdd });
+      focusNewNext = true;
+      go({ screen: 'set_cat', tc: category.slug });
+    } catch (err) { failed(err); }
+    return;
+  }
+  if (hit('[data-tgroup-add]')) {
+    try {
+      const { group } = await taxoCall('POST', '/groups', { name: C.newGroup, icon: 'dots', color: GROUP_COLORS[8] });
+      focusNewNext = true;
+      go({ screen: 'set_group', tg: group.slug });
+    } catch (err) { failed(err); }
+    return;
+  }
+
+  if (hit('[data-tgroup-color]')) {
+    const body = `<div class="swatches">${GROUP_COLORS.map((c) => `<button class="swatch" type="button" data-color="${c}" style="background:${c}" aria-label="${c}"></button>`).join('')}</div>`;
+    openChoice(C.color, body, async (ev, close) => {
+      const color = ev.target.closest('[data-color]')?.dataset.color;
+      if (!color) return;
+      await patchGroup({ color }).catch(failed);
+      close();
+    });
+    return;
+  }
+  if (hit('[data-tgroup-icon]')) {
+    const grid = (names) => names.map((n) => `<button class="icon-cell" type="button" data-icon="${esc(n)}">${groupIcon(n)}</button>`).join('');
+    const el = openChoice(C.icon, `<input class="icon-search" type="search" placeholder="${esc(C.iconSearch)}" /><div class="icon-cells">${grid(searchIcons(''))}</div>`,
+      async (ev, close) => {
+        const icon = ev.target.closest('[data-icon]')?.dataset.icon;
+        if (!icon) return;
+        await patchGroup({ icon }).catch(failed);
+        close();
+      });
+    el.querySelector('.icon-search').addEventListener('input', (ev) => {
+      el.querySelector('.icon-cells').innerHTML = grid(searchIcons(ev.target.value));
+    });
+    return;
+  }
+  if (hit('[data-tgroup-delete]')) {
+    const g = (await taxo()).groups.find((x) => x.slug === state.tg);
+    if (!g || !confirm(f(C.deleteGroupConfirm, { name: g.name }))) return;
+    try {
+      await taxoCall('DELETE', `/groups/${encodeURIComponent(g.slug)}`);
+      history.back();
+    } catch (err) { failed(err); }
+    return;
+  }
+
+  if (hit('[data-tcat-move]')) {
+    const { groups } = await taxo();
+    const body = `<div class="picker-list">${groups.map((g) => `
+      <button class="picker-item" type="button" data-to="${esc(g.slug)}">${groupBadge(g)}<span>${esc(g.name)}</span></button>`).join('')}</div>`;
+    openChoice(C.inGroup, body, async (ev, close) => {
+      const to = ev.target.closest('[data-to]')?.dataset.to;
+      if (!to) return;
+      await taxoCall('PATCH', `/categories/${encodeURIComponent(state.tc)}`, { group_slug: to }).catch(failed);
+      close();
+    });
+    return;
+  }
+  if (hit('[data-tcat-delete]')) {
+    const cats = (await taxo()).groups.flatMap((g) => g.categories);
+    const c = cats.find((x) => x.slug === state.tc);
+    if (!c) return;
+    const remove = async (moveTo) => {
+      try {
+        await taxoCall('DELETE', `/categories/${encodeURIComponent(c.slug)}${moveTo ? `?move_to=${encodeURIComponent(moveTo)}` : ''}`);
+        history.back(); // карточки удалённой категории больше нет — возвращаемся к списку
+      } catch (err) { failed(err); }
+    };
+    // Категорией пользуются — сначала выбираем, куда перенести её траты и правила
+    if (catUsed(c) + c.dictionary + c.links) {
+      openCategoryPicker(null, (_, slug) => {
+        const to = cats.find((x) => x.slug === slug);
+        if (slug === c.slug || !to) return;
+        // Лист выбора закрывается шагом «назад» — ждём его, прежде чем идти дальше
+        setTimeout(() => { if (confirm(f(C.moveConfirm, { name: c.name, to: to.name }))) remove(slug); }, 150);
+      });
+    } else if (confirm(f(C.deleteCatConfirm, { name: c.name }))) remove('');
+  }
 }
 
 // ── разделы и строки настроек ────────────────────────────
@@ -3540,7 +3767,9 @@ $('screen').addEventListener('click', (e) => {
   if (e.target.closest('[data-privacy]')) return go({ screen: 'privacy' });
   const set = e.target.closest('[data-set]');
   if (set) return go({ screen: `set_${set.dataset.set}` });
-  if (state.screen.startsWith('set')) onSettingsClick(e);
+  if (!state.screen.startsWith('set')) return;
+  if (e.target.closest('[data-tcat], [data-tgroup], [data-tcat-add], [data-tgroup-add], [data-tgroup-icon], [data-tgroup-color], [data-tgroup-delete], [data-tcat-move], [data-tcat-delete]')) return onCatsClick(e);
+  onSettingsClick(e);
 });
 
 /**
@@ -3575,6 +3804,10 @@ const INLINE_SAVE = {
     toast(T.settings.budget.nameSaved);
     return data.name;
   },
+  // Справочник категорий: название группы, название и подсказка категории
+  tgroup: async (name) => (await taxoCall('PATCH', `/groups/${encodeURIComponent(state.tg)}`, { name })).group.name,
+  tcat: async (name) => (await taxoCall('PATCH', `/categories/${encodeURIComponent(state.tc)}`, { name })).category.name,
+  thint: async (hint) => (await taxoCall('PATCH', `/categories/${encodeURIComponent(state.tc)}`, { hint })).category.hint ?? '',
 };
 
 $('screen').addEventListener('click', (e) => {
