@@ -2205,13 +2205,21 @@ const histStatus = (bank) => {
 const canWizard = (id) => Boolean(window.Checker?.[id === 'sber' ? 'sberHistoryStart' : 'historyStart']);
 
 /** Мастер для банка: с сервера — шаг, из приложения — идёт ли загрузка. */
+/** Банк не подключён, а от прошлого подключения осталась загрузка: её состояние устарело. */
+const wizStale = (bank) => inApp() && bankState(bank) === 'off' && !histStatus(bank).running;
+
 async function wizLoad(bank) {
-  if (wiz?.bank === bank) return wiz;
+  if (wiz?.bank === bank && !(wizStale(bank) && wiz.step === 'load')) return wiz;
   const saved = await api(`/api/bank/history?bank=${encodeURIComponent(bank)}`).catch(() => ({}));
   wiz = { bank, step: 'intro', accounts: null, selected: [], result: null, ...(saved.state ?? {}) };
   if (wiz.step === 'analyze' || wiz.step === 'marking') wiz.step = wiz.step === 'marking' ? 'load' : 'intro';
   const s = histStatus(bank);
-  if (s.running || (s.total && s.done < s.total)) {
+  if (wizStale(bank)) {
+    // Банк отключили: прежняя недогруженная история уже ни к чему, продолжать её нечем —
+    // сессии нет. Мастер начинается сначала, со входа
+    wiz = { bank, step: 'intro', accounts: null, selected: [], result: null };
+    wizSave();
+  } else if (s.running || (s.total && s.done < s.total)) {
     wiz.step = 'load';
     wiz.progress = { ...s, stage: s.running ? 'load' : 'paused' };
   } else if (wiz.step === 'load') {
@@ -2240,8 +2248,8 @@ function wizGo(step) {
 /** Открыть мастер. fresh — начать сначала; идущую или прерванную загрузку это не сбрасывает. */
 function openWizard(bank, fresh = false) {
   const s = histStatus(bank);
-  const busy = s.running || (s.total && s.done < s.total);
-  if (fresh && !busy) {
+  const busy = !wizStale(bank) && (s.running || (s.total && s.done < s.total));
+  if ((fresh || wizStale(bank)) && !busy) {
     wiz = { bank, step: 'intro', accounts: null, selected: [], result: null };
     wizSave();
   }
