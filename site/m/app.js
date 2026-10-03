@@ -140,6 +140,7 @@ const token = {
 };
 
 async function api(path, options = {}) {
+  if (options.method && options.method !== 'GET') feedData.clear(); // правка — ленты устарели
   const headers = { ...(options.headers ?? {}) };
   if (token.get()) headers.authorization = `Bearer ${token.get()}`;
   const res = await fetch(path, { ...options, headers });
@@ -151,6 +152,28 @@ async function api(path, options = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
   return data;
+}
+
+/**
+ * Данные длинных лент (траты, операции банка) — в памяти. Раскрыть день, вернуться из карточки,
+ * сменить сортировку — это перерисовка из уже скачанного, а не новые мегабайты за всё время.
+ * Свежие данные — после любой правки, обновления банка, «потянуть вниз» или через пару минут.
+ */
+const feedData = new Map(); // путь → { at, promise }
+const FEED_TTL = 2 * 60 * 1000;
+const FEED_KEEP = 8; // за всё время — десятки мегабайт в памяти; старые выбрасываем
+
+function apiFeed(path) {
+  const hit = feedData.get(path);
+  if (hit && Date.now() - hit.at < FEED_TTL) return hit.promise;
+  const promise = api(path).catch((err) => {
+    feedData.delete(path);
+    throw err;
+  });
+  feedData.delete(path);
+  feedData.set(path, { at: Date.now(), promise });
+  while (feedData.size > FEED_KEEP) feedData.delete(feedData.keys().next().value);
+  return promise;
 }
 
 const post = (path, body) =>
@@ -550,8 +573,8 @@ async function screenSummary() {
     from: state.from, to: state.to, direction: 'debit', kind: 'expense', per: '20000',
   });
   const [data, ops, failed] = await Promise.all([
-    api(`/api/items?${params}`),
-    api(`/api/bank/ops?${opsQuery}`).catch(() => null),
+    apiFeed(`/api/items?${params}`),
+    apiFeed(`/api/bank/ops?${opsQuery}`).catch(() => null),
     api('/api/scan?state=failed').catch(() => null),
   ]);
   const bankRows = ops?.rows ?? [];
@@ -644,6 +667,9 @@ async function screenGroup() {
  */
 const collapseMode = () => (state.sort === 'date' ? 'day' : '1');
 
+const FEED_STEP = 300; // строк ленты за раз
+let feedLimit = { key: '', n: FEED_STEP };
+
 async function spendingFeed(itemRows, bankRows) {
   const spendings = [
     ...itemRows.map((r) => ({
@@ -683,13 +709,15 @@ async function spendingFeed(itemRows, bankRows) {
     g.subcategories.forEach((c, ci) => catOrder.set(c.slug, gi * 1000 + ci)),
   );
   const back = state.dir === 'asc' ? -1 : 1;
-  const byDate = (a, b) => (Date.parse(b.at) - Date.parse(a.at)) * back;
+  // Даты — ISO-строки одного вида: сравниваем как строки, без разбора (строк — десятки тысяч)
+  const later = (a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0);
+  const byDate = (a, b) => later(a, b) * back;
   spendings.sort((a, b) => {
     if (state.sort === 'name') return a.name.localeCompare(b.name, 'ru') * -back;
     if (state.sort === 'sum') return (b.sum - a.sum) * back;
     if (state.sort === 'category') {
       const diff = (catOrder.get(a.category) ?? 1e9) - (catOrder.get(b.category) ?? 1e9);
-      return (diff ? diff * -back : Date.parse(b.at) - Date.parse(a.at));
+      return (diff ? diff * -back : later(a, b));
     }
     return byDate(a, b);
   });
@@ -750,6 +778,15 @@ async function spendingFeed(itemRows, bankRows) {
       </button>`;
   };
 
+  // Длинный список рисуем порциями: тысячи строк разом телефон тянет с трудом. Дальше —
+  // по мере прокрутки (кнопка внизу нажимается сама, когда до неё долистали)
+  const limit = feedLimit.key === sectionsKey() ? feedLimit.n : FEED_STEP;
+  feedLimit = { key: sectionsKey(), n: limit };
+  const visible = spendings.filter((r) => {
+    const key = sectionOf(r);
+    return key == null || opened.has(key);
+  }).length;
+  let drawn = 0;
   let section;
   const rows = spendings
     .map((r) => {
@@ -757,6 +794,12 @@ async function spendingFeed(itemRows, bankRows) {
       const head = key != null && key !== section ? sectionHead(key) : '';
       section = key;
       if (key != null && !opened.has(key)) return head; // раздел свёрнут — строк не рисуем
+      drawn += 1;
+      if (drawn > limit) {
+        return drawn === limit + 1
+          ? `${head}<button class="feed-more" type="button" data-feed-more>${f('Показать ещё · осталось {n}', { n: int.format(visible - limit) })}</button>`
+          : head;
+      }
 
       const found = r.category ? findCategory(r.category) : null;
       const color = found?.group.color ?? '#eef1f5';
@@ -2935,6 +2978,7 @@ async function render() {
     }
     shownScreen = state.screen;
     screen.after?.();
+    watchFeedMore();
     if (pulseNext) pulse(pulseNext);
   } catch (err) {
     if (seq === renderSeq) $('screen').innerHTML = failed(err);
@@ -2942,6 +2986,20 @@ async function render() {
     clearTimeout(dim);
     if (seq === renderSeq) $('screen').classList.remove('busy');
   }
+}
+
+/** Долистали до «Показать ещё» (с запасом в пару экранов) — следующая порция сама. */
+let feedObserver = null;
+function watchFeedMore() {
+  feedObserver?.disconnect();
+  const button = document.querySelector('[data-feed-more]');
+  if (!button || !('IntersectionObserver' in window)) return;
+  feedObserver = new IntersectionObserver((entries) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
+    feedObserver.disconnect();
+    button.click();
+  }, { rootMargin: '1200px 0px' });
+  feedObserver.observe(button);
 }
 
 // ── обновление свайпом вниз ──────────────────────────────
@@ -2996,6 +3054,7 @@ addEventListener('touchend', async () => {
   try {
     // Свежие данные и справочники; кружок крутится хотя бы мгновение — иначе не видно, что было
     screenCache.delete(location.search);
+    feedData.clear();
     kept.clear();
     reloadIfUpdated();
     await Promise.all([
@@ -3036,6 +3095,11 @@ async function onScreenClick(e) {
   }
 
   // Заголовок раздела: свернуть или развернуть. При длинной ленте открыт только один
+  if (e.target.closest('[data-feed-more]')) {
+    feedLimit = { ...feedLimit, n: feedLimit.n + FEED_STEP };
+    return render();
+  }
+
   const sectionBtn = e.target.closest('[data-section]');
   if (sectionBtn) {
     const opened = openSections();
@@ -4392,6 +4456,7 @@ window.addEventListener('checker-bank-ready', (e) => {
 
 // Итог выгрузки приходит от приложения событием: показываем и обновляем экран
 window.addEventListener('checker-bank', (e) => {
+  feedData.clear(); // пришли новые операции или чеки
   bankSyncing = null;
   const r = e.detail ?? {};
   // Показываем новое, а не всё проверенное: банк каждый раз отдаёт и последние дни

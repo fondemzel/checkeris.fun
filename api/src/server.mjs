@@ -5,6 +5,7 @@
 //
 // Зависимостей нет: только встроенные модули Node.
 import { createServer } from 'node:http';
+import { gzip } from 'node:zlib';
 import { readFile, stat } from 'node:fs/promises';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -125,14 +126,27 @@ for (const { id } of db.prepare('SELECT id FROM users WHERE budget_id IS NULL').
   console.log(`пользователю #${id} выдан бюджет #${ensureBudget(db, id)}`);
 }
 
+/**
+ * Ответ JSON. Большой — сжимаем: лента «за всё время» весит мегабайты, а сжатая — в разы
+ * меньше, и на мобильной сети это разница между секундой и десятью. nginx перед сервером
+ * JSON сам не сжимает.
+ */
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-    'content-length': Buffer.byteLength(body),
+  const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+  const gzipOk = /gzip/.test(res.req?.headers['accept-encoding'] ?? '');
+  if (!gzipOk || body.length < 2048) {
+    res.writeHead(status, { ...headers, 'content-length': Buffer.byteLength(body) });
+    return res.end(body);
+  }
+  gzip(body, { level: 5 }, (err, packed) => {
+    if (err) {
+      res.writeHead(status, { ...headers, 'content-length': Buffer.byteLength(body) });
+      return res.end(body);
+    }
+    res.writeHead(status, { ...headers, 'content-encoding': 'gzip', vary: 'accept-encoding', 'content-length': packed.length });
+    res.end(packed);
   });
-  res.end(body);
 }
 
 function csvCell(value) {

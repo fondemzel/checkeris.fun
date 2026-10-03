@@ -534,6 +534,19 @@ button, input, select { font: inherit; color: inherit; }
 .cat-pick:disabled { opacity: 0.6; }
 .card .cat-pick { margin-bottom: 8px; }
 .card .cat-pick:last-child { margin-bottom: 0; }
+/* Длинная лента рисуется порциями: следующая — по этой кнопке (или сама, когда до неё долистали) */
+.feed-more {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
 /* «Для всех таких же»: переключатель в окне выбора категории */
 .picker-same {
   display: flex;
