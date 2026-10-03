@@ -1431,6 +1431,10 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .fresh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fresh-head b { color: var(--text); }
 .fresh-head.open .section-arrow svg { transform: none; }
+/* То же в мастере: список — часть страницы, заголовки не липнут, у списка своя рамка */
+.wiz-fresh .sheet-list { margin-top: 8px; border: 1px solid #f0f1f3; }
+.wiz-fresh .fresh-head { position: static; background: var(--surface); }
+.wiz-fresh-empty { margin: 0; padding: 14px; }
 .sheet-sum.income { color: #1baf7a; }
 button.sheet-row:disabled { cursor: default; opacity: 1; }
 

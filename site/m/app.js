@@ -2462,7 +2462,13 @@ const WIZ_SCREENS = {
         ${failed ? `<p class="note error">${f(T.wizard.load.savedFailed, { why: esc(w.error ?? '') })}</p>` : ''}
         ${paused ? `<p class="note">${T.wizard.load.savedStopped}</p>` : ''}
       </div>
-      <p class="note wiz-hint">${T.wizard.load.keepOpen}</p>`;
+      <p class="note wiz-hint">${T.wizard.load.keepOpen}</p>
+      ${w.started ? `
+      <div class="card wiz-fresh">
+        <div class="card-label">Что уже загрузили <span id="wiz-fresh-count"></span></div>
+        <p class="note">Нажмите на строку, чтобы поменять категорию — не дожидаясь конца загрузки.</p>
+        <div class="sheet-list" id="wiz-fresh"></div>
+      </div>` : ''}`;
   },
 
   marking: () => wizSpinner(T.wizard.marking),
@@ -2611,6 +2617,8 @@ function wizActions() {
 /** Ход загрузки — раз в секунду, без перерисовки экрана. */
 function wizTick() {
   if (state.screen !== 'bank_wizard' || wiz?.step !== 'load') return;
+  if ($('wiz-fresh') && !$('wiz-fresh').childElementCount) wizFreshDraw(); // после перерисовки экрана
+  if (wiz.progress?.stage === 'load' || wiz.progress?.stage === 'wait' || !wizFresh.data) wizFreshLoad();
   const p = wiz.progress ?? {};
   const bar = $('wiz-bar');
   if (!bar) return;
@@ -3126,6 +3134,11 @@ async function onScreenClick(e) {
   }
 
   // Заголовок раздела: свернуть или развернуть. При длинной ленте открыт только один
+  if (e.target.closest('#wiz-fresh')) {
+    const handled = onFreshClick(e, { collapsed: wizFresh.collapsed, redraw: wizFreshDraw, refresh: () => wizFreshLoad(true) });
+    if (handled) return;
+  }
+
   const freshOpen = e.target.closest('[data-fresh-open]');
   if (freshOpen) return openFresh(freshOpen.dataset.freshOpen, freshOpen.dataset.since, 'Загруженная история');
 
@@ -4526,12 +4539,107 @@ const syncSince = new Map(); // банк → время сервера пере�
 /** Время сервера: «что нового» спрашиваем по его часам, а не по часам телефона. */
 const serverNow = () => api('/api/fresh').then((r) => r.now).catch(() => null);
 
+/** Новое у банка или магазина с момента since — с сервера. */
+const loadFresh = (bank, since) => api(`/api/fresh?bank=${encodeURIComponent(bank)}&since=${encodeURIComponent(since)}`);
+
+/**
+ * Список нового по разделам-категориям: «Без категории» первыми (их и надо разобрать), дальше
+ * по сумме. collapsed — свёрнутые разделы; новый раздел при длинном списке появляется свёрнутым,
+ * чтобы растущий во время загрузки список не разъезжался на тысячи строк.
+ */
+function freshSections(data, collapsed, seen) {
+  const buckets = new Map();
+  for (const r of data.rows) {
+    const key = r.kind === 'covered' ? 'covered' : r.kind === 'income' ? `in|${r.category_slug ?? ''}` : r.category_slug ?? '';
+    if (!buckets.has(key)) buckets.set(key, { key, rows: [], sum: 0 });
+    const bucket = buckets.get(key);
+    bucket.rows.push(r);
+    bucket.sum += r.sum;
+  }
+  const order = [...buckets.values()].sort((x, y) =>
+    (x.key === '' ? -1 : 0) - (y.key === '' ? -1 : 0) || (x.key === 'covered') - (y.key === 'covered') || y.sum - x.sum);
+  for (const [i, bucket] of order.entries()) {
+    if (seen.has(bucket.key)) continue;
+    seen.add(bucket.key);
+    if (data.rows.length > 60 && (i > 0 || bucket.key !== '')) collapsed.add(bucket.key);
+  }
+
+  const look = (r) => {
+    if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: '#eef1f5', icon: 'receipt' };
+    if (r.kind === 'income') {
+      const c = r.category_slug ? incomeCat(r.category_slug) : null;
+      return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: c?.group?.icon ?? 'none' };
+    }
+    const found = r.category_slug ? findCategory(r.category_slug) : null;
+    return { name: found?.category.name ?? 'Без категории', color: found?.group.color ?? '#eef1f5', icon: found?.group.icon ?? 'none' };
+  };
+
+  return order.map((bucket) => {
+    const head = look(bucket.rows[0]);
+    const open = !collapsed.has(bucket.key);
+    const rows = !open ? '' : bucket.rows.map((r) => {
+      const l = look(r);
+      const human = r.category_source === 'manual' || r.category_source === 'pinned';
+      const guess = r.category_slug && !human ? ' guess' : '';
+      const when = `${dateRu(r.at.slice(0, 10))}${r.at.length > 10 ? ` ${esc(timeRu(r.at))}` : ''}`;
+      const attrs = r.kind === 'covered' ? 'disabled' : `data-fresh-pick="${r.type}:${r.id}:${r.kind}"`;
+      return `
+        <button class="sheet-row${guess}" type="button" ${attrs}>
+          <span class="pick-ic" style="background:${l.color};color:${readableText(l.color)}">${groupIcon(l.icon)}</span>
+          <span class="sheet-main">
+            <span class="sheet-name">${esc(r.name ?? '')}</span>
+            <span class="sheet-cat">${when} · ${esc(l.note ?? l.name)}</span>
+          </span>
+          <span class="sheet-sum${r.kind === 'income' ? ' income' : ''}">${r.kind === 'income' ? '+' : ''}${money(r.sum, true)}</span>
+        </button>`;
+    }).join('');
+    return `
+      <button class="fresh-head${open ? ' open' : ''}" type="button" data-fresh-section="${esc(bucket.key)}">
+        <span class="section-arrow">${UI.chevron}</span>
+        <span class="fresh-title">${esc(head.name)} · ${int.format(bucket.rows.length)}</span>
+        <b>${money(bucket.sum)}</b>
+      </button>${rows}`;
+  }).join('');
+}
+
+/**
+ * Нажатие в списке нового: раздел — свернуть или развернуть, строка — выбрать категорию
+ * (или «перевод себе»). redraw — перерисовать как есть, refresh — перечитать с сервера.
+ * true — нажатие было наше.
+ */
+function onFreshClick(e, { collapsed, redraw, refresh }) {
+  const head = e.target.closest('[data-fresh-section]');
+  if (head) {
+    const key = head.dataset.freshSection;
+    if (collapsed.has(key)) collapsed.delete(key);
+    else collapsed.add(key);
+    redraw();
+    return true;
+  }
+  const pick = e.target.closest('[data-fresh-pick]');
+  if (!pick) return false;
+  const [type, raw, kind] = pick.dataset.freshPick.split(':');
+  const id = Number(raw);
+  const save = (path) => async (_, slug, { only = false } = {}) => {
+    try {
+      if (slug === TRANSFER) await post(`/api/bank/ops/${id}/kind`, { kind: 'transfer', only });
+      else await post(path, { category: slug, only });
+      await refresh();
+    } catch (err) {
+      toast(`Не сохранилось: ${err.message}`);
+    }
+  };
+  if (type === 'item') openCategoryPicker(id, save(`/api/items/${id}/category`), undefined, sameFor('item', id));
+  else if (kind === 'income') openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), meta?.income ?? [], sameFor('income', id), { transfer: true });
+  else openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), undefined, sameFor('op', id), { transfer: true });
+  return true;
+}
+
 async function openFresh(bank, since, title) {
   const b = bankById(bank);
-  const load = () => api(`/api/fresh?bank=${encodeURIComponent(bank)}&since=${encodeURIComponent(since)}`);
   let data;
   try {
-    data = await load();
+    data = await loadFresh(bank, since);
   } catch (err) {
     return toast(`Не открылось: ${err.message}`);
   }
@@ -4539,66 +4647,10 @@ async function openFresh(bank, since, title) {
 
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
-  const collapsed = new Set(); // свёрнутые разделы
-  let first = true;
+  const collapsed = new Set();
+  const seen = new Set();
 
   const draw = () => {
-    // Разделы: без категории — первыми (их и надо разобрать), дальше по сумме
-    const buckets = new Map();
-    for (const r of data.rows) {
-      const key = r.kind === 'covered' ? 'covered' : r.kind === 'income' ? `in|${r.category_slug ?? ''}` : r.category_slug ?? '';
-      if (!buckets.has(key)) buckets.set(key, { key, rows: [], sum: 0 });
-      const bucket = buckets.get(key);
-      bucket.rows.push(r);
-      bucket.sum += r.sum;
-    }
-    const order = [...buckets.values()].sort((x, y) =>
-      (x.key === '' ? -1 : 0) - (y.key === '' ? -1 : 0) || (x.key === 'covered') - (y.key === 'covered') || y.sum - x.sum);
-    // Много всего (загрузка истории) — разделы сначала свёрнуты, открыт только первый
-    if (first && data.rows.length > 60) order.slice(1).forEach((x) => collapsed.add(x.key));
-    first = false;
-
-    const look = (r) => {
-      if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: '#eef1f5', icon: 'receipt' };
-      if (r.kind === 'income') {
-        const c = r.category_slug ? incomeCat(r.category_slug) : null;
-        return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: c?.group?.icon ?? 'none' };
-      }
-      const found = r.category_slug ? findCategory(r.category_slug) : null;
-      return {
-        name: found?.category.name ?? 'Без категории',
-        color: found?.group.color ?? '#eef1f5',
-        icon: found?.group.icon ?? 'none',
-      };
-    };
-
-    const sections = order.map((bucket) => {
-      const head = look(bucket.rows[0]);
-      const open = !collapsed.has(bucket.key);
-      const rows = !open ? '' : bucket.rows.map((r) => {
-        const l = look(r);
-        const human = r.category_source === 'manual' || r.category_source === 'pinned';
-        const guess = r.category_slug && !human ? ' guess' : '';
-        const when = `${dateRu(r.at.slice(0, 10))}${r.at.length > 10 ? ` ${esc(timeRu(r.at))}` : ''}`;
-        const attrs = r.kind === 'covered' ? 'disabled' : `data-fresh-pick="${r.type}:${r.id}:${r.kind}"`;
-        return `
-          <button class="sheet-row${guess}" type="button" ${attrs}>
-            <span class="pick-ic" style="background:${l.color};color:${readableText(l.color)}">${groupIcon(l.icon)}</span>
-            <span class="sheet-main">
-              <span class="sheet-name">${esc(r.name ?? '')}</span>
-              <span class="sheet-cat">${when} · ${esc(l.note ?? l.name)}</span>
-            </span>
-            <span class="sheet-sum${r.kind === 'income' ? ' income' : ''}">${r.kind === 'income' ? '+' : ''}${money(r.sum, true)}</span>
-          </button>`;
-      }).join('');
-      return `
-        <button class="fresh-head${open ? ' open' : ''}" type="button" data-fresh-section="${esc(bucket.key)}">
-          <span class="section-arrow">${UI.chevron}</span>
-          <span class="fresh-title">${esc(head.name)} · ${int.format(bucket.rows.length)}</span>
-          <b>${money(bucket.sum)}</b>
-        </button>${rows}`;
-    }).join('');
-
     const box = sheet.querySelector('.sheet-list');
     const scroll = box?.scrollTop ?? 0;
     const n = data.total;
@@ -4613,7 +4665,7 @@ async function openFresh(bank, since, title) {
           <button class="icon-btn primary" data-close type="button" aria-label="Готово" title="Готово">${UI.ok}</button>
         </div>
         <p class="note sheet-hint">Нажмите на строку, чтобы поменять категорию. Кольцо у значка — категорию предложил Чекер.</p>
-        <div class="sheet-list">${sections}</div>
+        <div class="sheet-list">${freshSections(data, collapsed, seen)}</div>
       </div>`;
     sheet.querySelector('.sheet-list').scrollTop = scroll;
   };
@@ -4623,45 +4675,51 @@ async function openFresh(bank, since, title) {
 
   const refresh = async () => {
     try {
-      data = await load();
+      data = await loadFresh(bank, since);
       draw();
     } catch {
       // останется прежний вид
     }
   };
-  const close = () => {
-    closePopup(sheet);
-    render(); // списки под окном — со свежими категориями
-  };
 
   sheet.addEventListener('click', (e) => {
-    if (e.target === sheet || e.target.closest('[data-close]')) return close();
-    const head = e.target.closest('[data-fresh-section]');
-    if (head) {
-      const key = head.dataset.freshSection;
-      if (collapsed.has(key)) collapsed.delete(key);
-      else collapsed.add(key);
-      return draw();
+    if (e.target === sheet || e.target.closest('[data-close]')) {
+      closePopup(sheet);
+      return render(); // списки под окном — со свежими категориями
     }
-    const pick = e.target.closest('[data-fresh-pick]');
-    if (!pick) return;
-    const [type, raw, kind] = pick.dataset.freshPick.split(':');
-    const id = Number(raw);
-    const save = (path) => async (_, slug, { only = false } = {}) => {
-      try {
-        if (slug === TRANSFER) await post(`/api/bank/ops/${id}/kind`, { kind: 'transfer', only });
-        else await post(path, { category: slug, only });
-        await refresh();
-      } catch (err) {
-        toast(`Не сохранилось: ${err.message}`);
-      }
-    };
-    if (type === 'item') return openCategoryPicker(id, save(`/api/items/${id}/category`), undefined, sameFor('item', id));
-    if (kind === 'income') {
-      return openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), meta?.income ?? [], sameFor('income', id), { transfer: true });
-    }
-    return openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), undefined, sameFor('op', id), { transfer: true });
+    onFreshClick(e, { collapsed, redraw: draw, refresh });
   });
+}
+
+// Мастер: что уже загрузили — растёт по ходу загрузки, категорию можно поправить сразу
+const wizFresh = { data: null, collapsed: new Set(), seen: new Set(), at: 0, busy: false, key: '' };
+
+function wizFreshDraw() {
+  const box = $('wiz-fresh');
+  if (!box || !wizFresh.data) return;
+  const n = wizFresh.data.total;
+  $('wiz-fresh-count').textContent = n ? `· ${int.format(n)}` : '';
+  box.innerHTML = n
+    ? freshSections(wizFresh.data, wizFresh.collapsed, wizFresh.seen)
+    : `<p class="note wiz-fresh-empty">${isShop(wiz.bank) ? 'Товары появятся здесь по мере загрузки' : 'Операции появятся здесь по мере загрузки'}</p>`;
+}
+
+/** Перечитать загруженное — не чаще раза в несколько секунд. */
+async function wizFreshLoad(force = false) {
+  if (!wiz?.started || wizFresh.busy) return;
+  const key = `${wiz.bank}|${wiz.started}`;
+  if (wizFresh.key !== key) Object.assign(wizFresh, { data: null, collapsed: new Set(), seen: new Set(), at: 0, key });
+  if (!force && Date.now() - wizFresh.at < 4000) return;
+  wizFresh.busy = true;
+  try {
+    wizFresh.data = await loadFresh(wiz.bank, wiz.started);
+    wizFresh.at = Date.now();
+    if (state.screen === 'bank_wizard') wizFreshDraw();
+  } catch {
+    // попробуем на следующем такте
+  } finally {
+    wizFresh.busy = false;
+  }
 }
 
 // ── запуск ───────────────────────────────────────────────
