@@ -259,7 +259,7 @@ export const en = {
       pickOne: 'Pick at least one year.',
       estimate: 'Picked {n} {word}. About {min} min.',
       already: '{n} Ozon {word} already here — they won’t be duplicated, only the missing ones are added.',
-      receipts: '', // добавлено
+      receipts: 'added',
       ordersDone: 'orders',
       resultTitle: 'Done: {n} Ozon {word}',
       foundLabel: 'What we got',

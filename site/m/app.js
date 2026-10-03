@@ -2619,7 +2619,7 @@ function wizActions() {
 function wizTick() {
   if (state.screen !== 'bank_wizard' || wiz?.step !== 'load') return;
   if ($('wiz-fresh') && !$('wiz-fresh').childElementCount) wizFreshDraw(); // после перерисовки экрана
-  if (wiz.progress?.stage === 'load' || wiz.progress?.stage === 'wait' || !wizFresh.data) wizFreshLoad();
+  if (!wizFresh.data) wizFreshLoad(); // дальше список подтягивается по событиям загрузки
   const p = wiz.progress ?? {};
   const bar = $('wiz-bar');
   if (!bar) return;
@@ -2792,7 +2792,9 @@ window.addEventListener('checker-history', (e) => {
   } else {
     // load и stopped: счётчики из приложения
     const prevDone = p.done ?? 0;
+    const prevOps = p.ops ?? 0;
     Object.assign(p, r, { waitUntil: 0 });
+    if ((r.ops ?? 0) > prevOps) wizFreshLoad(); // пришло новое — сразу в список
     if (r.stage === 'load' && r.done > prevDone) p.runDone = (p.runDone ?? 0) + (r.done - prevDone);
     p.runStart ??= Date.now();
   }
@@ -3152,7 +3154,7 @@ async function onScreenClick(e) {
 
   // Заголовок раздела: свернуть или развернуть. При длинной ленте открыт только один
   if (e.target.closest('#wiz-fresh')) {
-    const handled = onFreshClick(e, { collapsed: wizFresh.collapsed, redraw: wizFreshDraw, refresh: () => wizFreshLoad(true) });
+    const handled = onFreshClick(e, { collapsed: wizFresh.collapsed, redraw: wizFreshDraw, refresh: () => wizFreshLoad() });
     if (handled) return;
   }
 
@@ -4731,21 +4733,29 @@ function wizFreshDraw() {
     : `<p class="note wiz-fresh-empty">${isShop(wiz.bank) ? 'Товары появятся здесь по мере загрузки' : 'Операции появятся здесь по мере загрузки'}</p>`;
 }
 
-/** Перечитать загруженное — не чаще раза в несколько секунд. */
-async function wizFreshLoad(force = false) {
-  if (!wiz?.started || wizFresh.busy) return;
+/**
+ * Перечитать загруженное. Зовётся, когда приложение сообщило о новых чеках или операциях;
+ * пока идёт прошлый запрос, новый не шлём, а повторяем сразу после него.
+ */
+async function wizFreshLoad() {
+  if (!wiz?.started) return;
+  if (wizFresh.busy) {
+    wizFresh.again = true;
+    return;
+  }
   const key = `${wiz.bank}|${wiz.started}`;
   if (wizFresh.key !== key) Object.assign(wizFresh, { data: null, collapsed: new Set(), seen: new Set(), at: 0, key });
-  if (!force && Date.now() - wizFresh.at < 4000) return;
   wizFresh.busy = true;
+  wizFresh.again = false;
   try {
     wizFresh.data = await loadFresh(wiz.bank, wiz.started);
     wizFresh.at = Date.now();
     if (state.screen === 'bank_wizard') wizFreshDraw();
   } catch {
-    // попробуем на следующем такте
+    // попробуем при следующем событии
   } finally {
     wizFresh.busy = false;
+    if (wizFresh.again) wizFreshLoad();
   }
 }
 
