@@ -760,7 +760,8 @@ async function spendingFeed(itemRows, bankRows) {
   // Разделы свёрнуты: по умолчанию открыт только верхний. Если строк много, открытым
   // держим один раздел — иначе лента разрастается до тысяч строк
   const order = [...new Set(spendings.map(sectionOf))].filter((k) => k != null);
-  const opened = openSections(order[0]);
+  // По дням верхний (сегодняшний) день открыт; по категориям всё свёрнуто — видно разом, сколько где
+  const opened = openSections(state.sort === 'category' ? null : order[0]);
   const single = spendings.length > 500;
   if (single && opened.size > 1) {
     const keep = [...opened].pop();
@@ -1050,6 +1051,8 @@ async function screenIncome() {
   }
   let day = '';
   let cat = null;
+  const opened = openSections(null);
+  feedSections = { order: [], single: false };
   const rows = list
     .map((op) => {
       const opDay = op.at.slice(0, 10);
@@ -1058,14 +1061,16 @@ async function screenIncome() {
       if (byCat && (op.category_slug ?? '') !== cat) {
         const c = incomeCat(op.category_slug);
         const key = op.category_slug ?? '';
+        // Раздел-категория сворачивается, как в расходах; по умолчанию все свёрнуты
         header = `
-          <div class="day">
-            <span><span class="op-cat" style="background:${c?.color ?? '#d7dbe2'}"></span>${esc(c?.name ?? T.income.noCategory)} (${int.format(catCounts.get(key))})</span>
+          <button class="day section${opened.has(key || NONE) ? ' open' : ''}" type="button" data-section="${esc(key || NONE)}">
+            <span><span class="section-arrow">${UI.chevron}</span><span class="op-cat" style="background:${c?.color ?? '#d7dbe2'}"></span>${esc(c?.name ?? T.income.noCategory)} (${int.format(catCounts.get(key))})</span>
             <b>${money(catSums.get(key))}</b>
-          </div>`;
+          </button>`;
       }
       day = opDay;
       cat = op.category_slug ?? '';
+      if (byCat && !opened.has(cat || NONE)) return header; // раздел свёрнут — строк не рисуем
       const opCat = incomeCat(op.category_slug);
       const note = [
         `<span class="op-cat" style="background:${opCat?.color ?? '#d7dbe2'}"></span>${esc(opCat?.name ?? T.income.noCategory)}`,
@@ -1098,7 +1103,7 @@ const SOURCES = {
 // в другом периоде или сортировке снова открыт только верхний раздел
 const sectionState = new Map();
 let feedSections = { order: [], single: false };
-const sectionsKey = () => `${state.sort}|${state.group}|${state.category}|${state.from}|${state.to}`;
+const sectionsKey = () => `${state.screen}|${state.sort}|${state.group}|${state.category}|${state.from}|${state.to}`;
 function openSections(first) {
   const key = sectionsKey();
   if (!sectionState.has(key)) sectionState.set(key, new Set(first != null ? [first] : []));
