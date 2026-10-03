@@ -35,11 +35,17 @@ function properties(html) {
   return out;
 }
 
+/**
+ * Служебный код позиции WB под названием: «eBR.r5819…0.0» или числовой «7102204579419043225.0.0».
+ * В название он не входит — иначе название не узнать ни словарём, ни по похожим.
+ */
+export const WB_CODE = /^(\w+\.)?r?[0-9a-f]{12,}\.\d+\.\d+$/i;
+
 /** Один товар: блок products-item. */
 function item(block) {
   const l = lines(block);
   // [№, название…, код вида eBR.r….0.0, цена, кол., сумма, НДС, способ расчёта, …]
-  const codeAt = l.findIndex((s) => /^\w+\.r[0-9a-f]{20,}\.\d+\.\d+$/.test(s));
+  const codeAt = l.findIndex((s) => WB_CODE.test(s));
   const priceAt = l.findIndex((s, i) => i > 1 && money(s) != null);
   if (priceAt < 0) return null;
   const nameEnd = codeAt > 0 && codeAt < priceAt ? codeAt : priceAt;

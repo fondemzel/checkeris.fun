@@ -24,7 +24,7 @@ import {
 } from './queries.mjs';
 import { loadCategories, syncCategories } from './categories.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
-import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
+import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue, backfillUnknown } from './scan.mjs';
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
@@ -934,6 +934,9 @@ if (fnsReady()) {
 } else {
   console.error('ФНС: доступ не настроен (нужны FNS_MASTER_TOKEN, FNS_AUTH_URL, FNS_KKT_URL) — сканирование выключено');
 }
+
+// Товары без категории (не хватило суточного лимита модели) — раз в час ещё порцию (scan.mjs)
+setInterval(() => backfillUnknown(db).catch((err) => console.error('доразметка:', err.message)), 60 * 60_000).unref();
 
 // Места покупок: адреса из новых чеков — в координаты. Раз в минуту по несколько адресов,
 // поэтому первая разметка всей базы (сотни адресов) займёт десяток-другой минут

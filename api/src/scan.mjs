@@ -257,6 +257,35 @@ export async function askModel(db, itemIds, userId) {
   }
 }
 
+/**
+ * Доразметка: товары, которые при загрузке остались без категории — не хватило суточного
+ * лимита модели (история магазина за годы легко съедает его за раз). Раз в час отдаём модели
+ * ещё порцию — в пределах лимита того, кто их добавил: лимит обновляется раз в сутки, и за
+ * несколько дней разложится всё.
+ */
+export async function backfillUnknown(db) {
+  const rows = db
+    .prepare(
+      `SELECT v.id, r.added_by FROM v_items v
+         JOIN item_labels l ON l.item_id = v.id
+         JOIN receipts r ON r.id = v.receipt_id
+        WHERE l.source IN ('unknown', 'rule-fallback') AND r.added_by IS NOT NULL
+        ORDER BY v.purchased_at DESC
+        LIMIT 2000`,
+    )
+    .all();
+  const byUser = new Map();
+  for (const r of rows) {
+    if (!byUser.has(r.added_by)) byUser.set(r.added_by, []);
+    byUser.get(r.added_by).push(r.id);
+  }
+  for (const [userId, ids] of byUser) {
+    // Порциями по MAX_ASK названий: askModel сама остановится, когда кончится лимит
+    for (let i = 0; i < ids.length; i += 200) await askModel(db, ids.slice(i, i + 200), userId);
+  }
+  return rows.length;
+}
+
 let running = false;
 
 /** Проход по заданиям, которым пришло время. Вызывается по таймеру из server.mjs. */
