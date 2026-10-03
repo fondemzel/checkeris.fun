@@ -4264,7 +4264,9 @@ window.addEventListener('checker-bank', (e) => {
   const r = e.detail ?? {};
   // Показываем новое, а не всё проверенное: банк каждый раз отдаёт и последние дни
   toast(
-    r.ok
+    r.ok && r.error
+      ? f(T.bankCard.sync.failed, { why: r.error }) // что-то загрузилось, но не всё
+      : r.ok
       ? r.ops
         ? f(r.bank === 'ozon' ? T.bankCard.sync.addedShop : T.bankCard.sync.added, { n: int.format(r.ops) })
         : r.bank === 'ozon' ? T.bankCard.sync.noneShop : T.bankCard.sync.none

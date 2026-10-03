@@ -12,7 +12,6 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,8 +22,9 @@ import java.util.regex.Pattern;
  * версии: страницы кабинета Озон отдаёт данными через «композер» (entrypoint-api), а чеки —
  * PDF-файлами. Нам нужен список «Электронные чеки» и сами файлы: разбирает их сервер.
  *
- * Куки берём живьём из хранилища окна и туда же кладём новые, которые Озон присылает в ответ:
- * так короткоживущий токен доступа обновляется сам, без нового входа.
+ * Куки берём живьём из хранилища окна. Обратно не пишем: новые куки из ответа легли бы рядом
+ * со старыми без домена, и Озон, увидев два разных токена, отвечал бы 403. Токен обновляет
+ * сама страница Озона, когда человек открывает окно входа.
  */
 final class OzonApi {
 
@@ -53,7 +53,6 @@ final class OzonApi {
         HttpURLConnection http = open(PAGE + URLEncoder.encode(url, "UTF-8"));
         http.setRequestProperty("Accept", "application/json");
         int code = http.getResponseCode();
-        keepCookies(http);
         String body = TBank.read(code >= 400 ? http.getErrorStream() : http.getInputStream());
         http.disconnect();
         if (code == 401 || code == 403) throw new IllegalStateException("Озон просит войти заново");
@@ -109,8 +108,8 @@ final class OzonApi {
     /** Файл чека — PDF как есть. */
     static byte[] download(String id) throws Exception {
         HttpURLConnection http = open("/_action/downloadCheque?id=" + URLEncoder.encode(id, "UTF-8") + "&rawdata=1&download=1&docType=ozon");
+        http.setRequestProperty("Accept", "application/json"); // так запрос проходил в разведке
         int code = http.getResponseCode();
-        keepCookies(http);
         if (code >= 400) {
             http.disconnect();
             throw new java.io.IOException("чек не скачался: " + code);
@@ -137,14 +136,21 @@ final class OzonApi {
         return http;
     }
 
-    /** Новые куки из ответа — в хранилище окна: токен доступа Озон обновляет на ходу. */
-    private static void keepCookies(HttpURLConnection http) {
-        Map<String, List<String>> headers = http.getHeaderFields();
-        if (headers == null) return;
+    /**
+     * Прежняя версия записывала куки из ответов Озона без домена — рядом с настоящими легли
+     * дубли с теми же именами. Убираем их: у дубля нет домена, поэтому стирается именно он.
+     */
+    static void dropDuplicateCookies() {
+        String cookies = cookies();
+        if (cookies == null) return;
+        java.util.Set<String> seen = new java.util.HashSet<>();
         CookieManager cm = CookieManager.getInstance();
-        for (Map.Entry<String, List<String>> e : headers.entrySet()) {
-            if (e.getKey() == null || !e.getKey().equalsIgnoreCase("Set-Cookie")) continue;
-            for (String c : e.getValue()) cm.setCookie(HOST, c);
+        for (String part : cookies.split(";")) {
+            String name = part.trim().split("=", 2)[0];
+            if (!name.isEmpty() && !seen.add(name)) {
+                cm.setCookie(HOST, name + "=; Max-Age=0; Path=/");
+                cm.setCookie(HOST, name + "=; Max-Age=0; Path=/; Secure");
+            }
         }
         cm.flush();
     }

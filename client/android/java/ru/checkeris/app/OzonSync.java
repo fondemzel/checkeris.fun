@@ -44,6 +44,7 @@ final class OzonSync {
         Secrets secrets = new Secrets(context);
         if (!connected(context)) return new BankSync.Result(false, 0, 0, "Озон не подключён");
 
+        OzonApi.dropDuplicateCookies();
         int state = OzonApi.check();
         Trace.log("ozon обновление: вход → " + state);
         if (state == OzonApi.OFFLINE) return new BankSync.Result(false, 0, 0, "Озон не отвечает — попробуйте позже");
@@ -67,10 +68,13 @@ final class OzonSync {
                     // Один нечитаемый чек не должен останавливать остальные — попробуем в следующий раз
                     failed++;
                     Trace.log("ozon чек " + id + " не принят: " + e.getMessage());
+                    // Озон не отдаёт чеки совсем — дальше пробовать бессмысленно
+                    if (failed >= 3 && added == 0 && failed == countTried(all, known, id)) break;
                 }
             }
             post(checkerToken, "/done", new JSONObject());
             Trace.log("ozon: всего " + all.size() + ", новых " + added + ", не принято " + failed);
+            if (failed > 0 && added == 0) return new BankSync.Result(false, 0, all.size(), "Озон не отдал чеки (" + failed + ")");
             return new BankSync.Result(true, added, all.size(), failed > 0 ? "не приняты чеки: " + failed : null);
         } catch (IllegalStateException e) {
             secrets.put(EXPIRED, "1");
@@ -78,6 +82,16 @@ final class OzonSync {
         } catch (Exception e) {
             return new BankSync.Result(false, 0, 0, String.valueOf(e.getMessage()));
         }
+    }
+
+    /** Сколько чеков уже пробовали скачать — включая этот. */
+    private static int countTried(List<String> all, Set<String> known, String upTo) {
+        int n = 0;
+        for (String id : all) {
+            if (!known.contains(id)) n++;
+            if (id.equals(upTo)) break;
+        }
+        return n;
     }
 
     private static Set<String> known(String token) throws Exception {
