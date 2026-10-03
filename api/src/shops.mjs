@@ -102,3 +102,38 @@ export function shopStats(db, userId, shop) {
     .all(args);
   return { shop, total, items, years };
 }
+
+/**
+ * Удалить загруженное из магазина: его чеки (с товарами, правками и комментариями) и само
+ * подключение. Чеки, которые пришли из ФНС, а магазин лишь отметил как учтённые, остаются.
+ * Операции банка, склеенные с удалёнными чеками, снова становятся обычными тратами.
+ */
+export function forgetShop(db, user, shop) {
+  const link = db.prepare('SELECT id FROM bank_links WHERE user_id = ? AND bank = ?').get(user.id, shop);
+  if (!link) return { ops: 0 };
+  const ids = db
+    .prepare(
+      `SELECT r.id FROM shop_cheques c JOIN receipts r ON r.id = c.receipt_id
+        WHERE c.link_id = ? AND r.source_id LIKE ?`,
+    )
+    .all(link.id, `${shop}:%`)
+    .map((r) => r.id);
+  db.exec('BEGIN');
+  try {
+    const release = db.prepare('UPDATE bank_ops SET receipt_id = NULL, kind = NULL WHERE receipt_id = ? AND kind_source IS NULL');
+    const drop = db.prepare('DELETE FROM receipts WHERE id = ?');
+    for (const id of ids) {
+      release.run(id);
+      drop.run(id);
+    }
+    db.prepare('DELETE FROM shop_cheques WHERE link_id = ?').run(link.id);
+    db.prepare('DELETE FROM bank_links WHERE id = ?').run(link.id);
+    db.prepare('DELETE FROM bank_history WHERE user_id = ? AND bank = ?').run(user.id, shop);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  matchBank(db, user.budget_id); // освобождённые операции — снова траты, с категориями
+  return { ops: ids.length };
+}

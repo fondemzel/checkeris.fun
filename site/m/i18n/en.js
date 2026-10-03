@@ -210,6 +210,9 @@ export const en = {
       wipe: 'Delete loaded operations',
       wipeConfirm: 'Delete this bank’s loaded operations? Receipts and manual entries stay.',
       wiped: 'Operations deleted: {n}',
+      wipeShop: 'Delete loaded receipts',
+      wipeShopConfirm: 'Delete the receipts loaded from {name} and disconnect it? Receipts that came from the tax service stay.',
+      wipedShop: 'Receipts deleted: {n}',
     },
     sync: {
       added: 'New operations: {n}',

@@ -36,7 +36,7 @@ import { bankTotals, matchBank, setOpCategory, setOpKind } from './bankmatch.mjs
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
 import { freshItems } from './fresh.mjs';
-import { knownShop, knownCheques, importCheque, finishSync, shopStats } from './shops.mjs';
+import { knownShop, knownCheques, importCheque, finishSync, shopStats, forgetShop } from './shops.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import {
   getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat,
@@ -544,6 +544,7 @@ async function handleApi(req, res, url) {
     // Удалить загруженное из банка: операции уходят вместе с подключением
     if (pathname === '/api/bank/ops' && req.method === 'DELETE') {
       const bank = String(url.searchParams.get('bank') ?? 'tbank');
+      if (knownShop(bank)) return sendJson(res, 200, forgetShop(db, user, bank)); // магазин: его чеки
       return sendJson(res, 200, forgetBank(db, user.id, bank));
     }
 

@@ -3231,10 +3231,12 @@ async function onScreenClick(e) {
       return render();
     }
     if (bank.dataset.bank === 'wipe') {
-      if (!confirm(T.bankCard.manage.wipeConfirm)) return;
+      const shop = bankById(id)?.shop;
+      if (!confirm(shop ? f(T.bankCard.manage.wipeShopConfirm, { name: bankById(id).from }) : T.bankCard.manage.wipeConfirm)) return;
       bankBridge(id).forget();
       const res = await api(`/api/bank/ops?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
-      toast(res ? f(T.bankCard.manage.wiped, { n: int.format(res.ops ?? 0) }) : T.common.failed);
+      if (wiz?.bank === id) wiz = null; // мастер этого магазина — заново, со входа
+      toast(res ? f(shop ? T.bankCard.manage.wipedShop : T.bankCard.manage.wiped, { n: int.format(res.ops ?? 0) }) : T.common.failed);
       bankLinked = false;
       return go({ screen: 'set_banks' });
     }
@@ -4141,7 +4143,7 @@ async function screenBankCard() {
             + (!expired ? act('sync', b.id, T.bankCard.manage.sync, UI.refresh) : '')
             + act('login', b.id, T.bankCard.manage.relogin, UI.login)
             + act('forget', b.id, T.bankCard.manage.forget, UI.unlink)
-            + (ops && !b.shop ? act('wipe', b.id, T.bankCard.manage.wipe, UI.trash, true) : ''))}`;
+            + (ops ? act('wipe', b.id, b.shop ? T.bankCard.manage.wipeShop : T.bankCard.manage.wipe, UI.trash, true) : ''))}`;
 }
 
 /**
