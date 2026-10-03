@@ -1392,8 +1392,19 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .pick-ic.big { width: 44px; height: 44px; }
 .pick-ic.big svg { width: 24px; height: 24px; }
 
-/* Кольцо внутри значка — категорию предложила модель, а не выбрал человек */
-.sheet-row.guess .pick-ic { box-shadow: inset 0 0 0 2px var(--surface); }
+/* Зелёная точка на значке — категорию предложил Чекер, а не выбрал человек */
+.sheet-row.guess .pick-ic { position: relative; }
+.sheet-row.guess .pick-ic::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1baf7a;
+  box-shadow: 0 0 0 2px var(--surface);
+}
 
 /* Список позиций теперь сплошной, поэтому карточка одна на весь чек */
 .sheet-list {

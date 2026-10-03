@@ -38,6 +38,9 @@ export function migrate(db) {
   // раз, в момент появления таблицы. Потом — только новым бюджетам (budgets.mjs)
   const seedIncome = !tableExists(db, 'income_groups');
   db.exec('DROP TABLE IF EXISTS income_categories'); // первая, плоская версия справочника — без групп
+  // Колонки, на которые смотрит v_items, — до схемы: она пересоздаёт представление
+  addColumn(db, 'receipts', 'prepay_kind', 'TEXT');
+  addColumn(db, 'receipts', 'prepaid_by', 'INTEGER');
   // Чеки Озона стали чеками магазинов: таблица та же, имя общее
   if (tableExists(db, 'ozon_cheques') && !tableExists(db, 'shop_cheques')) db.exec('ALTER TABLE ozon_cheques RENAME TO shop_cheques');
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));

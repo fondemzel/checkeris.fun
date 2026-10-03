@@ -2033,7 +2033,7 @@ async function saveManual() {
 function sheetRow(item, { open = false } = {}) {
   const group = findGroup(item.group_slug);
   const color = group?.color ?? '#eef1f5';
-  // Значок в кольце — категорию предложила модель, сплошной — выбрал человек
+  // Зелёная точка на значке — категорию предложил Чекер, без точки — выбрал человек
   const human = item.category_source === 'manual' || item.category_source === 'pinned';
   const guess = item.category_slug && !human ? ' guess' : '';
 
@@ -2262,7 +2262,7 @@ async function saveCategory(itemId, slug, { only = false } = {}) {
     ic.style.background = color;
     ic.style.color = readableText(color);
     ic.innerHTML = groupIcon(group?.icon ?? 'none');
-    row.classList.remove('guess'); // выбор человека, кольцо снимаем
+    row.classList.remove('guess'); // выбор человека, точку снимаем
     row.querySelector('.sheet-cat').textContent =
       (data.category?.name ?? 'выбрать категорию') +
       (data.affected > 1 ? ` · и ещё ${int.format(data.affected - 1)}` : '');
@@ -2466,7 +2466,7 @@ const WIZ_SCREENS = {
       ${w.started ? `
       <div class="card wiz-fresh">
         <div class="card-label">Что уже загрузили <span id="wiz-fresh-count"></span></div>
-        <p class="note">Нажмите на строку, чтобы поменять категорию — не дожидаясь конца загрузки.</p>
+        <p class="note">Свежие — сверху. Нажмите на строку, чтобы поменять категорию, не дожидаясь конца загрузки; зелёная точка — категорию предложил Чекер.</p>
         <div class="sheet-list" id="wiz-fresh"></div>
       </div>` : ''}`;
   },
@@ -4542,6 +4542,38 @@ const serverNow = () => api('/api/fresh').then((r) => r.now).catch(() => null);
 /** Новое у банка или магазина с момента since — с сервера. */
 const loadFresh = (bank, since) => api(`/api/fresh?bank=${encodeURIComponent(bank)}&since=${encodeURIComponent(since)}`);
 
+/** Как показать строку нового: название раздела, цвет и значок. */
+function freshLook(r) {
+  if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: '#eef1f5', icon: 'receipt' };
+  if (r.kind === 'income') {
+    const c = r.category_slug ? incomeCat(r.category_slug) : null;
+    return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: c?.group?.icon ?? 'none' };
+  }
+  const found = r.category_slug ? findCategory(r.category_slug) : null;
+  return { name: found?.category.name ?? 'Без категории', color: found?.group.color ?? '#eef1f5', icon: found?.group.icon ?? 'none' };
+}
+
+/** Одна строка нового: значок категории (с зелёной точкой, если её предложил Чекер), название, сумма. */
+function freshRow(r) {
+  const l = freshLook(r);
+  const human = r.category_source === 'manual' || r.category_source === 'pinned';
+  const guess = r.category_slug && !human ? ' guess' : '';
+  const when = `${dateRu(r.at.slice(0, 10))}${r.at.length > 10 ? ` ${esc(timeRu(r.at))}` : ''}`;
+  const attrs = r.kind === 'covered' ? 'disabled' : `data-fresh-pick="${r.type}:${r.id}:${r.kind}"`;
+  return `
+    <button class="sheet-row${guess}" type="button" ${attrs}>
+      <span class="pick-ic" style="background:${l.color};color:${readableText(l.color)}">${groupIcon(l.icon)}</span>
+      <span class="sheet-main">
+        <span class="sheet-name">${esc(r.name ?? '')}</span>
+        <span class="sheet-cat">${when} · ${esc(l.note ?? l.name)}</span>
+      </span>
+      <span class="sheet-sum${r.kind === 'income' ? ' income' : ''}">${r.kind === 'income' ? '+' : ''}${money(r.sum, true)}</span>
+    </button>`;
+}
+
+/** Мастер во время загрузки: сколько строк показываем — свежие сверху, остальное в итоге. */
+const WIZ_FRESH_ROWS = 200;
+
 /**
  * Список нового по разделам-категориям: «Без категории» первыми (их и надо разобрать), дальше
  * по сумме. collapsed — свёрнутые разделы; новый раздел при длинном списке появляется свёрнутым,
@@ -4564,35 +4596,10 @@ function freshSections(data, collapsed, seen) {
     if (data.rows.length > 60 && (i > 0 || bucket.key !== '')) collapsed.add(bucket.key);
   }
 
-  const look = (r) => {
-    if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: '#eef1f5', icon: 'receipt' };
-    if (r.kind === 'income') {
-      const c = r.category_slug ? incomeCat(r.category_slug) : null;
-      return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: c?.group?.icon ?? 'none' };
-    }
-    const found = r.category_slug ? findCategory(r.category_slug) : null;
-    return { name: found?.category.name ?? 'Без категории', color: found?.group.color ?? '#eef1f5', icon: found?.group.icon ?? 'none' };
-  };
-
   return order.map((bucket) => {
-    const head = look(bucket.rows[0]);
+    const head = freshLook(bucket.rows[0]);
     const open = !collapsed.has(bucket.key);
-    const rows = !open ? '' : bucket.rows.map((r) => {
-      const l = look(r);
-      const human = r.category_source === 'manual' || r.category_source === 'pinned';
-      const guess = r.category_slug && !human ? ' guess' : '';
-      const when = `${dateRu(r.at.slice(0, 10))}${r.at.length > 10 ? ` ${esc(timeRu(r.at))}` : ''}`;
-      const attrs = r.kind === 'covered' ? 'disabled' : `data-fresh-pick="${r.type}:${r.id}:${r.kind}"`;
-      return `
-        <button class="sheet-row${guess}" type="button" ${attrs}>
-          <span class="pick-ic" style="background:${l.color};color:${readableText(l.color)}">${groupIcon(l.icon)}</span>
-          <span class="sheet-main">
-            <span class="sheet-name">${esc(r.name ?? '')}</span>
-            <span class="sheet-cat">${when} · ${esc(l.note ?? l.name)}</span>
-          </span>
-          <span class="sheet-sum${r.kind === 'income' ? ' income' : ''}">${r.kind === 'income' ? '+' : ''}${money(r.sum, true)}</span>
-        </button>`;
-    }).join('');
+    const rows = !open ? '' : bucket.rows.map(freshRow).join('');
     return `
       <button class="fresh-head${open ? ' open' : ''}" type="button" data-fresh-section="${esc(bucket.key)}">
         <span class="section-arrow">${UI.chevron}</span>
@@ -4664,7 +4671,7 @@ async function openFresh(bank, since, title) {
           </div>
           <button class="icon-btn primary" data-close type="button" aria-label="Готово" title="Готово">${UI.ok}</button>
         </div>
-        <p class="note sheet-hint">Нажмите на строку, чтобы поменять категорию. Кольцо у значка — категорию предложил Чекер.</p>
+        <p class="note sheet-hint">Нажмите на строку, чтобы поменять категорию. Зелёная точка у значка — категорию предложил Чекер.</p>
         <div class="sheet-list">${freshSections(data, collapsed, seen)}</div>
       </div>`;
     sheet.querySelector('.sheet-list').scrollTop = scroll;
@@ -4699,8 +4706,11 @@ function wizFreshDraw() {
   if (!box || !wizFresh.data) return;
   const n = wizFresh.data.total;
   $('wiz-fresh-count').textContent = n ? `· ${int.format(n)}` : '';
+  // Во время загрузки — без разделов, в порядке поступления: новое всегда сверху, его не надо
+  // искать по категориям. Разделы — в итоге, когда всё загружено
+  const rows = wizFresh.data.rows.slice(0, WIZ_FRESH_ROWS);
   box.innerHTML = n
-    ? freshSections(wizFresh.data, wizFresh.collapsed, wizFresh.seen)
+    ? rows.map(freshRow).join('') + (n > rows.length ? `<p class="note wiz-fresh-empty">Ещё ${int.format(n - rows.length)} — в итоге загрузки</p>` : '')
     : `<p class="note wiz-fresh-empty">${isShop(wiz.bank) ? 'Товары появятся здесь по мере загрузки' : 'Операции появятся здесь по мере загрузки'}</p>`;
 }
 

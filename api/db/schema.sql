@@ -130,6 +130,8 @@ CREATE TABLE IF NOT EXISTS receipts (
   cash_sum        INTEGER NOT NULL DEFAULT 0,
   ecash_sum       INTEGER NOT NULL DEFAULT 0,
   prepaid_sum     INTEGER NOT NULL DEFAULT 0,
+  prepay_kind     TEXT,                     -- чек получения (prepaid.mjs): dup — повтор чека оплаты, paid — товары за безликий аванс
+  prepaid_by      INTEGER,                  -- paid: чек оплаты «Получение аванса», который он раскрывает
   credit_sum      INTEGER NOT NULL DEFAULT 0,
   provision_sum   INTEGER NOT NULL DEFAULT 0,
   nds_18          INTEGER NOT NULL DEFAULT 0,
@@ -173,6 +175,7 @@ CREATE TABLE IF NOT EXISTS items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_receipt ON items (receipt_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_prepaid_by ON receipts (prepaid_by) WHERE prepaid_by IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_items_name    ON items (name_norm);
 CREATE INDEX IF NOT EXISTS idx_items_sum     ON items (sum);
 
@@ -354,9 +357,15 @@ SELECT
   CASE WHEN r.fiscal_drive = 'manual' THEN 1 ELSE 0 END AS manual, -- вбито руками, чека нет
   -- Чек маркетплейса — по ИНН площадки: Озон, Wildberries (обе компании), Яндекс Маркет
   CASE WHEN r.seller_inn IN ('7704217370', '7721546864', '9714053621', '9704254424') THEN 1 ELSE 0 END AS market,
-  -- Деньги считаем один раз: возврат — не трата, а чек, закрытый зачётом аванса,
-  -- повторяет более ранний чек предоплаты, по которому деньги уже ушли.
-  CASE WHEN r.operation_type = 2 OR r.prepaid_sum > 0 THEN 0 ELSE 1 END AS counted,
+  -- Деньги считаем один раз (prepaid.mjs): возврат — не трата; чек получения с зачётом
+  -- предоплаты не считается — деньги ушли чеком оплаты. Кроме случая, когда чек оплаты
+  -- безликий («Получение аванса»): тогда считаем товары чека получения, а сам аванс — нет
+  CASE WHEN r.operation_type = 2 THEN 0
+       WHEN r.prepaid_sum > 0 THEN CASE WHEN r.prepay_kind = 'paid' THEN 1 ELSE 0 END
+       WHEN EXISTS (SELECT 1 FROM receipts s WHERE s.prepaid_by = r.id) THEN 0
+       ELSE 1 END AS counted,
+  -- Повтор чека оплаты: в лентах не показываем вовсе — эти товары там уже есть
+  CASE WHEN r.prepay_kind = 'dup' THEN 1 ELSE 0 END AS dup,
   l.category_slug,
   l.source AS category_source,
   l.confidence AS category_confidence,

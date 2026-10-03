@@ -33,6 +33,7 @@ import {
   setBankOpNote, mergeSettledTwins,
 } from './banks.mjs';
 import { bankTotals, matchBank, setOpCategory, setOpKind } from './bankmatch.mjs';
+import { linkPrepaid } from './prepaid.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
 import { freshItems } from './fresh.mjs';
@@ -957,6 +958,8 @@ setTimeout(() => {
     if (trimmed) console.log(`банк: сокращено операций до нужных полей — ${trimmed}`);
     // Разбор идемпотентен и быстрый (доли секунды на десятки тысяч операций): прогоняем
     // все бюджеты — так улучшения разметки сразу применяются к уже загруженной истории
+    // Пары «оплата — получение» — у всех бюджетов, и без банка тоже
+    for (const { id } of db.prepare('SELECT id FROM budgets').all()) linkPrepaid(db, id);
     const budgets = db.prepare('SELECT DISTINCT budget_id FROM bank_ops').all();
     for (const { budget_id } of budgets) {
       const res = matchBank(db, budget_id);

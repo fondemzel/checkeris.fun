@@ -58,6 +58,8 @@ export function buildFilters(params, { budgetId, prefix = '', searchItems = fals
   if (!Number.isInteger(budgetId)) throw new Error('buildFilters: не указан бюджет');
   const where = [`${prefix}budget_id = :uid`];
   const args = { uid: budgetId };
+  // Повтор чека оплаты (чек получения тех же товаров) в списках товаров не показываем
+  if (searchItems) where.push(`${prefix}dup = 0`);
 
   const from = params.get('from');
   const to = params.get('to');
@@ -155,7 +157,9 @@ export function buildFilters(params, { budgetId, prefix = '', searchItems = fals
  * Предоплаченная покупка выдаёт два чека — платёж и отгрузку, — и деньги ушли только
  * по первому; второй повторил бы сумму. То же выражение зашито в v_items как counted.
  */
-const COUNTED = '(r.operation_type <> 2 AND r.prepaid_sum = 0)';
+// Считается ли чек в расходах — так же, как позиции в v_items (prepaid.mjs)
+const COUNTED = `(r.operation_type <> 2 AND CASE WHEN r.prepaid_sum > 0 THEN r.prepay_kind = 'paid'
+  ELSE NOT EXISTS (SELECT 1 FROM receipts s WHERE s.prepaid_by = r.id) END)`;
 
 export function listReceipts(db, budgetId, params) {
   const { sql: whereSql, args } = buildFilters(params, { budgetId, prefix: 'r.' });

@@ -1,5 +1,6 @@
 import { bankCategories } from './bankformat.mjs';
 import { applyIncomeRules, setIncomeCategory, incomeKey } from './incomecats.mjs';
+import { linkPrepaid } from './prepaid.mjs';
 
 // Разбор операций банка: что из них трата, что доход, а что вообще не движение денег.
 //
@@ -231,6 +232,7 @@ function classifyRest(db, budgetId) {
 export function matchBank(db, budgetId) {
   db.exec('BEGIN');
   try {
+    linkPrepaid(db, budgetId); // чеки оплаты и получения: что считать, что скрыть
     applyKindMarks(db, budgetId); // выбор человека — первым: дальше разметка его не трогает
     const transfers = markTransfers(db, budgetId);
     const self = markSelfTransfers(db, budgetId);
