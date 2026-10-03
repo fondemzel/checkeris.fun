@@ -383,7 +383,10 @@ async function handleApi(req, res, url) {
     if (pathname === '/api/bank' && req.method === 'GET') {
       const p = url.searchParams;
       const period = p.get('from') && p.get('to') ? bankTotals(db, user.budget_id, p.get('from'), p.get('to')) : null;
-      return sendJson(res, 200, { links: listLinks(db, user.id), totals: period });
+      // budget_ops — операции банка в бюджете от любого участника: в общем бюджете банк
+      // подключает один, а доходы и траты из банка видят все
+      const budgetOps = db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE budget_id = ?').get(user.budget_id).c;
+      return sendJson(res, 200, { links: listLinks(db, user.id), totals: period, budget_ops: budgetOps });
     }
     if (pathname === '/api/bank' && req.method === 'DELETE') {
       return sendJson(res, 200, unlink(db, user.id, String(url.searchParams.get('bank') ?? 'tbank')));

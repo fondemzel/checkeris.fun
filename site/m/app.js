@@ -500,7 +500,8 @@ const expenseSwitch = () => `
     ${bankLinked ? `<button class="segment${state.screen === 'bank' ? ' on' : ''}" type="button" data-segment="bank">Банк</button>` : ''}
   </div>`;
 
-// Есть ли подключённый банк: без него третья вкладка не нужна
+// Есть ли в бюджете операции банка (подключал кто угодно из участников): без них третья
+// вкладка «Расхода» и вкладка «Доход» не нужны
 let bankLinked = false;
 
 let failedCount = 0; // сканы с ошибкой: значок на вкладке «Расход» и на «Чеках»
@@ -4357,7 +4358,8 @@ async function start() {
   api('/api/bank')
     .then((d) => {
       const had = bankLinked;
-      bankLinked = (d.links ?? []).some((l) => l.ops > 0);
+      // Банк в бюджете — у себя или у другого участника: операции из него видны всем
+      bankLinked = (d.links ?? []).some((l) => l.ops > 0) || d.budget_ops > 0;
       if (bankLinked !== had) render();
     })
     .catch(() => {});
