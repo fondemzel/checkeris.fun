@@ -2203,7 +2203,10 @@ const histStatus = (bank) => {
 };
 
 // Умеет ли приложение мастер для этого банка
-const canWizard = (id) => Boolean(window.Checker?.[id === 'sber' ? 'sberHistoryStart' : 'historyStart']);
+// Мастер загрузки истории — только у банков, которые его умеют. Озону он не нужен: первая же
+// загрузка забирает все его чеки
+const canWizard = (id) =>
+  ['tbank', 'sber'].includes(id) && Boolean(window.Checker?.[id === 'sber' ? 'sberHistoryStart' : 'historyStart']);
 
 /** Мастер для банка: с сервера — шаг, из приложения — идёт ли загрузка. */
 /** Банк не подключён, а от прошлого подключения осталась загрузка: её состояние устарело. */
