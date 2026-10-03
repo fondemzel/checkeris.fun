@@ -79,6 +79,7 @@ public class MainActivity extends android.app.Activity {
 
         // Запросы к банку из кода должны выглядеть так же, как из окна: иначе защита отбивает
         SberBank.useAgent(WebSettings.getDefaultUserAgent(this));
+        OzonApi.useAgent(WebSettings.getDefaultUserAgent(this));
         current = this;
         web.addJavascriptInterface(new Bridge(), "Checker");
         web.loadUrl(startUrl(getIntent()));
@@ -97,11 +98,13 @@ public class MainActivity extends android.app.Activity {
                 MainActivity ctx = MainActivity.this;
                 boolean tbank = BankSync.connected(ctx);
                 boolean sber = SberSync.connected(ctx);
+                boolean ozon = OzonSync.connected(ctx);
                 // По банку на строку: у каждого своё состояние. bank/bankState оставлены для
                 // прежней страницы — там первый подключённый
                 JSONObject banks = new JSONObject()
                         .put("tbank", tbank ? (BankSync.expired(ctx) ? "expired" : "active") : "off")
-                        .put("sber", sber ? (SberSync.expired(ctx) ? "expired" : "active") : "off");
+                        .put("sber", sber ? (SberSync.expired(ctx) ? "expired" : "active") : "off")
+                        .put("ozon", ozon ? (OzonSync.expired(ctx) ? "expired" : "active") : "off");
                 String primary = tbank ? "tbank" : sber ? "sber" : null;
                 return new JSONObject()
                         .put("app", "android")
@@ -141,6 +144,34 @@ public class MainActivity extends android.app.Activity {
                 runOnUiThread(() -> web.evaluateJavascript(
                         "window.dispatchEvent(new CustomEvent('checker-bank',{detail:" + payload + "}))", null));
             }).start();
+        }
+
+        /** Окно входа в Озон: чеки заказов забираются той же сессией, как выписка банка. */
+        @JavascriptInterface
+        public void ozonLogin() {
+            startActivity(login("ozon"));
+        }
+
+        /** Новые чеки Озона — в Чекер. Итог — тем же событием «checker-bank», что у банков. */
+        @JavascriptInterface
+        public void ozonSync(String checkerToken) {
+            new Thread(() -> {
+                BankSync.Result result = OzonSync.run(MainActivity.this, checkerToken);
+                String json;
+                try {
+                    json = result.json().put("bank", "ozon").toString();
+                } catch (Exception e) {
+                    json = "{\"ok\":false,\"error\":\"сбой\"}";
+                }
+                final String payload = json;
+                runOnUiThread(() -> web.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('checker-bank',{detail:" + payload + "}))", null));
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void ozonForget() {
+            OzonSync.forget(MainActivity.this);
         }
 
         @JavascriptInterface

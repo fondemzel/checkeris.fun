@@ -555,6 +555,17 @@ CREATE TABLE IF NOT EXISTS bank_rules (
   PRIMARY KEY (budget_id, key)
 );
 
+-- Чеки Озона, уже принятые от приложения (ozon.mjs): по ним приложение не скачивает их
+-- повторно. Сам чек — в receipts, как любой другой.
+CREATE TABLE IF NOT EXISTS ozon_cheques (
+  link_id      INTEGER NOT NULL REFERENCES bank_links (id) ON DELETE CASCADE,
+  cheque_id    TEXT NOT NULL,          -- id чека в Озоне (из ссылки downloadCheque)
+  receipt_id   INTEGER REFERENCES receipts (id) ON DELETE SET NULL,
+  purchased_at TEXT,
+  created_at   TEXT NOT NULL,
+  PRIMARY KEY (link_id, cheque_id)
+);
+
 -- Справочник доходов бюджета: группы и категории в них (incomecats.mjs). Устроен как
 -- справочник расходов, но в своих таблицах. Код категории начинается с «in.» и лежит у
 -- поступления в bank_ops.category_slug, как категория у траты без чека.

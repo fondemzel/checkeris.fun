@@ -42,9 +42,11 @@ public class BankLoginActivity extends Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
-        if ("sber".equals(getIntent().getStringExtra("bank"))) bank = "sber";
+        String asked = getIntent().getStringExtra("bank");
+        if ("sber".equals(asked) || "ozon".equals(asked)) bank = asked;
         boolean sber = bank.equals("sber");
-        setTitle(sber ? "Вход в Сбербанк Онлайн" : "Вход в Т-Банк");
+        boolean ozon = bank.equals("ozon");
+        setTitle(sber ? "Вход в Сбербанк Онлайн" : ozon ? "Вход в Озон" : "Вход в Т-Банк");
         web = new WebView(this);
         if (sber) {
             // Полоска состояния под окном банка: без неё неудачная проверка выглядит
@@ -117,7 +119,7 @@ public class BankLoginActivity extends Activity {
                 else handler.cancel();
             }
         });
-        web.loadUrl(sber ? SberBank.LOGIN_URL : TBank.LOGIN_URL);
+        web.loadUrl(sber ? SberBank.LOGIN_URL : ozon ? OzonApi.LOGIN_URL : TBank.LOGIN_URL);
 
         // Сбербанк Онлайн — одностраничное приложение: после входа целая страница не
         // перезагружается, и onPageFinished больше не срабатывает. Поэтому опрашиваем сами
@@ -144,6 +146,10 @@ public class BankLoginActivity extends Activity {
         if (done) return;
         if (bank.equals("sber")) {
             checkSber();
+            return;
+        }
+        if (bank.equals("ozon")) {
+            checkOzon();
             return;
         }
         String cookies = CookieManager.getInstance().getCookie("https://" + TBank.HOST);
@@ -243,6 +249,27 @@ public class BankLoginActivity extends Activity {
         }).start();
     }
 
+    /**
+     * Озон — как Сбер: страница одностраничная, вход узнаём опросом. Вошёл — значит, Озон
+     * сам пишет в ответе своей страницы «isLoggedIn». Сессия живёт в куках окна; в хранилище
+     * кладём только признак подключения.
+     */
+    private boolean checkingOzon;
+
+    private void checkOzon() {
+        String cookies = OzonApi.cookies();
+        if (cookies == null || !cookies.contains("__Secure-access-token") || checkingOzon) return;
+        checkingOzon = true;
+        new Thread(() -> {
+            int state = OzonApi.check();
+            Trace.log("ozon окно: вход → " + state);
+            handler.post(() -> {
+                checkingOzon = false;
+                if (state == OzonApi.ALIVE) connected(OzonSync.SESSION, "1", "Озон подключён");
+            });
+        }).start();
+    }
+
     private void connected(String key, String session, String toast) {
         if (done) return;
         done = true;
@@ -252,7 +279,7 @@ public class BankLoginActivity extends Activity {
         secrets.put(key, session);
         // Свой признак у каждого банка: общий стирал чужой отказ, и Сбер после входа
         // так и оставался «просит войти заново»
-        secrets.put(sber ? SberSync.EXPIRED : BankSync.EXPIRED, null);
+        secrets.put(sber ? SberSync.EXPIRED : bank.equals("ozon") ? OzonSync.EXPIRED : BankSync.EXPIRED, null);
         // Первые секунды после входа Сбер выписку ещё не отдаёт — это не повод хоронить сессию
         if (sber) secrets.putLong(SberSync.SINCE, System.currentTimeMillis());
         Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();

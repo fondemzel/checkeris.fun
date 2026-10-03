@@ -34,6 +34,7 @@ import {
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
+import { knownCheques, importCheque, finishSync } from './ozon.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import {
   getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat,
@@ -378,6 +379,22 @@ async function handleApi(req, res, url) {
   // ── банк на телефоне ──
   // Вход в интернет-банк человек делает сам, в приложении на своём устройстве; сюда
   // приезжают уже готовые операции. Сессии банка на сервере нет.
+  // Озон: чеки из личного кабинета, скачанные приложением (ozon.mjs)
+  if (pathname === '/api/ozon/known' && req.method === 'GET') {
+    return sendJson(res, 200, { ids: knownCheques(db, user.id) });
+  }
+  if (pathname === '/api/ozon/receipts' && req.method === 'POST') {
+    let body;
+    try {
+      body = await readJson(req, 4 * 1024 * 1024);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = await importCheque(db, user, body);
+    return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
+  }
+  if (pathname === '/api/ozon/done' && req.method === 'POST') return sendJson(res, 200, finishSync(db, user.id));
+
   // Комментарий и вид операции обрабатываются вместе с товарами — ниже
   if ((pathname === '/api/bank' || pathname.startsWith('/api/bank/')) && !/\/(note|kind)$/.test(pathname)) {
     if (pathname === '/api/bank' && req.method === 'GET') {

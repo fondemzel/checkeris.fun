@@ -8,6 +8,7 @@
 export const en = {
   common: {
     ops: ['operation', 'operations', 'operations'],
+    receipts: ['receipt', 'receipts', 'receipts'],
     accounts: ['account', 'accounts', 'accounts'],
     purchases: ['purchase', 'purchases', 'purchases'],
     years: ['year', 'years', 'years'],
@@ -140,6 +141,7 @@ export const en = {
       neverSynced: 'not updated yet',
       today: '{n} {word} today',
       todayNone: 'no operations today',
+      todayNoneShop: 'no receipts today',
       refresh: 'Update operations',
       connect: 'Connect',
     },
@@ -211,6 +213,8 @@ export const en = {
     sync: {
       added: 'New operations: {n}',
       none: 'No new operations',
+      addedShop: 'New receipts: {n}',
+      noneShop: 'No new receipts',
       failed: 'Bank: {why}',
       failedUnknown: 'didn’t work',
     },

@@ -4,6 +4,11 @@
   "операции",
   "операций"
  ],
+ "common.receipts": [
+  "чек",
+  "чека",
+  "чеков"
+ ],
  "common.accounts": [
   "счёт",
   "счёта",
@@ -155,6 +160,7 @@
  "settings.banks.neverSynced": "ещё не обновляли",
  "settings.banks.today": "сегодня {n} {word}",
  "settings.banks.todayNone": "сегодня операций нет",
+ "settings.banks.todayNoneShop": "сегодня чеков нет",
  "settings.banks.refresh": "Обновить операции",
  "settings.banks.connect": "Подключить",
  "settings.data.label": "Данные",
@@ -210,6 +216,8 @@
  "bankCard.manage.wiped": "Операции удалены: {n}",
  "bankCard.sync.added": "Новых операций: {n}",
  "bankCard.sync.none": "Новых операций нет",
+ "bankCard.sync.addedShop": "Новых чеков: {n}",
+ "bankCard.sync.noneShop": "Новых чеков нет",
  "bankCard.sync.failed": "Банк: {why}",
  "bankCard.sync.failedUnknown": "не вышло",
  "wizard.intro.title": "Загрузим всю историю из {bank}",

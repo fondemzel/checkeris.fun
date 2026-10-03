@@ -228,7 +228,7 @@ const MAX_ASK = 25;
  * Ошибка модели не проваливает задание: чек уже сохранён и размечен лестницей,
  * а без категории позиция просто попросит выбрать её руками.
  */
-async function askModel(db, itemIds, userId) {
+export async function askModel(db, itemIds, userId) {
   if (!itemIds.length) return;
 
   const placeholders = itemIds.map(() => '?').join(',');

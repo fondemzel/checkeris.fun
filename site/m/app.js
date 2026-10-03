@@ -3712,6 +3712,8 @@ const BANKS = [
   { id: 'vtb', name: 'ВТБ', from: 'ВТБ', logo: '/shared/brand/vtb.svg' },
   { id: 'alfa', name: 'Альфа-Банк', from: 'Альфа-Банка', logo: '/shared/brand/alfa.svg' },
   { id: 'sber', name: 'Сбербанк', from: 'Сбербанка', logo: '/shared/brand/sber.svg', ready: true },
+  // Не банк, а магазин: вместо выписки — чеки заказов с товарами. Подключается так же
+  { id: 'ozon', name: 'Озон', from: 'Озона', logo: '/shared/brand/ozon.svg', ready: true, shop: true },
 ];
 
 // Состояние банка на этом устройстве: active | expired | off. У каждого банка своё —
@@ -3722,6 +3724,9 @@ const bankState = (id) => {
 };
 
 const bankById = (id) => BANKS.find((b) => b.id === id);
+
+/** В чём меряется источник: у банка — операции, у магазина — чеки. */
+const unitOf = (b) => (b?.shop ? T.common.receipts : T.common.ops);
 
 /** Значок банка: официальный логотип, а если файла нет — буква названия. */
 const bankLogo = (b, connected) => `
@@ -3749,7 +3754,7 @@ function bankSection(bank) {
       // Сессия банка истекла — не беда: держать её открытой постоянно незачем. Строка та же,
       // что у подключённого, только значок серый; обновление само начнёт с входа
       const note = `${link?.synced_at ? ago(link.synced_at) : S.neverSynced} · ${
-        today ? f(S.today, { n: int.format(today), word: pl(today, T.common.ops) }) : S.todayNone
+        today ? f(S.today, { n: int.format(today), word: pl(today, unitOf(b)) }) : b.shop ? S.todayNoneShop : S.todayNone
       }`;
       return srow({
         icon: bankLogo(b, !expired),
@@ -3873,7 +3878,7 @@ async function screenBankCard() {
             expired
               ? T.bankCard.expired
               : connected
-                ? f(T.bankCard.connected, { ops: int.format(ops), opsWord: pl(ops, T.common.ops) })
+                ? f(T.bankCard.connected, { ops: int.format(ops), opsWord: pl(ops, unitOf(b)) })
                   + (link?.synced_at ? f(T.bankCard.connectedAt, { when: ago(link.synced_at) }) : '')
                 : b.ready ? T.bankCard.notConnected : T.bankCard.soon
           }</p>
@@ -3904,7 +3909,7 @@ async function screenBankCard() {
             + (!expired ? act('sync', b.id, T.bankCard.manage.sync, UI.refresh) : '')
             + act('login', b.id, T.bankCard.manage.relogin, UI.login)
             + act('forget', b.id, T.bankCard.manage.forget, UI.unlink)
-            + (ops ? act('wipe', b.id, T.bankCard.manage.wipe, UI.trash, true) : ''))}`;
+            + (ops && !b.shop ? act('wipe', b.id, T.bankCard.manage.wipe, UI.trash, true) : ''))}`;
 }
 
 /**
@@ -4225,6 +4230,7 @@ let syncAfterLogin = null;
 // Мост к приложению для конкретного банка: у Сбера свои методы, у Т-Банка свои
 function bankBridge(id) {
   const c = window.Checker;
+  if (id === 'ozon') return { login: () => c.ozonLogin(), sync: () => c.ozonSync(token.get()), forget: () => c.ozonForget() };
   return id === 'sber'
     ? { login: () => c.sberLogin(), sync: () => c.sberSync(token.get()), forget: () => c.sberForget() }
     : { login: () => c.bankLogin(), sync: () => c.bankSync(token.get()), forget: () => c.bankForget() };
@@ -4257,8 +4263,8 @@ window.addEventListener('checker-bank', (e) => {
   toast(
     r.ok
       ? r.ops
-        ? f(T.bankCard.sync.added, { n: int.format(r.ops) })
-        : T.bankCard.sync.none
+        ? f(r.bank === 'ozon' ? T.bankCard.sync.addedShop : T.bankCard.sync.added, { n: int.format(r.ops) })
+        : r.bank === 'ozon' ? T.bankCard.sync.noneShop : T.bankCard.sync.none
       : f(T.bankCard.sync.failed, { why: r.error ?? T.bankCard.sync.failedUnknown }),
   );
   if (state.screen === 'set_banks' || state.screen === 'bank_card') render();
