@@ -2456,7 +2456,7 @@ const WIZ_SCREENS = {
         <div class="wiz-bar${p.total ? '' : ' flow'}"><span id="wiz-bar" style="width:${p.total ? Math.min(100, Math.round(((p.done ?? 0) / p.total) * 100)) : 0}%"></span></div>
         <div class="wiz-nums">
           <div><b id="wiz-ops">0</b><small class="note">${isShop(w.bank) ? shopText(w.bank).receipts : T.wizard.load.ops}</small></div>
-          <div><b id="wiz-mid">—</b><small class="note" id="wiz-mid-label">${isShop(w.bank) ? shopText(w.bank).ordersDone : T.wizard.load.parts}</small></div>
+          <div><b id="wiz-mid">—</b><small class="note" id="wiz-mid-label">${isShop(w.bank) ? '' : T.wizard.load.parts}</small></div>
           <div><b id="wiz-eta">—</b><small class="note">${T.wizard.load.left}</small></div>
         </div>
         <p class="note" id="wiz-now"></p>
@@ -2638,7 +2638,8 @@ function wizTick() {
   const mid = $('wiz-mid');
   if (mid) {
     mid.textContent = !total ? '—' : p.byOps ? int.format(total) : f(T.bankCard.accounts.count, { on: done, all: total });
-    $('wiz-mid-label').textContent = isShop(wiz.bank) ? shopText(wiz.bank).ordersDone : p.byOps ? T.wizard.load.total : T.wizard.load.parts;
+    // У магазина «12 из 340» понятно и без подписи
+    $('wiz-mid-label').textContent = isShop(wiz.bank) ? '' : p.byOps ? T.wizard.load.total : T.wizard.load.parts;
   }
 
   if (p.stage === 'count') {
