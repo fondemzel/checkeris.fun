@@ -325,12 +325,12 @@ export function listLinks(db, userId) {
     .prepare(
       `SELECT l.bank, l.status, l.login_at, l.last_ok_at, l.expired_at, l.synced_at, l.last_error,
               (SELECT COUNT(*) FROM bank_ops o WHERE o.link_id = l.id)
-                + (SELECT COUNT(*) FROM ozon_cheques c WHERE c.link_id = l.id) AS ops,
+                + (SELECT COUNT(*) FROM shop_cheques c WHERE c.link_id = l.id) AS ops,
               -- За сегодня: столько новых операций видно в строке банка. Выключенные счета не в счёт.
               -- У Озона вместо операций — его чеки
               (SELECT COUNT(*) FROM bank_ops o
                 WHERE o.link_id = l.id AND o.at >= :today AND COALESCE(o.kind, '') <> 'excluded')
-                + (SELECT COUNT(*) FROM ozon_cheques c WHERE c.link_id = l.id AND c.purchased_at >= :today) AS today,
+                + (SELECT COUNT(*) FROM shop_cheques c WHERE c.link_id = l.id AND c.purchased_at >= :today) AS today,
               (SELECT MAX(at) FROM bank_ops o WHERE o.link_id = l.id) AS last_op_at
          FROM bank_links l WHERE l.user_id = :user`,
     )

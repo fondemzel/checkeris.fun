@@ -40,6 +40,7 @@ public class MainActivity extends android.app.Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        Trace.init(this);
         // Строка состояния — в цвет шапки сайта, чтобы приложение выглядело цельным
         getWindow().setStatusBarColor(Color.parseColor("#131a26"));
         getWindow().setNavigationBarColor(Color.parseColor("#131a26"));
@@ -99,12 +100,14 @@ public class MainActivity extends android.app.Activity {
                 boolean tbank = BankSync.connected(ctx);
                 boolean sber = SberSync.connected(ctx);
                 boolean ozon = OzonSync.connected(ctx);
+                boolean wb = WbSync.connected(ctx);
                 // По банку на строку: у каждого своё состояние. bank/bankState оставлены для
                 // прежней страницы — там первый подключённый
                 JSONObject banks = new JSONObject()
                         .put("tbank", tbank ? (BankSync.expired(ctx) ? "expired" : "active") : "off")
                         .put("sber", sber ? (SberSync.expired(ctx) ? "expired" : "active") : "off")
-                        .put("ozon", ozon ? (OzonSync.expired(ctx) ? "expired" : "active") : "off");
+                        .put("ozon", ozon ? (OzonSync.expired(ctx) ? "expired" : "active") : "off")
+                        .put("wb", wb ? (WbSync.expired(ctx) ? "expired" : "active") : "off");
                 String primary = tbank ? "tbank" : sber ? "sber" : null;
                 return new JSONObject()
                         .put("app", "android")
@@ -123,10 +126,32 @@ public class MainActivity extends android.app.Activity {
             startActivity(login(null));
         }
 
-        /** Окно входа в Wildberries. Пока — разведка: окно пишет в журнал, куда ходит страница чеков. */
+        /** Окно входа в Wildberries. */
         @JavascriptInterface
         public void wbLogin() {
             startActivity(login("wb"));
+        }
+
+        /** Новые чеки WB — в Чекер. Итог — тем же событием «checker-bank», что у банков. */
+        @JavascriptInterface
+        public void wbSync(String checkerToken) {
+            new Thread(() -> {
+                BankSync.Result result = WbSync.run(MainActivity.this, checkerToken);
+                String json;
+                try {
+                    json = result.json().put("bank", "wb").toString();
+                } catch (Exception e) {
+                    json = "{\"ok\":false,\"error\":\"сбой\"}";
+                }
+                final String payload = json;
+                runOnUiThread(() -> web.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('checker-bank',{detail:" + payload + "}))", null));
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void wbForget() {
+            WbSync.forget(MainActivity.this);
         }
 
         /** Окно входа в Сбербанк Онлайн. */

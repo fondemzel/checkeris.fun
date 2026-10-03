@@ -557,11 +557,11 @@ CREATE TABLE IF NOT EXISTS bank_rules (
   PRIMARY KEY (budget_id, key)
 );
 
--- Чеки Озона, уже принятые от приложения (ozon.mjs): по ним приложение не скачивает их
--- повторно. Сам чек — в receipts, как любой другой.
-CREATE TABLE IF NOT EXISTS ozon_cheques (
+-- Чеки магазинов (Озон, WB), уже принятые от приложения (shops.mjs): по ним приложение не
+-- скачивает их повторно. Магазин — по подключению (bank_links.bank). Сам чек — в receipts.
+CREATE TABLE IF NOT EXISTS shop_cheques (
   link_id      INTEGER NOT NULL REFERENCES bank_links (id) ON DELETE CASCADE,
-  cheque_id    TEXT NOT NULL,          -- id чека в Озоне (из ссылки downloadCheque)
+  cheque_id    TEXT NOT NULL,          -- id чека в магазине: у Озона из ссылки downloadCheque, у WB receiptUid
   receipt_id   INTEGER REFERENCES receipts (id) ON DELETE SET NULL,
   purchased_at TEXT,
   created_at   TEXT NOT NULL,

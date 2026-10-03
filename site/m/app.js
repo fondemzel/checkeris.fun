@@ -3811,8 +3811,7 @@ const BANKS = [
   { id: 'sber', name: 'Сбербанк', from: 'Сбербанка', logo: '/shared/brand/sber.svg', ready: true },
   // Не банк, а магазин: вместо выписки — чеки заказов с товарами. Подключается так же
   { id: 'ozon', name: 'Озон', from: 'Озона', logo: '/shared/brand/ozon.svg', ready: true, shop: true },
-  // Подключение ещё собирается: пока окно входа только смотрит, как устроен кабинет
-  { id: 'wb', name: 'Wildberries', from: 'Wildberries', logo: '/shared/brand/wb.svg', ready: Boolean(window.Checker?.wbLogin), shop: true },
+  { id: 'wb', name: 'Wildberries', from: 'Wildberries', logo: '/shared/brand/wb.svg', ready: Boolean(window.Checker?.wbSync), shop: true },
 ];
 
 // Состояние банка на этом устройстве: active | expired | off. У каждого банка своё —
@@ -4330,7 +4329,7 @@ let syncAfterLogin = null;
 function bankBridge(id) {
   const c = window.Checker;
   if (id === 'ozon') return { login: () => c.ozonLogin(), sync: () => c.ozonSync(token.get()), forget: () => c.ozonForget() };
-  if (id === 'wb') return { login: () => c.wbLogin(), sync: () => {}, forget: () => {} };
+  if (id === 'wb') return { login: () => c.wbLogin(), sync: () => c.wbSync(token.get()), forget: () => c.wbForget() };
   return id === 'sber'
     ? { login: () => c.sberLogin(), sync: () => c.sberSync(token.get()), forget: () => c.sberForget() }
     : { login: () => c.bankLogin(), sync: () => c.bankSync(token.get()), forget: () => c.bankForget() };
@@ -4365,8 +4364,8 @@ window.addEventListener('checker-bank', (e) => {
       ? f(T.bankCard.sync.failed, { why: r.error }) // что-то загрузилось, но не всё
       : r.ok
       ? r.ops
-        ? f(r.bank === 'ozon' ? T.bankCard.sync.addedShop : T.bankCard.sync.added, { n: int.format(r.ops) })
-        : r.bank === 'ozon' ? T.bankCard.sync.noneShop : T.bankCard.sync.none
+        ? f(bankById(r.bank)?.shop ? T.bankCard.sync.addedShop : T.bankCard.sync.added, { n: int.format(r.ops) })
+        : bankById(r.bank)?.shop ? T.bankCard.sync.noneShop : T.bankCard.sync.none
       : f(T.bankCard.sync.failed, { why: r.error ?? T.bankCard.sync.failedUnknown }),
   );
   if (state.screen === 'set_banks' || state.screen === 'bank_card') render();

@@ -34,7 +34,7 @@ import {
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
-import { knownCheques, importCheque, finishSync, ozonStats } from './ozon.mjs';
+import { knownShop, knownCheques, importCheque, finishSync, shopStats } from './shops.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import {
   getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat,
@@ -379,21 +379,24 @@ async function handleApi(req, res, url) {
   // ── банк на телефоне ──
   // Вход в интернет-банк человек делает сам, в приложении на своём устройстве; сюда
   // приезжают уже готовые операции. Сессии банка на сервере нет.
-  // Озон: чеки из личного кабинета, скачанные приложением (ozon.mjs)
-  if (pathname === '/api/ozon/known' && req.method === 'GET') {
-    return sendJson(res, 200, { ids: knownCheques(db, user.id) });
-  }
-  if (pathname === '/api/ozon/receipts' && req.method === 'POST') {
-    let body;
-    try {
-      body = await readJson(req, 4 * 1024 * 1024);
-    } catch {
-      return sendJson(res, 400, { error: 'bad request body' });
+  // Магазины (Озон, WB): чеки из личного кабинета, скачанные приложением (shops.mjs)
+  const shopRoute = pathname.match(/^\/api\/(\w+)\/(known|receipts|done)$/);
+  if (shopRoute && knownShop(shopRoute[1])) {
+    const [, shop, action] = shopRoute;
+    if (action === 'known' && req.method === 'GET') return sendJson(res, 200, { ids: knownCheques(db, user.id, shop) });
+    if (action === 'receipts' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req, 4 * 1024 * 1024);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const result = await importCheque(db, user, shop, body);
+      return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
     }
-    const result = await importCheque(db, user, body);
-    return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
+    if (action === 'done' && req.method === 'POST') return sendJson(res, 200, finishSync(db, user.id, shop));
+    return sendJson(res, 405, { error: 'method not allowed' });
   }
-  if (pathname === '/api/ozon/done' && req.method === 'POST') return sendJson(res, 200, finishSync(db, user.id));
 
   // Комментарий и вид операции обрабатываются вместе с товарами — ниже
   if ((pathname === '/api/bank' || pathname.startsWith('/api/bank/')) && !/\/(note|kind)$/.test(pathname)) {
@@ -443,8 +446,8 @@ async function handleApi(req, res, url) {
       if (!knownBank(bank) && bank !== 'ozon') return sendJson(res, 400, { error: 'unknown bank' });
       try {
         if (bank === 'ozon' && pathname === '/api/bank/history/finish' && req.method === 'POST') {
-          finishSync(db, user.id);
-          return sendJson(res, 200, ozonStats(db, user.id));
+          finishSync(db, user.id, 'ozon');
+          return sendJson(res, 200, shopStats(db, user.id, 'ozon'));
         }
         if (pathname === '/api/bank/history' && req.method === 'GET') return sendJson(res, 200, getHistory(db, user.id, bank));
         if (pathname === '/api/bank/history' && req.method === 'PUT') {

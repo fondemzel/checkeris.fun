@@ -23,7 +23,7 @@ final class OzonSync {
 
     static final String SESSION = "ozon.session"; // признак подключения; сама сессия — в куках окна
     static final String EXPIRED = "ozon.expired";
-    private static final String CHECKER = "https://checkeris.fun/api/ozon";
+    private static final String CHECKER = "https://checkeris.fun/api/"; // + магазин: ozon, wb
 
     static boolean connected(Context context) {
         return new Secrets(context).get(SESSION) != null;
@@ -72,7 +72,7 @@ final class OzonSync {
                     if (failed >= 3 && added == 0 && failed == countTried(all, known, id)) break;
                 }
             }
-            post(checkerToken, "/done", new JSONObject());
+            post("ozon", checkerToken, "/done", new JSONObject());
             Trace.log("ozon: всего " + all.size() + ", новых " + added + ", не принято " + failed);
             if (failed > 0 && added == 0) return new BankSync.Result(false, 0, all.size(), "Озон не отдал чеки (" + failed + ")");
             return new BankSync.Result(true, added, all.size(), failed > 0 ? "не приняты чеки: " + failed : null);
@@ -95,7 +95,12 @@ final class OzonSync {
     }
 
     static Set<String> known(String token) throws Exception {
-        HttpURLConnection http = (HttpURLConnection) new URL(CHECKER + "/known").openConnection();
+        return known("ozon", token);
+    }
+
+    /** Чеки магазина, которые Чекер уже знает. Общее для Озона и WB. */
+    static Set<String> known(String shop, String token) throws Exception {
+        HttpURLConnection http = (HttpURLConnection) new URL(CHECKER + shop + "/known").openConnection();
         http.setRequestProperty("Authorization", "Bearer " + token);
         http.setConnectTimeout(15000);
         http.setReadTimeout(30000);
@@ -110,13 +115,13 @@ final class OzonSync {
     }
 
     static JSONObject send(String token, String id, byte[] pdf) throws Exception {
-        return post(token, "/receipts", new JSONObject()
+        return post("ozon", token, "/receipts", new JSONObject()
                 .put("id", id)
                 .put("pdf", android.util.Base64.encodeToString(pdf, android.util.Base64.NO_WRAP)));
     }
 
-    private static JSONObject post(String token, String path, JSONObject body) throws Exception {
-        HttpURLConnection http = (HttpURLConnection) new URL(CHECKER + path).openConnection();
+    static JSONObject post(String shop, String token, String path, JSONObject body) throws Exception {
+        HttpURLConnection http = (HttpURLConnection) new URL(CHECKER + shop + path).openConnection();
         http.setRequestMethod("POST");
         http.setRequestProperty("Content-Type", "application/json");
         http.setRequestProperty("Authorization", "Bearer " + token);

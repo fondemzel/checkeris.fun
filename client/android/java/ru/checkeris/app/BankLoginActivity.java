@@ -100,7 +100,6 @@ public class BankLoginActivity extends Activity {
                 if (bank.equals("sber") && host != null && host.endsWith("sberbank.ru") && seenHosts.add(host)) {
                     Trace.log("sber узел страницы: " + host + request.getUrl().getPath());
                 }
-                if (bank.equals("wb")) WbProbe.request(request);
                 if (bank.equals("sber") && SberBank.noticeRequest(request.getUrl())) {
                     Trace.log("sber страница ходит на " + request.getUrl().getHost() + request.getUrl().getPath());
                 }
@@ -121,7 +120,7 @@ public class BankLoginActivity extends Activity {
                 else handler.cancel();
             }
         });
-        web.loadUrl(sber ? SberBank.LOGIN_URL : ozon ? OzonApi.LOGIN_URL : wb ? WbProbe.LOGIN_URL : TBank.LOGIN_URL);
+        web.loadUrl(sber ? SberBank.LOGIN_URL : ozon ? OzonApi.LOGIN_URL : wb ? WbApi.LOGIN_URL : TBank.LOGIN_URL);
 
         // Сбербанк Онлайн — одностраничное приложение: после входа целая страница не
         // перезагружается, и onPageFinished больше не срабатывает. Поэтому опрашиваем сами
@@ -155,7 +154,7 @@ public class BankLoginActivity extends Activity {
             return;
         }
         if (bank.equals("wb")) {
-            if (web != null) WbProbe.storage(web);
+            checkWb();
             return;
         }
         String cookies = CookieManager.getInstance().getCookie("https://" + TBank.HOST);
@@ -276,6 +275,33 @@ public class BankLoginActivity extends Activity {
         }).start();
     }
 
+    /**
+     * WB: сессия — токен в localStorage страницы, появляется после входа. Нашёлся — проверяем
+     * его запросом списка чеков; ответил — вход состоялся, токен в хранилище.
+     */
+    private String lastWbToken;
+
+    private void checkWb() {
+        if (web == null || checking) return;
+        web.evaluateJavascript("localStorage.getItem('" + WbApi.TOKEN_KEY + "')", raw -> {
+            if (done || checking || raw == null || raw.equals("null") || raw.length() < 100) return;
+            String token = raw.replace("\"", "");
+            if (token.equals(lastWbToken)) return;
+            lastWbToken = token;
+            checking = true;
+            WbApi.useAgent(web.getSettings().getUserAgentString());
+            new Thread(() -> {
+                int state = WbApi.check(token);
+                Trace.log("wb окно: токен " + Trace.mark(token) + " → " + state);
+                handler.post(() -> {
+                    checking = false;
+                    if (state == WbApi.ALIVE) connected(WbSync.SESSION, token, "Wildberries подключён");
+                    else lastWbToken = null; // проверим ещё раз
+                });
+            }).start();
+        });
+    }
+
     private void connected(String key, String session, String toast) {
         if (done) return;
         done = true;
@@ -285,7 +311,8 @@ public class BankLoginActivity extends Activity {
         secrets.put(key, session);
         // Свой признак у каждого банка: общий стирал чужой отказ, и Сбер после входа
         // так и оставался «просит войти заново»
-        secrets.put(sber ? SberSync.EXPIRED : bank.equals("ozon") ? OzonSync.EXPIRED : BankSync.EXPIRED, null);
+        secrets.put(sber ? SberSync.EXPIRED : bank.equals("ozon") ? OzonSync.EXPIRED
+                : bank.equals("wb") ? WbSync.EXPIRED : BankSync.EXPIRED, null);
         // Первые секунды после входа Сбер выписку ещё не отдаёт — это не повод хоронить сессию
         if (sber) secrets.putLong(SberSync.SINCE, System.currentTimeMillis());
         Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
