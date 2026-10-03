@@ -115,13 +115,26 @@ function markTransfers(db, budgetId) {
 }
 
 /**
+ * Маркетплейсы списывают деньги при заказе, а чек выдают при получении — через день-пять.
+ * Поэтому оплату маркетплейсу склеиваем с его чеком (по ИНН площадки) в окне до недели
+ * после оплаты, а не в получасе, как у магазина. Это общие реквизиты площадок, не чьи-то правила.
+ */
+const MARKETPLACES = [
+  { name: /wildberries|(^|\s)wb\*/i, inns: ['7721546864', '9714053621'] },
+  { name: /ozon|озон/i, inns: ['7704217370'] },
+  { name: /yandex\s*market|яндекс\s*маркет/i, inns: ['9704254424'] },
+];
+const MARKET_AFTER = 7 * 24 * 60; // минут после оплаты, в которые ещё может прийти чек
+
+/**
  * Операция ↔ чек: та же сумма до копейки и близкое время. Из нескольких кандидатов берём
- * ближайший по времени, и каждый чек достаётся только одной операции.
+ * ближайший по времени, и каждый чек достаётся только одной операции. Оплата маркетплейсу —
+ * с его чеком в пределах недели после оплаты (MARKETPLACES).
  */
 function matchReceipts(db, budgetId) {
   const ops = db
     .prepare(
-      `SELECT id, at, amount FROM bank_ops
+      `SELECT id, at, amount, merchant, description FROM bank_ops
         WHERE budget_id = ? AND direction = 'debit' AND receipt_id IS NULL
           AND (kind IS NULL OR kind <> 'transfer') AND kind_source IS NULL
         ORDER BY at`,
@@ -133,13 +146,13 @@ function matchReceipts(db, budgetId) {
   // на каждую операцию при десятках тысяч операций держал сервер минутами
   const receipts = new Map();
   const free = db.prepare(
-    `SELECT r.id, r.purchased_at, r.total_sum FROM receipts r
+    `SELECT r.id, r.purchased_at, r.total_sum, r.seller_inn FROM receipts r
       WHERE r.budget_id = ? AND r.fiscal_drive <> 'manual'
         AND NOT EXISTS (SELECT 1 FROM bank_ops o WHERE o.budget_id = r.budget_id AND o.receipt_id = r.id)`,
   );
   for (const r of free.all(budgetId)) {
     if (!receipts.has(r.total_sum)) receipts.set(r.total_sum, []);
-    receipts.get(r.total_sum).push({ id: r.id, t: minutes(r.purchased_at) });
+    receipts.get(r.total_sum).push({ id: r.id, t: minutes(r.purchased_at), inn: r.seller_inn });
   }
 
   const save = db.prepare("UPDATE bank_ops SET receipt_id = ?, kind = 'covered' WHERE id = ?");
@@ -147,10 +160,13 @@ function matchReceipts(db, budgetId) {
   let matched = 0;
   for (const op of ops) {
     const t = minutes(op.at);
+    const market = MARKETPLACES.find((m) => m.name.test(`${op.merchant ?? ''} ${op.description ?? ''}`));
     let best = null;
     for (const r of receipts.get(op.amount) ?? []) {
+      if (taken.has(r.id)) continue;
       const gap = Math.abs(r.t - t);
-      if (gap > MINUTES || taken.has(r.id)) continue;
+      const later = market && market.inns.includes(r.inn) && r.t >= t - MINUTES && r.t - t <= MARKET_AFTER;
+      if (gap > MINUTES && !later) continue;
       if (!best || gap < best.gap) best = { id: r.id, gap };
     }
     if (!best) continue;

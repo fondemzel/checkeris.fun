@@ -134,7 +134,7 @@ for (const { id } of db.prepare('SELECT id FROM users WHERE budget_id IS NULL').
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
   const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
-  const gzipOk = /gzip/.test(res.req?.headers['accept-encoding'] ?? '');
+  const gzipOk = /gzip/.test(res.req?.headers['accept-encoding'] ?? '');
   if (!gzipOk || body.length < 2048) {
     res.writeHead(status, { ...headers, 'content-length': Buffer.byteLength(body) });
     return res.end(body);
