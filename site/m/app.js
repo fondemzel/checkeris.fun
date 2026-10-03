@@ -2291,6 +2291,7 @@ const WIZ_PART_SEC = 13; // одна часть (счёт × год): пауза
 
 let wiz = null; // { bank, step, accounts, selected, result, progress, error, awaitLogin }
 let wizTimer = null;
+let wizCompact = false; // ход загрузки сжат: список под ним пролистан (см. обработчик прокрутки)
 
 // Мастер один для всех банков, но грузит каждый банк по-своему: Т-Банк — по счёт×год,
 // Сбер — страницами единой истории. Различие спрятано в родных методах приложения
@@ -2450,7 +2451,7 @@ const WIZ_SCREENS = {
     const failed = p.stage === 'error';
     const paused = p.stage === 'paused' || p.stage === 'stopped';
     return `
-      <div class="card wiz-load">
+      <div class="stuck-head wiz-stuck${wizCompact ? ' compact' : ''}"><div class="card wiz-load">
         <h2 class="wiz-title">${failed ? T.wizard.load.titleFailed : paused ? T.wizard.load.titleStopped : T.wizard.load.title}</h2>
         <div class="wiz-bar${p.total ? '' : ' flow'}"><span id="wiz-bar" style="width:${p.total ? Math.min(100, Math.round(((p.done ?? 0) / p.total) * 100)) : 0}%"></span></div>
         <div class="wiz-nums">
@@ -2461,7 +2462,7 @@ const WIZ_SCREENS = {
         <p class="note" id="wiz-now"></p>
         ${failed ? `<p class="note error">${f(T.wizard.load.savedFailed, { why: esc(w.error ?? '') })}</p>` : ''}
         ${paused ? `<p class="note">${T.wizard.load.savedStopped}</p>` : ''}
-      </div>
+      </div></div>
       <p class="note wiz-hint">${T.wizard.load.keepOpen}</p>
       ${w.started ? `
       <div class="card wiz-fresh">
@@ -3040,6 +3041,18 @@ function watchFeedMore() {
   }, { rootMargin: '1200px 0px' });
   feedObserver.observe(button);
 }
+
+// Мастер: ход загрузки прилипает к шапке. Листают список загруженного — карточка сжимается до
+// полоски и цифр в строку; вернулись наверх — разворачивается. Пороги разные, чтобы на границе
+// карточка не дёргалась: её высота меняется, а с ней и прокрутка
+addEventListener('scroll', () => {
+  const card = state.screen === 'bank_wizard' && document.querySelector('.wiz-stuck');
+  if (!card) return;
+  const next = wizCompact ? window.scrollY > 40 : window.scrollY > 160;
+  if (next === wizCompact) return;
+  wizCompact = next;
+  card.classList.toggle('compact', next);
+}, { passive: true });
 
 // ── обновление свайпом вниз ──────────────────────────────
 // Потянули страницу вниз от самого верха — перечитываем экран с сервера, как в любом

@@ -1572,6 +1572,17 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .wiz-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; text-align: center; }
 .wiz-nums b { display: block; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .wiz-load .note + .note { margin-top: 8px; }
+/* Ход загрузки прилип к шапке; при прокрутке списка — сжат: полоска и цифры одной строкой */
+.wiz-stuck { margin-bottom: 0; }
+.wiz-stuck .wiz-load { margin-bottom: 0; transition: padding 0.15s; }
+.wiz-stuck.compact .wiz-load { padding: 10px 14px; }
+.wiz-stuck.compact .wiz-title,
+.wiz-stuck.compact .wiz-load > .note { display: none; }
+.wiz-stuck.compact .wiz-bar { height: 6px; margin: 0 0 8px; }
+.wiz-stuck.compact .wiz-nums { margin: 0; text-align: left; }
+.wiz-stuck.compact .wiz-nums > div { display: flex; align-items: baseline; gap: 4px; }
+.wiz-stuck.compact .wiz-nums b { font-size: 15px; }
+.wiz-stuck.compact .wiz-nums small { font-size: 11px; }
 .wiz-hint { margin: 0 4px 12px; text-align: center; }
 
 .wiz-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
