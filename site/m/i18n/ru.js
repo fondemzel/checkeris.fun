@@ -33,6 +33,7 @@ export const ru = {
   // цифры карты: «Т-Банк (•••• 6454)»
   sources: {
     receipt: 'чек',
+    market: 'маркетплейс',
     manual: 'вручную',
     bank: 'банк',
   },

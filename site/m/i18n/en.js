@@ -20,6 +20,7 @@ export const en = {
   },
   sources: {
     receipt: 'receipt',
+    market: 'marketplace',
     manual: 'manual entry',
     bank: 'bank',
   },

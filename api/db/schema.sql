@@ -352,6 +352,8 @@ SELECT
   r.prepaid_sum,
   r.total_sum AS receipt_total,
   CASE WHEN r.fiscal_drive = 'manual' THEN 1 ELSE 0 END AS manual, -- вбито руками, чека нет
+  -- Чек маркетплейса — по ИНН площадки: Озон, Wildberries (обе компании), Яндекс Маркет
+  CASE WHEN r.seller_inn IN ('7704217370', '7721546864', '9714053621', '9704254424') THEN 1 ELSE 0 END AS market,
   -- Деньги считаем один раз: возврат — не трата, а чек, закрытый зачётом аванса,
   -- повторяет более ранний чек предоплаты, по которому деньги уже ушли.
   CASE WHEN r.operation_type = 2 OR r.prepaid_sum > 0 THEN 0 ELSE 1 END AS counted,

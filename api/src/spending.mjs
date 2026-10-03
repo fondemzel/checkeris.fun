@@ -7,7 +7,10 @@
 // между своими счетами и отмеченное «не учитывать» — не траты, их здесь нет.
 import { listItemGroups, parsePaging, NONE } from './queries.mjs';
 
-const SOURCES = ['receipt', 'manual', 'bank'];
+const SOURCES = ['receipt', 'market', 'manual', 'bank'];
+
+/** Откуда позиция: вбита руками, чек маркетплейса или обычный чек. */
+const itemSource = (r) => (r.manual ? 'manual' : r.market ? 'market' : 'receipt');
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/ё/g, 'е');
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v ?? '');
@@ -76,7 +79,7 @@ const SORT_KEYS = {
 };
 
 /**
- * Лента трат: src — источник (receipt | manual | bank, пусто — все), остальные фильтры
+ * Лента трат: src — источник (receipt | market | manual | bank, пусто — все), остальные фильтры
  * как у /api/items. Порция нарезается после общей сортировки.
  */
 export function listSpending(db, budgetId, params) {
@@ -94,7 +97,7 @@ export function listSpending(db, budgetId, params) {
     p.set('per', '20000');
     const groups = listItemGroups(db, budgetId, p);
     items = groups.rows
-      .map((r) => ({ ...r, source: r.manual ? 'manual' : 'receipt' }))
+      .map((r) => ({ ...r, source: itemSource(r) }))
       .filter((r) => !src || r.source === src);
     if (!src) excluded = { sum: groups.totals.excluded_sum, count: groups.totals.excluded_count };
   }
@@ -150,7 +153,7 @@ export function spendingPurchases(db, budgetId, params, listItems) {
       p.set('page', String(page));
       const chunk = listItems(db, budgetId, p).rows;
       for (const r of chunk) {
-        const source = r.manual ? 'manual' : 'receipt';
+        const source = itemSource(r);
         if (!src || source === src) rows.push({ ...r, source });
       }
       if (chunk.length < 500 || rows.length >= 50000) break;

@@ -844,7 +844,7 @@ async function handleApi(req, res, url) {
       );
     }
     // «Расходы» кабинета: каждая покупка строкой — позиции чеков, ручные записи и траты банка
-    const SOURCE_NAMES = { receipt: 'чек', manual: 'вручную', bank: 'банк' };
+    const SOURCE_NAMES = { receipt: 'чек', market: 'маркетплейс', manual: 'вручную', bank: 'банк' };
     const rows = spendingPurchases(db, user.budget_id, params, listItems);
     return sendCsv(
       res,

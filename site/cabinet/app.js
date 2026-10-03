@@ -100,7 +100,7 @@ const DEFAULTS = {
   group: '', // группа категорий — первый ряд чипсов
   category: '', // подкатегория — второй ряд, зависит от выбранной группы
   uncategorized: '', // '1' — только неразмеченные позиции
-  src: '', // источник трат в «Расходах»: receipt | manual | bank, пусто — все
+  src: '', // источник трат в «Расходах»: receipt | market | manual | bank, пусто — все
   sort: 'date',
   dir: 'desc',
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция, o<id> — операция банка
@@ -244,6 +244,13 @@ const accountName = (op) => [op.account_name, tail(op.card, op.account)].filter(
 
 const SOURCES = {
   receipt: { title: 'Из чека', icon: groupIcon('receipt') },
+  market: {
+    title: 'С маркетплейса',
+    icon: icon(
+      '<path d="M16 10a4 4 0 0 1-8 0"/><path d="M3.103 6.034h17.794"/>' +
+      '<path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"/>',
+    ),
+  },
   manual: {
     title: 'Вручную',
     icon: icon(
@@ -1423,7 +1430,7 @@ function itemCard(it) {
       ['Точка', esc(it.retail_place ?? '—')],
       ['Адрес', esc(it.retail_address ?? '')],
       ['Покупка', it.internet_sign ? 'в интернете — в чеке адрес продавца' : ''],
-      ['Источник', it.receipt_drive === 'manual' ? 'вручную' : 'чек'],
+      ['Источник', it.receipt_drive === 'manual' ? 'вручную' : it.market ? 'маркетплейс' : 'чек'],
     ])}
     </div>
     ${categorySection(it)}

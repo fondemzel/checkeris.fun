@@ -30,6 +30,7 @@
  "common.agoMin": "{n} мин назад",
  "common.agoHour": "{n} ч назад",
  "sources.receipt": "чек",
+ "sources.market": "маркетплейс",
  "sources.manual": "вручную",
  "sources.bank": "банк",
  "accountTypes.Current": "Текущий счёт",

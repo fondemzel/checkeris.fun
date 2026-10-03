@@ -71,6 +71,10 @@ const UI = {
     '<path d="M10 18v-7"/><path d="M11.12 2.198a2 2 0 0 1 1.76.006l7.866 3.847c.476.233.31.949-.22.949H3.474c-.53 0-.695-.716-.22-.949z"/>' +
       '<path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M3 22h18"/><path d="M6 18v-7"/>',
   ),
+  bag: svg(
+    '<path d="M16 10a4 4 0 0 1-8 0"/><path d="M3.103 6.034h17.794"/>' +
+      '<path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"/>',
+  ),
   keyboard: svg(
     '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/>' +
       '<path d="M18 8h.01"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/><path d="M7 16h10"/>',
@@ -246,7 +250,7 @@ const state = {
   tg: '', // настройка категорий: открытая группа
   tc: '', // настройка категорий: открытая категория
   op: '', // операция банка, чья карточка открыта
-  src: '', // фильтр ленты по источнику: '' | receipt | bank | manual
+  src: '', // фильтр ленты по источнику: '' | receipt | market | bank | manual
   inf: '', // фильтр доходов: '' | '-' (без категории) | код группы доходов
   added: '', // чек, только что добавленный сканом или руками
   sort: 'date', // списки: date | name | sum
@@ -308,6 +312,7 @@ const dropRow = (attrs, icon, text, on, mark = UI.ok) => `
  */
 const SOURCE_FILTERS = [
   ['receipt', 'Только чеки'],
+  ['market', 'Только маркетплейсы'],
   ['bank', 'Только банк'],
   ['manual', 'Только вручную'],
 ];
@@ -405,7 +410,7 @@ function readUrl() {
   state.tg = p.get('tg') ?? '';
   state.tc = p.get('tc') ?? '';
   state.op = p.get('op') ?? '';
-  state.src = ['receipt', 'bank', 'manual'].includes(p.get('src')) ? p.get('src') : '';
+  state.src = ['receipt', 'market', 'bank', 'manual'].includes(p.get('src')) ? p.get('src') : '';
   state.inf = p.get('inf') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
@@ -560,7 +565,7 @@ async function screenSummary() {
   }
 
   // Фильтр по источнику: итог и число покупок считаем по тому, что осталось
-  const shownItems = state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || (state.src === 'manual') === Boolean(r.manual));
+  const shownItems = state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src);
   const shownOps = !state.src || state.src === 'bank' ? bankRows : [];
   const total = shownItems.reduce((s, r) => s + r.sum, 0) + shownOps.reduce((s, op) => s + op.amount, 0);
   const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
@@ -645,7 +650,7 @@ async function spendingFeed(itemRows, bankRows) {
       name: r.name,
       at: r.purchased_at,
       sum: r.sum,
-      source: r.manual ? 'manual' : 'receipt',
+      source: itemSource(r),
       category: r.category_slug,
       positions: r.positions,
       outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
@@ -1006,6 +1011,7 @@ async function screenIncome() {
 /** Откуда трата попала в Чекер: значок в строке отвечает на этот вопрос без слов. */
 const SOURCES = {
   receipt: { title: 'Из чека', icon: UI.receipt },
+  market: { title: 'С маркетплейса', icon: UI.bag },
   manual: { title: 'Вручную', icon: UI.keyboard }, // карандаш путали с кнопкой «редактировать»
   bank: { title: 'Из банка', icon: UI.bank },
 };
@@ -1030,7 +1036,7 @@ let itemShown = null; // позиция на экране — карте нуж�
 
 async function screenItem() {
   const it = await api(`/api/items/${state.item}`);
-  return itemCard({ ...it, source: it.receipt_drive === 'manual' ? 'manual' : 'receipt' });
+  return itemCard({ ...it, source: itemSource({ manual: it.receipt_drive === 'manual', market: it.market }) });
 }
 
 /**
@@ -1064,6 +1070,9 @@ async function screenOp() {
 }
 
 /** Чем трата попала в Чекер: чек, ручная запись или конкретный банк. */
+/** Источник позиции чека: вбита руками, чек маркетплейса (по ИНН площадки) или обычный чек. */
+const itemSource = (r) => (r.manual ? 'manual' : r.market ? 'market' : 'receipt');
+
 const sourceName = (it) => (it.source === 'bank' ? bankById(it.bank)?.name ?? T.sources.bank : T.sources[it.source]);
 
 /**
@@ -1139,7 +1148,7 @@ function itemCard(it) {
         : `<button class="btn danger" type="button" data-item-hide="${it.id}">${it.source === 'manual' ? 'Удалить запись' : 'Убрать из расходов'}</button>`}
     </div>
 
-    ${it.source === 'receipt' ? `
+    ${it.source === 'receipt' || it.source === 'market' ? `
     <div class="card">
       <div class="card-label">Чек</div>
       <button class="cat-pick" type="button" data-item-receipt="${it.receipt_id}">
