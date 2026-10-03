@@ -30,9 +30,9 @@ import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
 import {
   banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank, getBankOp,
-  setBankOpNote, setBankOpKind, mergeSettledTwins,
+  setBankOpNote, mergeSettledTwins,
 } from './banks.mjs';
-import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
+import { bankTotals, matchBank, setOpCategory, setOpKind } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
 import { freshItems } from './fresh.mjs';
@@ -660,7 +660,7 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = setBankOpKind(db, user.budget_id, Number(kindMatch[1]), String(body.kind ?? ''));
+    const result = setOpKind(db, user.budget_id, Number(kindMatch[1]), String(body.kind ?? ''), body.only !== false);
     return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
   }
 

@@ -557,6 +557,17 @@ CREATE TABLE IF NOT EXISTS bank_rules (
   PRIMARY KEY (budget_id, key)
 );
 
+-- Вид операций, выбранный человеком «для всех таких же»: у трат — по продавцу, у поступлений —
+-- по описанию (ключи как у bank_rules). Сейчас это «перевод себе». Это данные бюджета, а не
+-- общие правила: у другого человека тот же продавец может быть обычной тратой.
+CREATE TABLE IF NOT EXISTS bank_kind_marks (
+  budget_id  INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
+  key        TEXT NOT NULL,
+  kind       TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (budget_id, key)
+);
+
 -- Чеки магазинов (Озон, WB), уже принятые от приложения (shops.mjs): по ним приложение не
 -- скачивает их повторно. Магазин — по подключению (bank_links.bank). Сам чек — в receipts.
 CREATE TABLE IF NOT EXISTS shop_cheques (

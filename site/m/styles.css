@@ -547,6 +547,11 @@ button, input, select { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
+/* «Перевод себе» в окне выбора категории — над группами, отдельной строкой */
+.picker-special { margin-bottom: 12px; }
+.picker-special-text { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.picker-special-text .note { margin: 0; font-size: 12px; }
+
 /* «Для всех таких же»: переключатель в окне выбора категории */
 .picker-same {
   display: flex;

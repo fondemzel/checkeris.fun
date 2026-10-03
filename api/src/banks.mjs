@@ -448,18 +448,3 @@ export function setBankOpNote(db, budgetId, id, note) {
   return res.changes ? { note: text } : { error: 'operation not found', status: 404 };
 }
 
-/**
- * Трата из банка не расход: либо это перевод себе (на карту Озона, в копилку) — тогда
- * расходом станут покупки, сделанные на эти деньги, — либо задвоение, и её просто не
- * учитываем. Разметка при следующей загрузке эту пометку не трогает: она ставит вид
- * только операциям без вида.
- */
-export function setBankOpKind(db, budgetId, id, kind) {
-  const op = db.prepare('SELECT direction FROM bank_ops WHERE id = ? AND budget_id = ?').get(id, budgetId);
-  if (!op) return { error: 'operation not found', status: 404 };
-  // Поступление тоже бывает переводом себе — из другого банка, — тогда это не доход
-  const allowed = op.direction === 'debit' ? ['transfer', 'excluded', 'expense'] : ['transfer', 'excluded', 'income'];
-  if (!allowed.includes(kind)) return { error: 'unknown kind', status: 400 };
-  db.prepare("UPDATE bank_ops SET kind = ?, kind_source = 'manual' WHERE id = ?").run(kind, id);
-  return { kind };
-}

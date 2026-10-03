@@ -44,7 +44,7 @@ export const en = {
     savedMore: 'Category set · {n} more like this',
     affects: 'Changing the category will affect {n} {word} with the same description',
     channel: 'Received via',
-    transferHint: 'A transfer to yourself — for example from a card at another bank: it is not income, just your own money.',
+    transferHint: 'A transfer to yourself — for example from a card at another bank — is marked in the category picker: it is not income, just your own money.',
     transferConfirm: 'Mark as a transfer to yourself? It will not count as income.',
     excludeConfirm: 'Ignore this income? It will disappear from income.',
     excluded: 'This income is no longer counted',

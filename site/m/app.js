@@ -124,6 +124,7 @@ const UI = {
     '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>' +
       '<circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
   ),
+  swap: svg('<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>'),
   calendar: svg('<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>'),
   wallet: groupIcon('card'),
   receipt: groupIcon('receipt'),
@@ -1185,9 +1186,8 @@ function itemCard(it) {
 
     <div class="settings-actions item-actions">
       ${bank
-        ? `<button class="btn" type="button" data-op-kind="transfer" data-id="${it.id}">Это перевод себе</button>
-           <button class="btn danger" type="button" data-op-kind="excluded" data-id="${it.id}">Не учитывать</button>
-           <p class="note">${it.income ? T.income.transferHint : 'Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.'}</p>`
+        ? `<button class="btn danger" type="button" data-op-kind="excluded" data-id="${it.id}">Не учитывать</button>
+           <p class="note">${it.income ? T.income.transferHint : 'Перевод себе — например, на карту Озона — отмечается в выборе категории: расходом станут покупки, сделанные на эти деньги.'}</p>`
         : `<button class="btn danger" type="button" data-item-hide="${it.id}">${it.source === 'manual' ? 'Удалить запись' : 'Убрать из расходов'}</button>`}
     </div>
 
@@ -1904,8 +1904,19 @@ function incomeButton(slug) {
     <span class="cat-name">${esc(found.name)}<small>${esc(found.group.name)}</small></span>`;
 }
 
+/** Отметить «перевод себе»: одну операцию или все такие же (и будущие). */
+async function markTransfer(id, only) {
+  const res = await post(`/api/bank/ops/${id}/kind`, { kind: 'transfer', only });
+  screenCache.clear();
+  toast(res.affected > 1 ? `Отмечено как перевод себе · ещё ${int.format(res.affected - 1)} таких же` : 'Отмечено как перевод себе');
+  // Карточка операции больше не трата и не доход — возвращаемся к списку
+  if (state.screen === 'op') history.back();
+  else render();
+}
+
 async function saveIncomeCategory(id, slug, { only = false } = {}) {
   try {
+    if (slug === TRANSFER) return await markTransfer(id, only);
     const res = await post(`/api/bank/ops/${id}/category`, { category: slug, only });
     screenCache.clear();
     toast(res.affected > 1 ? f(T.income.savedMore, { n: int.format(res.affected - 1) }) : only ? 'Категория выбрана · только для этого дохода' : T.income.saved);
@@ -2067,7 +2078,10 @@ function sameFor(kind, id) {
   return { title: 'Для всех с таким названием', note: `${n}${count == null ? '' : plural(count, 'позиция', 'позиции', 'позиций') + ' · '}и для новых покупок` };
 }
 
-function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], same = null) {
+/** Не категория, а вид: «перевод себе». Выбирается в том же окне, что и категория. */
+const TRANSFER = '#transfer';
+
+function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], same = null, { transfer = false } = {}) {
   const income = groups === meta?.income;
   // Выключен — категория меняется только у этой записи. Помним между шагами (группа → категория)
   let all = true;
@@ -2099,6 +2113,13 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
       <div class="picker-box" role="dialog" aria-label="Выбор группы">
         <div class="picker-top"><div class="picker-title">Группа${subtitle}</div>${closeBtn}</div>
         ${sameRow()}
+        ${transfer ? `
+        <div class="picker-list picker-special">
+          <button class="picker-item" type="button" data-category="${TRANSFER}">
+            <span class="pick-ic" style="background:#eef1f5;color:#4b5563">${UI.swap}</span>
+            <span class="picker-special-text">Перевод себе<small class="note">не расход и не доход: на свою карту, в копилку</small></span>
+          </button>
+        </div>` : ''}
         <div class="picker-grid">
           ${groups
             .map(
@@ -2217,6 +2238,7 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
 /** Категория траты без чека: запоминается для этого продавца и красит его прошлые операции. */
 async function saveOpCategory(id, slug, { only = false } = {}) {
   try {
+    if (slug === TRANSFER) return await markTransfer(id, only);
     const res = await post(`/api/bank/ops/${id}/category`, { category: slug, only });
     toast(res.affected > 1 ? `Категория выбрана · ещё ${int.format(res.affected - 1)} у этого продавца` : only ? 'Категория выбрана · только для этой траты' : 'Категория выбрана');
     render();
@@ -3172,10 +3194,10 @@ async function onScreenClick(e) {
   if (opOpen) return go({ screen: 'op', op: opOpen.dataset.op });
 
   const opIncat = e.target.closest('[data-op-incat]');
-  if (opIncat) return openCategoryPicker(Number(opIncat.dataset.opIncat), saveIncomeCategory, meta?.income ?? [], sameFor('income', Number(opIncat.dataset.opIncat)));
+  if (opIncat) return openCategoryPicker(Number(opIncat.dataset.opIncat), saveIncomeCategory, meta?.income ?? [], sameFor('income', Number(opIncat.dataset.opIncat)), { transfer: true });
 
   const opCat = e.target.closest('[data-op-cat]');
-  if (opCat) return openCategoryPicker(Number(opCat.dataset.opCat), saveOpCategory, undefined, sameFor('op', Number(opCat.dataset.opCat)));
+  if (opCat) return openCategoryPicker(Number(opCat.dataset.opCat), saveOpCategory, undefined, sameFor('op', Number(opCat.dataset.opCat)), { transfer: true });
 
   if (e.target.closest('[data-bank-add]')) return go({ screen: 'bank_add' });
 
@@ -4535,7 +4557,7 @@ async function openFresh(bank, since, title) {
     first = false;
 
     const look = (r) => {
-      if (r.kind === 'covered') return { name: 'С чеком', note: 'категории — у товаров чека', color: '#eef1f5', icon: 'receipt' };
+      if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: '#eef1f5', icon: 'receipt' };
       if (r.kind === 'income') {
         const c = r.category_slug ? incomeCat(r.category_slug) : null;
         return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: c?.group?.icon ?? 'none' };
@@ -4625,7 +4647,8 @@ async function openFresh(bank, since, title) {
     const id = Number(raw);
     const save = (path) => async (_, slug, { only = false } = {}) => {
       try {
-        await post(path, { category: slug, only });
+        if (slug === TRANSFER) await post(`/api/bank/ops/${id}/kind`, { kind: 'transfer', only });
+        else await post(path, { category: slug, only });
         await refresh();
       } catch (err) {
         toast(`Не сохранилось: ${err.message}`);
@@ -4633,9 +4656,9 @@ async function openFresh(bank, since, title) {
     };
     if (type === 'item') return openCategoryPicker(id, save(`/api/items/${id}/category`), undefined, sameFor('item', id));
     if (kind === 'income') {
-      return openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), meta?.income ?? [], sameFor('income', id));
+      return openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), meta?.income ?? [], sameFor('income', id), { transfer: true });
     }
-    return openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), undefined, sameFor('op', id));
+    return openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), undefined, sameFor('op', id), { transfer: true });
   });
 }
 

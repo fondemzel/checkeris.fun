@@ -1,5 +1,5 @@
 import { bankCategories } from './bankformat.mjs';
-import { applyIncomeRules, setIncomeCategory } from './incomecats.mjs';
+import { applyIncomeRules, setIncomeCategory, incomeKey } from './incomecats.mjs';
 
 // Разбор операций банка: что из них трата, что доход, а что вообще не движение денег.
 //
@@ -231,6 +231,7 @@ function classifyRest(db, budgetId) {
 export function matchBank(db, budgetId) {
   db.exec('BEGIN');
   try {
+    applyKindMarks(db, budgetId); // выбор человека — первым: дальше разметка его не трогает
     const transfers = markTransfers(db, budgetId);
     const self = markSelfTransfers(db, budgetId);
     const receipts = matchReceipts(db, budgetId);
@@ -244,6 +245,84 @@ export function matchBank(db, budgetId) {
     db.exec('ROLLBACK');
     throw err;
   }
+}
+
+/** «Такая же операция»: у трат — тот же продавец, у поступлений — то же описание. */
+const sameKey = (op) => (op.direction === 'credit' ? incomeKey(op) : ruleKey(op));
+
+/**
+ * Пометки человека «это перевод себе — для всех таких же» (bank_kind_marks): ставим вид
+ * операциям, которые он не отмечал по одной. Пометку сняли — её операции возвращаются
+ * к обычной разметке. Покупки с чеком не трогаем: это точно покупки. Пары «списание —
+ * зачисление» (переводы, возвраты) тоже: разметка их уже свела, и пометка сломала бы пару.
+ */
+function applyKindMarks(db, budgetId) {
+  const marks = new Map(
+    db.prepare('SELECT key, kind FROM bank_kind_marks WHERE budget_id = ?').all(budgetId).map((m) => [m.key, m.kind]),
+  );
+  const ops = db
+    .prepare(
+      `SELECT id, direction, merchant, description, kind, kind_source,
+              json_extract(raw, '$.senderDetails') AS sender
+         FROM bank_ops
+        WHERE budget_id = ? AND receipt_id IS NULL AND pair_id IS NULL
+          AND (kind_source = 'rule' OR (kind_source IS NULL AND ? > 0))`,
+    )
+    .all(budgetId, marks.size);
+  const mark = db.prepare("UPDATE bank_ops SET kind = ?, kind_source = 'rule' WHERE id = ?");
+  const reset = db.prepare('UPDATE bank_ops SET kind = NULL, kind_source = NULL WHERE id = ?');
+  let changed = 0;
+  for (const op of ops) {
+    const kind = marks.get(sameKey(op));
+    if (kind && (op.kind !== kind || op.kind_source !== 'rule')) {
+      mark.run(kind, op.id);
+      changed += 1;
+    } else if (!kind && op.kind_source === 'rule') {
+      reset.run(op.id);
+    }
+  }
+  return changed;
+}
+
+/**
+ * Вид операции, выбранный человеком: перевод себе или «не учитывать». only = false у перевода —
+ * для всех таких же, и для будущих: пометка запоминается (bank_kind_marks).
+ */
+export function setOpKind(db, budgetId, id, kind, only = true) {
+  const op = db
+    .prepare(
+      `SELECT id, direction, merchant, description, json_extract(raw, '$.senderDetails') AS sender
+         FROM bank_ops WHERE id = ? AND budget_id = ?`,
+    )
+    .get(id, budgetId);
+  if (!op) return { error: 'operation not found', status: 404 };
+  // Поступление тоже бывает переводом себе — из другого банка, — тогда это не доход
+  const allowed = op.direction === 'debit' ? ['transfer', 'excluded', 'expense'] : ['transfer', 'excluded', 'income'];
+  if (!allowed.includes(kind)) return { error: 'unknown kind', status: 400 };
+  db.prepare("UPDATE bank_ops SET kind = ?, kind_source = 'manual', receipt_id = NULL WHERE id = ?").run(kind, id);
+  const key = sameKey(op);
+  if (only || kind !== 'transfer' || !key) return { kind, affected: 1 };
+  db.prepare(
+    `INSERT INTO bank_kind_marks (budget_id, key, kind, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (budget_id, key) DO UPDATE SET kind = excluded.kind, updated_at = excluded.updated_at`,
+  ).run(budgetId, key, kind, new Date().toISOString());
+  return { kind, affected: 1 + applyKindMarks(db, budgetId) };
+}
+
+/**
+ * Человек выбрал категорию операции, отмеченной переводом или «не учитывать», — значит, это
+ * снова трата (или доход). «Для всех» снимает и пометку, иначе она вернёт перевод обратно.
+ * true — пометку сняли: остальные её операции надо разметить заново.
+ */
+function restoreKind(db, budgetId, op, only) {
+  if (op.kind !== 'transfer' && op.kind !== 'excluded') return false;
+  const kind = op.direction === 'credit' ? 'income' : 'expense';
+  db.prepare("UPDATE bank_ops SET kind = ?, kind_source = 'manual' WHERE id = ?").run(kind, op.id);
+  op.kind = kind;
+  if (only) return false;
+  const sender = db.prepare("SELECT json_extract(raw, '$.senderDetails') AS s FROM bank_ops WHERE id = ?").get(op.id).s;
+  const key = sameKey({ ...op, sender });
+  return key ? db.prepare('DELETE FROM bank_kind_marks WHERE budget_id = ? AND key = ?').run(budgetId, key).changes > 0 : false;
 }
 
 /**
@@ -315,8 +394,15 @@ function applyBankCategories(db, budgetId) {
 export function setOpCategory(db, budgetId, id, slug, only = false) {
   const op = db.prepare('SELECT * FROM bank_ops WHERE id = ? AND budget_id = ?').get(id, budgetId);
   if (!op) return { error: 'operation not found', status: 404 };
+  const unmarked = restoreKind(db, budgetId, op, only);
   // Поступление: у доходов свой справочник и свои правила — по отправителю
-  if (op.direction === 'credit') return setIncomeCategory(db, budgetId, op, slug, only);
+  const result = op.direction === 'credit' ? setIncomeCategory(db, budgetId, op, slug, only) : categorize(db, budgetId, op, slug, only);
+  if (unmarked && !result.error) matchBank(db, budgetId); // операции снятой пометки — снова траты
+  return result;
+}
+
+function categorize(db, budgetId, op, slug, only) {
+  const id = op.id;
 
   const category = slug
     ? db
