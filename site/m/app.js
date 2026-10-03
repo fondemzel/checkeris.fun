@@ -3811,6 +3811,8 @@ const BANKS = [
   { id: 'sber', name: 'Сбербанк', from: 'Сбербанка', logo: '/shared/brand/sber.svg', ready: true },
   // Не банк, а магазин: вместо выписки — чеки заказов с товарами. Подключается так же
   { id: 'ozon', name: 'Озон', from: 'Озона', logo: '/shared/brand/ozon.svg', ready: true, shop: true },
+  // Подключение ещё собирается: пока окно входа только смотрит, как устроен кабинет
+  { id: 'wb', name: 'Wildberries', from: 'Wildberries', logo: '/shared/brand/wb.svg', ready: Boolean(window.Checker?.wbLogin), shop: true },
 ];
 
 // Состояние банка на этом устройстве: active | expired | off. У каждого банка своё —
@@ -4328,6 +4330,7 @@ let syncAfterLogin = null;
 function bankBridge(id) {
   const c = window.Checker;
   if (id === 'ozon') return { login: () => c.ozonLogin(), sync: () => c.ozonSync(token.get()), forget: () => c.ozonForget() };
+  if (id === 'wb') return { login: () => c.wbLogin(), sync: () => {}, forget: () => {} };
   return id === 'sber'
     ? { login: () => c.sberLogin(), sync: () => c.sberSync(token.get()), forget: () => c.sberForget() }
     : { login: () => c.bankLogin(), sync: () => c.bankSync(token.get()), forget: () => c.bankForget() };

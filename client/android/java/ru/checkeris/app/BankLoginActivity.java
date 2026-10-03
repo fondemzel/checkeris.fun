@@ -43,10 +43,11 @@ public class BankLoginActivity extends Activity {
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         String asked = getIntent().getStringExtra("bank");
-        if ("sber".equals(asked) || "ozon".equals(asked)) bank = asked;
+        if ("sber".equals(asked) || "ozon".equals(asked) || "wb".equals(asked)) bank = asked;
         boolean sber = bank.equals("sber");
         boolean ozon = bank.equals("ozon");
-        setTitle(sber ? "Вход в Сбербанк Онлайн" : ozon ? "Вход в Озон" : "Вход в Т-Банк");
+        boolean wb = bank.equals("wb");
+        setTitle(sber ? "Вход в Сбербанк Онлайн" : ozon ? "Вход в Озон" : wb ? "Вход в Wildberries" : "Вход в Т-Банк");
         web = new WebView(this);
         if (sber) {
             // Полоска состояния под окном банка: без неё неудачная проверка выглядит
@@ -99,6 +100,7 @@ public class BankLoginActivity extends Activity {
                 if (bank.equals("sber") && host != null && host.endsWith("sberbank.ru") && seenHosts.add(host)) {
                     Trace.log("sber узел страницы: " + host + request.getUrl().getPath());
                 }
+                if (bank.equals("wb")) WbProbe.request(request);
                 if (bank.equals("sber") && SberBank.noticeRequest(request.getUrl())) {
                     Trace.log("sber страница ходит на " + request.getUrl().getHost() + request.getUrl().getPath());
                 }
@@ -119,7 +121,7 @@ public class BankLoginActivity extends Activity {
                 else handler.cancel();
             }
         });
-        web.loadUrl(sber ? SberBank.LOGIN_URL : ozon ? OzonApi.LOGIN_URL : TBank.LOGIN_URL);
+        web.loadUrl(sber ? SberBank.LOGIN_URL : ozon ? OzonApi.LOGIN_URL : wb ? WbProbe.LOGIN_URL : TBank.LOGIN_URL);
 
         // Сбербанк Онлайн — одностраничное приложение: после входа целая страница не
         // перезагружается, и onPageFinished больше не срабатывает. Поэтому опрашиваем сами
@@ -150,6 +152,10 @@ public class BankLoginActivity extends Activity {
         }
         if (bank.equals("ozon")) {
             checkOzon();
+            return;
+        }
+        if (bank.equals("wb")) {
+            if (web != null) WbProbe.storage(web);
             return;
         }
         String cookies = CookieManager.getInstance().getCookie("https://" + TBank.HOST);

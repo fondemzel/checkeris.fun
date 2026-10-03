@@ -123,6 +123,12 @@ public class MainActivity extends android.app.Activity {
             startActivity(login(null));
         }
 
+        /** Окно входа в Wildberries. Пока — разведка: окно пишет в журнал, куда ходит страница чеков. */
+        @JavascriptInterface
+        public void wbLogin() {
+            startActivity(login("wb"));
+        }
+
         /** Окно входа в Сбербанк Онлайн. */
         @JavascriptInterface
         public void sberLogin() {
