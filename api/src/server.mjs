@@ -407,7 +407,7 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = await labelBatch(db, user, body.ids);
+    const result = await labelBatch(db, user, body.ids, body.ops);
     return sendJson(res, 200, { ...result, quota_left: Number.isFinite(result.quota_left) ? result.quota_left : null });
   }
 

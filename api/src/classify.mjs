@@ -104,6 +104,61 @@ export function loadBudgetTables(db, budgetId) {
   };
 }
 
+/** Системная категория → категория этого бюджета (или null, если такой у бюджета нет). */
+export function budgetCategoryOf(db, budgetId, sysSlug) {
+  return toBudget(sysSlug, loadTables(db), loadBudgetTables(db, budgetId));
+}
+
+/**
+ * Продавцы из банковской выписки → системные категории: спрашиваем модель и запоминаем в
+ * общем справочнике продавцов. merchants — [{ key, name, hint }], hint — категория от банка.
+ */
+export async function guessMerchants(db, merchants, { model = 'lite' } = {}) {
+  if (!merchants.length) return 0;
+  const catalog = dumpCatalog(db);
+  const slugs = flatten(catalog).map((c) => c.slug);
+  const taxonomy = catalog.groups
+    .map((g) => `${g.name}:\n${g.subcategories.map((s) => `  ${s.slug} — ${s.name}${s.hint ? `: ${s.hint}` : ''}`).join('\n')}`)
+    .join('\n');
+  const system = `Ты определяешь категорию траты по названию продавца из банковской выписки.
+
+Названия — как их пишет платёжный терминал: латиницей, сокращённо, с городом и страной
+(«DIXY-77264D MOSCOW RUS», «KRASNOE&BELOE Gorod Moskva»). Опирайся на известные сети и бренды.
+В скобках — категория, которую поставил банк: она подсказка, но не всегда точна.
+
+Отвечай для каждого продавца его номером и slug'ом категории строго из списка ниже.
+
+${taxonomy}`;
+  const schema = {
+    type: 'object',
+    properties: {
+      items: {
+        type: 'array',
+        items: { type: 'object', properties: { n: { type: 'integer' }, category: { type: 'string', enum: slugs } }, required: ['n', 'category'] },
+      },
+    },
+    required: ['items'],
+  };
+  const insert = db.prepare(
+    `INSERT INTO merchant_dictionary (key, category_slug, source, updated_at) VALUES (?, ?, 'llm', ?)
+     ON CONFLICT (key) DO UPDATE SET category_slug = excluded.category_slug, updated_at = excluded.updated_at`,
+  );
+  let written = 0;
+  for (let offset = 0; offset < merchants.length; offset += FILL_BATCH) {
+    const chunk = merchants.slice(offset, offset + FILL_BATCH);
+    const user = chunk.map((m, i) => `${i + 1}. ${m.name.trim()}${m.hint ? ` (${m.hint})` : ''}`).join('\n');
+    const { data } = await completeJson({ system, user, schema, model, maxTokens: 2000 });
+    const now = new Date().toISOString();
+    for (const row of data.items ?? []) {
+      const m = chunk[row.n - 1];
+      if (!m) continue;
+      insert.run(m.key, row.category, now);
+      written += 1;
+    }
+  }
+  return written;
+}
+
 /** Системная категория → категория бюджета. Цепочка запасных короткая, ограничение — от циклов. */
 function toBudget(sysSlug, tables, budget) {
   let slug = sysSlug;

@@ -345,7 +345,7 @@ export function applyRules(db, budgetId) {
   const ops = db
     .prepare(
       `SELECT id, merchant, description FROM bank_ops
-        WHERE budget_id = ? AND kind = 'expense' AND (category_slug IS NULL OR category_source IN ('bank', 'rule'))`,
+        WHERE budget_id = ? AND kind = 'expense' AND (category_slug IS NULL OR category_source IN ('bank', 'rule', 'model'))`,
     )
     .all(budgetId);
   const rule = db.prepare('SELECT category_slug FROM bank_rules WHERE budget_id = ? AND key = ?');

@@ -795,11 +795,9 @@ async function spendingFeed(itemRows, bankRows) {
   }).length;
   let drawn = 0;
   let section;
-  // В разделе «Без категории» первой строкой — авторазметка: если там есть товары из чеков
-  // (траты банка модель не размечает)
-  const autoBtn = spendings.some((r) => r.source !== 'bank' && !r.category)
-    ? `<button class="feed-auto" type="button" data-autolabel>${UI.sparkle} Разметить автоматически</button>`
-    : '';
+  // В разделе «Без категории» первой строкой — авторазметка: товары по названию, траты банка
+  // по продавцу
+  const autoBtn = `<button class="feed-auto" type="button" data-autolabel>${UI.sparkle} Разметить автоматически</button>`;
   const rows = spendings
     .map((r) => {
       const key = sectionOf(r);
@@ -3226,7 +3224,10 @@ async function onScreenClick(e) {
 
   // Авторазметка: строку можно разложить и руками, не дожидаясь модели
   const autoPick = state.screen === 'autolabel' && e.target.closest('[data-fresh-pick]');
-  if (autoPick) return autoPickRow(Number(autoPick.dataset.freshPick.split(':')[1]));
+  if (autoPick) {
+    const [type, id] = autoPick.dataset.freshPick.split(':');
+    return autoPickRow(type, Number(id));
+  }
 
   if (e.target.closest('[data-feed-more]')) {
     feedLimit = { ...feedLimit, n: feedLimit.n + FEED_STEP };
@@ -4844,11 +4845,11 @@ async function screenAutolabel() {
   if (auto.key !== key) {
     const data = await api(`/api/autolabel?from=${state.from}&to=${state.to}`);
     Object.assign(auto, {
-      key, rows: data.rows.map((r) => ({ ...r, type: 'item', kind: 'expense' })), cut: data.cut,
+      key, rows: data.rows.map((r) => ({ ...r, kind: 'expense', uid: `${r.type}:${r.id}` })), cut: data.cut,
       tried: new Set(), done: new Set(), running: false, quotaOut: false, error: null,
     });
   }
-  if (!auto.rows.length) return '<div class="empty">Все товары за этот период разложены по категориям</div>';
+  if (!auto.rows.length) return '<div class="empty">Всё за этот период разложено по категориям</div>';
   return `
     <div class="stuck-head"><div class="card auto-head" id="auto-head">${autoHead()}</div></div>
     <div class="list sheet-list auto-list">${auto.rows.map(autoRow).join('')}</div>`;
@@ -4857,8 +4858,8 @@ async function screenAutolabel() {
 function autoHead() {
   const total = auto.rows.length;
   const labeled = auto.rows.filter((r) => r.category_slug).length;
-  const left = auto.rows.filter((r) => !auto.tried.has(r.id)).length;
-  const missed = auto.rows.filter((r) => auto.tried.has(r.id) && !r.category_slug).length;
+  const left = auto.rows.filter((r) => !auto.tried.has(r.uid) && !r.category_slug).length;
+  const missed = auto.rows.filter((r) => auto.tried.has(r.uid) && !r.category_slug).length;
   const status = auto.error
     ? `Не получилось: ${esc(auto.error)}. Откройте экран ещё раз, чтобы продолжить.`
     : auto.quotaOut
@@ -4876,31 +4877,31 @@ function autoHead() {
 
 /** Строка: ещё не спрашивали — приглушена, спрашиваем сейчас — мигает. */
 function autoRow(r) {
-  const cls = auto.done.has(r.id) || r.category_slug ? '' : auto.tried.has(r.id) ? (auto.running && !auto.done.has(r.id) && r.now ? ' auto-now' : ' auto-missed') : ' auto-wait';
-  return freshRow(r).replace('class="sheet-row', `data-auto-row="${r.id}" class="sheet-row${cls}`);
+  const cls = r.category_slug ? '' : r.now ? ' auto-now' : auto.tried.has(r.uid) ? ' auto-missed' : ' auto-wait';
+  return freshRow(r).replace('class="sheet-row', `data-auto-row="${r.uid}" class="sheet-row${cls}`);
 }
 
 function autoRedraw(ids) {
   const head = $('auto-head');
   if (head) head.innerHTML = autoHead();
   for (const r of auto.rows) {
-    if (ids && !ids.has(r.id)) continue;
-    const el = document.querySelector(`[data-auto-row="${r.id}"]`);
+    if (ids && !ids.has(r.uid)) continue;
+    const el = document.querySelector(`[data-auto-row="${r.uid}"]`);
     if (el) el.outerHTML = autoRow(r);
   }
 }
 
-/** Следующая порция: до AUTO_NAMES разных названий из ещё не спрошенных. */
+/** Следующая порция: до AUTO_NAMES разных названий (у трат — продавцов) из ещё не спрошенных. */
 function autoBatch() {
   const names = new Set();
-  const ids = [];
+  const uids = [];
   for (const r of auto.rows) {
-    if (auto.tried.has(r.id) || r.category_slug) continue;
-    if (!names.has(r.name_norm) && names.size >= AUTO_NAMES) continue;
-    names.add(r.name_norm);
-    ids.push(r.id);
+    if (auto.tried.has(r.uid) || r.category_slug) continue;
+    if (!names.has(r.key) && names.size >= AUTO_NAMES) continue;
+    names.add(r.key);
+    uids.push(r.uid);
   }
-  return ids;
+  return uids;
 }
 
 async function autoRun() {
@@ -4910,29 +4911,31 @@ async function autoRun() {
   try {
     for (;;) {
       if (state.screen !== 'autolabel') break;
-      const ids = autoBatch();
-      if (!ids.length) break;
-      const batch = new Set(ids);
-      for (const r of auto.rows) if (batch.has(r.id)) {
-        auto.tried.add(r.id);
+      const uids = autoBatch();
+      if (!uids.length) break;
+      const batch = new Set(uids);
+      const part = auto.rows.filter((r) => batch.has(r.uid));
+      for (const r of part) {
+        auto.tried.add(r.uid);
         r.now = true;
       }
       autoRedraw(batch);
-      const res = await post('/api/autolabel', { ids });
-      const got = new Map(res.rows.map((x) => [x.id, x]));
-      for (const r of auto.rows) {
-        if (!batch.has(r.id)) continue;
+      const res = await post('/api/autolabel', {
+        ids: part.filter((r) => r.type === 'item').map((r) => r.id),
+        ops: part.filter((r) => r.type === 'op').map((r) => r.id),
+      });
+      const got = new Map(res.rows.map((x) => [`${x.type}:${x.id}`, x]));
+      for (const r of part) {
         r.now = false;
-        const x = got.get(r.id);
+        const x = got.get(r.uid);
         if (x?.category_slug) {
           r.category_slug = x.category_slug;
           r.category_source = x.category_source;
-          auto.done.add(r.id);
         }
       }
       if (res.quota_out) {
         // Лимит кончился до вопроса: эти строки ещё не спрашивали — вернём их в очередь на завтра
-        for (const r of auto.rows) if (batch.has(r.id) && !r.category_slug) auto.tried.delete(r.id);
+        for (const r of part) if (!r.category_slug) auto.tried.delete(r.uid);
         auto.quotaOut = true;
       }
       autoRedraw(batch);
@@ -4947,29 +4950,37 @@ async function autoRun() {
   }
 }
 
-/** Разложить строку руками: то же окно выбора, что везде. */
-function autoPickRow(id) {
-  const row = auto.rows.find((r) => r.id === id);
+/** Разложить строку руками: то же окно выбора, что везде (у трат банка — и «перевод себе»). */
+function autoPickRow(type, id) {
+  const row = auto.rows.find((r) => r.type === type && r.id === id);
   if (!row) return;
+  const op = type === 'op';
   openCategoryPicker(id, async (_, slug, { only = false, seller = false } = {}) => {
     try {
-      await post(`/api/items/${id}/category`, { category: slug, only, seller });
-      // «Для всех с таким названием» — и у соседних строк того же товара
+      if (slug === TRANSFER) {
+        await post(`/api/bank/ops/${id}/kind`, { kind: 'transfer', only });
+        // Перевод — не трата: такие строки уходят из списка
+        auto.rows = auto.rows.filter((r) => !(r === row || (op && !only && r.type === 'op' && r.key === row.key)));
+        return render();
+      }
+      await post(op ? `/api/bank/ops/${id}/category` : `/api/items/${id}/category`, { category: slug, only, seller });
+      // «Для всех таких же» — и у соседних строк: того же товара, продавца или трат продавца
       const touched = new Set();
       for (const r of auto.rows) {
-        if (r.id === id || (!only && r.name_norm === row.name_norm) || (seller && r.seller_inn === row.seller_inn)) {
-          r.category_slug = slug;
-          r.category_source = 'manual';
-          auto.done.add(r.id);
-          auto.tried.add(r.id);
-          touched.add(r.id);
-        }
+        const same = r === row
+          || (!only && r.type === row.type && r.key === row.key)
+          || (seller && !op && r.type === 'item' && r.seller_inn === row.seller_inn);
+        if (!same) continue;
+        r.category_slug = slug;
+        r.category_source = 'manual';
+        auto.tried.add(r.uid);
+        touched.add(r.uid);
       }
       autoRedraw(touched);
     } catch (err) {
       toast(`Не сохранилось: ${err.message}`);
     }
-  }, undefined, sameFor('item', id));
+  }, undefined, sameFor(op ? 'op' : 'item', id), { transfer: op });
 }
 
 // ── запуск ───────────────────────────────────────────────
