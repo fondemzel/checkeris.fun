@@ -427,7 +427,7 @@ async function handleApi(req, res, url) {
       } catch {
         return sendJson(res, 400, { error: 'bad request body' });
       }
-      const result = setOpCategory(db, user.budget_id, Number(opCategory[1]), String(body.category ?? '').trim());
+      const result = setOpCategory(db, user.budget_id, Number(opCategory[1]), String(body.category ?? '').trim(), body.only === true);
       return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
     }
 

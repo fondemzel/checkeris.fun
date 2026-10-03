@@ -1120,15 +1120,8 @@ function itemCard(it) {
     <div class="card">
       <div class="card-label">Категория</div>
       <button class="cat-pick" id="item-cat" type="button" ${it.income ? `data-op-incat="${it.id}"` : bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`}>${it.income ? incomeButton(it.category_slug) : categoryButton(it.category_slug)}</button>
-      ${!bank && !it.income && it.same_name_count > 1 ? `
-      <div class="same-row">
-        <span class="same-text">Для всех с таким названием<small class="note">${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позиция', 'позиции', 'позиций')} · и для новых покупок</small></span>
-        ${toggle('id="item-same"', true, 'Менять категорию у всех позиций с таким названием')}
-      </div>` : ''}
       <p class="note" id="pick-note">${
-        !bank && !it.income
-          ? ''
-          : it.same_name_count > 1
+        it.same_name_count > 1
           ? it.income
             ? f(T.income.affects, { n: int.format(it.same_name_count), word: pl(it.same_name_count, T.income.many) })
             : bank
@@ -1868,11 +1861,11 @@ function incomeButton(slug) {
     <span class="cat-name">${esc(found.name)}<small>${esc(found.group.name)}</small></span>`;
 }
 
-async function saveIncomeCategory(id, slug) {
+async function saveIncomeCategory(id, slug, { only = false } = {}) {
   try {
-    const res = await post(`/api/bank/ops/${id}/category`, { category: slug });
+    const res = await post(`/api/bank/ops/${id}/category`, { category: slug, only });
     screenCache.clear();
-    toast(res.affected > 1 ? f(T.income.savedMore, { n: int.format(res.affected - 1) }) : T.income.saved);
+    toast(res.affected > 1 ? f(T.income.savedMore, { n: int.format(res.affected - 1) }) : only ? 'Категория выбрана · только для этого дохода' : T.income.saved);
     render();
   } catch (err) {
     toast(`Не сохранилось: ${err.message}`);
@@ -2013,8 +2006,35 @@ function sheetRow(item, { open = false } = {}) {
  * Так вместо одного списка на сорок строк — две коротких страницы,
  * а цвета и значки те же, что во всём остальном приложении.
  */
-function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? []) {
+/**
+ * Переключатель «для всех таких же» в окне выбора категории: что считается «таким же» —
+ * у позиции чека название, у траты банка продавец, у дохода описание. Число — если известно
+ * (карточка открыта); одна-единственная — переключатель не нужен.
+ */
+function sameFor(kind, id) {
+  const count = itemShown?.id === id ? itemShown.same_name_count : null;
+  if (count != null && count < 2) return null;
+  const n = count == null ? '' : `${int.format(count)} `;
+  if (kind === 'op') {
+    return { title: 'Для всех трат этого продавца', note: `${n}${count == null ? '' : plural(count, 'трата', 'траты', 'трат') + ' · '}и для новых` };
+  }
+  if (kind === 'income') {
+    return { title: 'Для всех с таким описанием', note: `${n}${count == null ? '' : pl(count, T.income.many) + ' · '}и для новых` };
+  }
+  return { title: 'Для всех с таким названием', note: `${n}${count == null ? '' : plural(count, 'позиция', 'позиции', 'позиций') + ' · '}и для новых покупок` };
+}
+
+function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], same = null) {
   const income = groups === meta?.income;
+  // Выключен — категория меняется только у этой записи. Помним между шагами (группа → категория)
+  let all = true;
+  const sameRow = () =>
+    same
+      ? `<div class="picker-same">
+          <span class="same-text">${esc(same.title)}<small class="note">${esc(same.note)}</small></span>
+          ${toggle("data-same", all, same.title)}
+        </div>`
+      : '';
   const picker = document.createElement('div');
   picker.className = 'picker';
   openPopup(picker);
@@ -2035,6 +2055,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? []) {
     picker.innerHTML = `
       <div class="picker-box" role="dialog" aria-label="Выбор группы">
         <div class="picker-top"><div class="picker-title">Группа${subtitle}</div>${closeBtn}</div>
+        ${sameRow()}
         <div class="picker-grid">
           ${groups
             .map(
@@ -2058,6 +2079,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? []) {
           <div class="picker-title">${esc(group.name)}${subtitle}</div>
           ${closeBtn}
         </div>
+        ${sameRow()}
         <div class="picker-list">
           ${group.subcategories
             .map(
@@ -2072,6 +2094,10 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? []) {
       </div>`;
   };
 
+  picker.addEventListener('change', (e) => {
+    if (e.target.matches('[data-same]')) all = e.target.checked;
+  });
+
   picker.addEventListener('click', (e) => {
     if (e.target === picker || e.target.closest('[data-close]')) return close();
     if (e.target.closest('[data-back]')) return showGroups();
@@ -2082,7 +2108,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? []) {
     const category = e.target.closest('[data-category]');
     if (category) {
       close(); // возвращаемся к списку товаров сразу, не дожидаясь сохранения
-      onPick(itemId, category.dataset.category);
+      onPick(itemId, category.dataset.category, { only: Boolean(same) && !all });
     }
   });
 
@@ -2132,7 +2158,7 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
 
     // Значок справа открывает выбор категории; сохранение — уже по возврату
     const pick = e.target.closest('[data-pick]');
-    if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
+    if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory, undefined, sameFor('item', Number(pick.dataset.pick)));
 
     // Строка — в карточку товара. Чек запоминаем в текущей записи истории:
     // «назад» из карточки откроет его снова
@@ -2146,10 +2172,10 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
 }
 
 /** Категория траты без чека: запоминается для этого продавца и красит его прошлые операции. */
-async function saveOpCategory(id, slug) {
+async function saveOpCategory(id, slug, { only = false } = {}) {
   try {
-    const res = await post(`/api/bank/ops/${id}/category`, { category: slug });
-    toast(res.affected > 1 ? `Категория выбрана · ещё ${int.format(res.affected - 1)} у этого продавца` : 'Категория выбрана');
+    const res = await post(`/api/bank/ops/${id}/category`, { category: slug, only });
+    toast(res.affected > 1 ? `Категория выбрана · ещё ${int.format(res.affected - 1)} у этого продавца` : only ? 'Категория выбрана · только для этой траты' : 'Категория выбрана');
     render();
   } catch (err) {
     toast(`Не сохранилось: ${err.message}`);
@@ -2157,13 +2183,13 @@ async function saveOpCategory(id, slug) {
 }
 
 /** Сохранение выбранной категории и обновление строки на месте. */
-async function saveCategory(itemId, slug) {
+async function saveCategory(itemId, slug, { only = false } = {}) {
   const row = document.querySelector(`.sheet-row[data-row="${itemId}"]`);
   if (!row) return;
   row.classList.add('saving');
 
   try {
-    const data = await post(`/api/items/${itemId}/category`, { category: slug });
+    const data = await post(`/api/items/${itemId}/category`, { category: slug, only });
 
     const group = findCategory(slug)?.group;
     const color = group?.color ?? '#eef1f5';
@@ -2995,7 +3021,7 @@ addEventListener('touchcancel', () => {
 async function onScreenClick(e) {
   // Строка позиции с выбором категории — экран «Добавлено»
   const pick = e.target.closest('[data-pick]');
-  if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory);
+  if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory, undefined, sameFor('item', Number(pick.dataset.pick)));
 
   // Категория в карточке товара
   // Фильтр по источнику: повторное нажатие снимает
@@ -3070,10 +3096,10 @@ async function onScreenClick(e) {
   if (opOpen) return go({ screen: 'op', op: opOpen.dataset.op });
 
   const opIncat = e.target.closest('[data-op-incat]');
-  if (opIncat) return openCategoryPicker(Number(opIncat.dataset.opIncat), saveIncomeCategory, meta?.income ?? []);
+  if (opIncat) return openCategoryPicker(Number(opIncat.dataset.opIncat), saveIncomeCategory, meta?.income ?? [], sameFor('income', Number(opIncat.dataset.opIncat)));
 
   const opCat = e.target.closest('[data-op-cat]');
-  if (opCat) return openCategoryPicker(Number(opCat.dataset.opCat), saveOpCategory);
+  if (opCat) return openCategoryPicker(Number(opCat.dataset.opCat), saveOpCategory, undefined, sameFor('op', Number(opCat.dataset.opCat)));
 
   if (e.target.closest('[data-bank-add]')) return go({ screen: 'bank_add' });
 
@@ -3120,7 +3146,7 @@ async function onScreenClick(e) {
   if (itemReceipt) return openReceiptSheet(Number(itemReceipt.dataset.itemReceipt), { current: state.item });
 
   const itemCat = e.target.closest('[data-item-cat]');
-  if (itemCat) return openCategoryPicker(Number(itemCat.dataset.itemCat), saveItemCategory);
+  if (itemCat) return openCategoryPicker(Number(itemCat.dataset.itemCat), saveItemCategory, undefined, sameFor('item', Number(itemCat.dataset.itemCat)));
 
   const shift = e.target.closest('[data-shift]');
   if (shift) return go(shiftPeriod(state.from, state.to, Number(shift.dataset.shift)), true);
@@ -3196,15 +3222,13 @@ $('screen').addEventListener('submit', (e) => {
 });
 
 /** Категория из карточки товара: выбор тот же, что в разборе чека, итог — под кнопкой. */
-async function saveItemCategory(itemId, slug) {
+async function saveItemCategory(itemId, slug, { only = false } = {}) {
   const note = $('pick-note');
   const button = $('item-cat');
   note.classList.remove('error');
   note.textContent = 'Сохранение…';
   button.disabled = true;
   try {
-    // Переключатель выключен — только эта покупка; его нет — позиция с таким названием одна
-    const only = $('item-same') ? !$('item-same').checked : false;
     const data = await post(`/api/items/${itemId}/category`, { category: slug, only });
     button.innerHTML = categoryButton(slug);
     note.textContent = data.only

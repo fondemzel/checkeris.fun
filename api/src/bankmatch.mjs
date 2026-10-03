@@ -248,18 +248,21 @@ export function applyRules(db, budgetId) {
   const ops = db
     .prepare(
       `SELECT id, merchant, description FROM bank_ops
-        WHERE budget_id = ? AND kind = 'expense' AND (category_slug IS NULL OR category_source = 'bank')`,
+        WHERE budget_id = ? AND kind = 'expense' AND (category_slug IS NULL OR category_source IN ('bank', 'rule'))`,
     )
     .all(budgetId);
   const rule = db.prepare('SELECT category_slug FROM bank_rules WHERE budget_id = ? AND key = ?');
-  const save = db.prepare("UPDATE bank_ops SET category_slug = ?, category_source = 'rule' WHERE id = ?");
+  // Размеченное прежним правилом тоже переписываем: человек сменил категорию продавца.
+  // Считаем только то, что изменилось
+  const save = db.prepare(
+    "UPDATE bank_ops SET category_slug = ?, category_source = 'rule' WHERE id = ? AND (category_slug IS NOT ? OR category_source IS NOT 'rule')",
+  );
   let done = 0;
   for (const op of ops) {
     const key = ruleKey(op);
     const found = key && rule.get(budgetId, key);
     if (!found) continue;
-    save.run(found.category_slug, op.id);
-    done += 1;
+    done += Number(save.run(found.category_slug, op.id, found.category_slug).changes);
   }
   return done;
 }
@@ -293,11 +296,11 @@ function applyBankCategories(db, budgetId) {
  * Категория траты без чека: человек выбрал её сам. Запоминаем для этого продавца и сразу
  * размечаем все его операции — и прошлые, и те, что придут позже (applyRules).
  */
-export function setOpCategory(db, budgetId, id, slug) {
+export function setOpCategory(db, budgetId, id, slug, only = false) {
   const op = db.prepare('SELECT * FROM bank_ops WHERE id = ? AND budget_id = ?').get(id, budgetId);
   if (!op) return { error: 'operation not found', status: 404 };
   // Поступление: у доходов свой справочник и свои правила — по отправителю
-  if (op.direction === 'credit') return setIncomeCategory(db, budgetId, op, slug);
+  if (op.direction === 'credit') return setIncomeCategory(db, budgetId, op, slug, only);
 
   const category = slug
     ? db
@@ -310,7 +313,8 @@ export function setOpCategory(db, budgetId, id, slug) {
     : null;
   if (slug && !category) return { error: 'unknown category', status: 400 };
 
-  const key = ruleKey(op);
+  // Только эта трата: правило продавца не трогаем, ручная метка его перекрывает
+  const key = only ? null : ruleKey(op);
   const at = new Date().toISOString();
   db.exec('BEGIN');
   try {

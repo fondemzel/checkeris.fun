@@ -186,11 +186,12 @@ export function applyIncomeRules(db, budgetId) {
 }
 
 /** Категория поступления: человек выбрал её сам. Запоминаем для поступлений с тем же описанием. */
-export function setIncomeCategory(db, budgetId, op, slug) {
+export function setIncomeCategory(db, budgetId, op, slug, only = false) {
   const category = slug ? findCat(db, budgetId, slug) : null;
   if (slug && !category) return fail(400, 'unknown category');
   const sender = db.prepare("SELECT json_extract(raw, '$.senderDetails') AS s FROM bank_ops WHERE id = ?").get(op.id).s;
-  const key = incomeKey({ ...op, sender });
+  // Только этот доход: правило по описанию не трогаем, ручная метка его перекрывает
+  const key = only ? null : incomeKey({ ...op, sender });
   db.exec('BEGIN');
   try {
     if (!slug) {
