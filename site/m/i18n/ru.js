@@ -320,7 +320,7 @@ export const ru = {
       pickOne: 'Выберите хотя бы один год.',
       estimate: 'Выбрано {n} {word}. Займёт около {min} мин.',
       already: 'Уже есть {n} {word} Озона — они не задвоятся, добавятся только недостающие.',
-      receipts: 'чеков добавлено',
+      receipts: 'добавлено',
       ordersDone: 'заказов',
       resultTitle: 'Готово: {n} {word} Озона',
       foundLabel: 'Что получилось',

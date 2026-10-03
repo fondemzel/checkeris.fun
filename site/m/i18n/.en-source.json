@@ -260,7 +260,6 @@
  "wizard.ozon.pickOne": "Выберите хотя бы один год.",
  "wizard.ozon.estimate": "Выбрано {n} {word}. Займёт около {min} мин.",
  "wizard.ozon.already": "Уже есть {n} {word} Озона — они не задвоятся, добавятся только недостающие.",
- "wizard.ozon.receipts": "чеков добавлено",
  "wizard.ozon.ordersDone": "заказов",
  "wizard.ozon.resultTitle": "Готово: {n} {word} Озона",
  "wizard.ozon.foundLabel": "Что получилось",

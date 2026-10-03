@@ -2625,7 +2625,10 @@ function wizTick() {
   if (!bar) return;
   const total = p.total || 0;
   const done = p.done || 0;
-  $('wiz-ops').textContent = int.format(p.ops ?? 0);
+  // У магазина — как у времени: число с единицей крупно («5 чеков», «3 мин»), подпись под ним
+  $('wiz-ops').textContent = isShop(wiz.bank)
+    ? `${int.format(p.ops ?? 0)} ${pl(p.ops ?? 0, T.common.receipts)}`
+    : int.format(p.ops ?? 0);
   const waitLeft = p.waitUntil ? Math.ceil((p.waitUntil - Date.now()) / 1000) : 0;
 
   // Общее число приходит не сразу (у Т-Банка — с первым событием, у Сбера — после подсчёта),
