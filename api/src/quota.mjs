@@ -31,6 +31,15 @@ export function scanQuota(db, user) {
  * Сколько названий можно отдать модели из запрошенных — и сразу записать расход.
  * Не хватило квоты — позиции останутся без категории, человек выберет её сам.
  */
+/** Сколько названий модель ещё разметит сегодня за этого человека (у владельца — без счёта). */
+export function modelQuotaLeft(db, userId) {
+  const user = userId ? db.prepare('SELECT role FROM users WHERE id = ?').get(userId) : null;
+  if (!user) return 0;
+  if (user.role === 'admin') return Infinity;
+  const used = db.prepare("SELECT n FROM usage_daily WHERE user_id = ? AND day = ? AND kind = 'llm_names'").get(userId, today())?.n ?? 0;
+  return Math.max(0, limitOf('USER_DAILY_MODEL_NAMES', 100) - used);
+}
+
 export function takeModelQuota(db, userId, wanted) {
   const user = userId ? db.prepare('SELECT role FROM users WHERE id = ?').get(userId) : null;
   if (!user) return 0; // сканировавший удалил аккаунт — платить за него некому

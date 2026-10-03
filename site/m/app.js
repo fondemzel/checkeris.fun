@@ -124,6 +124,7 @@ const UI = {
     '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>' +
       '<circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
   ),
+  sparkle: svg('<path d="M9.94 14.06 4 20"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="m16.24 7.76 2.83-2.83"/>'),
   swap: svg('<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>'),
   calendar: svg('<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>'),
   wallet: groupIcon('card'),
@@ -282,7 +283,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -794,10 +795,17 @@ async function spendingFeed(itemRows, bankRows) {
   }).length;
   let drawn = 0;
   let section;
+  // В разделе «Без категории» первой строкой — авторазметка: если там есть товары из чеков
+  // (траты банка модель не размечает)
+  const autoBtn = spendings.some((r) => r.source !== 'bank' && !r.category)
+    ? `<button class="feed-auto" type="button" data-autolabel>${UI.sparkle} Разметить автоматически</button>`
+    : '';
   const rows = spendings
     .map((r) => {
       const key = sectionOf(r);
-      const head = key != null && key !== section ? sectionHead(key) : '';
+      const head = key != null && key !== section
+        ? sectionHead(key) + (key === NONE && opened.has(key) ? autoBtn : '')
+        : '';
       section = key;
       if (key != null && !opened.has(key)) return head; // раздел свёрнут — строк не рисуем
       drawn += 1;
@@ -2951,6 +2959,7 @@ const SCREENS = {
     },
   },
   op: { title: 'Товар', render: screenOp, after: () => fitNote() },
+  autolabel: { title: 'Авторазметка', render: screenAutolabel, after: () => autoRun() },
 };
 
 /** Раздела ещё нет, а вкладка уже на месте: навигация не будет меняться потом. */
@@ -2965,7 +2974,7 @@ const soon = (icon, title, text) => `
 const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
-  bank_safety: 'settings', bank_wizard: 'settings', op: 'summary',
+  bank_safety: 'settings', bank_wizard: 'settings', op: 'summary', autolabel: 'summary',
   set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
 };
 
@@ -3212,6 +3221,12 @@ async function onScreenClick(e) {
 
   const freshOpen = e.target.closest('[data-fresh-open]');
   if (freshOpen) return openFresh(freshOpen.dataset.freshOpen, freshOpen.dataset.since, 'Загруженная история');
+
+  if (e.target.closest('[data-autolabel]')) return go({ screen: 'autolabel' });
+
+  // Авторазметка: строку можно разложить и руками, не дожидаясь модели
+  const autoPick = state.screen === 'autolabel' && e.target.closest('[data-fresh-pick]');
+  if (autoPick) return autoPickRow(Number(autoPick.dataset.freshPick.split(':')[1]));
 
   if (e.target.closest('[data-feed-more]')) {
     feedLimit = { ...feedLimit, n: feedLimit.n + FEED_STEP };
@@ -4814,6 +4829,147 @@ async function wizFreshLoad() {
     wizFresh.busy = false;
     if (wizFresh.again) wizFreshLoad();
   }
+}
+
+// ── авторазметка ─────────────────────────────────────────
+// Товары без категории за период — модели, порциями по 20 названий, у человека на глазах:
+// строки перекрашиваются по мере ответов. Кончился суточный лимит — останавливаемся до завтра.
+// Состояние живёт, пока открыт экран: вернулись к нему — видно, что уже разложено.
+
+const AUTO_NAMES = 20;
+const auto = { key: '', rows: [], tried: new Set(), done: new Set(), running: false, quotaOut: false, error: null };
+
+async function screenAutolabel() {
+  const key = `${state.from}|${state.to}`;
+  if (auto.key !== key) {
+    const data = await api(`/api/autolabel?from=${state.from}&to=${state.to}`);
+    Object.assign(auto, {
+      key, rows: data.rows.map((r) => ({ ...r, type: 'item', kind: 'expense' })), cut: data.cut,
+      tried: new Set(), done: new Set(), running: false, quotaOut: false, error: null,
+    });
+  }
+  if (!auto.rows.length) return '<div class="empty">Все товары за этот период разложены по категориям</div>';
+  return `
+    <div class="stuck-head"><div class="card auto-head" id="auto-head">${autoHead()}</div></div>
+    <div class="list sheet-list auto-list">${auto.rows.map(autoRow).join('')}</div>`;
+}
+
+function autoHead() {
+  const total = auto.rows.length;
+  const labeled = auto.rows.filter((r) => r.category_slug).length;
+  const left = auto.rows.filter((r) => !auto.tried.has(r.id)).length;
+  const missed = auto.rows.filter((r) => auto.tried.has(r.id) && !r.category_slug).length;
+  const status = auto.error
+    ? `Не получилось: ${esc(auto.error)}. Откройте экран ещё раз, чтобы продолжить.`
+    : auto.quotaOut
+    ? 'Лимит разметки на сегодня закончился — продолжим завтра: откройте этот экран снова.'
+    : left
+    ? 'Размечаем… Строку можно разложить и руками, не дожидаясь.'
+    : missed
+    ? `Готово. Не узнали ${int.format(missed)} — их можно разложить руками.`
+    : 'Готово: всё разложено.';
+  return `
+    <div class="auto-top"><b>Размечено ${int.format(labeled)} из ${int.format(total)}${auto.cut ? '+' : ''}</b></div>
+    <div class="wiz-bar"><span style="width:${total ? Math.round(((total - left) / total) * 100) : 100}%"></span></div>
+    <p class="note">${status}</p>`;
+}
+
+/** Строка: ещё не спрашивали — приглушена, спрашиваем сейчас — мигает. */
+function autoRow(r) {
+  const cls = auto.done.has(r.id) || r.category_slug ? '' : auto.tried.has(r.id) ? (auto.running && !auto.done.has(r.id) && r.now ? ' auto-now' : ' auto-missed') : ' auto-wait';
+  return freshRow(r).replace('class="sheet-row', `data-auto-row="${r.id}" class="sheet-row${cls}`);
+}
+
+function autoRedraw(ids) {
+  const head = $('auto-head');
+  if (head) head.innerHTML = autoHead();
+  for (const r of auto.rows) {
+    if (ids && !ids.has(r.id)) continue;
+    const el = document.querySelector(`[data-auto-row="${r.id}"]`);
+    if (el) el.outerHTML = autoRow(r);
+  }
+}
+
+/** Следующая порция: до AUTO_NAMES разных названий из ещё не спрошенных. */
+function autoBatch() {
+  const names = new Set();
+  const ids = [];
+  for (const r of auto.rows) {
+    if (auto.tried.has(r.id) || r.category_slug) continue;
+    if (!names.has(r.name_norm) && names.size >= AUTO_NAMES) continue;
+    names.add(r.name_norm);
+    ids.push(r.id);
+  }
+  return ids;
+}
+
+async function autoRun() {
+  if (auto.running || auto.quotaOut || state.screen !== 'autolabel') return;
+  auto.running = true;
+  auto.error = null;
+  try {
+    for (;;) {
+      if (state.screen !== 'autolabel') break;
+      const ids = autoBatch();
+      if (!ids.length) break;
+      const batch = new Set(ids);
+      for (const r of auto.rows) if (batch.has(r.id)) {
+        auto.tried.add(r.id);
+        r.now = true;
+      }
+      autoRedraw(batch);
+      const res = await post('/api/autolabel', { ids });
+      const got = new Map(res.rows.map((x) => [x.id, x]));
+      for (const r of auto.rows) {
+        if (!batch.has(r.id)) continue;
+        r.now = false;
+        const x = got.get(r.id);
+        if (x?.category_slug) {
+          r.category_slug = x.category_slug;
+          r.category_source = x.category_source;
+          auto.done.add(r.id);
+        }
+      }
+      if (res.quota_out) {
+        // Лимит кончился до вопроса: эти строки ещё не спрашивали — вернём их в очередь на завтра
+        for (const r of auto.rows) if (batch.has(r.id) && !r.category_slug) auto.tried.delete(r.id);
+        auto.quotaOut = true;
+      }
+      autoRedraw(batch);
+      if (auto.quotaOut) break;
+    }
+  } catch (err) {
+    auto.error = err.message;
+  } finally {
+    auto.running = false;
+    autoRedraw();
+    feedData.clear(); // в расходах категории поменялись
+  }
+}
+
+/** Разложить строку руками: то же окно выбора, что везде. */
+function autoPickRow(id) {
+  const row = auto.rows.find((r) => r.id === id);
+  if (!row) return;
+  openCategoryPicker(id, async (_, slug, { only = false, seller = false } = {}) => {
+    try {
+      await post(`/api/items/${id}/category`, { category: slug, only, seller });
+      // «Для всех с таким названием» — и у соседних строк того же товара
+      const touched = new Set();
+      for (const r of auto.rows) {
+        if (r.id === id || (!only && r.name_norm === row.name_norm) || (seller && r.seller_inn === row.seller_inn)) {
+          r.category_slug = slug;
+          r.category_source = 'manual';
+          auto.done.add(r.id);
+          auto.tried.add(r.id);
+          touched.add(r.id);
+        }
+      }
+      autoRedraw(touched);
+    } catch (err) {
+      toast(`Не сохранилось: ${err.message}`);
+    }
+  }, undefined, sameFor('item', id));
 }
 
 // ── запуск ───────────────────────────────────────────────

@@ -24,7 +24,8 @@ import {
 } from './queries.mjs';
 import { loadCategories, syncCategories } from './categories.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
-import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue, backfillUnknown } from './scan.mjs';
+import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
+import { unlabeled, labelBatch } from './autolabel.mjs';
 import { addManual, deleteManual } from './import_manual.mjs';
 import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
@@ -395,6 +396,21 @@ async function handleApi(req, res, url) {
   // ── банк на телефоне ──
   // Вход в интернет-банк человек делает сам, в приложении на своём устройстве; сюда
   // приезжают уже готовые операции. Сессии банка на сервере нет.
+  // «Разметить автоматически» (autolabel.mjs): список неразмеченного и разметка порции
+  if (pathname === '/api/autolabel' && req.method === 'GET') {
+    return sendJson(res, 200, unlabeled(db, user.budget_id, url.searchParams.get('from'), url.searchParams.get('to')));
+  }
+  if (pathname === '/api/autolabel' && req.method === 'POST') {
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = await labelBatch(db, user, body.ids);
+    return sendJson(res, 200, { ...result, quota_left: Number.isFinite(result.quota_left) ? result.quota_left : null });
+  }
+
   // Что пришло с обновлением (fresh.mjs). Без since — только время сервера: его страница
   // запоминает перед обновлением, чтобы потом спросить «что нового с этого момента»
   if (pathname === '/api/fresh' && req.method === 'GET') {
@@ -934,9 +950,6 @@ if (fnsReady()) {
 } else {
   console.error('ФНС: доступ не настроен (нужны FNS_MASTER_TOKEN, FNS_AUTH_URL, FNS_KKT_URL) — сканирование выключено');
 }
-
-// Товары без категории (не хватило суточного лимита модели) — раз в час ещё порцию (scan.mjs)
-setInterval(() => backfillUnknown(db).catch((err) => console.error('доразметка:', err.message)), 60 * 60_000).unref();
 
 // Места покупок: адреса из новых чеков — в координаты. Раз в минуту по несколько адресов,
 // поэтому первая разметка всей базы (сотни адресов) займёт десяток-другой минут

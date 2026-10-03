@@ -534,6 +534,31 @@ button, input, select { font: inherit; color: inherit; }
 .cat-pick:disabled { opacity: 0.6; }
 .card .cat-pick { margin-bottom: 8px; }
 .card .cat-pick:last-child { margin-bottom: 0; }
+/* Авторазметка: кнопка в разделе «Без категории» и экран с разметкой по ходу */
+.feed-auto {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-faint, #eef4fb);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.feed-auto svg { width: 18px; height: 18px; }
+.auto-head { margin-bottom: 0; }
+.auto-head .wiz-bar { margin: 10px 0; }
+.auto-head .note { margin: 0; }
+.auto-list { margin-top: 12px; }
+.sheet-row.auto-wait { opacity: 0.45; }
+.sheet-row.auto-missed .sheet-cat { color: var(--muted); }
+.sheet-row.auto-now { animation: auto-pulse 1s ease-in-out infinite; }
+@keyframes auto-pulse { 50% { opacity: 0.45; } }
+
 /* Длинная лента рисуется порциями: следующая — по этой кнопке (или сама, когда до неё долистали) */
 .feed-more {
   display: block;
