@@ -1120,8 +1120,15 @@ function itemCard(it) {
     <div class="card">
       <div class="card-label">Категория</div>
       <button class="cat-pick" id="item-cat" type="button" ${it.income ? `data-op-incat="${it.id}"` : bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`}>${it.income ? incomeButton(it.category_slug) : categoryButton(it.category_slug)}</button>
+      ${!bank && !it.income && it.same_name_count > 1 ? `
+      <div class="same-row">
+        <span class="same-text">Для всех с таким названием<small class="note">${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позиция', 'позиции', 'позиций')} · и для новых покупок</small></span>
+        ${toggle('id="item-same"', true, 'Менять категорию у всех позиций с таким названием')}
+      </div>` : ''}
       <p class="note" id="pick-note">${
-        it.same_name_count > 1
+        !bank && !it.income
+          ? ''
+          : it.same_name_count > 1
           ? it.income
             ? f(T.income.affects, { n: int.format(it.same_name_count), word: pl(it.same_name_count, T.income.many) })
             : bank
@@ -3184,9 +3191,13 @@ async function saveItemCategory(itemId, slug) {
   note.textContent = 'Сохранение…';
   button.disabled = true;
   try {
-    const data = await post(`/api/items/${itemId}/category`, { category: slug });
+    // Переключатель выключен — только эта покупка; его нет — позиция с таким названием одна
+    const only = $('item-same') ? !$('item-same').checked : false;
+    const data = await post(`/api/items/${itemId}/category`, { category: slug, only });
     button.innerHTML = categoryButton(slug);
-    note.textContent = data.category
+    note.textContent = data.only
+      ? data.category ? `«${data.category.name}» — только для этой покупки` : 'Категория снята у этой покупки'
+      : data.category
       ? `«${data.category.name}» — обновлено ${int.format(data.affected)} ${plural(data.affected, 'позиция', 'позиции', 'позиций')}`
       : `Категория снята, затронуто ${int.format(data.affected)}`;
     meta = await api('/api/meta'); // счётчики и цвета могли измениться

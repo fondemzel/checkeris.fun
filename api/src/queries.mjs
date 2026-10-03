@@ -560,8 +560,11 @@ export function getItem(db, budgetId, id) {
  * чтобы экран не ждал пересчёта.
  *
  * Пустой slug снимает ручное решение: позиции заново проходят лестницу.
+ *
+ * only — только эта покупка: словарь не трогаем, метка «закреплена» (pinned), и разметка
+ * по названию её больше не перепишет.
  */
-export function setItemCategory(db, budgetId, id, slug) {
+export function setItemCategory(db, budgetId, id, slug, only = false) {
   const item = db
     .prepare(
       `SELECT i.id, i.name, i.name_norm FROM items i JOIN receipts r ON r.id = i.receipt_id
@@ -580,6 +583,21 @@ export function setItemCategory(db, budgetId, id, slug) {
         .get(budgetId, slug)
     : null;
   if (slug && !category) return { error: 'unknown category', status: 400 };
+
+  if (only) {
+    if (category) {
+      db.prepare(
+        `INSERT INTO item_labels (item_id, budget_id, category_slug, source, confidence, updated_at)
+         VALUES (?, ?, ?, 'pinned', 1, ?)
+         ON CONFLICT (item_id) DO UPDATE SET
+           category_slug = excluded.category_slug, source = 'pinned', confidence = 1, updated_at = excluded.updated_at`,
+      ).run(item.id, budgetId, category.slug, new Date().toISOString());
+    } else {
+      db.prepare('DELETE FROM item_labels WHERE item_id = ?').run(item.id);
+      classifyItems(db, [item.id]);
+    }
+    return { item_id: item.id, name: item.name, name_norm: item.name_norm, category, affected: 1, only: true };
+  }
 
   const sameName = db
     .prepare(
