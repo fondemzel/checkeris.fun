@@ -265,6 +265,18 @@ export const en = {
       items: 'Items in receipts',
       byYear: 'By year',
     },
+    wb: {
+      safetyLoginText: 'You type the phone number and the code in the Wildberries window; Checker never sees them.',
+      plan1: 'You sign in to Wildberries',
+      plan2: 'We count your receipts by year',
+      plan4: 'We load the receipts one by one',
+      wait: 'Looking at your receipts by year…',
+      title: 'Receipts over {n} {word}',
+      orders: ['receipt', 'receipts', 'receipts'],
+      already: '{n} Wildberries {word} already here — they won’t be duplicated, only the missing ones are added.',
+      ordersDone: 'receipts done',
+      resultTitle: 'Done: {n} Wildberries {word}',
+    },
     analyze: {
       wait: 'Looking at your accounts…',
       failed: 'It didn’t work: {why}',

@@ -310,6 +310,38 @@ public class MainActivity extends android.app.Activity {
             return SberHistory.status(MainActivity.this).toString();
         }
 
+        // Мастер WB: годы с чеками, события те же
+        @JavascriptInterface
+        public void wbAccounts() {
+            new Thread(() -> {
+                try {
+                    history(WbHistory.years(MainActivity.this).put("stage", "accounts"));
+                } catch (Exception e) {
+                    try {
+                        history(new JSONObject().put("stage", "error").put("error", String.valueOf(e.getMessage())));
+                    } catch (Exception ignored) {
+                        // нечего показать
+                    }
+                }
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void wbHistoryStart(String checkerToken, String selected) {
+            if (checkerToken == null || checkerToken.isEmpty()) return;
+            WbHistory.start(MainActivity.this, checkerToken, selected, MainActivity.this::history);
+        }
+
+        @JavascriptInterface
+        public void wbHistoryStop() {
+            WbHistory.stop();
+        }
+
+        @JavascriptInterface
+        public String wbHistoryStatus() {
+            return WbHistory.status(MainActivity.this).toString();
+        }
+
         // Мастер Озона: вместо счетов — годы с заказами, события те же
         @JavascriptInterface
         public void ozonAccounts() {

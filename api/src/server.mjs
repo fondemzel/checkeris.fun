@@ -442,12 +442,12 @@ async function handleApi(req, res, url) {
         }
       }
       const bank = body.bank ?? url.searchParams.get('bank') ?? 'tbank';
-      // Озон — не банк, но мастер истории у него тот же: шаг храним, итог — по чекам
-      if (!knownBank(bank) && bank !== 'ozon') return sendJson(res, 400, { error: 'unknown bank' });
+      // Магазины — не банки, но мастер истории у них тот же: шаг храним, итог — по чекам
+      if (!knownBank(bank) && !knownShop(bank)) return sendJson(res, 400, { error: 'unknown bank' });
       try {
-        if (bank === 'ozon' && pathname === '/api/bank/history/finish' && req.method === 'POST') {
-          finishSync(db, user.id, 'ozon');
-          return sendJson(res, 200, shopStats(db, user.id, 'ozon'));
+        if (knownShop(bank) && pathname === '/api/bank/history/finish' && req.method === 'POST') {
+          finishSync(db, user.id, bank);
+          return sendJson(res, 200, shopStats(db, user.id, bank));
         }
         if (pathname === '/api/bank/history' && req.method === 'GET') return sendJson(res, 200, getHistory(db, user.id, bank));
         if (pathname === '/api/bank/history' && req.method === 'PUT') {

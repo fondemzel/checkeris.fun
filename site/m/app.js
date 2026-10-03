@@ -2208,14 +2208,25 @@ function histNative(bank) {
   if (bank === 'ozon') {
     return { accounts: () => c.ozonAccounts(), start: (t, s) => c.ozonHistoryStart(t, s), stop: () => c.ozonHistoryStop(), status: () => c.ozonHistoryStatus?.() };
   }
+  if (bank === 'wb') {
+    return { accounts: () => c.wbAccounts(), start: (t, s) => c.wbHistoryStart(t, s), stop: () => c.wbHistoryStop(), status: () => c.wbHistoryStatus?.() };
+  }
   return bank === 'sber'
     ? { accounts: () => c.sberAccounts(), start: (t, s) => c.sberHistoryStart(t, s), stop: () => c.sberHistoryStop(), status: () => c.sberHistoryStatus?.() }
     : { accounts: () => c.bankAccounts(), start: (t, s) => c.historyStart(t, s), stop: () => c.historyStop(), status: () => c.historyStatus?.() };
 }
 
-/** Текст мастера: у Озона свой, если есть, иначе банковский. */
-const wizText = (bank, part, key) => (bank === 'ozon' && T.wizard.ozon[key]) || T.wizard[part][key];
-const WIZ_ORDER_SEC = 1.5; // заказ Озона: две-три страницы и, если чек новый, PDF
+/** Магазин (Озон, WB): вместо счетов — годы, вместо операций — чеки. */
+const isShop = (bank) => Boolean(bankById(bank)?.shop);
+
+/** Тексты магазина: общие (T.wizard.ozon) и свои у WB поверх. */
+const shopText = (bank) => ({ ...T.wizard.ozon, ...(bank === 'ozon' ? {} : T.wizard[bank] ?? {}) });
+
+/** Текст мастера: у магазина свой, если есть, иначе банковский. */
+const wizText = (bank, part, key) => (isShop(bank) && shopText(bank)[key]) || T.wizard[part]?.[key];
+
+// Сколько секунд на единицу плана: заказ Озона — две-три страницы и PDF; чек WB — одна страница
+const WIZ_UNIT_SEC = { ozon: 1.5, wb: 1 };
 
 const histStatus = (bank) => {
   try {
@@ -2227,7 +2238,7 @@ const histStatus = (bank) => {
 
 // Умеет ли приложение мастер для этого банка. У Озона он идёт по заказам: «Электронные чеки»
 // хранят только последние недели, а обычное обновление берёт именно их
-const HIST_START = { tbank: 'historyStart', sber: 'sberHistoryStart', ozon: 'ozonHistoryStart' };
+const HIST_START = { tbank: 'historyStart', sber: 'sberHistoryStart', ozon: 'ozonHistoryStart', wb: 'wbHistoryStart' };
 const canWizard = (id) => Boolean(HIST_START[id] && window.Checker?.[HIST_START[id]]);
 
 /** Мастер для банка: с сервера — шаг, из приложения — идёт ли загрузка. */
@@ -2301,7 +2312,7 @@ const WIZ_SCREENS = {
     </div>
     <div class="card">
       <div class="card-label">${T.wizard.intro.safetyLabel}</div>
-      <ul class="bank-facts">${facts(w.bank === 'ozon' ? { ...T.wizard.intro, ...T.wizard.ozon } : T.wizard.intro, ['safetyLogin', 'safetyRead', 'safetyYours'])}</ul>
+      <ul class="bank-facts">${facts(isShop(w.bank) ? { ...T.wizard.intro, ...shopText(w.bank) } : T.wizard.intro, ['safetyLogin', 'safetyRead', 'safetyYours'])}</ul>
     </div>
     <div class="card">
       <div class="card-label">${T.wizard.intro.planLabel}</div>
@@ -2317,7 +2328,7 @@ const WIZ_SCREENS = {
     const bankData = await api('/api/bank').catch(() => null);
     const have = bankData?.links?.find((l) => l.bank === w.bank)?.ops ?? 0;
     const thisYear = new Date().getFullYear();
-    if (w.bank === 'ozon') return wizFoundOzon(w, have);
+    if (isShop(w.bank)) return wizFoundShop(w, have);
     const rows = (w.accounts ?? []).map((a) => {
       const kind = T.accountTypes[a.type] ?? a.type ?? T.bankCard.accounts.kind;
       const currency = a.currency && a.currency !== 'RUB' ? ` · ${a.currency}` : '';
@@ -2352,8 +2363,8 @@ const WIZ_SCREENS = {
         <h2 class="wiz-title">${failed ? T.wizard.load.titleFailed : paused ? T.wizard.load.titleStopped : T.wizard.load.title}</h2>
         <div class="wiz-bar${p.total ? '' : ' flow'}"><span id="wiz-bar" style="width:${p.total ? Math.min(100, Math.round(((p.done ?? 0) / p.total) * 100)) : 0}%"></span></div>
         <div class="wiz-nums">
-          <div><b id="wiz-ops">0</b><small class="note">${w.bank === 'ozon' ? T.wizard.ozon.receipts : T.wizard.load.ops}</small></div>
-          <div><b id="wiz-mid">—</b><small class="note" id="wiz-mid-label">${w.bank === 'ozon' ? T.wizard.ozon.ordersDone : T.wizard.load.parts}</small></div>
+          <div><b id="wiz-ops">0</b><small class="note">${isShop(w.bank) ? shopText(w.bank).receipts : T.wizard.load.ops}</small></div>
+          <div><b id="wiz-mid">—</b><small class="note" id="wiz-mid-label">${isShop(w.bank) ? shopText(w.bank).ordersDone : T.wizard.load.parts}</small></div>
           <div><b id="wiz-eta">—</b><small class="note">${T.wizard.load.left}</small></div>
         </div>
         <p class="note" id="wiz-now"></p>
@@ -2367,7 +2378,7 @@ const WIZ_SCREENS = {
 
   result: (w) => {
     const r = w.result ?? {};
-    if (r.ozon) return wizResultOzon(r);
+    if (r.shop || r.ozon) return wizResultShop({ shop: 'ozon', ...r }); // ozon — итог прежней версии
     const kinds = Object.fromEntries((r.kinds ?? []).map((k) => [k.kind, k]));
     const count = (k) => kinds[k]?.count ?? 0;
     const expenses = count('expense');
@@ -2405,9 +2416,9 @@ const WIZ_SCREENS = {
   },
 };
 
-/** Итог Озона: чеки, товары, годы. */
-function wizResultOzon(r) {
-  const O = T.wizard.ozon;
+/** Итог магазина: чеки, товары, годы. */
+function wizResultShop(r) {
+  const O = shopText(r.shop);
   const row = (label, value, note = '') =>
     `<div class="wiz-row"><span>${label}${note ? `<small class="note">${note}</small>` : ''}</span><b>${value}</b></div>`;
   const count = r.total?.count ?? 0;
@@ -2431,16 +2442,16 @@ function wizResultOzon(r) {
     </div>` : ''}`;
 }
 
-/** Озон: годы с числом заказов вместо счетов. */
-function wizFoundOzon(w, have) {
-  const O = T.wizard.ozon;
+/** Магазин: годы с числом заказов (Озон) или чеков (WB) вместо счетов. */
+function wizFoundShop(w, have) {
+  const O = shopText(w.bank);
   const n = w.accounts?.length ?? 0;
   const rows = (w.accounts ?? []).map((a) => `
     <label class="wiz-acc">
       <input type="checkbox" data-wiz-acc="${esc(a.id)}"${w.selected.includes(a.id) ? ' checked' : ''} />
       <span class="wiz-acc-main">
         <span class="wiz-acc-name">${esc(a.name)}</span>
-        <small class="note">${int.format(a.orders)} ${pl(a.orders, O.orders)}</small>
+        <small class="note">${int.format(a.count ?? a.orders)} ${pl(a.count ?? a.orders, O.orders)}</small>
       </span>
     </label>`).join('');
   return `
@@ -2457,11 +2468,12 @@ function wizFoundOzon(w, have) {
 /** Сколько частей и времени займёт загрузка выбранных счетов. */
 function wizEstimate(w) {
   const chosen = (w.accounts ?? []).filter((a) => w.selected.includes(a.id));
-  if (w.bank === 'ozon') {
-    if (!chosen.length) return T.wizard.ozon.pickOne;
-    const orders = chosen.reduce((sum, a) => sum + (a.orders ?? 0), 0);
-    const min = Math.max(1, Math.ceil((orders * WIZ_ORDER_SEC) / 60));
-    return f(T.wizard.ozon.estimate, { n: int.format(orders), word: pl(orders, T.wizard.ozon.orders), min });
+  if (isShop(w.bank)) {
+    const O = shopText(w.bank);
+    if (!chosen.length) return O.pickOne;
+    const units = chosen.reduce((sum, a) => sum + (a.count ?? a.orders ?? 0), 0);
+    const min = Math.max(1, Math.ceil((units * (WIZ_UNIT_SEC[w.bank] ?? 1.5)) / 60));
+    return f(O.estimate, { n: int.format(units), word: pl(units, O.orders), min });
   }
   if (!chosen.length) return T.wizard.found.pickOne;
   const n = `${chosen.length} ${pl(chosen.length, T.common.accounts)}`;
@@ -2518,7 +2530,7 @@ function wizTick() {
   const mid = $('wiz-mid');
   if (mid) {
     mid.textContent = !total ? '—' : p.byOps ? int.format(total) : f(T.bankCard.accounts.count, { on: done, all: total });
-    $('wiz-mid-label').textContent = wiz.bank === 'ozon' ? T.wizard.ozon.ordersDone : p.byOps ? T.wizard.load.total : T.wizard.load.parts;
+    $('wiz-mid-label').textContent = isShop(wiz.bank) ? shopText(wiz.bank).ordersDone : p.byOps ? T.wizard.load.total : T.wizard.load.parts;
   }
 
   if (p.stage === 'count') {
@@ -2571,7 +2583,7 @@ async function onWizardClick(button) {
     try {
       // Выбор счетов — не только для истории: обычное обновление тоже берёт только их.
       // У Озона выбраны годы — они нужны только этой загрузке
-      if (wiz.bank !== 'ozon') {
+      if (!isShop(wiz.bank)) {
         await api(`/api/bank/accounts?bank=${encodeURIComponent(wiz.bank)}`, {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
@@ -2610,7 +2622,7 @@ async function wizFinish() {
   if (state.screen === 'bank_wizard') render();
   try {
     wiz.result = await post('/api/bank/history/finish', { bank: wiz.bank });
-    if (wiz.result.ozon) wiz.result.added = wiz.progress?.added ?? null;
+    if (wiz.result.shop) wiz.result.added = wiz.progress?.added ?? null;
     wizGo('result');
   } catch (err) {
     wiz.step = 'load';
@@ -2625,7 +2637,7 @@ window.addEventListener('checker-history', (e) => {
   if (!wiz) return;
   if (r.stage === 'accounts') {
     wiz.accounts = r.accounts ?? [];
-    if (wiz.bank === 'ozon') {
+    if (isShop(wiz.bank)) {
       wiz.selected = wiz.accounts.map((a) => a.id);
       return wizGo('found');
     }

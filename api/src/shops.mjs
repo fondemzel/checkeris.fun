@@ -100,5 +100,5 @@ export function shopStats(db, userId, shop) {
   const years = db
     .prepare(`SELECT substr(r.purchased_at, 1, 4) AS year, COUNT(DISTINCT r.id) AS count ${from} GROUP BY year ORDER BY year DESC`)
     .all(args);
-  return { ozon: shop === 'ozon', shop, total, items, years };
+  return { shop, total, items, years };
 }

@@ -62,7 +62,7 @@ final class OzonHistory {
             List<String> list = byYear.get(year);
             if (list.isEmpty()) continue;
             plan.put(year, new JSONArray(list));
-            out.put(new JSONObject().put("id", year).put("name", year).put("type", "ozonYear").put("orders", list.size()));
+            out.put(new JSONObject().put("id", year).put("name", year).put("type", "shopYear").put("count", list.size()));
         }
         prefs(context).edit().putString("byYear", plan.toString()).apply();
         Trace.log("ozon история: годы " + byYear.keySet());
