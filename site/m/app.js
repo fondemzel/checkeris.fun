@@ -277,7 +277,7 @@ const state = {
   src: '', // фильтр ленты по источнику: '' | receipt | market | bank | manual
   inf: '', // фильтр доходов: '' | '-' (без категории) | код группы доходов
   added: '', // чек, только что добавленный сканом или руками
-  sort: 'date', // списки: date | name | sum
+  sort: 'category', // списки: date | category | name | sum; по умолчанию — defaultSort(экран)
   dir: 'desc',
 };
 
@@ -294,6 +294,9 @@ const SORTS = {
   name: ['По названию', 'asc', 'letters'],
   sum: ['По сумме', 'desc', 'ruble'],
 };
+
+/** Сортировка по умолчанию: расходы и доходы — по категориям, остальные списки — по дате. */
+const defaultSort = (screen) => (['summary', 'income'].includes(screen) ? 'category' : 'date');
 
 /**
   * Шапка списка: сумма и подпись слева, справа две кнопки — сортировка и фильтр; ниже период.
@@ -407,7 +410,9 @@ function go(patch, replace = false) {
   if (state.screen === 'income' && state.inf) params.set('inf', state.inf);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
-  if (['summary', 'category', 'receipts', 'bank'].includes(state.screen) && (state.sort !== 'date' || state.dir !== 'desc')) {
+  const usual = defaultSort(state.screen);
+  if (['summary', 'income', 'category', 'receipts', 'bank'].includes(state.screen)
+    && (state.sort !== usual || state.dir !== SORTS[usual][1])) {
     params.set('sort', state.sort);
     params.set('dir', state.dir);
   }
@@ -438,8 +443,8 @@ function readUrl() {
   state.inf = p.get('inf') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
-  state.sort = Object.hasOwn(SORTS, p.get('sort') ?? '') ? p.get('sort') : 'date';
-  state.dir = p.get('dir') === 'asc' ? 'asc' : 'desc';
+  state.sort = Object.hasOwn(SORTS, p.get('sort') ?? '') ? p.get('sort') : defaultSort(state.screen);
+  state.dir = ['asc', 'desc'].includes(p.get('dir')) ? p.get('dir') : SORTS[state.sort][1];
 }
 
 /**
@@ -981,7 +986,8 @@ async function screenIncome() {
 
   const q = new URLSearchParams({
     from: state.from, to: state.to, direction: 'credit', kind: 'income',
-    per: '5000', sort: state.sort, dir: state.dir,
+    // По категориям раскладываем здесь; внутри категории — свежие сверху
+    per: '5000', sort: state.sort === 'category' ? 'date' : state.sort, dir: state.sort === 'category' ? 'desc' : state.dir,
   });
   const [data, bank] = await Promise.all([
     api(`/api/bank/ops?${q}`),
@@ -1016,7 +1022,7 @@ async function screenIncome() {
           filter ? (picked?.name ?? T.income.noCategory).toLowerCase() : '',
           !filter && transfers ? `${int.format(transfers.count)} переводов между своими` : '',
         ].filter(Boolean).map(esc).join(' · '),
-        sorts: all.length > 0,
+        sorts: all.length > 0 ? ['category', 'date', 'name', 'sum'] : false,
         filters: all.length > 0 ? filters : '',
       })}
     </div>`;
@@ -1024,18 +1030,40 @@ async function screenIncome() {
   if (!data.rows.length) return `${head}<div class="empty">${filter ? T.income.emptyFilter : 'Поступлений за период нет'}</div>`;
 
   const byDate = state.sort === 'date';
+  const byCat = state.sort === 'category';
+  // По категориям: порядок — как в справочнике доходов, без категории — в конце
+  const catOrder = new Map();
+  (meta?.income ?? []).forEach((g, gi) => g.subcategories.forEach((c, ci) => catOrder.set(c.slug, gi * 1000 + ci)));
+  const rank = (op) => catOrder.get(op.category_slug) ?? 1e9;
+  const list = byCat ? [...data.rows].sort((a, b) => (rank(a) - rank(b)) * (state.dir === 'asc' ? 1 : -1)) : data.rows;
+  const catSums = new Map();
+  const catCounts = new Map();
+  for (const op of list) {
+    catSums.set(op.category_slug ?? '', (catSums.get(op.category_slug ?? '') ?? 0) + op.amount);
+    catCounts.set(op.category_slug ?? '', (catCounts.get(op.category_slug ?? '') ?? 0) + 1);
+  }
   let day = '';
-  const rows = data.rows
+  let cat = null;
+  const rows = list
     .map((op) => {
       const opDay = op.at.slice(0, 10);
-      const header = !byDate || opDay === day
-        ? ''
-        : dayHead(opDay, daySum(data.rows, opDay, (x) => x.at, (x) => x.amount));
+      let header = '';
+      if (byDate && opDay !== day) header = dayHead(opDay, daySum(data.rows, opDay, (x) => x.at, (x) => x.amount));
+      if (byCat && (op.category_slug ?? '') !== cat) {
+        const c = incomeCat(op.category_slug);
+        const key = op.category_slug ?? '';
+        header = `
+          <div class="day">
+            <span><span class="op-cat" style="background:${c?.color ?? '#d7dbe2'}"></span>${esc(c?.name ?? T.income.noCategory)} (${int.format(catCounts.get(key))})</span>
+            <b>${money(catSums.get(key))}</b>
+          </div>`;
+      }
       day = opDay;
-      const cat = incomeCat(op.category_slug);
+      cat = op.category_slug ?? '';
+      const opCat = incomeCat(op.category_slug);
       const note = [
-        `<span class="op-cat" style="background:${cat?.color ?? '#d7dbe2'}"></span>${esc(cat?.name ?? T.income.noCategory)}`,
-        esc(timeRu(op.at)),
+        `<span class="op-cat" style="background:${opCat?.color ?? '#d7dbe2'}"></span>${esc(opCat?.name ?? T.income.noCategory)}`,
+        byDate ? esc(timeRu(op.at)) : `${dateRu(opDay)} ${esc(timeRu(op.at))}`,
         esc(op.account_name ?? ''),
       ].filter(Boolean).join(' · ');
       return `${header}
@@ -2083,8 +2111,9 @@ const TRANSFER = '#transfer';
 
 function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], same = null, { transfer = false } = {}) {
   const income = groups === meta?.income;
-  // Выключен — категория меняется только у этой записи. Помним между шагами (группа → категория)
-  let all = true;
+  // Выключен (по умолчанию) — категория меняется только у этой записи; включают, когда нужно
+  // разложить всех таких же разом. Помним между шагами (группа → категория)
+  let all = false;
   const sameRow = () =>
     same
       ? `<div class="picker-same">
@@ -3385,7 +3414,9 @@ $('fab').addEventListener('click', () => go({ screen: 'add' }));
 // не к списку, а туда, где человек был до переключения — например, в настройки
 document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
-  if (tab) go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '' }, true);
+  if (!tab) return;
+  const sort = defaultSort(tab.dataset.tab);
+  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1] }, true);
 });
 
 /**
