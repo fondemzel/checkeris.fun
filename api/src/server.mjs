@@ -35,6 +35,7 @@ import {
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
+import { freshItems } from './fresh.mjs';
 import { knownShop, knownCheques, importCheque, finishSync, shopStats } from './shops.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import {
@@ -393,6 +394,15 @@ async function handleApi(req, res, url) {
   // ── банк на телефоне ──
   // Вход в интернет-банк человек делает сам, в приложении на своём устройстве; сюда
   // приезжают уже готовые операции. Сессии банка на сервере нет.
+  // Что пришло с обновлением (fresh.mjs). Без since — только время сервера: его страница
+  // запоминает перед обновлением, чтобы потом спросить «что нового с этого момента»
+  if (pathname === '/api/fresh' && req.method === 'GET') {
+    const now = new Date().toISOString();
+    const since = url.searchParams.get('since');
+    if (!since) return sendJson(res, 200, { now });
+    return sendJson(res, 200, { now, ...freshItems(db, user.budget_id, url.searchParams.get('bank') ?? '', since) });
+  }
+
   // Магазины (Озон, WB): чеки из личного кабинета, скачанные приложением (shops.mjs)
   const shopRoute = pathname.match(/^\/api\/(\w+)\/(known|receipts|done)$/);
   if (shopRoute && knownShop(shopRoute[1])) {

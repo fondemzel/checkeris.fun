@@ -47,7 +47,7 @@ export function startHistory(db, userId, bank) {
      ON CONFLICT (user_id, bank) DO UPDATE SET started_at = excluded.started_at, finished_at = NULL,
        updated_at = excluded.updated_at`,
   ).run(userId, bank, at, at);
-  return { ok: true, backup: file.split(/[\\/]/).pop() };
+  return { ok: true, backup: file.split(/[\\/]/).pop(), started_at: at };
 }
 
 /** Конец загрузки: разметить всё разом и рассказать, что получилось. */

@@ -2317,7 +2317,7 @@ const wizStale = (bank) => inApp() && bankState(bank) === 'off' && !histStatus(b
 async function wizLoad(bank) {
   if (wiz?.bank === bank && !(wizStale(bank) && wiz.step === 'load')) return wiz;
   const saved = await api(`/api/bank/history?bank=${encodeURIComponent(bank)}`).catch(() => ({}));
-  wiz = { bank, step: 'intro', accounts: null, selected: [], result: null, ...(saved.state ?? {}) };
+  wiz = { bank, step: 'intro', accounts: null, selected: [], result: null, ...(saved.state ?? {}), started: saved.started_at ?? null };
   if (wiz.step === 'analyze' || wiz.step === 'marking') wiz.step = wiz.step === 'marking' ? 'load' : 'intro';
   const s = histStatus(bank);
   if (wizStale(bank)) {
@@ -2481,7 +2481,8 @@ const WIZ_SCREENS = {
       <div class="card">
         <div class="card-label">${T.wizard.result.byAccount}</div>
         ${accounts}
-      </div>`;
+      </div>
+      ${wizReview()}`;
   },
 };
 
@@ -2508,8 +2509,15 @@ function wizResultShop(r) {
     <div class="card">
       <div class="card-label">${O.byYear}</div>
       ${r.years.map((y) => row(esc(y.year), int.format(y.count))).join('')}
-    </div>` : ''}`;
+    </div>` : ''}
+    ${wizReview()}`;
 }
+
+/** Итог мастера: всё загруженное можно сразу посмотреть по категориям и поправить. */
+const wizReview = () =>
+  wiz?.started
+    ? `<div class="card"><button class="btn big" type="button" data-fresh-open="${esc(wiz.bank)}" data-since="${esc(wiz.started)}">Посмотреть загруженное и поправить категории</button></div>`
+    : '';
 
 /** Магазин: годы с числом заказов (Озон) или чеков (WB) вместо счетов. */
 function wizFoundShop(w, have) {
@@ -2659,7 +2667,8 @@ async function onWizardClick(button) {
           body: JSON.stringify({ accounts: wiz.accounts.map((a) => ({ ...a, enabled: wiz.selected.includes(a.id) })) }),
         });
       }
-      await post('/api/bank/history/start', { bank: wiz.bank });
+      const started = await post('/api/bank/history/start', { bank: wiz.bank });
+      wiz.started = started.started_at ?? null;
     } catch (err) {
       button.disabled = false;
       return toast(`Не вышло: ${err.message}`);
@@ -3095,6 +3104,9 @@ async function onScreenClick(e) {
   }
 
   // Заголовок раздела: свернуть или развернуть. При длинной ленте открыт только один
+  const freshOpen = e.target.closest('[data-fresh-open]');
+  if (freshOpen) return openFresh(freshOpen.dataset.freshOpen, freshOpen.dataset.since, 'Загруженная история');
+
   if (e.target.closest('[data-feed-more]')) {
     feedLimit = { ...feedLimit, n: feedLimit.n + FEED_STEP };
     return render();
@@ -4435,10 +4447,11 @@ function bankBridge(id) {
     : { login: () => c.bankLogin(), sync: () => c.bankSync(token.get()), forget: () => c.bankForget() };
 }
 
-function startBankSync(id) {
+async function startBankSync(id) {
   bankSyncing = id;
-  bankBridge(id).sync();
   if (state.screen === 'set_banks') render();
+  syncSince.set(id, await serverNow()); // потом спросим «что пришло с этого момента»
+  bankBridge(id).sync();
 }
 
 // Банк дозавершил вход уже после того, как окно ушло с экрана
@@ -4459,6 +4472,13 @@ window.addEventListener('checker-bank', (e) => {
   feedData.clear(); // пришли новые операции или чеки
   bankSyncing = null;
   const r = e.detail ?? {};
+  // Пришло новое и известно, с какого момента, — показываем, что именно и куда легло
+  const since = syncSince.get(r.bank ?? 'tbank');
+  syncSince.delete(r.bank ?? 'tbank');
+  if (r.ok && !r.error && r.ops && since) {
+    if (state.screen === 'set_banks' || state.screen === 'bank_card') render();
+    return openFresh(r.bank ?? 'tbank', since, f(bankById(r.bank)?.shop ? T.bankCard.sync.addedShop : T.bankCard.sync.added, { n: int.format(r.ops) }));
+  }
   // Показываем новое, а не всё проверенное: банк каждый раз отдаёт и последние дни
   toast(
     r.ok && r.error
@@ -4471,6 +4491,153 @@ window.addEventListener('checker-bank', (e) => {
   );
   if (state.screen === 'set_banks' || state.screen === 'bank_card') render();
 });
+
+// ── что пришло с обновлением ─────────────────────────────
+// После обновления банка или магазина — окно с тем, что пришло, по категориям: человек сразу
+// видит, куда разложились новые траты, и поправляет, пока помнит покупку. То же окно — в итоге
+// мастера для всей загруженной истории.
+
+const syncSince = new Map(); // банк → время сервера перед обновлением
+
+/** Время сервера: «что нового» спрашиваем по его часам, а не по часам телефона. */
+const serverNow = () => api('/api/fresh').then((r) => r.now).catch(() => null);
+
+async function openFresh(bank, since, title) {
+  const b = bankById(bank);
+  const load = () => api(`/api/fresh?bank=${encodeURIComponent(bank)}&since=${encodeURIComponent(since)}`);
+  let data;
+  try {
+    data = await load();
+  } catch (err) {
+    return toast(`Не открылось: ${err.message}`);
+  }
+  if (!data.rows.length) return toast(b?.shop ? T.bankCard.sync.noneShop : T.bankCard.sync.none);
+
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  const collapsed = new Set(); // свёрнутые разделы
+  let first = true;
+
+  const draw = () => {
+    // Разделы: без категории — первыми (их и надо разобрать), дальше по сумме
+    const buckets = new Map();
+    for (const r of data.rows) {
+      const key = r.kind === 'covered' ? 'covered' : r.kind === 'income' ? `in|${r.category_slug ?? ''}` : r.category_slug ?? '';
+      if (!buckets.has(key)) buckets.set(key, { key, rows: [], sum: 0 });
+      const bucket = buckets.get(key);
+      bucket.rows.push(r);
+      bucket.sum += r.sum;
+    }
+    const order = [...buckets.values()].sort((x, y) =>
+      (x.key === '' ? -1 : 0) - (y.key === '' ? -1 : 0) || (x.key === 'covered') - (y.key === 'covered') || y.sum - x.sum);
+    // Много всего (загрузка истории) — разделы сначала свёрнуты, открыт только первый
+    if (first && data.rows.length > 60) order.slice(1).forEach((x) => collapsed.add(x.key));
+    first = false;
+
+    const look = (r) => {
+      if (r.kind === 'covered') return { name: 'С чеком', note: 'категории — у товаров чека', color: '#eef1f5', icon: 'receipt' };
+      if (r.kind === 'income') {
+        const c = r.category_slug ? incomeCat(r.category_slug) : null;
+        return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: c?.group?.icon ?? 'none' };
+      }
+      const found = r.category_slug ? findCategory(r.category_slug) : null;
+      return {
+        name: found?.category.name ?? 'Без категории',
+        color: found?.group.color ?? '#eef1f5',
+        icon: found?.group.icon ?? 'none',
+      };
+    };
+
+    const sections = order.map((bucket) => {
+      const head = look(bucket.rows[0]);
+      const open = !collapsed.has(bucket.key);
+      const rows = !open ? '' : bucket.rows.map((r) => {
+        const l = look(r);
+        const human = r.category_source === 'manual' || r.category_source === 'pinned';
+        const guess = r.category_slug && !human ? ' guess' : '';
+        const when = `${dateRu(r.at.slice(0, 10))}${r.at.length > 10 ? ` ${esc(timeRu(r.at))}` : ''}`;
+        const attrs = r.kind === 'covered' ? 'disabled' : `data-fresh-pick="${r.type}:${r.id}:${r.kind}"`;
+        return `
+          <button class="sheet-row${guess}" type="button" ${attrs}>
+            <span class="pick-ic" style="background:${l.color};color:${readableText(l.color)}">${groupIcon(l.icon)}</span>
+            <span class="sheet-main">
+              <span class="sheet-name">${esc(r.name ?? '')}</span>
+              <span class="sheet-cat">${when} · ${esc(l.note ?? l.name)}</span>
+            </span>
+            <span class="sheet-sum${r.kind === 'income' ? ' income' : ''}">${r.kind === 'income' ? '+' : ''}${money(r.sum, true)}</span>
+          </button>`;
+      }).join('');
+      return `
+        <button class="fresh-head${open ? ' open' : ''}" type="button" data-fresh-section="${esc(bucket.key)}">
+          <span class="section-arrow">${UI.chevron}</span>
+          <span class="fresh-title">${esc(head.name)} · ${int.format(bucket.rows.length)}</span>
+          <b>${money(bucket.sum)}</b>
+        </button>${rows}`;
+    }).join('');
+
+    const box = sheet.querySelector('.sheet-list');
+    const scroll = box?.scrollTop ?? 0;
+    const n = data.total;
+    const word = b?.shop ? plural(n, 'позиция', 'позиции', 'позиций') : pl(n, T.common.ops);
+    sheet.innerHTML = `
+      <div class="sheet-box" role="dialog" aria-label="${esc(title)}">
+        <div class="sheet-top">
+          <div>
+            <div class="sheet-sum-total">${esc(title)}</div>
+            <div class="note">${esc(b?.name ?? '')} · ${int.format(n)} ${word}${data.cut ? ' (показаны последние)' : ''}</div>
+          </div>
+          <button class="icon-btn primary" data-close type="button" aria-label="Готово" title="Готово">${UI.ok}</button>
+        </div>
+        <p class="note sheet-hint">Нажмите на строку, чтобы поменять категорию. Кольцо у значка — категорию предложил Чекер.</p>
+        <div class="sheet-list">${sections}</div>
+      </div>`;
+    sheet.querySelector('.sheet-list').scrollTop = scroll;
+  };
+
+  draw();
+  openPopup(sheet);
+
+  const refresh = async () => {
+    try {
+      data = await load();
+      draw();
+    } catch {
+      // останется прежний вид
+    }
+  };
+  const close = () => {
+    closePopup(sheet);
+    render(); // списки под окном — со свежими категориями
+  };
+
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) return close();
+    const head = e.target.closest('[data-fresh-section]');
+    if (head) {
+      const key = head.dataset.freshSection;
+      if (collapsed.has(key)) collapsed.delete(key);
+      else collapsed.add(key);
+      return draw();
+    }
+    const pick = e.target.closest('[data-fresh-pick]');
+    if (!pick) return;
+    const [type, raw, kind] = pick.dataset.freshPick.split(':');
+    const id = Number(raw);
+    const save = (path) => async (_, slug, { only = false } = {}) => {
+      try {
+        await post(path, { category: slug, only });
+        await refresh();
+      } catch (err) {
+        toast(`Не сохранилось: ${err.message}`);
+      }
+    };
+    if (type === 'item') return openCategoryPicker(id, save(`/api/items/${id}/category`), undefined, sameFor('item', id));
+    if (kind === 'income') {
+      return openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), meta?.income ?? [], sameFor('income', id));
+    }
+    return openCategoryPicker(id, save(`/api/bank/ops/${id}/category`), undefined, sameFor('op', id));
+  });
+}
 
 // ── запуск ───────────────────────────────────────────────
 

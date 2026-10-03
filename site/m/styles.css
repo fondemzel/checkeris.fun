@@ -1404,6 +1404,31 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
    и жест по нему должен листать страницу, а не упираться в список */
 .screen .sheet-list { flex: none; overflow: hidden; overscroll-behavior: auto; }
 
+/* Окно «что пришло»: заголовок раздела-категории, сворачивается */
+.fresh-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid #f0f1f3;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.fresh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fresh-head b { color: var(--text); }
+.fresh-head.open .section-arrow svg { transform: none; }
+.sheet-sum.income { color: #1baf7a; }
+button.sheet-row:disabled { cursor: default; opacity: 1; }
+
 /* ── выбор категории ───────────────────────────────────── */
 
 .picker {
