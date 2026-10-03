@@ -278,6 +278,38 @@ public class MainActivity extends android.app.Activity {
         public String sberHistoryStatus() {
             return SberHistory.status(MainActivity.this).toString();
         }
+
+        // Мастер Озона: вместо счетов — годы с заказами, события те же
+        @JavascriptInterface
+        public void ozonAccounts() {
+            new Thread(() -> {
+                try {
+                    history(OzonHistory.years(MainActivity.this).put("stage", "accounts"));
+                } catch (Exception e) {
+                    try {
+                        history(new JSONObject().put("stage", "error").put("error", String.valueOf(e.getMessage())));
+                    } catch (Exception ignored) {
+                        // нечего показать
+                    }
+                }
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void ozonHistoryStart(String checkerToken, String selected) {
+            if (checkerToken == null || checkerToken.isEmpty()) return;
+            OzonHistory.start(MainActivity.this, checkerToken, selected, MainActivity.this::history);
+        }
+
+        @JavascriptInterface
+        public void ozonHistoryStop() {
+            OzonHistory.stop();
+        }
+
+        @JavascriptInterface
+        public String ozonHistoryStatus() {
+            return OzonHistory.status(MainActivity.this).toString();
+        }
     }
 
     /**

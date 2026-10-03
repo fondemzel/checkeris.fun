@@ -77,3 +77,19 @@ export function finishSync(db, userId) {
   link(db, userId);
   return { ok: true };
 }
+
+/** Итог мастера истории: сколько чеков Озона здесь и за какие годы. */
+export function ozonStats(db, userId) {
+  const from = `FROM ozon_cheques c JOIN bank_links l ON l.id = c.link_id
+                JOIN receipts r ON r.id = c.receipt_id WHERE l.user_id = ? AND l.bank = 'ozon'`;
+  const total = db
+    .prepare(`SELECT COUNT(DISTINCT r.id) AS count, MIN(r.purchased_at) AS first, MAX(r.purchased_at) AS last ${from}`)
+    .get(userId);
+  const items = db
+    .prepare(`SELECT COUNT(*) AS count FROM items WHERE receipt_id IN (SELECT r.id ${from})`)
+    .get(userId).count;
+  const years = db
+    .prepare(`SELECT substr(r.purchased_at, 1, 4) AS year, COUNT(DISTINCT r.id) AS count ${from} GROUP BY year ORDER BY year DESC`)
+    .all(userId);
+  return { ozon: true, total, items, years };
+}

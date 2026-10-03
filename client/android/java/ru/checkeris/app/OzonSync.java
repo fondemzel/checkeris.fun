@@ -94,7 +94,7 @@ final class OzonSync {
         return n;
     }
 
-    private static Set<String> known(String token) throws Exception {
+    static Set<String> known(String token) throws Exception {
         HttpURLConnection http = (HttpURLConnection) new URL(CHECKER + "/known").openConnection();
         http.setRequestProperty("Authorization", "Bearer " + token);
         http.setConnectTimeout(15000);
@@ -109,7 +109,7 @@ final class OzonSync {
         return out;
     }
 
-    private static JSONObject send(String token, String id, byte[] pdf) throws Exception {
+    static JSONObject send(String token, String id, byte[] pdf) throws Exception {
         return post(token, "/receipts", new JSONObject()
                 .put("id", id)
                 .put("pdf", android.util.Base64.encodeToString(pdf, android.util.Base64.NO_WRAP)));

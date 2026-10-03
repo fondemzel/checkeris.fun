@@ -34,7 +34,7 @@ import {
 import { bankTotals, matchBank, setOpCategory } from './bankmatch.mjs';
 import { getHistory, saveHistory, startHistory, finishHistory, trimStoredOps } from './bankhistory.mjs';
 import { knownBank } from './bankformat.mjs';
-import { knownCheques, importCheque, finishSync } from './ozon.mjs';
+import { knownCheques, importCheque, finishSync, ozonStats } from './ozon.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import {
   getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat,
@@ -439,8 +439,13 @@ async function handleApi(req, res, url) {
         }
       }
       const bank = body.bank ?? url.searchParams.get('bank') ?? 'tbank';
-      if (!knownBank(bank)) return sendJson(res, 400, { error: 'unknown bank' });
+      // Озон — не банк, но мастер истории у него тот же: шаг храним, итог — по чекам
+      if (!knownBank(bank) && bank !== 'ozon') return sendJson(res, 400, { error: 'unknown bank' });
       try {
+        if (bank === 'ozon' && pathname === '/api/bank/history/finish' && req.method === 'POST') {
+          finishSync(db, user.id);
+          return sendJson(res, 200, ozonStats(db, user.id));
+        }
         if (pathname === '/api/bank/history' && req.method === 'GET') return sendJson(res, 200, getHistory(db, user.id, bank));
         if (pathname === '/api/bank/history' && req.method === 'PUT') {
           return sendJson(res, 200, saveHistory(db, user.id, bank, body.state));

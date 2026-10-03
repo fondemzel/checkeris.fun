@@ -81,25 +81,48 @@ final class OzonApi {
         LinkedHashSet<String> ids = new LinkedHashSet<>();
         for (String start : new String[] {"/my/e-check", "/my/e-check?archive=1"}) {
             String url = start;
-            for (int i = 0; url != null && i < MAX_PAGES; i++) {
+            int idle = 0; // страниц подряд без новых чеков
+            java.util.Set<String> visited = new java.util.HashSet<>();
+            for (int i = 0; url != null && i < MAX_PAGES && visited.add(url); i++) {
                 // Страница — набор виджетов, у каждого своё состояние строкой JSON. Чеки — в
                 // ссылках «Скачать», следующая страница — в состоянии листалки (paginator)
                 JSONObject states = page(url).optJSONObject("widgetStates");
                 int before = ids.size();
+                int onPage = 0; // чеков на странице — и новых, и уже виденных
                 String next = null;
                 java.util.Iterator<String> keys = states == null ? null : states.keys();
                 while (keys != null && keys.hasNext()) {
                     String key = keys.next();
                     String state = states.optString(key);
                     Matcher m = Pattern.compile("downloadCheque[?]id=([A-Za-z0-9-]+)").matcher(state);
-                    while (m.find()) ids.add(m.group(1));
+                    while (m.find()) {
+                        ids.add(m.group(1));
+                        onPage++;
+                    }
                     if (key.startsWith("paginator")) {
                         String candidate = new JSONObject(state).optString("nextPage", "");
                         if (candidate.startsWith("/my/e-check")) next = candidate;
                     }
                 }
-                // Страница ничего не добавила — дальше листать незачем
-                url = ids.size() > before ? next : null;
+                StringBuilder kinds = new StringBuilder();
+                java.util.Iterator<String> all = states == null ? null : states.keys();
+                while (all != null && all.hasNext()) kinds.append(all.next().replaceAll("-[0-9]+-default-[0-9]+", "")).append(',');
+                Trace.log("ozon чеки " + url + ": +" + (ids.size() - before) + ", дальше " + next + " | " + kinds);
+                if (states != null && ids.size() == before) {
+                    // Ничего не нашли — покажем, что лежит в главном блоке, чтобы понять формат
+                    java.util.Iterator<String> ks = states.keys();
+                    while (ks.hasNext()) {
+                        String k = ks.next();
+                        if (k.startsWith("cheques") || k.startsWith("receipt") || k.startsWith("cellList")) {
+                            String v = states.optString(k);
+                            Trace.log("ozon " + k + ": " + v.substring(0, Math.min(v.length(), 1500)));
+                        }
+                    }
+                }
+                // Архив начинается с тех же свежих чеков, что «Недавние», поэтому одна страница
+                // без нового — не конец. Конец — пустая страница или три подряд без нового
+                idle = ids.size() > before ? 0 : idle + 1;
+                url = onPage == 0 || idle >= 3 ? null : next;
             }
         }
         return new ArrayList<>(ids);
