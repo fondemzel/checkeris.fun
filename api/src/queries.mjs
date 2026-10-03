@@ -481,7 +481,7 @@ export function getReceipt(db, budgetId, id) {
   receipt.items = db
     .prepare(
       `SELECT id, pos, name, quantity, unit, price, sum, nds, nds_sum, product_type, gtin, provider_inn,
-              category_slug, category_name, category_source, group_slug, group_name
+              category_slug, category_name, category_source, group_slug, group_name, seller, seller_inn, market
          FROM v_items WHERE receipt_id = ? ORDER BY pos`,
     )
     .all(id);
@@ -568,7 +568,40 @@ export function getItem(db, budgetId, id) {
  * only — только эта покупка: словарь не трогаем, метка «закреплена» (pinned), и разметка
  * по названию её больше не перепишет.
  */
-export function setItemCategory(db, budgetId, id, slug, only = false) {
+/**
+ * Категория товара. only — только этот (иначе — все с таким названием и новые); seller — ещё
+ * и все товары этого продавца, и его будущие (budget_seller_rules). Продавец-маркетплейс
+ * в правило не попадает: там в чеке сама площадка, а не магазин.
+ */
+export function setItemCategory(db, budgetId, id, slug, only = false, seller = false) {
+  const result = setItemCategoryByName(db, budgetId, id, slug, only);
+  if (result.error || !seller) return result;
+
+  const item = db.prepare('SELECT seller_inn, market FROM v_items WHERE id = ?').get(id);
+  if (!item?.seller_inn || item.market) return result;
+  if (slug) {
+    db.prepare(
+      `INSERT INTO budget_seller_rules (budget_id, seller_inn, category_slug, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (budget_id, seller_inn) DO UPDATE SET category_slug = excluded.category_slug, updated_at = excluded.updated_at`,
+    ).run(budgetId, item.seller_inn, slug, new Date().toISOString());
+  } else {
+    db.prepare('DELETE FROM budget_seller_rules WHERE budget_id = ? AND seller_inn = ?').run(budgetId, item.seller_inn);
+  }
+  const ids = db
+    .prepare('SELECT i.id FROM items i JOIN receipts r ON r.id = i.receipt_id WHERE r.budget_id = ? AND r.seller_inn = ?')
+    .all(budgetId, item.seller_inn)
+    .map((r) => r.id);
+  classifyItems(db, ids);
+  const sellerAffected = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM items i JOIN receipts r ON r.id = i.receipt_id JOIN item_labels l ON l.item_id = i.id
+        WHERE r.budget_id = ? AND r.seller_inn = ? AND l.source = 'seller'`,
+    )
+    .get(budgetId, item.seller_inn).n;
+  return { ...result, seller_affected: sellerAffected };
+}
+
+function setItemCategoryByName(db, budgetId, id, slug, only = false) {
   const item = db
     .prepare(
       `SELECT i.id, i.name, i.name_norm FROM items i JOIN receipts r ON r.id = i.receipt_id

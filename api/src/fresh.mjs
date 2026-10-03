@@ -27,7 +27,8 @@ export function freshItems(db, budgetId, bank, since) {
     const rows = db
       .prepare(
         `SELECT 'item' AS type, v.id, v.name, v.sum, v.purchased_at AS at, 'expense' AS kind,
-                v.category_slug, v.category_source, v.receipt_id, c.created_at AS added
+                v.category_slug, v.category_source, v.receipt_id, c.created_at AS added,
+                v.seller, v.seller_inn, v.market
            FROM shop_cheques c
            JOIN receipts r ON r.id = c.receipt_id AND r.source_id LIKE ?
            JOIN v_items v ON v.receipt_id = r.id AND v.dup = 0
@@ -42,7 +43,7 @@ export function freshItems(db, budgetId, bank, since) {
   const rows = db
     .prepare(
       `SELECT 'op' AS type, id, COALESCE(merchant, description) AS name, amount AS sum, at, direction, kind,
-              category_slug, category_source, receipt_id, created_at AS added
+              category_slug, category_source, receipt_id, created_at AS added, merchant
          FROM bank_ops
         WHERE link_id IN (${list}) AND created_at > ? AND kind IN ('expense', 'income', 'covered')
         ORDER BY created_at DESC, at DESC

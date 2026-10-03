@@ -1133,6 +1133,7 @@ async function screenOp() {
     seller: op.merchant && op.description && op.description !== op.merchant ? (income ? op.merchant : op.description) : null,
     category_slug: op.category_slug,
     same_name_count: op.same_count,
+    merchant: op.merchant,
     note: op.note,
     card: op.card,
     account_name: op.account_name,
@@ -2059,10 +2060,11 @@ async function saveManual() {
  * меняет отдельная кнопка-значок справа.
  */
 function sheetRow(item, { open = false } = {}) {
+  itemCtx.set(`item:${item.id}`, item);
   const group = findGroup(item.group_slug);
   const color = group?.color ?? '#eef1f5';
   // Зелёная точка на значке — категорию предложил Чекер, без точки — выбрал человек
-  const human = item.category_source === 'manual' || item.category_source === 'pinned';
+  const human = ['manual', 'pinned', 'seller'].includes(item.category_source);
   const guess = item.category_slug && !human ? ' guess' : '';
 
   const body = `
@@ -2088,22 +2090,38 @@ function sheetRow(item, { open = false } = {}) {
  * Так вместо одного списка на сорок строк — две коротких страницы,
  * а цвета и значки те же, что во всём остальном приложении.
  */
+// Что известно о записи, у которой меняют категорию, — для переключателей «для всех таких же»:
+// продавец у товара, есть ли продавец у операции. Заполняется при отрисовке строк
+const itemCtx = new Map(); // 'item:id' | 'op:id' → строка
+
 /**
- * Переключатель «для всех таких же» в окне выбора категории: что считается «таким же» —
+ * Переключатели «для всех таких же» в окне выбора категории: что считается «таким же» —
  * у позиции чека название, у траты банка продавец, у дохода описание. Число — если известно
  * (карточка открыта); одна-единственная — переключатель не нужен.
  */
 function sameFor(kind, id) {
-  const count = itemShown?.id === id ? itemShown.same_name_count : null;
-  if (count != null && count < 2) return null;
-  const n = count == null ? '' : `${int.format(count)} `;
+  const shown = itemShown?.id === id ? itemShown : null;
+  const ctx = shown ?? itemCtx.get(`${kind === 'item' ? 'item' : 'op'}:${id}`) ?? null;
+  const count = shown ? shown.same_name_count : null;
+  const note = (word) => (count == null ? 'и для новых' : `${int.format(count)} ${word} · и для новых`);
+  const many = count == null || count > 1;
+
   if (kind === 'op') {
-    return { title: 'Для всех трат этого продавца', note: `${n}${count == null ? '' : plural(count, 'трата', 'траты', 'трат') + ' · '}и для новых` };
+    if (!many) return null;
+    // Продавца нет (переводы, пополнения) — правило держится на описании, так и пишем
+    const merchant = ctx ? Boolean(ctx.merchant) : true;
+    return [{ key: 'all', title: merchant ? 'Для всех трат этого продавца' : 'Для всех с таким описанием', note: note(plural(count ?? 0, 'трата', 'траты', 'трат')) }];
   }
   if (kind === 'income') {
-    return { title: 'Для всех с таким описанием', note: `${n}${count == null ? '' : pl(count, T.income.many) + ' · '}и для новых` };
+    return many ? [{ key: 'all', title: 'Для всех с таким описанием', note: note(pl(count ?? 0, T.income.many)) }] : null;
   }
-  return { title: 'Для всех с таким названием', note: `${n}${count == null ? '' : plural(count, 'позиция', 'позиции', 'позиций') + ' · '}и для новых покупок` };
+  const out = [];
+  if (many) out.push({ key: 'all', title: 'Для всех с таким названием', note: note(plural(count ?? 0, 'позиция', 'позиции', 'позиций')) });
+  // Продавец — магазин, а не площадка: у маркетплейса в чеке сама площадка
+  if (ctx?.seller_inn && !ctx.market) {
+    out.push({ key: 'seller', title: 'Все товары этого продавца', note: `${ctx.seller ? `${sellerName(ctx)} · ` : ''}и новые покупки у него` });
+  }
+  return out.length ? out : null;
 }
 
 /** Не категория, а вид: «перевод себе». Выбирается в том же окне, что и категория. */
@@ -2111,14 +2129,16 @@ const TRANSFER = '#transfer';
 
 function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], same = null, { transfer = false } = {}) {
   const income = groups === meta?.income;
-  // Выключен (по умолчанию) — категория меняется только у этой записи; включают, когда нужно
+  // Выключены (по умолчанию) — категория меняется только у этой записи; включают, когда нужно
   // разложить всех таких же разом. Помним между шагами (группа → категория)
-  let all = false;
+  const on = {};
   const sameRow = () =>
-    same
-      ? `<div class="picker-same">
-          <span class="same-text">${esc(same.title)}<small class="note">${esc(same.note)}</small></span>
-          ${toggle("data-same", all, same.title)}
+    same?.length
+      ? `<div class="picker-same">${same.map((x) => `
+          <div class="picker-same-row">
+            <span class="same-text">${esc(x.title)}<small class="note">${esc(x.note)}</small></span>
+            ${toggle(`data-same="${x.key}"`, Boolean(on[x.key]), x.title)}
+          </div>`).join('')}
         </div>`
       : '';
   const picker = document.createElement('div');
@@ -2188,7 +2208,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
   };
 
   picker.addEventListener('change', (e) => {
-    if (e.target.matches('[data-same]')) all = e.target.checked;
+    if (e.target.matches('[data-same]')) on[e.target.dataset.same] = e.target.checked;
   });
 
   picker.addEventListener('click', (e) => {
@@ -2201,7 +2221,9 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
     const category = e.target.closest('[data-category]');
     if (category) {
       close(); // возвращаемся к списку товаров сразу, не дожидаясь сохранения
-      onPick(itemId, category.dataset.category, { only: Boolean(same) && !all });
+      // Переключателя «по названию» нет (запись одна такая) — выбор запоминается и для новых
+      const byName = same?.some((x) => x.key === 'all') ? Boolean(on.all) : true;
+      onPick(itemId, category.dataset.category, { only: !byName, seller: Boolean(on.seller) });
     }
   });
 
@@ -2277,13 +2299,14 @@ async function saveOpCategory(id, slug, { only = false } = {}) {
 }
 
 /** Сохранение выбранной категории и обновление строки на месте. */
-async function saveCategory(itemId, slug, { only = false } = {}) {
+async function saveCategory(itemId, slug, { only = false, seller = false } = {}) {
   const row = document.querySelector(`.sheet-row[data-row="${itemId}"]`);
   if (!row) return;
   row.classList.add('saving');
 
   try {
-    const data = await post(`/api/items/${itemId}/category`, { category: slug, only });
+    const data = await post(`/api/items/${itemId}/category`, { category: slug, only, seller });
+    if (data.seller_affected > 1) toast(`У продавца теперь «${data.category?.name ?? ''}»: ${int.format(data.seller_affected)} ${plural(data.seller_affected, 'позиция', 'позиции', 'позиций')}`);
 
     const group = findCategory(slug)?.group;
     const color = group?.color ?? '#eef1f5';
@@ -3383,17 +3406,19 @@ $('screen').addEventListener('submit', (e) => {
 });
 
 /** Категория из карточки товара: выбор тот же, что в разборе чека, итог — под кнопкой. */
-async function saveItemCategory(itemId, slug, { only = false } = {}) {
+async function saveItemCategory(itemId, slug, { only = false, seller = false } = {}) {
   const note = $('pick-note');
   const button = $('item-cat');
   note.classList.remove('error');
   note.textContent = 'Сохранение…';
   button.disabled = true;
   try {
-    const data = await post(`/api/items/${itemId}/category`, { category: slug, only });
+    const data = await post(`/api/items/${itemId}/category`, { category: slug, only, seller });
     button.innerHTML = categoryButton(slug);
     note.textContent = data.only
-      ? data.category ? `«${data.category.name}» — только для этой покупки` : 'Категория снята у этой покупки'
+      ? data.category
+        ? `«${data.category.name}» — ${data.seller_affected ? `у продавца: ${int.format(data.seller_affected)} ${plural(data.seller_affected, 'позиция', 'позиции', 'позиций')}` : 'только для этой покупки'}`
+        : 'Категория снята у этой покупки'
       : data.category
       ? `«${data.category.name}» — обновлено ${int.format(data.affected)} ${plural(data.affected, 'позиция', 'позиции', 'позиций')}`
       : `Категория снята, затронуто ${int.format(data.affected)}`;
@@ -4605,8 +4630,9 @@ function freshLook(r) {
 
 /** Одна строка нового: значок категории (с зелёной точкой, если её предложил Чекер), название, сумма. */
 function freshRow(r) {
+  itemCtx.set(`${r.type}:${r.id}`, r);
   const l = freshLook(r);
-  const human = r.category_source === 'manual' || r.category_source === 'pinned';
+  const human = ['manual', 'pinned', 'seller'].includes(r.category_source);
   const guess = r.category_slug && !human ? ' guess' : '';
   const when = `${dateRu(r.at.slice(0, 10))}${r.at.length > 10 ? ` ${esc(timeRu(r.at))}` : ''}`;
   const attrs = r.kind === 'covered' ? 'disabled' : `data-fresh-pick="${r.type}:${r.id}:${r.kind}"`;
@@ -4677,10 +4703,10 @@ function onFreshClick(e, { collapsed, redraw, refresh }) {
   if (!pick) return false;
   const [type, raw, kind] = pick.dataset.freshPick.split(':');
   const id = Number(raw);
-  const save = (path) => async (_, slug, { only = false } = {}) => {
+  const save = (path) => async (_, slug, { only = false, seller = false } = {}) => {
     try {
       if (slug === TRANSFER) await post(`/api/bank/ops/${id}/kind`, { kind: 'transfer', only });
-      else await post(path, { category: slug, only });
+      else await post(path, { category: slug, only, seller });
       await refresh();
     } catch (err) {
       toast(`Не сохранилось: ${err.message}`);

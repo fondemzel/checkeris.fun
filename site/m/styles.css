@@ -552,16 +552,15 @@ button, input, select { font: inherit; color: inherit; }
 .picker-special-text { display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .picker-special-text .note { margin: 0; font-size: 12px; }
 
-/* «Для всех таких же»: переключатель в окне выбора категории */
+/* «Для всех таких же»: переключатели в окне выбора категории — одним блоком, по строке на каждый */
 .picker-same {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   margin-bottom: 12px;
-  padding: 10px 14px;
+  padding: 0 14px;
   border-radius: 12px;
   background: var(--surface);
 }
+.picker-same-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.picker-same-row + .picker-same-row { border-top: 1px solid #f0f1f3; }
 .same-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .same-text .note { margin: 0; }
 

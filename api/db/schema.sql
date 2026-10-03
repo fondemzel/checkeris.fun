@@ -284,6 +284,18 @@ CREATE TABLE IF NOT EXISTS category_links (
 
 -- Ручная правка категории — решение участников бюджета о названии товара. Верхняя
 -- ступень лестницы разметки этого бюджета; на другие бюджеты не влияет.
+-- Категория для всех товаров продавца (по ИНН из чека), выбранная человеком: «всё из аптеки —
+-- в лекарства». Слабее выбора по названию (budget_dictionary), сильнее догадок Чекера.
+-- Маркетплейсам не ставится: там продавец в чеке — сама площадка.
+CREATE TABLE IF NOT EXISTS budget_seller_rules (
+  budget_id     INTEGER NOT NULL,
+  seller_inn    TEXT NOT NULL,
+  category_slug TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  PRIMARY KEY (budget_id, seller_inn),
+  FOREIGN KEY (budget_id, category_slug) REFERENCES categories (budget_id, slug) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS budget_dictionary (
   budget_id     INTEGER NOT NULL,
   name_norm     TEXT NOT NULL,

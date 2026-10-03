@@ -95,6 +95,9 @@ export function loadBudgetTables(db, budgetId) {
     overrides: new Map(
       db.prepare('SELECT name_norm, category_slug FROM budget_dictionary WHERE budget_id = ?').all(budgetId).map((r) => [r.name_norm, r.category_slug]),
     ),
+    sellers: new Map(
+      db.prepare('SELECT seller_inn, category_slug FROM budget_seller_rules WHERE budget_id = ?').all(budgetId).map((r) => [r.seller_inn, r.category_slug]),
+    ),
     links: new Map(
       db.prepare('SELECT sys_slug, slug FROM category_links WHERE budget_id = ?').all(budgetId).map((r) => [r.sys_slug, r.slug]),
     ),
@@ -120,6 +123,9 @@ export function resolve(item, tables, nearest, budget = null) {
   if (budget) {
     const own = budget.overrides.get(item.name_norm);
     if (own) return { category: own, source: 'manual', confidence: 1 };
+    // Человек решил за всего продавца: слабее выбора по названию, сильнее любых догадок
+    const seller = item.seller_inn && budget.sellers?.get(item.seller_inn);
+    if (seller) return { category: seller, source: 'seller', confidence: 1 };
   }
 
   // Ступень общего знания срабатывает, только если её ответ есть и в этом бюджете
@@ -347,6 +353,7 @@ function stats(db) {
   const titles = {
     manual: 'ручная правка',
     pinned: 'из ручных трат',
+    seller: 'выбор по продавцу',
     gtin: 'штрихкод',
     rule: 'жёсткое правило',
     dictionary: 'словарь',

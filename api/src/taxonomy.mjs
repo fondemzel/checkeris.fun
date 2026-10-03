@@ -291,6 +291,8 @@ export function deleteCategory(db, budgetId, slug, moveTo) {
         .run(target, now, budgetId, slug);
       db.prepare('UPDATE budget_dictionary SET category_slug = ?, updated_at = ? WHERE budget_id = ? AND category_slug = ?')
         .run(target, now, budgetId, slug);
+      db.prepare('UPDATE budget_seller_rules SET category_slug = ?, updated_at = ? WHERE budget_id = ? AND category_slug = ?')
+        .run(target, now, budgetId, slug);
       db.prepare('UPDATE category_links SET slug = ? WHERE budget_id = ? AND slug = ?').run(target, budgetId, slug);
       // Траты из банка и правила по продавцам переезжают туда же — иначе они остались бы
       // с категорией, которой больше нет
