@@ -206,6 +206,15 @@ function tooOften(key, limit, windowMs) {
   return recent.length > limit;
 }
 
+/** Сколько отметок по ключу за окно — не добавляя новую. */
+function recentHits(key, windowMs) {
+  const now = Date.now();
+  return (hits.get(key) ?? []).filter((t) => now - t < windowMs).length;
+}
+
+const LOGIN_FAILS = 10; // неудачных входов по одному логину…
+const LOGIN_LOCK_MS = 60 * 60_000; // …за час — и вход по паролю закрыт, пока они не устареют
+
 // коды ставок НДС из ФФД
 const NDS_LABELS = { 1: '20%', 2: '10%', 3: '20/120', 4: '10/110', 5: '0%', 6: 'без НДС' };
 const ndsLabel = (code) => NDS_LABELS[code] ?? (code == null ? '' : String(code));
@@ -251,11 +260,20 @@ async function handleToken(req, res) {
     return sendJson(res, 400, { error: 'bad request body' });
   }
 
+  // Перебор пароля одного логина с многих адресов: лимит по адресу его не ловит, поэтому
+  // неудачи считаем ещё и по логину — 10 за час, и логин закрыт на полчаса
+  const loginKey = `fail:${String(body.login ?? '').trim().toLowerCase()}`;
+  if (recentHits(loginKey, LOGIN_LOCK_MS) >= LOGIN_FAILS) {
+    return sendJson(res, 429, { error: 'слишком много неудачных попыток — вход по паролю закрыт на полчаса' });
+  }
+
   const user = findUser(db, body.login);
   if (!user || !verifyPassword(String(body.password ?? ''), user.password)) {
+    tooOften(loginKey, LOGIN_FAILS, LOGIN_LOCK_MS); // запомнить неудачу
     await new Promise((r) => setTimeout(r, 400));
     return sendJson(res, 401, { error: 'неверный логин или пароль' });
   }
+  hits.delete(loginKey); // вошёл — счёт неудач с нуля
 
   const { token, expires_at } = issueToken(db, user.id, String(body.label ?? '').trim() || null);
   return sendJson(res, 200, { token, expires_at, login: user.login });
