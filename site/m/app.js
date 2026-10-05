@@ -4032,12 +4032,23 @@ const endBtn = (attrs, icon, label, spin = false) =>
  * браузере моста нет, и раздел «Банк» не показывается.
  */
 const inApp = () => Boolean(window.Checker);
+// Состояние банков у приложения: экраны спрашивают его помногу раз за отрисовку, а вопрос
+// к приложению не бесплатный. Помним ответ пару секунд; вернулись из окна банка или закончилось
+// обновление — забываем сразу (checker-resume, checker-bank)
+let appInfoCache = null;
 const appInfo = () => {
+  if (appInfoCache && Date.now() - appInfoCache.at < 2000) return appInfoCache.value;
+  let value = {};
   try {
-    return JSON.parse(window.Checker.info());
+    value = JSON.parse(window.Checker.info());
   } catch {
-    return {};
+    // приложения нет или ответ не разобрать — как будто банков нет
   }
+  appInfoCache = { value, at: Date.now() };
+  return value;
+};
+const forgetAppInfo = () => {
+  appInfoCache = null;
 };
 
 /**
@@ -4539,6 +4550,7 @@ $('screen').addEventListener('focusout', async (e) => {
 
 // Вернулись в приложение (например, из окна банка) — состояние могло измениться
 window.addEventListener('checker-resume', () => {
+  forgetAppInfo();
   reloadIfUpdated();
   rollMonth();
   if (state.screen === 'bank_wizard' && wiz?.awaitLogin) {
@@ -4571,7 +4583,16 @@ let bankSyncing = null;
 let syncAfterLogin = null;
 
 // Мост к приложению для конкретного банка: у Сбера свои методы, у Т-Банка свои
+/** Действия с банком в приложении. Любое из них меняет состояние банка — запомненное забываем. */
 function bankBridge(id) {
+  const raw = bankBridgeRaw(id);
+  return Object.fromEntries(Object.entries(raw).map(([name, fn]) => [name, (...args) => {
+    forgetAppInfo();
+    return fn(...args);
+  }]));
+}
+
+function bankBridgeRaw(id) {
   const c = window.Checker;
   if (id === 'ozon') return { login: () => c.ozonLogin(), sync: () => c.ozonSync(token.get()), forget: () => c.ozonForget() };
   if (id === 'wb') return { login: () => c.wbLogin(), sync: () => c.wbSync(token.get()), forget: () => c.wbForget() };
@@ -4589,6 +4610,7 @@ async function startBankSync(id) {
 
 // Банк дозавершил вход уже после того, как окно ушло с экрана
 window.addEventListener('checker-bank-ready', (e) => {
+  forgetAppInfo();
   const id = e.detail?.bank ?? 'tbank';
   syncAfterLogin = null;
   if (!e.detail?.ok) {
@@ -4602,6 +4624,7 @@ window.addEventListener('checker-bank-ready', (e) => {
 
 // Итог выгрузки приходит от приложения событием: показываем и обновляем экран
 window.addEventListener('checker-bank', (e) => {
+  forgetAppInfo();
   feedData.clear(); // пришли новые операции или чеки
   bankSyncing = null;
   const r = e.detail ?? {};

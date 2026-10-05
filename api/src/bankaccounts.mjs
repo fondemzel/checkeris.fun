@@ -32,10 +32,12 @@ export function listAccounts(db, userId, bank) {
                 WHERE o.link_id = a.link_id AND o.account = a.account AND o.card IS NOT NULL
                 ORDER BY o.at DESC LIMIT 1) AS card,
               -- Маска карты («553691******9315»): по первым цифрам видна платёжная система
-              (SELECT json_extract(o.raw, '$.cardNumber') FROM bank_ops o
-                WHERE o.link_id = a.link_id AND o.account = a.account
-                  AND json_extract(o.raw, '$.cardNumber') IS NOT NULL
-                ORDER BY o.at DESC LIMIT 1) AS mask
+              -- Ищем в последних операциях: перебор всей истории счёта с разбором JSON
+              -- держал экран банка больше секунды
+              (SELECT json_extract(r.raw, '$.cardNumber') FROM (
+                 SELECT o.raw FROM bank_ops o WHERE o.link_id = a.link_id AND o.account = a.account
+                  ORDER BY o.at DESC LIMIT 200) r
+                WHERE json_extract(r.raw, '$.cardNumber') IS NOT NULL LIMIT 1) AS mask
          -- Операции без счёта (Сбер так отдаёт, например, погашение ипотеки) в выписке
          -- остаются, но строкой-счётом без названия список не засоряем
          FROM bank_accounts a WHERE a.link_id = ? AND a.account <> ''

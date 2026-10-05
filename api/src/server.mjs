@@ -261,10 +261,10 @@ async function handleToken(req, res) {
   }
 
   // Перебор пароля одного логина с многих адресов: лимит по адресу его не ловит, поэтому
-  // неудачи считаем ещё и по логину — 10 за час, и логин закрыт на полчаса
+  // неудачи считаем ещё и по логину — 10 за час, и вход закрыт, пока они не устареют (до часа)
   const loginKey = `fail:${String(body.login ?? '').trim().toLowerCase()}`;
   if (recentHits(loginKey, LOGIN_LOCK_MS) >= LOGIN_FAILS) {
-    return sendJson(res, 429, { error: 'слишком много неудачных попыток — вход по паролю закрыт на полчаса' });
+    return sendJson(res, 429, { error: 'слишком много неудачных попыток — попробуйте через час' });
   }
 
   const user = findUser(db, body.login);

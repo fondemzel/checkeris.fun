@@ -33,7 +33,18 @@ final class Secrets {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    // Ключ из хранилища Android достаём один раз: загрузка хранилища на телефоне медленная,
+    // а страница спрашивает состояние банков на каждом экране настроек
+    private static volatile SecretKey cached;
+
     private static SecretKey key() throws Exception {
+        SecretKey ready = cached;
+        if (ready != null) return ready;
+        cached = loadKey();
+        return cached;
+    }
+
+    private static SecretKey loadKey() throws Exception {
         KeyStore store = KeyStore.getInstance(KEYSTORE);
         store.load(null);
         KeyStore.Entry entry = store.getEntry(KEY_ALIAS, null);
@@ -46,6 +57,11 @@ final class Secrets {
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .build());
         return generator.generateKey();
+    }
+
+    /** Есть ли запись — без расшифровки: «подключён ли банк» не требует самой сессии. */
+    boolean has(String name) {
+        return prefs.contains(name);
     }
 
     /** Значение или null, если его нет либо расшифровать не вышло (ключ пересоздан). */

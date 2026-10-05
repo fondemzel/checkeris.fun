@@ -26,11 +26,11 @@ final class OzonSync {
     private static final String CHECKER = "https://checkeris.fun/api/"; // + магазин: ozon, wb
 
     static boolean connected(Context context) {
-        return new Secrets(context).get(SESSION) != null;
+        return new Secrets(context).has(SESSION);
     }
 
     static boolean expired(Context context) {
-        return "1".equals(new Secrets(context).get(EXPIRED));
+        return new Secrets(context).has(EXPIRED); // ставится только "1", снимается удалением
     }
 
     static void forget(Context context) {

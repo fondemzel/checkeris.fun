@@ -51,12 +51,12 @@ final class BankSync {
     }
 
     static boolean connected(Context context) {
-        return new Secrets(context).get(BankLoginActivity.SESSION) != null;
+        return new Secrets(context).has(BankLoginActivity.SESSION);
     }
 
     /** Банк подключён, но просит войти заново: сессию не выбрасываем, чтобы не пугать «не подключён». */
     static boolean expired(Context context) {
-        return "1".equals(new Secrets(context).get(EXPIRED));
+        return new Secrets(context).has(EXPIRED); // ставится только "1", снимается удалением
     }
 
     static void forget(Context context) {

@@ -26,11 +26,11 @@ final class SberSync {
     private static final int PAGES = 6; // ~300 недавних операций за обычное обновление
 
     static boolean connected(Context context) {
-        return new Secrets(context).get(BankLoginActivity.SBER_SESSION) != null;
+        return new Secrets(context).has(BankLoginActivity.SBER_SESSION);
     }
 
     static boolean expired(Context context) {
-        return "1".equals(new Secrets(context).get(EXPIRED));
+        return new Secrets(context).has(EXPIRED); // ставится только "1", снимается удалением
     }
 
     static void forget(Context context) {

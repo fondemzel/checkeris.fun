@@ -566,6 +566,8 @@ CREATE INDEX IF NOT EXISTS idx_bank_ops_budget_at ON bank_ops (budget_id, at);
 CREATE INDEX IF NOT EXISTS idx_bank_ops_category ON bank_ops (budget_id, category_slug);
 -- Чей это чек: разметка проверяет, не отдан ли чек другой операции, а карточка товара ищет его оплату
 CREATE INDEX IF NOT EXISTS idx_bank_ops_receipt ON bank_ops (receipt_id);
+-- Счета банка: число операций, первые и последние, номер карты — по счёту, свежие первыми
+CREATE INDEX IF NOT EXISTS idx_bank_ops_account ON bank_ops (link_id, account, at);
 
 -- Комментарии к товарам. Позиции чека при повторном импорте выгрузки пересоздаются
 -- с новыми id, поэтому комментарий держится за чек и номер позиции в нём: они постоянны.
