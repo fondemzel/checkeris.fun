@@ -952,7 +952,7 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
 .month.compact { flex: none; justify-content: flex-start; gap: 6px; margin: 0; }
 /* Период и сортировка делят одну строку — обоим нужно быть компактными */
 .month.compact { gap: 3px; }
-.month.compact .month-arrow { width: 24px; height: 28px; border-radius: 14px; font-size: 15px; color: var(--muted); }
+.month.compact .month-arrow { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 15px; color: var(--muted); } /* круг, как высота строки */
 .month.compact .month-name {
   min-height: 28px;
   gap: 4px;
