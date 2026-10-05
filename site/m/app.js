@@ -3027,7 +3027,8 @@ const TAB_OF = {
  * полоса кнопок есть не на всех экранах, а у телефонов разная безопасная зона снизу.
  */
 function updateDock() {
-  const tabs = document.querySelector('.tabs').offsetHeight;
+  // Меню — остров над низом экрана: место под ним считаем от его верха до низа экрана
+  const tabs = Math.ceil(window.innerHeight - document.querySelector('.tabs').getBoundingClientRect().top);
   const actions = $('actions').hidden ? 0 : $('actions').offsetHeight;
   const root = document.documentElement.style;
   root.setProperty('--tabs', `${tabs}px`);
