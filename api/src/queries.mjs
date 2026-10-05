@@ -276,6 +276,7 @@ export function listItemGroups(db, budgetId, params) {
               MIN(purchased_at) AS first_at,
               MAX(manual) AS manual,
               MAX(market) AS market,
+              MIN(seller) AS seller, MIN(retail_place) AS retail_place, -- для поиска на телефоне
               -- хотя бы у одной покупки группы есть комментарий: в ленте это видно пометкой
               MAX(EXISTS (SELECT 1 FROM item_notes n WHERE n.receipt_id = v_items.receipt_id AND n.pos = v_items.pos)) AS has_note,
               unit,

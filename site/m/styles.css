@@ -969,6 +969,53 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
 .month.compact .month-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .month.compact .month-arrow, .month.compact .month-name svg { flex: none; }
 
+/* Поиск в строке периода: всё оставшееся место, скруглён, как кнопка даты */
+.search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 3px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  cursor: text;
+}
+.search-ic { display: flex; flex: none; color: var(--text); opacity: 0.4; }
+.search-ic svg { width: 14px; height: 14px; }
+.search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.search input::-webkit-search-cancel-button { display: none; }
+.search-x {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 11px;
+  background: #eef1f5;
+  color: var(--muted);
+  cursor: pointer;
+}
+.search-x svg { width: 12px; height: 12px; }
+.search-x[hidden] { display: none; }
+
 .sorts { display: flex; flex: none; gap: 3px; }
 
 .sort-chip {

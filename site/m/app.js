@@ -125,6 +125,7 @@ const UI = {
       '<circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
   ),
   sparkle: svg('<path d="M9.94 14.06 4 20"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="m16.24 7.76 2.83-2.83"/>'),
+  search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
   swap: svg('<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>'),
   calendar: svg('<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>'),
   wallet: groupIcon('card'),
@@ -276,6 +277,7 @@ const state = {
   tc: '', // настройка категорий: открытая категория
   op: '', // операция банка, чья карточка открыта
   src: '', // фильтр ленты по источнику: '' | receipt | market | bank | manual
+  q: '', // поиск в расходах и доходах: слова через пробел, все должны найтись
   inf: '', // фильтр доходов: '' | '-' (без категории) | код группы доходов
   added: '', // чек, только что добавленный сканом или руками
   sort: 'category', // списки: date | category | name | sum; по умолчанию — defaultSort(экран)
@@ -304,7 +306,27 @@ const defaultSort = (screen) => (['summary', 'income'].includes(screen) ? 'categ
   * Кнопка открывает список прямо под собой: строка — значок и название. Так в шапке две
   * кнопки вместо восьми, а что выбрано, видно в подписи под суммой.
   */
-const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '' }) => `
+/**
+ * Поиск в строке периода: на всё оставшееся место, как кнопка даты. Ищет по уже загруженному —
+ * выборка обновляется на каждый символ без запросов к серверу.
+ */
+const searchBox = () => `
+  <label class="search">
+    <span class="search-ic">${UI.search}</span>
+    <input id="q" type="search" value="${esc(state.q)}" placeholder="Поиск" enterkeyhint="search" autocomplete="off" />
+    <button class="search-x" type="button" data-q-clear aria-label="Очистить"${state.q ? '' : ' hidden'}>${UI.close}</button>
+  </label>`;
+
+/** Подходит ли запись под поиск: каждое слово запроса — в одном из полей. */
+const searchNorm = (v) => String(v ?? '').toLowerCase().replace(/ё/g, 'е');
+function matchesQ(...fields) {
+  const words = searchNorm(state.q).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = searchNorm(fields.filter(Boolean).join(' '));
+  return words.every((w) => hay.includes(w));
+}
+
+const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false }) => `
   <div class="total compact">
     <div class="head-top">
       <div class="head-sum">
@@ -318,6 +340,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '' }) 
     </div>
     <div class="head-line">
       ${periodNav(true)}
+      ${search ? searchBox() : ''}
     </div>
   </div>`;
 
@@ -595,8 +618,12 @@ async function screenSummary() {
   }
 
   // Фильтр по источнику: итог и число покупок считаем по тому, что осталось
-  const shownItems = state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src);
-  const shownOps = !state.src || state.src === 'bank' ? bankRows : [];
+  const shownItems = (state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src))
+    .filter((r) => matchesQ(r.name, r.seller, r.retail_place, SOURCES[itemSource(r)].title, T.sources[itemSource(r)],
+      findCategory(r.category_slug)?.category.name));
+  const shownOps = (!state.src || state.src === 'bank' ? bankRows : [])
+    .filter((op) => matchesQ(op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
+      bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name));
   const total = shownItems.reduce((s, r) => s + r.sum, 0) + shownOps.reduce((s, op) => s + op.amount, 0);
   const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
 
@@ -607,6 +634,7 @@ async function screenSummary() {
     part('count', `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`),
     SORTS[state.sort] ? part('sort', SORTS[state.sort][0].toLowerCase()) : '',
     state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase()) : '',
+    state.q ? part('q', `поиск «${state.q.trim()}»`) : '',
   ].filter(Boolean).join(' · ');
 
   const head = `
@@ -616,6 +644,7 @@ async function screenSummary() {
         note,
         sorts: ['date', 'category', 'name', 'sum'],
         filters: sourceChips(),
+        search: true,
       })}
     </div>`;
 
@@ -708,7 +737,7 @@ async function spendingFeed(itemRows, bankRows) {
       noted: Boolean(op.has_note),
     })),
   ];
-  if (!spendings.length) return '<div class="empty">За этот период трат нет</div>';
+  if (!spendings.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период трат нет'}</div>`;
 
   // Порядок категорий — как в справочнике: так группы идут всегда в одном порядке
   const catOrder = new Map();
@@ -761,7 +790,8 @@ async function spendingFeed(itemRows, bankRows) {
   // держим один раздел — иначе лента разрастается до тысяч строк
   const order = [...new Set(spendings.map(sectionOf))].filter((k) => k != null);
   // По дням верхний (сегодняшний) день открыт; по категориям всё свёрнуто — видно разом, сколько где
-  const opened = openSections(state.sort === 'category' ? null : order[0]);
+  // Во время поиска раскрыто всё — иначе найденное пряталось бы в свёрнутых разделах
+  const opened = state.q.trim() ? new Set(order) : openSections(state.sort === 'category' ? null : order[0]);
   const single = spendings.length > 500;
   if (single && opened.size > 1) {
     const keep = [...opened].pop();
@@ -997,8 +1027,8 @@ async function screenIncome() {
     per: '5000', sort: state.sort === 'category' ? 'date' : state.sort, dir: state.sort === 'category' ? 'desc' : state.dir,
   });
   const [data, bank] = await Promise.all([
-    api(`/api/bank/ops?${q}`),
-    api(`/api/bank?from=${state.from}&to=${state.to}`).catch(() => null),
+    apiFeed(`/api/bank/ops?${q}`),
+    apiFeed(`/api/bank?from=${state.from}&to=${state.to}`).catch(() => null),
   ]);
   const transfers = (bank?.totals ?? []).find((t) => t.kind === 'transfer');
 
@@ -1006,13 +1036,19 @@ async function screenIncome() {
   const groups = meta?.income ?? [];
   const picked = groups.find((g) => g.slug === state.inf);
   const filter = state.inf === '-' ? '-' : picked ? picked.slug : '';
+  // Данные — из памяти (apiFeed): отбираем в свой список, ответ сервера не трогаем
   const all = data.rows;
-  data.rows = !filter ? all : all.filter((op) => {
-    const found = incomeCat(op.category_slug);
-    return filter === '-' ? !found : found?.group.slug === filter;
-  });
-  const sum = filter ? data.rows.reduce((n, op) => n + op.amount, 0) : data.totals.sum;
-  const count = filter ? data.rows.length : data.totals.count;
+  const narrowed = Boolean(filter || state.q.trim());
+  const rows = all
+    .filter((op) => {
+      if (!filter) return true;
+      const found = incomeCat(op.category_slug);
+      return filter === '-' ? !found : found?.group.slug === filter;
+    })
+    .filter((op) => matchesQ(op.description, op.merchant, op.account_name, SOURCES.bank.title, T.sources.bank,
+      bankById(op.bank)?.name, incomeCat(op.category_slug)?.name));
+  const sum = narrowed ? rows.reduce((n, op) => n + op.amount, 0) : data.totals.sum;
+  const count = narrowed ? rows.length : data.totals.count;
   const filters = drop(UI.filter, 'Фильтр',
     dropRow('data-inf=""', UI.layers, T.income.all, !filter)
     + groups.map((g) => dropRow(`data-inf="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, filter === g.slug)).join('')
@@ -1027,14 +1063,16 @@ async function screenIncome() {
           `${int.format(count)} ${pl(count, T.income.many)}`,
           SORTS[state.sort] ? SORTS[state.sort][0].toLowerCase() : '',
           filter ? (picked?.name ?? T.income.noCategory).toLowerCase() : '',
+          state.q.trim() ? `поиск «${state.q.trim()}»` : '',
           !filter && transfers ? `${int.format(transfers.count)} переводов между своими` : '',
         ].filter(Boolean).map(esc).join(' · '),
         sorts: all.length > 0 ? ['category', 'date', 'name', 'sum'] : false,
         filters: all.length > 0 ? filters : '',
+        search: all.length > 0,
       })}
     </div>`;
 
-  if (!data.rows.length) return `${head}<div class="empty">${filter ? T.income.emptyFilter : 'Поступлений за период нет'}</div>`;
+  if (!rows.length) return `${head}<div class="empty">${filter ? T.income.emptyFilter : 'Поступлений за период нет'}</div>`;
 
   const byDate = state.sort === 'date';
   const byCat = state.sort === 'category';
@@ -1042,7 +1080,7 @@ async function screenIncome() {
   const catOrder = new Map();
   (meta?.income ?? []).forEach((g, gi) => g.subcategories.forEach((c, ci) => catOrder.set(c.slug, gi * 1000 + ci)));
   const rank = (op) => catOrder.get(op.category_slug) ?? 1e9;
-  const list = byCat ? [...data.rows].sort((a, b) => (rank(a) - rank(b)) * (state.dir === 'asc' ? 1 : -1)) : data.rows;
+  const list = byCat ? [...rows].sort((a, b) => (rank(a) - rank(b)) * (state.dir === 'asc' ? 1 : -1)) : rows;
   const catSums = new Map();
   const catCounts = new Map();
   for (const op of list) {
@@ -1051,13 +1089,13 @@ async function screenIncome() {
   }
   let day = '';
   let cat = null;
-  const opened = openSections(null);
+  const opened = state.q.trim() ? { has: () => true } : openSections(null); // поиск — всё раскрыто
   feedSections = { order: [], single: false };
-  const rows = list
+  const html = list
     .map((op) => {
       const opDay = op.at.slice(0, 10);
       let header = '';
-      if (byDate && opDay !== day) header = dayHead(opDay, daySum(data.rows, opDay, (x) => x.at, (x) => x.amount));
+      if (byDate && opDay !== day) header = dayHead(opDay, daySum(rows, opDay, (x) => x.at, (x) => x.amount));
       if (byCat && (op.category_slug ?? '') !== cat) {
         const c = incomeCat(op.category_slug);
         const key = op.category_slug ?? '';
@@ -1088,7 +1126,7 @@ async function screenIncome() {
     })
     .join('');
 
-  return `${head}<div class="list">${rows}</div>`;
+  return `${head}<div class="list">${html}</div>`;
 }
 
 /** Откуда трата попала в Чекер: значок в строке отвечает на этот вопрос без слов. */
@@ -3081,8 +3119,10 @@ async function render() {
     if (CACHED.includes(state.screen)) remember(key, html);
     // Тот же список — остаёмся там же, где листали; другой — смотрим с начала
     const keepScroll = sameScreen || cached ? window.scrollY : 0;
+    // Набирают в поиске — шапку с полем не трогаем, иначе закроется клавиатура
+    if (sameScreen && document.activeElement?.id === 'q') patchKeepingSearch(html);
     // Ничего не изменилось — не трогаем: перерисовка сбросила бы нажатие и фокус
-    if (html !== cached) {
+    else if (html !== cached) {
       $('screen').innerHTML = html;
       window.scrollTo(0, keepScroll);
     }
@@ -3097,6 +3137,45 @@ async function render() {
     if (seq === renderSeq) $('screen').classList.remove('busy');
   }
 }
+
+/**
+ * Новый вид экрана, но шапка с полем поиска остаётся та же (в ней фокус и клавиатура):
+ * из новой шапки берём только итог и подпись, остальное экрана заменяем целиком.
+ */
+function patchKeepingSearch(html) {
+  const screen = $('screen');
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const oldHead = screen.querySelector('.stuck-head');
+  const newHead = tmp.querySelector('.stuck-head');
+  if (!oldHead || !newHead) {
+    screen.innerHTML = html;
+    return;
+  }
+  for (const sel of ['.total-sum', '.total-note']) {
+    const was = oldHead.querySelector(sel);
+    const now = newHead.querySelector(sel);
+    if (was && now) was.innerHTML = now.innerHTML;
+  }
+  for (const el of [...screen.children]) if (el !== oldHead) el.remove();
+  newHead.remove();
+  screen.append(...tmp.childNodes);
+}
+
+// Поиск: выборка обновляется на каждый символ (с короткой паузой — чтобы не перерисовывать
+// на каждое нажатие при быстром наборе). Ищется по уже загруженному, сервер не спрашиваем
+let searchTimer = null;
+$('screen').addEventListener('input', (e) => {
+  if (e.target.id !== 'q') return;
+  state.q = e.target.value;
+  e.target.closest('.search')?.querySelector('.search-x')?.toggleAttribute('hidden', !state.q);
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => render(), 120);
+});
+// «Найти» на клавиатуре — убрать её: результат уже на экране
+$('screen').addEventListener('keydown', (e) => {
+  if (e.target.id === 'q' && e.key === 'Enter') e.target.blur();
+});
 
 /** Долистали до «Показать ещё» (с запасом в пару экранов) — следующая порция сама. */
 let feedObserver = null;
@@ -3224,6 +3303,15 @@ async function onScreenClick(e) {
 
   const freshOpen = e.target.closest('[data-fresh-open]');
   if (freshOpen) return openFresh(freshOpen.dataset.freshOpen, freshOpen.dataset.since, 'Загруженная история');
+
+  if (e.target.closest('[data-q-clear]')) {
+    e.preventDefault(); // не фокусировать поле: очистили — значит, искать больше не собираются
+    state.q = '';
+    const input = $('q');
+    if (input) input.value = '';
+    input?.blur();
+    return render();
+  }
 
   if (e.target.closest('[data-autolabel]')) return go({ screen: 'autolabel' });
 
@@ -3462,7 +3550,7 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
   if (!tab) return;
   const sort = defaultSort(tab.dataset.tab);
-  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1] }, true);
+  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '' }, true);
 });
 
 /**
