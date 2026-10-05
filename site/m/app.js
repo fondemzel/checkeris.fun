@@ -3028,7 +3028,9 @@ const TAB_OF = {
  */
 function updateDock() {
   // Меню — остров над низом экрана: место под ним считаем от его верха до низа экрана
-  const tabs = Math.ceil(window.innerHeight - document.querySelector('.tabs').getBoundingClientRect().top);
+  // «+» выступает над островом — считаем от того, что выше
+  const top = Math.min(document.querySelector('.tabs').getBoundingClientRect().top, $('fab').getBoundingClientRect().top);
+  const tabs = Math.ceil(window.innerHeight - top);
   const actions = $('actions').hidden ? 0 : $('actions').offsetHeight;
   const root = document.documentElement.style;
   root.setProperty('--tabs', `${tabs}px`);
