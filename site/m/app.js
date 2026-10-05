@@ -3133,6 +3133,7 @@ async function render() {
     }
     shownScreen = state.screen;
     screen.after?.();
+    updateSecTop();
     watchFeedMore();
     if (pulseNext) pulse(pulseNext);
   } catch (err) {
@@ -3165,6 +3166,7 @@ function patchKeepingSearch(html) {
   for (const el of [...screen.children]) if (el !== oldHead) el.remove();
   newHead.remove();
   screen.append(...tmp.childNodes);
+  updateSecTop();
 }
 
 // Поиск: выборка обновляется на каждый символ (с короткой паузой — чтобы не перерисовывать
@@ -3181,6 +3183,17 @@ $('screen').addEventListener('input', (e) => {
 $('screen').addEventListener('keydown', (e) => {
   if (e.target.id === 'q' && e.key === 'Enter') e.target.blur();
 });
+
+/** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
+function secTop() {
+  const head = document.querySelector('#screen .stuck-head');
+  if (!head) return 0;
+  return (parseFloat(getComputedStyle(head).top) || 0) + head.offsetHeight;
+}
+function updateSecTop() {
+  document.documentElement.style.setProperty('--sec-top', `${Math.round(secTop())}px`);
+}
+addEventListener('resize', updateSecTop);
 
 /** Долистали до «Показать ещё» (с запасом в пару экранов) — следующая порция сама. */
 let feedObserver = null;
@@ -3382,12 +3395,20 @@ async function onScreenClick(e) {
   if (sectionBtn) {
     const opened = openSections();
     const key = sectionBtn.dataset.section;
+    // Сворачивают прилипший заголовок, уйдя вглубь раздела, — после сворачивания лента
+    // встаёт так, чтобы этот заголовок был под шапкой, а не где-то ниже по списку
+    const stuck = opened.has(key) && sectionBtn.getBoundingClientRect().top <= secTop() + 1;
     if (opened.has(key)) opened.delete(key);
     else {
       if (feedSections.single) opened.clear();
       opened.add(key);
     }
-    return render();
+    await render();
+    if (stuck) {
+      const head = [...document.querySelectorAll('[data-section]')].find((el) => el.dataset.section === key);
+      if (head) window.scrollBy(0, head.getBoundingClientRect().top - secTop());
+    }
+    return;
   }
 
   // Сканы с ошибкой — ссылкой с «Расхода»: отдельной вкладки «Чеки» больше нет

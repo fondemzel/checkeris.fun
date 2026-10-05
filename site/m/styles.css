@@ -320,7 +320,8 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ── список ────────────────────────────────────────────── */
 
-.list { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--surface); }
+/* overflow: clip, а не hidden: hidden ломает прилипание заголовков разделов внутри списка */
+.list { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; overflow: clip; background: var(--surface); }
 
 .row {
   display: flex;
@@ -1129,6 +1130,9 @@ button.bank-op { cursor: pointer; }
 /* Раздел ленты — день или категория: заголовок нажимается и сворачивает раздел */
 .day.section { width: 100%; border: none; border-bottom: 1px solid #f0f1f3; font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
 .day.section > span { display: flex; align-items: center; min-width: 0; }
+/* Заголовок раскрытого раздела прилипает под шапкой с итогом, пока листают его строки:
+   свернуть можно, даже уйдя далеко вниз. Следующий заголовок сменяет его */
+.list > .day.section.open { position: sticky; top: var(--sec-top, 140px); z-index: 2; }
 .section-arrow { display: inline-flex; flex: none; width: 14px; margin-right: 4px; color: var(--muted); }
 .section-arrow svg { width: 12px; height: 12px; stroke-width: 3; transform: rotate(-90deg); transition: transform 0.15s; }
 .day.section.open .section-arrow svg { transform: none; }
