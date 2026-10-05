@@ -46,6 +46,9 @@ public class MainActivity extends android.app.Activity {
         getWindow().setNavigationBarColor(Color.parseColor("#131a26"));
 
         web = new WebView(this);
+        // Без системной «резины» у краёв: Android 12+ растягивает при ней всё окно, и закреплённое
+        // меню съезжает. Обновление свайпом вниз у страницы своё
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         setContentView(web);
 
         WebSettings s = web.getSettings();

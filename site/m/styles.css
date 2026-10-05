@@ -37,7 +37,9 @@ html, body {
   line-height: 1.35;
   -webkit-text-size-adjust: 100%;
   /* Обновление свайпом вниз — своё (см. .puller): браузерное перезагрузило бы всю страницу */
-  overscroll-behavior-y: contain;
+  /* Тянуть дальше края — ничего не растягивается: Android 12+ иначе тянет всё окно «резиной»,
+     и закреплённые шапка и меню съезжают. Обновление по свайпу вниз — своё, его это не трогает */
+  overscroll-behavior-y: none;
   /* Текст не выделяется: долгое нажатие — жест приложения, а не выделение слов.
      Поля ввода — исключение ниже */
   -webkit-user-select: none;
@@ -195,6 +197,7 @@ button, input, select { font: inherit; color: inherit; }
   display: flex;
   align-items: center;
   gap: 2px;
+  height: 52px; /* своя высота: иначе остров вырос бы до кнопки «+», а она должна выступать */
   padding: 4px;
   border-radius: 26px;
   background: color-mix(in srgb, var(--surface) 90%, transparent);
@@ -232,7 +235,7 @@ button, input, select { font: inherit; color: inherit; }
   align-self: flex-end;
   width: 58px;
   height: 58px;
-  margin: 0 4px -3px;
+  margin: 0 4px 2px;
   border: 4px solid var(--surface);
   border-radius: 50%;
   background: var(--accent);
