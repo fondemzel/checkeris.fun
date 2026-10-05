@@ -3274,6 +3274,52 @@ addEventListener('touchend', async () => {
   }
 });
 
+// ── своя «резина» у краёв ────────────────────────────────
+// Системную «резину» приложение выключает: Android растягивает ею всё окно, и закреплённые меню
+// и шапка съезжают. Вместо неё — своя, похожая: тянется только содержимое экрана, от того края,
+// за который тянут; отпустили — упруго возвращается. Меню и верхняя полоса стоят на месте
+const stretchEl = $('screen');
+let stretchFrom = null; // где палец, пока лента ещё не упёрлась в край
+let stretchEdge = null; // 'top' | 'bottom' — за какой край тянут
+
+addEventListener('touchstart', (e) => {
+  stretchFrom = null;
+  stretchEdge = null;
+  if (e.touches.length !== 1 || $('app').hidden || document.querySelector('.sheet, .picker')) return;
+  stretchFrom = e.touches[0].clientY;
+  stretchEl.style.transition = '';
+}, { passive: true });
+
+addEventListener('touchmove', (e) => {
+  if (stretchFrom == null) return;
+  const y = e.touches[0].clientY;
+  if (!stretchEdge) {
+    const top = window.scrollY <= 0;
+    const bottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
+    if (top && y > stretchFrom) stretchEdge = 'top';
+    else if (bottom && y < stretchFrom) stretchEdge = 'bottom';
+    else {
+      stretchFrom = y; // лента ещё листается — тянуть начнём от места, где она упрётся
+      return;
+    }
+    stretchEl.style.transformOrigin = stretchEdge === 'top' ? '50% 0' : '50% 100%';
+  }
+  const pulled = stretchEdge === 'top' ? y - stretchFrom : stretchFrom - y;
+  // Чем дальше тянут, тем туже — до ~6%, как у системной
+  const scale = pulled > 0 ? 1 + 0.06 * (1 - Math.exp(-pulled / 300)) : 1;
+  stretchEl.style.transform = scale > 1 ? `scaleY(${scale.toFixed(4)})` : '';
+}, { passive: true });
+
+function stretchBack() {
+  if (!stretchEl.style.transform) return;
+  stretchEl.style.transition = 'transform 0.35s cubic-bezier(0.2, 0.8, 0.3, 1)';
+  stretchEl.style.transform = '';
+  stretchFrom = null;
+  stretchEdge = null;
+}
+addEventListener('touchend', stretchBack);
+addEventListener('touchcancel', stretchBack);
+
 // Жест перехватила система (например, шторка уведомлений) — просто прячем кружок
 addEventListener('touchcancel', () => {
   if (pullFrom == null) return;
