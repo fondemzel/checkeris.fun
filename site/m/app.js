@@ -419,7 +419,9 @@ function categoryColor(groupSlug, categorySlug) {
 
 function go(patch, replace = false) {
   // Уходим вглубь — запоминаем, где был список: «назад» вернёт ровно туда
-  if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY }, '', location.href);
+  // Поиск набирают уже на экране, после того как его запись в истории сделана, — поэтому
+  // запоминаем его здесь же: «назад» из карточки вернёт к той же выборке
+  if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY, q: state.q }, '', location.href);
   Object.assign(state, patch);
   const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
