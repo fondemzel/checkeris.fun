@@ -58,10 +58,19 @@ export function getIncomeTaxonomy(db, budgetId) {
 
 /** Для meta: группы с категориями — как categories у расходов, чтобы выбор категории был общим. */
 export function incomeMeta(db, budgetId) {
+  // Сколько поступлений в категории и группе — для чипсов кабинета, как items у расходов
   return getIncomeTaxonomy(db, budgetId).groups.map(({ categories, ...g }) => ({
     ...g,
-    subcategories: categories.map((c) => ({ slug: c.slug, name: c.name })),
+    items: categories.reduce((n, c) => n + c.ops, 0),
+    subcategories: categories.map((c) => ({ slug: c.slug, name: c.name, items: c.ops })),
   }));
+}
+
+/** Поступления без категории — для чипса «Без категории» в доходах кабинета. */
+export function incomeUncategorized(db, budgetId) {
+  return db
+    .prepare("SELECT COUNT(*) AS n FROM bank_ops WHERE budget_id = ? AND direction = 'credit' AND kind = 'income' AND category_slug IS NULL")
+    .get(budgetId).n;
 }
 
 // ── группы ───────────────────────────────────────────────

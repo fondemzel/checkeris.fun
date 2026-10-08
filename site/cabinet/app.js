@@ -102,6 +102,7 @@ const DEFAULTS = {
   uncategorized: '', // '1' — только неразмеченные позиции
   src: '', // источник трат в «Расходах»: receipt | market | manual | bank | self (переводы себе), пусто — все
   incat: '', // группа категорий доходов в «Доходах»; «-» — без категории
+  inc: '', // категория дохода внутри выбранной группы — второй ряд чипсов
   sort: 'date',
   dir: 'desc',
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция, o<id> — операция банка
@@ -195,6 +196,7 @@ function apiParams(page) {
     if (state.src) params.set('src', state.src);
   }
   if (state.view === 'income' && state.incat) params.set('incat', state.incat);
+  if (state.view === 'income' && state.inc) params.set('inc', state.inc);
   params.set('sort', state.sort);
   params.set('dir', state.dir);
   params.set('page', String(page));
@@ -451,23 +453,20 @@ function childRowsHtml(rows, norm, total) {
 function renderCategoryChips() {
   const groupRow = $('chips-group');
   const categoryRow = $('chips-category');
-  // Доходы: группы справочника доходов одним рядом, плюс «без категории»
-  if (state.view === 'income') {
-    const groups = meta?.income ?? [];
-    categoryRow.hidden = true;
-    categoryRow.innerHTML = '';
-    groupRow.hidden = !groups.length;
-    const chip = (value, label, color) =>
-      `<button class="chip" type="button" data-incat="${esc(value)}" aria-pressed="${state.incat === value}"${chipStyle(color, state.incat === value)}>${esc(label)}</button>`;
-    groupRow.innerHTML = chip('', 'Все') + groups.map((g) => chip(g.slug, g.name, g.color)).join('') + chip('-', 'Без категории');
-    return;
-  }
-  const groups = meta?.categories ?? [];
+  const income = state.view === 'income';
+  // Доходы — тем же видом, что расходы: группы значками со счётчиком, у выбранной группы —
+  // ряд её категорий. Свой справочник (meta.income) и свои поля состояния (incat, inc)
+  const groups = income ? meta?.income ?? [] : meta?.categories ?? [];
+  const sel = income
+    ? { group: state.incat === '-' ? '' : state.incat, category: state.inc, uncategorized: state.incat === '-' ? '1' : '' }
+    : { group: state.group, category: state.category, uncategorized: state.uncategorized };
+  const attrs = income ? { group: 'incat', category: 'inc', uncat: 'incat' } : { group: 'group', category: 'category', uncat: 'uncat' };
+  const uncatCount = income ? meta?.incomeUncategorized : meta?.uncategorized;
   // У переводов себе категорий нет — и выбирать в них нечего
-  const visible = state.view === 'items' && state.src !== 'self' && groups.length > 0;
+  const visible = (income || (state.view === 'items' && state.src !== 'self')) && groups.length > 0;
 
   groupRow.hidden = !visible;
-  categoryRow.hidden = !visible || !state.group;
+  categoryRow.hidden = !visible || !sel.group;
   if (categoryRow.hidden) categoryRow.innerHTML = ''; // группа не выбрана — ряд пуст
   if (!visible) return;
 
@@ -492,23 +491,23 @@ function renderCategoryChips() {
   };
 
   groupRow.innerHTML =
-    chip('group', '', 'Все', !state.group && !state.uncategorized) +
+    chip(attrs.group, '', 'Все', !sel.group && !sel.uncategorized) +
     groups
       .map((g) =>
-        iconChip('group', g.slug, g.icon, g.name, state.group === g.slug && !state.uncategorized, g.items, g.color),
+        iconChip(attrs.group, g.slug, g.icon, g.name, sel.group === g.slug && !sel.uncategorized, g.items, g.color),
       )
       .join('') +
-    (meta.uncategorized
-      ? iconChip('uncat', '1', 'none', 'Без категории', state.uncategorized === '1', meta.uncategorized)
+    (uncatCount
+      ? iconChip(attrs.uncat, income ? '-' : '1', 'none', 'Без категории', sel.uncategorized === '1', uncatCount)
       : '');
 
   if (!categoryRow.hidden) {
-    const group = groups.find((g) => g.slug === state.group);
+    const group = groups.find((g) => g.slug === sel.group);
     const tones = group ? categoryShades(group) : [];
     categoryRow.innerHTML = group
-      ? chip('category', '', 'Все', !state.category) +
+      ? chip(attrs.category, '', 'Все', !sel.category) +
         group.subcategories
-          .map((s, i) => chip('category', s.slug, s.name, state.category === s.slug, s.items, tones[i]))
+          .map((s, i) => chip(attrs.category, s.slug, s.name, sel.category === s.slug, s.items, tones[i]))
           .join('')
       : '';
   }
@@ -1940,14 +1939,16 @@ function bind() {
   $('chips-group').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
-    if (chip.dataset.incat !== undefined) return update({ incat: chip.dataset.incat }); // доходы
+    if (chip.dataset.incat !== undefined) return update({ incat: chip.dataset.incat, inc: '' }); // доходы
     if (chip.dataset.uncat !== undefined) return update({ uncategorized: '1', group: '', category: '' });
     update({ group: chip.dataset.group, category: '', uncategorized: '' });
   });
 
   $('chips-category').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
-    if (chip) update({ category: chip.dataset.category });
+    if (!chip) return;
+    if (chip.dataset.inc !== undefined) return update({ inc: chip.dataset.inc }); // категория дохода
+    update({ category: chip.dataset.category });
   });
 
   $('chips-src').addEventListener('click', (e) => {

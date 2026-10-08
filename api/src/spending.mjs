@@ -222,6 +222,7 @@ export function listIncome(db, budgetId, params) {
   const min = Number.parseFloat(params.get('min_sum') ?? '');
   const max = Number.parseFloat(params.get('max_sum') ?? '');
   const incat = (params.get('incat') ?? '').trim();
+  const inc = (params.get('inc') ?? '').trim();
   const incomeGroups = new Map(
     db.prepare('SELECT slug, group_slug FROM income_cats WHERE budget_id = ?').all(budgetId).map((c) => [c.slug, c.group_slug]),
   );
@@ -244,6 +245,7 @@ export function listIncome(db, budgetId, params) {
     }))
     // Категория доходов: incat — группа (in.группа…) или «-» — без категории
     .filter((r) => !incat || (incat === NONE ? !r.category_slug : incomeGroups.get(r.category_slug) === incat))
+    .filter((r) => !inc || r.category_slug === inc) // категория дохода внутри группы
     .filter((r) => !q || norm(r.name).includes(q) || norm(r.description).includes(q))
     .filter((r) => !Number.isFinite(min) || r.sum >= Math.round(min * 100))
     .filter((r) => !Number.isFinite(max) || r.sum <= Math.round(max * 100));
