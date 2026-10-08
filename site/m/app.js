@@ -317,13 +317,26 @@ const searchBox = () => `
     <button class="search-x" type="button" data-q-clear aria-label="Очистить"${state.q ? '' : ' hidden'}>${UI.close}</button>
   </label>`;
 
-/** Подходит ли запись под поиск: каждое слово запроса — в одном из полей. */
 const searchNorm = (v) => String(v ?? '').toLowerCase().replace(/ё/g, 'е');
-function matchesQ(...fields) {
+
+/**
+ * Подходит ли запись под поиск: каждое слово запроса — в одном из полей. Число — ещё и сумма:
+ * «244» — траты от 244,00 до 244,99 ₽, «244,50» — ровно 244,50 (amounts — в копейках, у валютной
+ * траты и сумма в валюте). Сумма — точно, а не вхождением цифр: иначе «70» нашло бы и 170, и 7000.
+ */
+function matchesQ(fields, amounts = []) {
   const words = searchNorm(state.q).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const hay = searchNorm(fields.filter(Boolean).join(' '));
-  return words.every((w) => hay.includes(w));
+  const sums = amounts.filter((a) => a != null).map((a) => Math.abs(a));
+  return words.every((w) => {
+    if (hay.includes(w)) return true;
+    const num = w.match(/^(\d+)(?:[.,](\d{1,2}))?$/);
+    if (!num) return false;
+    const rub = Number(num[1]) * 100;
+    if (num[2] == null) return sums.some((a) => a >= rub && a < rub + 100);
+    return sums.includes(rub + Number(num[2].padEnd(2, '0')));
+  });
 }
 
 const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false }) => `
@@ -621,11 +634,11 @@ async function screenSummary() {
 
   // Фильтр по источнику: итог и число покупок считаем по тому, что осталось
   const shownItems = (state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src))
-    .filter((r) => matchesQ(r.name, r.seller, r.retail_place, SOURCES[itemSource(r)].title, T.sources[itemSource(r)],
-      findCategory(r.category_slug)?.category.name));
+    .filter((r) => matchesQ([r.name, r.seller, r.retail_place, SOURCES[itemSource(r)].title, T.sources[itemSource(r)],
+      findCategory(r.category_slug)?.category.name], [r.sum]));
   const shownOps = (!state.src || state.src === 'bank' ? bankRows : [])
-    .filter((op) => matchesQ(op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
-      bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name));
+    .filter((op) => matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
+      bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name], [op.amount, op.orig_amount]));
   const total = shownItems.reduce((s, r) => s + r.sum, 0) + shownOps.reduce((s, op) => s + op.amount, 0);
   const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
 
@@ -1049,8 +1062,8 @@ async function screenIncome() {
       const found = incomeCat(op.category_slug);
       return filter === '-' ? !found : found?.group.slug === filter;
     })
-    .filter((op) => matchesQ(op.description, op.merchant, op.account_name, SOURCES.bank.title, T.sources.bank,
-      bankById(op.bank)?.name, incomeCat(op.category_slug)?.name));
+    .filter((op) => matchesQ([op.description, op.merchant, op.account_name, SOURCES.bank.title, T.sources.bank,
+      bankById(op.bank)?.name, incomeCat(op.category_slug)?.name], [op.amount, op.orig_amount]));
   const sum = narrowed ? rows.reduce((n, op) => n + op.amount, 0) : data.totals.sum;
   const count = narrowed ? rows.length : data.totals.count;
   const filters = drop(UI.filter, 'Фильтр',
