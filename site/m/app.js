@@ -635,7 +635,8 @@ async function screenSummary() {
   // Фильтр по источнику: итог и число покупок считаем по тому, что осталось
   const shownItems = (state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src))
     .filter((r) => matchesQ([r.name, r.seller, r.retail_place, SOURCES[itemSource(r)].title, T.sources[itemSource(r)],
-      findCategory(r.category_slug)?.category.name], [r.sum]));
+      findCategory(r.category_slug)?.category.name], [r.sum, ...String(r.sums ?? '').split(','), ...String(r.prices ?? '').split(',')]
+      .filter((v) => v !== '').map(Number)));
   const shownOps = (!state.src || state.src === 'bank' ? bankRows : [])
     .filter((op) => matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
       bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name], [op.amount, op.orig_amount]));
