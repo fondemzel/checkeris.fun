@@ -1304,6 +1304,7 @@ function itemCard(it) {
     <div class="card">
       <div class="card-label">Категория</div>
       <button class="cat-pick" id="item-cat" type="button" ${it.income ? `data-op-incat="${it.id}"` : bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`}>${it.income ? incomeButton(it.category_slug) : categoryButton(it.category_slug)}</button>
+      <div class="pick-same">
       <p class="note" id="pick-note">${
         it.same_name_count > 1
           ? it.income
@@ -1313,6 +1314,10 @@ function itemCard(it) {
             : `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позицию', 'позиции', 'позиций')} с таким же названием`
           : ''
       }</p>
+      ${it.same_name_count > 1 ? `
+      <button class="pick-same-go" type="button" data-same-go="${esc(it.income ? it.name : bank ? it.merchant ?? it.name : it.name)}"
+        data-same-screen="${it.income ? 'income' : 'summary'}" aria-label="Показать все такие же" title="Показать все такие же">${GO}</button>` : ''}
+      </div>
     </div>
 
     <div class="card">
@@ -3438,6 +3443,17 @@ async function onScreenClick(e) {
   }
 
   if (e.target.closest('[data-autolabel]')) return go({ screen: 'autolabel' });
+
+  // «Затронет N таких же» → эти N: расходы или доходы за всё время, с поиском по продавцу
+  // (у товара — по названию, у дохода — по описанию)
+  const sameGo = e.target.closest('[data-same-go]');
+  if (sameGo) {
+    const all = { from: meta.stats.date_from.slice(0, 10), to: meta.stats.date_to.slice(0, 10) };
+    return go({
+      screen: sameGo.dataset.sameScreen, ...all, q: sameGo.dataset.sameGo, sort: 'category', dir: 'asc',
+      src: '', inf: '', group: '', category: '', item: '', op: '',
+    });
+  }
 
   // Авторазметка: строку можно разложить и руками, не дожидаясь модели
   const autoPick = state.screen === 'autolabel' && e.target.closest('[data-fresh-pick]');
