@@ -278,6 +278,7 @@ const state = {
   op: '', // операция банка, чья карточка открыта
   src: '', // фильтр ленты по источнику: '' | receipt | market | bank | manual
   q: '', // поиск в расходах и доходах: слова через пробел, все должны найтись
+  same: '', // точный отбор «все такие же» из карточки: 'item|название' | 'op|продавец' | 'in|описание'
   inf: '', // фильтр доходов: '' | '-' (без категории) | код группы доходов
   added: '', // чек, только что добавленный сканом или руками
   sort: 'category', // списки: date | category | name | sum; по умолчанию — defaultSort(экран)
@@ -318,6 +319,25 @@ const searchBox = () => `
   </label>`;
 
 const searchNorm = (v) => String(v ?? '').toLowerCase().replace(/ё/g, 'е');
+
+/** Ключ «такой же» — как у правил на сервере (ruleKey, incomeKey): без регистра, знаков и лишних пробелов. */
+const sameKey = (v) => {
+  const k = searchNorm(v).replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return k.length >= 2 ? k : null;
+};
+
+/**
+ * Точный отбор «все такие же» (state.same): тот же товар по названию, та же трата по продавцу,
+ * тот же доход по описанию — ровно те, что посчитаны в карточке как «затронет N».
+ */
+function sameAs(kind, row) {
+  const [want, ...rest] = state.same.split('|');
+  const key = rest.join('|');
+  if (kind !== want) return false;
+  if (kind === 'item') return row.name_norm === key;
+  if (kind === 'op') return sameKey(opWho(row)) === key;
+  return sameKey(row.description || row.sender || row.merchant) === key;
+}
 
 /**
  * Подходит ли запись под поиск: каждое слово запроса — в одном из полей. Число — ещё и сумма:
@@ -434,7 +454,7 @@ function go(patch, replace = false) {
   // Уходим вглубь — запоминаем, где был список: «назад» вернёт ровно туда
   // Поиск набирают уже на экране, после того как его запись в истории сделана, — поэтому
   // запоминаем его здесь же: «назад» из карточки вернёт к той же выборке
-  if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY, q: state.q }, '', location.href);
+  if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY, q: state.q, same: state.same }, '', location.href);
   Object.assign(state, patch);
   const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
@@ -638,12 +658,12 @@ async function screenSummary() {
 
   // Фильтр по источнику: итог и число покупок считаем по тому, что осталось
   const shownItems = (state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src))
-    .filter((r) => matchesQ([r.name, r.seller, r.retail_place, SOURCES[itemSource(r)].title, T.sources[itemSource(r)],
+    .filter((r) => (state.same ? sameAs('item', r) : matchesQ([r.name, r.seller, r.retail_place, SOURCES[itemSource(r)].title, T.sources[itemSource(r)],
       findCategory(r.category_slug)?.category.name], [r.sum, ...String(r.sums ?? '').split(','), ...String(r.prices ?? '').split(',')]
-      .filter((v) => v !== '').map(Number)));
+      .filter((v) => v !== '').map(Number))));
   const shownOps = (!state.src || state.src === 'bank' ? bankRows : [])
-    .filter((op) => matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
-      bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name], [op.amount, op.orig_amount]));
+    .filter((op) => (state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
+      bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name], [op.amount, op.orig_amount])));
   const total = shownItems.reduce((s, r) => s + r.sum, 0) + shownOps.reduce((s, op) => s + op.amount, 0);
   const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
 
@@ -654,7 +674,7 @@ async function screenSummary() {
     part('count', `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`),
     SORTS[state.sort] ? part('sort', SORTS[state.sort][0].toLowerCase()) : '',
     state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase()) : '',
-    state.q ? part('q', `поиск «${state.q.trim()}»`) : '',
+    state.q ? part('q', state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
   ].filter(Boolean).join(' · ');
 
   const head = `
@@ -674,7 +694,7 @@ async function screenSummary() {
     ? `<p class="note list-hint"><button class="link" type="button" data-to-failed>Сканы с ошибкой: ${int.format(failedCount)}</button></p>`
     : '';
 
-  const selfRows = (self?.rows ?? []).filter((op) => matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
+  const selfRows = (self?.rows ?? []).filter((op) => state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
     T.sources.bank, bankById(op.bank)?.name, 'перевод себе'], [op.amount, op.orig_amount]));
   return `${head}${failedLink}${await spendingFeed(shownItems, shownOps, selfRows)}`;
 }
@@ -1088,8 +1108,8 @@ async function screenIncome() {
       const found = incomeCat(op.category_slug);
       return filter === '-' ? !found : found?.group.slug === filter;
     })
-    .filter((op) => matchesQ([op.description, op.merchant, op.account_name, SOURCES.bank.title, T.sources.bank,
-      bankById(op.bank)?.name, incomeCat(op.category_slug)?.name], [op.amount, op.orig_amount]));
+    .filter((op) => (state.same ? sameAs('in', op) : matchesQ([op.description, op.merchant, op.account_name, SOURCES.bank.title, T.sources.bank,
+      bankById(op.bank)?.name, incomeCat(op.category_slug)?.name], [op.amount, op.orig_amount])));
   const sum = narrowed ? rows.reduce((n, op) => n + op.amount, 0) : data.totals.sum;
   const count = narrowed ? rows.length : data.totals.count;
   const filters = drop(UI.filter, 'Фильтр',
@@ -1106,7 +1126,7 @@ async function screenIncome() {
           `${int.format(count)} ${pl(count, T.income.many)}`,
           SORTS[state.sort] ? SORTS[state.sort][0].toLowerCase() : '',
           filter ? (picked?.name ?? T.income.noCategory).toLowerCase() : '',
-          state.q.trim() ? `поиск «${state.q.trim()}»` : '',
+          state.q.trim() ? (state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
           !filter && transfers ? `${int.format(transfers.count)} переводов между своими` : '',
         ].filter(Boolean).map(esc).join(' · '),
         sorts: all.length > 0 ? ['category', 'date', 'name', 'sum'] : false,
@@ -1316,6 +1336,7 @@ function itemCard(it) {
       }</p>
       ${it.same_name_count > 1 ? `
       <button class="pick-same-go" type="button" data-same-go="${esc(it.income ? it.name : bank ? it.merchant ?? it.name : it.name)}"
+        data-same="${esc(it.income ? `in|${sameKey(it.name)}` : bank ? `op|${sameKey(it.merchant ?? it.name)}` : `item|${it.name_norm}`)}"
         data-same-screen="${it.income ? 'income' : 'summary'}" aria-label="Показать все такие же" title="Показать все такие же">${GO}</button>` : ''}
       </div>
     </div>
@@ -3240,6 +3261,7 @@ let searchTimer = null;
 $('screen').addEventListener('input', (e) => {
   if (e.target.id !== 'q') return;
   state.q = e.target.value;
+  state.same = ''; // поправили текст — это уже обычный поиск, а не «все такие же»
   e.target.closest('.search')?.querySelector('.search-x')?.toggleAttribute('hidden', !state.q);
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => render(), 120);
@@ -3436,6 +3458,7 @@ async function onScreenClick(e) {
   if (e.target.closest('[data-q-clear]')) {
     e.preventDefault(); // не фокусировать поле: очистили — значит, искать больше не собираются
     state.q = '';
+    state.same = '';
     const input = $('q');
     if (input) input.value = '';
     input?.blur();
@@ -3450,7 +3473,7 @@ async function onScreenClick(e) {
   if (sameGo) {
     const all = { from: meta.stats.date_from.slice(0, 10), to: meta.stats.date_to.slice(0, 10) };
     return go({
-      screen: sameGo.dataset.sameScreen, ...all, q: sameGo.dataset.sameGo, sort: 'category', dir: 'asc',
+      screen: sameGo.dataset.sameScreen, ...all, q: sameGo.dataset.sameGo, same: sameGo.dataset.same, sort: 'category', dir: 'asc',
       src: '', inf: '', group: '', category: '', item: '', op: '',
     });
   }
@@ -3698,7 +3721,7 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
   if (!tab) return;
   const sort = defaultSort(tab.dataset.tab);
-  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '' }, true);
+  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '' }, true);
 });
 
 /**
