@@ -617,10 +617,14 @@ async function screenSummary() {
   const opsQuery = new URLSearchParams({
     from: state.from, to: state.to, direction: 'debit', kind: 'expense', per: '20000',
   });
-  const [data, ops, failed] = await Promise.all([
+  // Переводы себе — отдельным разделом в конце (только по категориям): видно, что туда ушло
+  const withSelf = state.sort === 'category' && (!state.src || state.src === 'bank');
+  const selfQuery = new URLSearchParams({ from: state.from, to: state.to, direction: 'debit', kind: 'transfer', per: '20000' });
+  const [data, ops, failed, self] = await Promise.all([
     apiFeed(`/api/items?${params}`),
     apiFeed(`/api/bank/ops?${opsQuery}`).catch(() => null),
     api('/api/scan?state=failed').catch(() => null),
+    withSelf ? apiFeed(`/api/bank/ops?${selfQuery}`).catch(() => null) : null,
   ]);
   const bankRows = ops?.rows ?? [];
   if (failed) updateBadge(failed.counts.failed);
@@ -670,7 +674,9 @@ async function screenSummary() {
     ? `<p class="note list-hint"><button class="link" type="button" data-to-failed>Сканы с ошибкой: ${int.format(failedCount)}</button></p>`
     : '';
 
-  return `${head}${failedLink}${await spendingFeed(shownItems, shownOps)}`;
+  const selfRows = (self?.rows ?? []).filter((op) => matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
+    T.sources.bank, bankById(op.bank)?.name, 'перевод себе'], [op.amount, op.orig_amount]));
+  return `${head}${failedLink}${await spendingFeed(shownItems, shownOps, selfRows)}`;
 }
 
 async function screenGroup() {
@@ -722,7 +728,10 @@ const collapseMode = () => (state.sort === 'date' ? 'day' : '1');
 const FEED_STEP = 300; // строк ленты за раз
 let feedLimit = { key: '', n: FEED_STEP };
 
-async function spendingFeed(itemRows, bankRows) {
+/** Раздел «Перевод себе» в расходах: не категория, а вид операции — в итог не входит. */
+const SELF = '#transfer';
+
+async function spendingFeed(itemRows, bankRows, selfRows = []) {
   const spendings = [
     ...itemRows.map((r) => ({
       name: r.name,
@@ -753,6 +762,20 @@ async function spendingFeed(itemRows, bankRows) {
       group: null,
       noted: Boolean(op.has_note),
     })),
+    ...selfRows.map((op) => ({
+      name: opWho(op) ?? 'Перевод',
+      at: op.at,
+      sum: op.amount,
+      source: 'bank',
+      category: SELF,
+      self: true, // перевод себе: виден, но в суммы разделов расходов и итог не входит
+      positions: 1,
+      outside: false,
+      action: `data-op="${op.id}"`,
+      orig: foreign(op),
+      group: null,
+      noted: Boolean(op.has_note),
+    })),
   ];
   if (!spendings.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период трат нет'}</div>`;
 
@@ -761,6 +784,7 @@ async function spendingFeed(itemRows, bankRows) {
   (meta?.categories ?? []).forEach((g, gi) =>
     g.subcategories.forEach((c, ci) => catOrder.set(c.slug, gi * 1000 + ci)),
   );
+  catOrder.set(SELF, 2e9); // переводы себе — после всего, даже после «Без категории»
   const back = state.dir === 'asc' ? -1 : 1;
   // Даты — ISO-строки одного вида: сравниваем как строки, без разбора (строк — десятки тысяч)
   const later = (a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0);
@@ -822,6 +846,7 @@ async function spendingFeed(itemRows, bankRows) {
     const title = state.sort === 'date'
       ? esc(dayTitle(key))
       : (() => {
+          if (key === SELF) return `<span class="op-cat" style="background:#c9ced6"></span>Перевод себе · вне суммы (${int.format(counts.get(key) ?? 0)})`;
           const found = key === NONE ? null : findCategory(key);
           const color = found ? categoryColor(found.group.slug, key) ?? found.group.color : '#c9ced6';
           return `<span class="op-cat" style="background:${color}"></span>${esc(found?.category.name ?? 'Без категории')} (${int.format(counts.get(key) ?? 0)})`;
@@ -861,7 +886,7 @@ async function spendingFeed(itemRows, bankRows) {
           : head;
       }
 
-      const found = r.category ? findCategory(r.category) : null;
+      const found = r.category && !r.self ? findCategory(r.category) : null;
       const color = found?.group.color ?? '#eef1f5';
       const dot = found ? categoryColor(found.group.slug, r.category) ?? color : '#d7dbe2';
       const isOpen = r.group && parts.has(r.group);
@@ -870,7 +895,7 @@ async function spendingFeed(itemRows, bankRows) {
         ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(r.group)}" role="button" aria-label="${isOpen ? 'Свернуть' : 'Показать покупки'}">${UI.chevron}</span>`
         : '';
       const note = [
-        `<span class="op-cat" style="background:${dot}"></span>${esc(found?.category.name ?? 'Без категории')}`,
+        `<span class="op-cat" style="background:${dot}"></span>${esc(r.self ? 'Перевод себе' : found?.category.name ?? 'Без категории')}`,
         // При сортировке по дате день уже в заголовке раздела, в остальных — нужен в строке
         state.sort === 'date' ? '' : dateRu(r.at.slice(0, 10)),
         r.positions > 1 ? `${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : '',
@@ -879,13 +904,13 @@ async function spendingFeed(itemRows, bankRows) {
 
       const row = `${head}
       <button class="row item" type="button" ${r.action}${r.group ? ` data-long="${esc(r.group)}"` : ''}>
-        <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(found?.group.icon ?? 'none')}</span>
+        <span class="ic" style="background:${color};color:${readableText(color)}">${r.self ? UI.swap : groupIcon(found?.group.icon ?? 'none')}</span>
         <span class="row-main">
           <span class="row-title">${esc(r.name)}</span>
           <span class="row-note">${note}${toggle}</span>
         </span>
         ${r.noted ? '<span class="noted" title="Есть комментарий"></span>' : ''}
-        <span class="row-sum${r.outside ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
+        <span class="row-sum${r.outside || r.self ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
         <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
       </button>`;
       if (!isOpen) return row;
