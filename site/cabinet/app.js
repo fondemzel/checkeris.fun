@@ -1493,7 +1493,7 @@ function opCard(op) {
     <p class="card-name">${esc((credit && op.sender) || op.merchant || op.description || 'Операция банка')}</p>
     ${kv([
       ['Описание', op.description && op.description !== op.merchant ? esc(op.description) : ''],
-Г      ['MCC', op.mcc ? String(op.mcc) : ''],
+      ['MCC', op.mcc ? String(op.mcc) : ''],
       ['Счёт', esc(accountName(op))],
       ['Списано', op.debited_at ? `${dateRu(op.debited_at)} ${timeRu(op.debited_at)}` : ''],
       ['Источник', esc(sourceName(op))],
