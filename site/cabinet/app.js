@@ -337,7 +337,7 @@ const COLUMNS = {
       ellipsisCell(sourceCell(r) + esc(r.name) + noteDot(r), moneyBadge(r)) },
     // Группа — мелко под категорией: отдельной колонке в таблице не хватает места
     { key: 'category', title: 'Категория', cls: 'cat-cell', render: (r) =>
-      catCell(r.category_name, r.group_name, r.category_source === 'rule-fallback') },
+      r.self ? '<span class="dim">Перевод себе</span>' : catCell(r.category_name, r.group_name, r.category_source === 'rule-fallback') },
     { key: 'quantity', title: 'Кол-во', sort: 'quantity', cls: 'num dim', render: (r) => (r.source === 'bank' ? '' : qty(r.quantity)) },
     { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) =>
       (!r.self && (isGroup(r) || r.counted) ? `<b>${money(r.sum)}</b>` : `<span class="dim">${money(r.sum)}</span>`)
@@ -463,7 +463,8 @@ function renderCategoryChips() {
     return;
   }
   const groups = meta?.categories ?? [];
-  const visible = state.view === 'items' && groups.length > 0;
+  // У переводов себе категорий нет — и выбирать в них нечего
+  const visible = state.view === 'items' && state.src !== 'self' && groups.length > 0;
 
   groupRow.hidden = !visible;
   categoryRow.hidden = !visible || !state.group;
@@ -1556,7 +1557,7 @@ function opCard(op) {
   const editable = expense || op.kind === 'income' || op.kind === 'transfer';
   const who = credit ? op.sender || op.merchant || op.description : opWho(op);
   const switches = n > 1
-    ? [{ key: 'all', title: credit ? 'Для всех с таким описанием' : who === op.merchant ? 'Для всех трат этого продавца' : 'Для всех с таким описанием',
+    ? [{ key: 'all', title: credit ? 'Для всех с таким описанием' : who === op.merchant ? 'Для всех трат этого продавца' : 'Для всех переводов этому получателю',
          note: `${int.format(n)} ${plural(n, credit ? 'поступление' : 'трата', credit ? 'поступления' : 'траты', credit ? 'поступлений' : 'трат')} и новые` }]
     : [];
   // «Перевод себе» — теперь в списке категорий; здесь — не учитывать или вернуть убранное
