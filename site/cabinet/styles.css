@@ -919,3 +919,8 @@ tbody tr.child-more td { padding-left: 24px; }
 }
 .card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .card-hint { padding: 0 12px 12px; }
+
+/* «Для всех таких же» под выбором категории: по флажку на строку, выключены по умолчанию */
+.same-opts { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+.same-opt { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.same-opt input { margin-top: 2px; }

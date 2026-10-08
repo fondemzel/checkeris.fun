@@ -100,7 +100,8 @@ const DEFAULTS = {
   group: '', // группа категорий — первый ряд чипсов
   category: '', // подкатегория — второй ряд, зависит от выбранной группы
   uncategorized: '', // '1' — только неразмеченные позиции
-  src: '', // источник трат в «Расходах»: receipt | market | manual | bank, пусто — все
+  src: '', // источник трат в «Расходах»: receipt | market | manual | bank | self (переводы себе), пусто — все
+  incat: '', // группа категорий доходов в «Доходах»; «-» — без категории
   sort: 'date',
   dir: 'desc',
   card: '', // выбранная карточка: r<id> — чек, i<id> — позиция, o<id> — операция банка
@@ -193,6 +194,7 @@ function apiParams(page) {
     params.set('collapse', '1'); // одна строка на название; раскрытие снимает этот параметр
     if (state.src) params.set('src', state.src);
   }
+  if (state.view === 'income' && state.incat) params.set('incat', state.incat);
   params.set('sort', state.sort);
   params.set('dir', state.dir);
   params.set('page', String(page));
@@ -267,6 +269,30 @@ const SOURCES = {
   },
 };
 
+// Переводы себе — не источник трат, а отдельный отбор: в итог расходов не входят
+SOURCES.self = { title: 'Переводы себе', icon: icon('<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>') };
+
+/** Сумма покупки в валюте («70,00 TRY») — у валютной операции; учёт идёт в рублях. */
+const foreign = (r) =>
+  r.orig_currency
+    ? `${(Math.abs(r.orig_amount) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${r.orig_currency}`
+    : '';
+
+/** С кем операция: у перевода человеку в Т-Банке «продавец» — банк получателя, сам человек — в описании. */
+const opWho = (op) =>
+  (op.op_group === 'TRANSFER' && /банк|bank|^клиенту|^втб$/i.test(op.merchant ?? '')
+    ? op.description || op.merchant
+    : op.merchant || op.description) || null;
+
+/** Категория доходов по коду: название и группа — из справочника доходов. */
+function incomeCatOf(slug) {
+  for (const g of meta?.income ?? []) {
+    const c = g.subcategories.find((x) => x.slug === slug);
+    if (c) return { name: c.name, group: g.name, groupSlug: g.slug };
+  }
+  return null;
+}
+
 const sourceCell = (r) => {
   const s = SOURCES[r.source];
   return s ? `<span class="src-ic" title="${s.title}">${s.icon}</span>` : '';
@@ -296,8 +322,13 @@ const COLUMNS = {
     { key: 'name', title: 'Откуда', sort: 'name', cls: 'ellipsis', render: (r) =>
       ellipsisCell(esc(r.name) + noteDot(r), r.description && r.description !== r.name
         ? ` <span class="badge">${esc(r.description.slice(0, 60))}</span>` : '') },
-    { key: 'account', title: 'Счёт', cls: 'cat-cell dim', render: (r) => esc(r.account_name ?? '') },
-    { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) => `<b>${money(r.sum)}</b>` },
+    { key: 'category', title: 'Категория', cls: 'cat-cell', render: (r) => {
+      const c = incomeCatOf(r.category_slug);
+      return catCell(c?.name, c?.group);
+    } },
+    { key: 'account', title: 'Счёт', cls: 'dim', render: (r) => esc(r.account_name ?? '') },
+    { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) =>
+      `<b>${money(r.sum)}</b>${r.orig_currency ? `<div class="dim small">${esc(foreign(r))}</div>` : ''}` },
   ],
   items: [
     { key: 'date', title: 'Дата', sort: 'date', render: (r) =>
@@ -309,7 +340,8 @@ const COLUMNS = {
       catCell(r.category_name, r.group_name, r.category_source === 'rule-fallback') },
     { key: 'quantity', title: 'Кол-во', sort: 'quantity', cls: 'num dim', render: (r) => (r.source === 'bank' ? '' : qty(r.quantity)) },
     { key: 'sum', title: 'Сумма', sort: 'sum', cls: 'num', render: (r) =>
-      isGroup(r) || r.counted ? `<b>${money(r.sum)}</b>` : `<span class="dim">${money(r.sum)}</span>` },
+      (!r.self && (isGroup(r) || r.counted) ? `<b>${money(r.sum)}</b>` : `<span class="dim">${money(r.sum)}</span>`)
+      + (r.orig_currency ? `<div class="dim small">${esc(foreign(r))}</div>` : '') },
   ],
 };
 
@@ -419,6 +451,17 @@ function childRowsHtml(rows, norm, total) {
 function renderCategoryChips() {
   const groupRow = $('chips-group');
   const categoryRow = $('chips-category');
+  // Доходы: группы справочника доходов одним рядом, плюс «без категории»
+  if (state.view === 'income') {
+    const groups = meta?.income ?? [];
+    categoryRow.hidden = true;
+    categoryRow.innerHTML = '';
+    groupRow.hidden = !groups.length;
+    const chip = (value, label, color) =>
+      `<button class="chip" type="button" data-incat="${esc(value)}" aria-pressed="${state.incat === value}"${chipStyle(color, state.incat === value)}>${esc(label)}</button>`;
+    groupRow.innerHTML = chip('', 'Все') + groups.map((g) => chip(g.slug, g.name, g.color)).join('') + chip('-', 'Без категории');
+    return;
+  }
   const groups = meta?.categories ?? [];
   const visible = state.view === 'items' && groups.length > 0;
 
@@ -1186,6 +1229,11 @@ function renderIncomeSummary(totals) {
 /** Сводка «Расходов»: сколько покупок и откуда они — чеки, ручные записи, банк. */
 function renderSpendingSummary(totals) {
   const n = totals.positions ?? 0;
+  if (totals.self) {
+    $('totals-left').textContent = `${int.format(n)} ${plural(n, 'перевод', 'перевода', 'переводов')} себе · в расходы не входят`;
+    $('totals-right').innerHTML = `Переведено: <b>${money(totals.sum)}</b>`;
+    return;
+  }
   const parts = Object.entries(totals.sources ?? {})
     .filter(([, s]) => s.count)
     .map(([key, s]) => `${SOURCES[key].title.toLowerCase()} ${int.format(s.count)}`);
@@ -1311,6 +1359,20 @@ const CATEGORY_SOURCES = {
   bank: 'взята из категории банка',
 };
 
+/** «Перевод себе» — не категория, а вид операции; выбирается в том же списке. */
+const TRANSFER = '#transfer';
+
+/**
+ * Переключатели «для всех таких же» под выбором категории. Выключены — меняется только эта
+ * запись; включены — все такие же и будущие. Как в телефоне.
+ */
+function sameSwitches(list) {
+  if (!list.length) return '';
+  return `<div class="same-opts">${list.map((x) => `
+    <label class="same-opt"><input type="checkbox" data-same="${x.key}" />
+      <span>${esc(x.title)} <span class="dim">· ${esc(x.note)}</span></span></label>`).join('')}</div>`;
+}
+
 const catOption = (slug, name, selected) =>
   `<option value="${esc(slug)}"${slug === selected ? ' selected' : ''}>${esc(name)}</option>`;
 
@@ -1343,10 +1405,11 @@ function categorySection(it) {
   const label = it.category_slug
     ? `«${esc(it.category_name)}» ${CATEGORY_SOURCES[it.category_source] ?? esc(it.category_source ?? '')}.`
     : 'Категория не определена.';
-  const scope =
-    n > 1
-      ? ` Изменение категории затронет ${int.format(n)} ${plural(n, 'позицию', 'позиции', 'позиций')} с таким же названием.`
-      : '';
+  const scope = '';
+  const switches = [];
+  if (n > 1) switches.push({ key: 'all', title: 'Для всех с таким названием', note: `${int.format(n)} ${plural(n, 'позиция', 'позиции', 'позиций')} и новые` });
+  // Продавец — магазин, а не площадка: у маркетплейса в чеке сама площадка
+  if (it.seller_inn && !it.market) switches.push({ key: 'seller', title: 'Все товары этого продавца', note: 'и новые покупки у него' });
 
   return `
     <div class="card-section">Категория</div>
@@ -1355,6 +1418,7 @@ function categorySection(it) {
         ${catOption('', '— не выбрана —', groupSlug)}${groups.map((g) => catOption(g.slug, g.name, groupSlug)).join('')}</select>
       <select id="cat-slug" aria-label="Категория">
         ${categoryOptions(groups, groupSlug, it.category_slug ?? '')}</select>
+      ${sameSwitches(switches)}
       <div class="cat-note dim" id="cat-note">${label}${scope}</div>
     </div>`;
 }
@@ -1374,6 +1438,14 @@ function patchRows(nameNorm, category) {
 }
 
 /** Сохранение выбора: словарь + метки всех одноимённых позиций, затем правка строк на месте. */
+/** Что включено под выбором: only — только эта запись; seller — и все товары продавца. */
+function sameFlags(box) {
+  const all = box.querySelector('[data-same="all"]');
+  const seller = box.querySelector('[data-same="seller"]');
+  // Переключателя «для всех» нет (запись одна такая) — выбор запоминается и для новых
+  return { only: all ? !all.checked : false, seller: Boolean(seller?.checked) };
+}
+
 async function applyCategory(itemId, slug, box) {
   const note = $('cat-note');
   const selects = [...box.querySelectorAll('select')];
@@ -1382,14 +1454,19 @@ async function applyCategory(itemId, slug, box) {
   selects.forEach((s) => (s.disabled = true));
 
   try {
+    const flags = sameFlags(box);
     const res = await api(`/api/items/${itemId}/category`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ category: slug }),
+      body: JSON.stringify({ category: slug, ...flags }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const shown = patchRows(data.name_norm, data.category);
+    const shown = flags.only ? 0 : patchRows(data.name_norm, data.category);
+    if (flags.only) {
+      const cell = document.querySelector(`#tbody tr[data-card="i${itemId}"] .cat-cell`);
+      if (cell) cell.innerHTML = data.category ? catCell(data.category.name, data.category.group_name) : catCell(null);
+    }
     const n = data.affected;
     const positions = `${int.format(n)} ${plural(n, 'позиция', 'позиции', 'позиций')}`;
     const inList = shown > 0 && shown < n ? `, из них в списке ${int.format(shown)}` : '';
@@ -1463,21 +1540,30 @@ function noteSection(url, note) {
 /** Трата из банка без чека: что известно от банка, категория, комментарий и вид. */
 function opCard(op) {
   const n = op.same_count ?? 1;
-  const label = op.category_slug
-    ? `«${esc(op.category_name)}» ${CATEGORY_SOURCES[op.category_source] ?? ''}.`
-    : 'Категория не определена.';
-  const scope = n > 1 ? ` Изменение затронет ${int.format(n)} ${plural(n, 'трату', 'траты', 'трат')} этого продавца — и будущие тоже.` : '';
-  const groups = meta?.categories ?? [];
-  const groupSlug = op.group_slug ?? '';
-  const expense = op.kind === 'expense';
   const credit = op.direction === 'credit';
-  // Что можно сделать с операцией: поступление — перевод себе или не учитывать, трата — то же
-  // плюс категория. Уже убранную — вернуть обратно
+  const inc = credit ? incomeCatOf(op.category_slug) : null;
+  const catName = credit ? inc?.name : op.category_name;
+  const label = op.kind === 'transfer'
+    ? 'Перевод себе — не трата и не доход. Выберите категорию, чтобы вернуть.'
+    : catName
+      ? `«${esc(catName)}» ${CATEGORY_SOURCES[op.category_source] ?? ''}.`
+      : 'Категория не определена.';
+  const scope = '';
+  const groups = credit ? meta?.income ?? [] : meta?.categories ?? [];
+  const groupSlug = credit ? inc?.groupSlug ?? '' : op.group_slug ?? '';
+  const expense = op.kind === 'expense';
+  // Категорию выбирают у трат и доходов, а у перевода себе — чтобы вернуть его обратно
+  const editable = expense || op.kind === 'income' || op.kind === 'transfer';
+  const who = credit ? op.sender || op.merchant || op.description : opWho(op);
+  const switches = n > 1
+    ? [{ key: 'all', title: credit ? 'Для всех с таким описанием' : who === op.merchant ? 'Для всех трат этого продавца' : 'Для всех с таким описанием',
+         note: `${int.format(n)} ${plural(n, credit ? 'поступление' : 'трата', credit ? 'поступления' : 'траты', credit ? 'поступлений' : 'трат')} и новые` }]
+    : [];
+  // «Перевод себе» — теперь в списке категорий; здесь — не учитывать или вернуть убранное
   const counted = expense || op.kind === 'income';
   const actions = counted
-    ? `<button class="btn" type="button" data-op-kind="transfer" data-id="${op.id}">Это перевод себе</button>
-       <button class="btn danger" type="button" data-op-kind="excluded" data-id="${op.id}">Не учитывать</button>`
-    : op.kind === 'covered'
+    ? `<button class="btn danger" type="button" data-op-kind="excluded" data-id="${op.id}">Не учитывать</button>`
+    : op.kind === 'covered' || op.kind === 'transfer'
       ? ''
       : `<button class="btn" type="button" data-op-kind="${credit ? 'income' : 'expense'}" data-id="${op.id}">${credit ? 'Вернуть в доходы' : 'Вернуть в расходы'}</button>`;
   return `
@@ -1490,28 +1576,33 @@ function opCard(op) {
     </div>
     <div class="card-section">${credit ? 'Поступление' : 'Трата из банка'}</div>
     <div class="card-top">
-    <p class="card-name">${esc((credit && op.sender) || op.merchant || op.description || 'Операция банка')}</p>
+    <p class="card-name">${esc(who || 'Операция банка')}</p>
     ${kv([
-      ['Описание', op.description && op.description !== op.merchant ? esc(op.description) : ''],
+      ['В валюте', esc(foreign(op))],
+      ['Описание', op.description && op.description !== who ? esc(op.description) : ''],
+      ['Получатель', !credit && who !== op.merchant && op.merchant ? `банк: ${esc(op.merchant)}` : ''],
       ['MCC', op.mcc ? String(op.mcc) : ''],
       ['Счёт', esc(accountName(op))],
       ['Списано', op.debited_at ? `${dateRu(op.debited_at)} ${timeRu(op.debited_at)}` : ''],
       ['Источник', esc(sourceName(op))],
     ])}
     </div>
-    ${expense ? `
+    ${editable ? `
     <div class="card-section">Категория</div>
-    <div class="cat-edit" data-op="${op.id}">
+    <div class="cat-edit" data-op="${op.id}"${credit ? ' data-income="1"' : ''}>
       <select id="cat-group" aria-label="Группа">
         ${catOption('', '— не выбрана —', groupSlug)}${groups.map((g) => catOption(g.slug, g.name, groupSlug)).join('')}</select>
       <select id="cat-slug" aria-label="Категория">
-        ${categoryOptions(groups, groupSlug, op.category_slug ?? '')}</select>
+        ${catOption(TRANSFER, '↔ Перевод себе — не трата и не доход', op.kind === 'transfer' ? TRANSFER : '')}
+        ${categoryOptions(groups, groupSlug, op.kind === 'transfer' ? '' : op.category_slug ?? '')}</select>
+      ${sameSwitches(switches)}
       <div class="cat-note dim" id="cat-note">${label}${scope}</div>
     </div>` : ''}
     ${noteSection(`/api/bank/ops/${op.id}/note`, op.note)}
     ${actions ? `<div class="card-actions">${actions}</div>` : ''}
-    ${expense ? '<p class="dim small card-hint">Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.</p>' : ''}
-    ${credit && counted ? '<p class="dim small card-hint">Перевод себе — например, с карты другого банка: это не доход, а те же ваши деньги.</p>' : ''}`;
+    ${editable ? `<p class="dim small card-hint">${credit
+      ? 'Перевод себе — например, с карты другого банка: это не доход, а те же ваши деньги.'
+      : 'Перевод себе — например, на карту Озона: расходом станут покупки, сделанные на эти деньги.'}</p>` : ''}`;
 }
 
 /** POST с JSON; ошибка сервера — исключением с его текстом. */
@@ -1586,14 +1677,24 @@ async function applyOpCategory(opId, slug, box) {
   note.textContent = 'Сохранение…';
   selects.forEach((s) => (s.disabled = true));
   try {
-    const data = await postJson(`/api/bank/ops/${opId}/category`, { category: slug });
+    const { only } = sameFlags(box);
+    if (slug === TRANSFER) {
+      const res = await postJson(`/api/bank/ops/${opId}/kind`, { kind: 'transfer', only });
+      const more = (res.affected ?? 1) - 1;
+      note.textContent = `Отмечено как перевод себе${more > 0 ? ` · ещё ${int.format(more)} таких же` : ''}.`;
+      reload(); // перевод уходит из расходов и доходов
+      return;
+    }
+    const data = await postJson(`/api/bank/ops/${opId}/category`, { category: slug, only });
     const n = data.affected ?? 1;
     note.textContent = data.category
-      ? `«${data.category.name}» — обновлено ${int.format(n)} ${plural(n, 'трата', 'траты', 'трат')} этого продавца.`
+      ? `«${data.category.name}» — ${n > 1 ? `обновлено ${int.format(n)} ${plural(n, 'запись', 'записи', 'записей')}` : 'только для этой записи'}.`
       : 'Категория снята.';
     const row = document.querySelector(`#tbody tr[data-card="o${opId}"]`);
     const cell = row?.querySelector('.cat-cell');
-    if (cell) cell.innerHTML = data.category ? catCell(data.category.name, data.category.group_name) : catCell(null);
+    const inc = box.dataset.income ? incomeCatOf(slug) : null;
+    if (cell) cell.innerHTML = inc ? catCell(inc.name, inc.group) : data.category ? catCell(data.category.name, data.category.group_name) : catCell(null);
+    if (n > 1 || box.dataset.income) reload(); // разошлось по таким же — перерисовать список
     await loadMeta();
   } catch (err) {
     note.textContent = `Не удалось сохранить: ${err.message}`;
@@ -1838,6 +1939,7 @@ function bind() {
   $('chips-group').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
+    if (chip.dataset.incat !== undefined) return update({ incat: chip.dataset.incat }); // доходы
     if (chip.dataset.uncat !== undefined) return update({ uncategorized: '1', group: '', category: '' });
     update({ group: chip.dataset.group, category: '', uncategorized: '' });
   });
@@ -1992,11 +2094,13 @@ function bind() {
   $('detail').addEventListener('change', (e) => {
     const box = e.target.closest('.cat-edit');
     if (!box) return;
+    if (e.target.matches('[data-same]')) return; // переключатели — читаются при сохранении
 
-    const groups = meta?.categories ?? [];
+    const groups = box.dataset.income ? meta?.income ?? [] : meta?.categories ?? [];
 
     if (e.target.id === 'cat-group') {
-      $('cat-slug').innerHTML = categoryOptions(groups, e.target.value, '');
+      $('cat-slug').innerHTML = (box.dataset.op ? catOption(TRANSFER, '↔ Перевод себе — не трата и не доход', '') : '')
+        + categoryOptions(groups, e.target.value, '');
       $('cat-note').classList.remove('error');
       $('cat-note').textContent = e.target.value
         ? 'Выберите категорию в группе.'

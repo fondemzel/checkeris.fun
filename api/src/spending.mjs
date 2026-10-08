@@ -6,8 +6,11 @@
 // Покупки, у которых нашёлся чек (kind = covered), приходят один раз — чеком. Переводы
 // между своими счетами и отмеченное «не учитывать» — не траты, их здесь нет.
 import { listItemGroups, parsePaging, NONE } from './queries.mjs';
+import { opWho } from './bankmatch.mjs';
 
 const SOURCES = ['receipt', 'market', 'manual', 'bank'];
+// «Переводы себе» — не источник трат, а отдельный отбор: в итоги расходов не входят
+const SELF = 'self';
 
 /** Откуда позиция: вбита руками, чек маркетплейса или обычный чек. */
 const itemSource = (r) => (r.manual ? 'manual' : r.market ? 'market' : 'receipt');
@@ -15,23 +18,24 @@ const itemSource = (r) => (r.manual ? 'manual' : r.market ? 'market' : 'receipt'
 const norm = (s) => String(s ?? '').toLowerCase().replace(/ё/g, 'е');
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v ?? '');
 
-/** Траты из банка без чека с теми же фильтрами, что у позиций. */
-function bankRows(db, budgetId, params) {
+/** Траты из банка без чека с теми же фильтрами, что у позиций. kind = 'transfer' — переводы себе. */
+function bankRows(db, budgetId, params, kind = 'expense') {
   const from = params.get('from');
   const to = params.get('to');
   const rows = db
     .prepare(
-      `SELECT o.id, o.at, o.amount, o.merchant, o.description, o.bank_category, o.account_name,
-              o.category_slug, o.category_source, o.note IS NOT NULL AS has_note,
+      `SELECT o.id, o.at, o.amount, o.merchant, o.description, o.op_group, o.bank_category, o.account_name,
+              o.category_slug, o.category_source, o.note IS NOT NULL AS has_note, o.orig_amount, o.orig_currency,
               c.name AS category_name, c.group_slug, g.name AS group_name
          FROM bank_ops o
          LEFT JOIN categories c ON c.budget_id = o.budget_id AND c.slug = o.category_slug
          LEFT JOIN groups g ON g.budget_id = o.budget_id AND g.slug = c.group_slug
-        WHERE o.budget_id = :budgetId AND o.direction = 'debit' AND o.kind = 'expense'
+        WHERE o.budget_id = :budgetId AND o.direction = 'debit' AND o.kind = :kind
           AND o.at >= :from AND o.at <= :to`,
     )
     .all({
       budgetId,
+      kind,
       from: isDate(from) ? `${from}T00:00:00` : '0000',
       to: isDate(to) ? `${to}T23:59:59` : '9999',
     });
@@ -54,9 +58,13 @@ function bankRows(db, budgetId, params) {
     .map((o) => ({
       source: 'bank',
       op_id: o.id,
-      name: o.merchant || o.description || 'Операция банка',
+      // у перевода человеку — получатель, а не его банк (opWho в bankmatch.mjs)
+      name: opWho(o) || 'Операция банка',
       purchased_at: o.at,
       sum: o.amount,
+      orig_amount: o.orig_amount,
+      orig_currency: o.orig_currency,
+      self: kind === 'transfer',
       positions: 1,
       quantity: 1,
       counted: 1,
@@ -71,6 +79,28 @@ function bankRows(db, budgetId, params) {
     }));
 }
 
+/** Переводы себе за период — отдельной выборкой, со своим итогом (в расходы он не входит). */
+function listSelf(db, budgetId, params) {
+  const rows = bankRows(db, budgetId, params, 'transfer');
+  const sort = Object.hasOwn(SORT_KEYS, params.get('sort')) ? params.get('sort') : 'date';
+  const asc = params.get('dir') === 'asc';
+  const key = SORT_KEYS[sort];
+  rows.sort((a, b) => {
+    const x = key(a);
+    const y = key(b);
+    const order = x < y ? -1 : x > y ? 1 : 0;
+    return asc ? order : -order;
+  });
+  const { page, per, offset } = parsePaging(params);
+  const sum = rows.reduce((n, r) => n + r.sum, 0);
+  return {
+    rows: rows.slice(offset, offset + per),
+    totals: { count: rows.length, positions: rows.length, sum, excluded_sum: 0, excluded_count: 0, self: true, sources: {} },
+    page,
+    per,
+  };
+}
+
 const SORT_KEYS = {
   date: (r) => r.purchased_at ?? '',
   name: (r) => norm(r.name),
@@ -83,6 +113,7 @@ const SORT_KEYS = {
  * как у /api/items. Порция нарезается после общей сортировки.
  */
 export function listSpending(db, budgetId, params) {
+  if (params.get('src') === SELF) return listSelf(db, budgetId, params);
   const src = SOURCES.includes(params.get('src')) ? params.get('src') : '';
   const { page, per, offset } = parsePaging(params);
   const sort = Object.hasOwn(SORT_KEYS, params.get('sort')) ? params.get('sort') : 'date';
@@ -179,7 +210,7 @@ export function listIncome(db, budgetId, params) {
   const all = db
     .prepare(
       `SELECT id, at, amount, merchant, description, account_name, card, bank_category, kind,
-              note IS NOT NULL AS has_note,
+              note IS NOT NULL AS has_note, category_slug, category_source, orig_amount, orig_currency,
               json_extract(raw, '$.senderDetails') AS sender
          FROM bank_ops
         WHERE budget_id = :budgetId AND direction = 'credit' AND kind = 'income'
@@ -190,6 +221,10 @@ export function listIncome(db, budgetId, params) {
   const q = norm(params.get('q')).trim();
   const min = Number.parseFloat(params.get('min_sum') ?? '');
   const max = Number.parseFloat(params.get('max_sum') ?? '');
+  const incat = (params.get('incat') ?? '').trim();
+  const incomeGroups = new Map(
+    db.prepare('SELECT slug, group_slug FROM income_cats WHERE budget_id = ?').all(budgetId).map((c) => [c.slug, c.group_slug]),
+  );
   const rows = all
     .map((o) => ({
       source: 'bank',
@@ -202,7 +237,13 @@ export function listIncome(db, budgetId, params) {
       card: o.card,
       bank_category: o.bank_category,
       has_note: o.has_note,
+      category_slug: o.category_slug,
+      category_source: o.category_source,
+      orig_amount: o.orig_amount,
+      orig_currency: o.orig_currency,
     }))
+    // Категория доходов: incat — группа (in.группа…) или «-» — без категории
+    .filter((r) => !incat || (incat === NONE ? !r.category_slug : incomeGroups.get(r.category_slug) === incat))
     .filter((r) => !q || norm(r.name).includes(q) || norm(r.description).includes(q))
     .filter((r) => !Number.isFinite(min) || r.sum >= Math.round(min * 100))
     .filter((r) => !Number.isFinite(max) || r.sum <= Math.round(max * 100));
