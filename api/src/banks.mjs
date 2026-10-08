@@ -7,7 +7,7 @@
 // подключение помечается expired, а человеку уходит сообщение в Telegram: войти заново.
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { loadEnv } from './llm.mjs';
-import { matchBank } from './bankmatch.mjs';
+import { matchBank, opWhoSql } from './bankmatch.mjs';
 import { parseOp, trimOp, validOp } from './bankformat.mjs';
 import { disabledAccounts } from './bankaccounts.mjs';
 import * as tbank from './tbank.mjs';
@@ -427,10 +427,10 @@ export function getBankOp(db, budgetId, id) {
                   AND x.kind = CASE WHEN o.direction = 'credit' THEN 'income' ELSE 'expense' END
                   AND CASE WHEN o.direction = 'credit'
                         THEN COALESCE(x.description, json_extract(x.raw, '$.senderDetails'), x.merchant)
-                        ELSE COALESCE(x.merchant, x.description) END
+                        ELSE ${opWhoSql('x')} END
                     = CASE WHEN o.direction = 'credit'
                         THEN COALESCE(o.description, json_extract(o.raw, '$.senderDetails'), o.merchant)
-                        ELSE COALESCE(o.merchant, o.description) END
+                        ELSE ${opWhoSql('o')} END
               ) AS same_count
          FROM bank_ops o
          JOIN bank_links l ON l.id = o.link_id

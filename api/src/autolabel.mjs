@@ -10,7 +10,7 @@
 import { classifyItems, guessMerchants, budgetCategoryOf } from './classify.mjs';
 import { askModel } from './scan.mjs';
 import { modelQuotaLeft, takeModelQuota } from './quota.mjs';
-import { ruleKey } from './bankmatch.mjs';
+import { ruleKey, opWho } from './bankmatch.mjs';
 
 const LIST_LIMIT = 1000;
 
@@ -30,7 +30,7 @@ export function unlabeled(db, budgetId, from, to) {
     .all(budgetId, since, until);
   const ops = db
     .prepare(
-      `SELECT 'op' AS type, id, COALESCE(merchant, description) AS name, amount AS sum, at, merchant, description
+      `SELECT 'op' AS type, id, CASE WHEN op_group = 'TRANSFER' AND (merchant LIKE '%банк%' OR merchant LIKE '%Банк%' OR merchant LIKE '%БАНК%' OR merchant LIKE '%bank%' OR merchant LIKE 'Клиенту%' OR merchant = 'ВТБ') THEN COALESCE(description, merchant) ELSE COALESCE(merchant, description) END AS name, amount AS sum, at, merchant, description, op_group
          FROM bank_ops
         WHERE budget_id = ? AND kind = 'expense' AND category_slug IS NULL
           AND at >= ? AND at <= ?`,
@@ -75,12 +75,12 @@ export async function labelBatch(db, user, ids, opIds) {
 
   if (opList.length) {
     const ops = db
-      .prepare(`SELECT id, merchant, description, bank_category FROM bank_ops WHERE budget_id = ? AND id IN (${marksOf(opList)})`)
+      .prepare(`SELECT id, merchant, description, op_group, bank_category FROM bank_ops WHERE budget_id = ? AND id IN (${marksOf(opList)})`)
       .all(user.budget_id, ...opList);
     const byKey = new Map();
     for (const op of ops) {
       const key = ruleKey(op);
-      if (key && !byKey.has(key)) byKey.set(key, { key, name: op.merchant || op.description || '', hint: op.bank_category });
+      if (key && !byKey.has(key)) byKey.set(key, { key, name: opWho(op) || '', hint: op.bank_category });
     }
     const known = db.prepare('SELECT category_slug FROM merchant_dictionary WHERE key = ?');
     const ask = [...byKey.values()].filter((m) => !known.get(m.key));

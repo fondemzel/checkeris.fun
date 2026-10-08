@@ -42,8 +42,10 @@ export function freshItems(db, budgetId, bank, since) {
 
   const rows = db
     .prepare(
-      `SELECT 'op' AS type, id, COALESCE(merchant, description) AS name, amount AS sum, at, direction, kind,
-              category_slug, category_source, receipt_id, created_at AS added, merchant
+      `SELECT 'op' AS type, id, CASE WHEN op_group = 'TRANSFER' AND (merchant LIKE '%банк%' OR merchant LIKE '%Банк%' OR merchant LIKE '%БАНК%' OR merchant LIKE '%bank%' OR merchant LIKE 'Клиенту%' OR merchant = 'ВТБ') THEN COALESCE(description, merchant) ELSE COALESCE(merchant, description) END AS name, amount AS sum, at, direction, kind,
+              category_slug, category_source, receipt_id, created_at AS added,
+              -- у перевода «продавец» для переключателей — получатель (opWho в bankmatch.mjs)
+              CASE WHEN op_group = 'TRANSFER' AND (merchant LIKE '%банк%' OR merchant LIKE '%Банк%' OR merchant LIKE '%БАНК%' OR merchant LIKE '%bank%' OR merchant LIKE 'Клиенту%' OR merchant = 'ВТБ') THEN COALESCE(description, merchant) ELSE COALESCE(merchant, description) END AS merchant
          FROM bank_ops
         WHERE link_id IN (${list}) AND created_at > ? AND kind IN ('expense', 'income', 'covered')
         ORDER BY created_at DESC, at DESC

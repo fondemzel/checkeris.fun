@@ -725,7 +725,7 @@ async function spendingFeed(itemRows, bankRows) {
       noted: Boolean(r.has_note),
     })),
     ...bankRows.map((op) => ({
-      name: op.merchant ?? op.description ?? 'Без названия',
+      name: opWho(op) ?? 'Без названия',
       at: op.at,
       sum: op.amount,
       source: 'bank',
@@ -1129,6 +1129,14 @@ async function screenIncome() {
   return `${head}<div class="list">${html}</div>`;
 }
 
+/**
+ * С кем операция: обычно продавец, а у перевода человеку — сам человек (в Т-Банке «продавец»
+ * перевода — банк получателя). Так же считает сервер (opWho в bankmatch.mjs).
+ */
+const opWho = (op) => (op.op_group === 'TRANSFER' && /банк|bank|^клиенту|^втб$/i.test(op.merchant ?? '')
+  ? op.description || op.merchant
+  : op.merchant || op.description) || null;
+
 /** Откуда трата попала в Чекер: значок в строке отвечает на этот вопрос без слов. */
 const SOURCES = {
   receipt: { title: 'Из чека', icon: UI.receipt },
@@ -1178,13 +1186,13 @@ async function screenOp() {
     sum: op.amount,
     // У поступления главное — описание («Проценты на остаток», имя отправителя), а «продавец»
     // — лишь канал, которым оно пришло («Бонусы», «Входящий перевод»)
-    name: income ? op.description || op.sender || op.merchant || T.income.one : op.merchant ?? op.description ?? 'Без названия',
+    name: income ? op.description || op.sender || op.merchant || T.income.one : opWho(op) ?? 'Без названия',
     purchased_at: op.at,
     quantity: 1,
     seller: op.merchant && op.description && op.description !== op.merchant ? (income ? op.merchant : op.description) : null,
     category_slug: op.category_slug,
     same_name_count: op.same_count,
-    merchant: op.merchant,
+    merchant: opWho(op), // у перевода — получатель: по нему и «все траты этого продавца»
     note: op.note,
     card: op.card,
     account_name: op.account_name,

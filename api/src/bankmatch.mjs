@@ -264,7 +264,7 @@ function applyKindMarks(db, budgetId) {
   );
   const ops = db
     .prepare(
-      `SELECT id, direction, merchant, description, kind, kind_source,
+      `SELECT id, direction, merchant, description, op_group, kind, kind_source,
               json_extract(raw, '$.senderDetails') AS sender
          FROM bank_ops
         WHERE budget_id = ? AND receipt_id IS NULL AND pair_id IS NULL
@@ -293,7 +293,7 @@ function applyKindMarks(db, budgetId) {
 export function setOpKind(db, budgetId, id, kind, only = true) {
   const op = db
     .prepare(
-      `SELECT id, direction, merchant, description, json_extract(raw, '$.senderDetails') AS sender
+      `SELECT id, direction, merchant, description, op_group, json_extract(raw, '$.senderDetails') AS sender
          FROM bank_ops WHERE id = ? AND budget_id = ?`,
     )
     .get(id, budgetId);
@@ -328,11 +328,29 @@ function restoreKind(db, budgetId, op, only) {
 }
 
 /**
+ * С кем операция. Обычно это продавец. Но у перевода человеку в Т-Банке «продавец» — банк
+ * получателя («Сбербанк», «Клиенту Т-Банка»), а сам человек — в описании («Виктор Л.»): по банку
+ * все переводы в Сбербанк слились бы в одного «продавца». Поэтому у перевода в банк — описание.
+ * Перевод организации («Федеральная налоговая служба», школа) — по ней самой, как обычно.
+ */
+const TO_BANK = /банк|bank|^клиенту|^втб$/i;
+export const opWho = (op) =>
+  op.op_group === 'TRANSFER' && TO_BANK.test(op.merchant ?? '')
+    ? op.description || op.merchant
+    : op.merchant || op.description;
+
+/** То же в SQL — для подсчётов прямо в запросе (alias — таблица операций; LIKE в SQLite не знает регистра кириллицы). */
+export const opWhoSql = (a) =>
+  `CASE WHEN ${a}.op_group = 'TRANSFER' AND (${a}.merchant LIKE '%банк%' OR ${a}.merchant LIKE '%Банк%' OR ${a}.merchant LIKE '%БАНК%'
+     OR ${a}.merchant LIKE '%bank%' OR ${a}.merchant LIKE 'Клиенту%' OR ${a}.merchant = 'ВТБ')
+   THEN COALESCE(${a}.description, ${a}.merchant) ELSE COALESCE(${a}.merchant, ${a}.description) END`;
+
+/**
  * Ключ правила: продавец, а если его нет — описание операции. Приводим к общему виду,
  * чтобы «МОСЭНЕРГОСБЫТ» и «Мосэнергосбыт » были одним и тем же.
  */
 export function ruleKey(op) {
-  const raw = String(op.merchant || op.description || '').toLowerCase().replace(/ё/g, 'е');
+  const raw = String(opWho(op) || '').toLowerCase().replace(/ё/g, 'е');
   const key = raw.replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
   return key.length >= 2 ? key : null;
 }
@@ -344,10 +362,12 @@ export function ruleKey(op) {
 export function applyRules(db, budgetId) {
   const ops = db
     .prepare(
-      `SELECT id, merchant, description FROM bank_ops
+      `SELECT id, merchant, description, op_group, category_source FROM bank_ops
         WHERE budget_id = ? AND kind = 'expense' AND (category_slug IS NULL OR category_source IN ('bank', 'rule', 'model'))`,
     )
     .all(budgetId);
+  // Правило сняли — его разметка тоже уходит: трата снова без категории (её подхватит банк)
+  const drop = db.prepare("UPDATE bank_ops SET category_slug = NULL, category_source = NULL WHERE id = ? AND category_source = 'rule'");
   const rule = db.prepare('SELECT category_slug FROM bank_rules WHERE budget_id = ? AND key = ?');
   // Размеченное прежним правилом тоже переписываем: человек сменил категорию продавца.
   // Считаем только то, что изменилось
@@ -358,7 +378,10 @@ export function applyRules(db, budgetId) {
   for (const op of ops) {
     const key = ruleKey(op);
     const found = key && rule.get(budgetId, key);
-    if (!found) continue;
+    if (!found) {
+      if (op.category_source === 'rule') drop.run(op.id);
+      continue;
+    }
     done += Number(save.run(found.category_slug, op.id, found.category_slug).changes);
   }
   return done;
