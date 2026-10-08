@@ -8,6 +8,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { loadEnv } from './llm.mjs';
 import { matchBank, opWhoSql } from './bankmatch.mjs';
+import { convertForeign } from './fx.mjs';
 import { parseOp, trimOp, validOp } from './bankformat.mjs';
 import { disabledAccounts } from './bankaccounts.mjs';
 import * as tbank from './tbank.mjs';
@@ -128,7 +129,7 @@ function opUpsert(db) {
        :currency, :account_amount, :status, :op_group, :mcc, :description, :merchant, :bank_category, :card,
        :has_receipt, :raw, :now, :now)
      ON CONFLICT (link_id, ext_id) DO UPDATE SET
-       status = excluded.status, debited_at = excluded.debited_at, amount = excluded.amount,
+       status = excluded.status, debited_at = excluded.debited_at, amount = excluded.amount, currency = excluded.currency,
        account_amount = excluded.account_amount, description = excluded.description, merchant = excluded.merchant,
        bank_category = excluded.bank_category, has_receipt = excluded.has_receipt, raw = excluded.raw,
        updated_at = excluded.updated_at`,
@@ -166,7 +167,8 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   // двойнику: тот же счёт, та же секунда, сумма и направление, а двойник ещё не списан.
   // Двойнику отдаём новый номер — строка обновляется на месте, с чеком, категорией и
   // комментарием. У Сбера времени списания нет вовсе, и его это не касается
-  const same = `link_id = :link AND account = :account AND at = :at AND amount = :amount
+  // Сумма — в валюте банка: валютная операция у нас уже в рублях, её исходная — в orig_amount
+  const same = `link_id = :link AND account = :account AND at = :at AND COALESCE(orig_amount, amount) = :amount
     AND direction = :direction AND ext_id <> :ext`;
   const pendingTwin = db.prepare(`SELECT id FROM bank_ops WHERE ${same} AND debited_at IS NULL ORDER BY id LIMIT 1`);
   const settledTwin = db.prepare(`SELECT 1 FROM bank_ops WHERE ${same} AND debited_at IS NOT NULL LIMIT 1`);
@@ -212,6 +214,7 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   if (defer) return { ops: count, added, total, skipped };
   // Сразу разбираем: что покрыто чеком, что перевод между своими, что доход
   const marks = matchBank(db, budgetId);
+  convertForeign(db).catch((err) => console.error('валюта:', err.message)); // траты в валюте — в рубли
   return { ops: count, added, total, skipped, ...marks };
 }
 
@@ -227,7 +230,8 @@ export function mergeSettledTwins(db) {
     .prepare(
       `SELECT a.id AS keepId, b.id AS dropId FROM bank_ops a
          JOIN bank_ops b ON b.link_id = a.link_id AND b.account = a.account AND b.at = a.at
-          AND b.amount = a.amount AND b.direction = a.direction AND b.id <> a.id
+          AND COALESCE(b.orig_amount, b.amount) = COALESCE(a.orig_amount, a.amount)
+          AND b.direction = a.direction AND b.id <> a.id
         WHERE a.debited_at IS NULL AND b.debited_at IS NOT NULL`,
     )
     .all();
@@ -378,7 +382,7 @@ export function listBankOps(db, budgetId, {
     .prepare(
       `SELECT id, ext_id, at, direction, amount, currency, account_name, status, op_group, mcc,
               description, merchant, bank_category, card, has_receipt, kind, receipt_id,
-              category_slug, category_source, note IS NOT NULL AS has_note,
+              category_slug, category_source, note IS NOT NULL AS has_note, orig_amount, orig_currency,
               (SELECT l.bank FROM bank_links l WHERE l.id = bank_ops.link_id) AS bank
          FROM bank_ops ${where}
         ORDER BY ${column} ${order} LIMIT :limit OFFSET :offset`,
@@ -416,7 +420,7 @@ export function getBankOp(db, budgetId, id) {
     .prepare(
       `SELECT o.id, o.at, o.debited_at, o.direction, o.amount, o.currency, o.account, o.account_name, o.status,
               o.op_group, o.mcc, o.description, o.merchant, o.bank_category, o.card, o.kind,
-              o.receipt_id, o.category_slug, o.category_source, o.note,
+              o.receipt_id, o.category_slug, o.category_source, o.note, o.orig_amount, o.orig_currency,
               json_extract(o.raw, '$.senderDetails') AS sender,
               l.bank, -- какой именно банк: в карточке это видно в строке «Источник»
               c.name AS category_name, c.group_slug, g.name AS group_name,

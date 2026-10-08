@@ -733,6 +733,7 @@ async function spendingFeed(itemRows, bankRows) {
       positions: 1,
       outside: false,
       action: `data-op="${op.id}"`,
+      orig: foreign(op),
       group: null,
       noted: Boolean(op.has_note),
     })),
@@ -857,6 +858,7 @@ async function spendingFeed(itemRows, bankRows) {
         // При сортировке по дате день уже в заголовке раздела, в остальных — нужен в строке
         state.sort === 'date' ? '' : dateRu(r.at.slice(0, 10)),
         r.positions > 1 ? `${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : '',
+        r.orig ? esc(r.orig) : '', // покупка в валюте: в сумме — рубли, здесь — сколько было
       ].filter(Boolean).join(' · ');
 
       const row = `${head}
@@ -1133,6 +1135,12 @@ async function screenIncome() {
  * С кем операция: обычно продавец, а у перевода человеку — сам человек (в Т-Банке «продавец»
  * перевода — банк получателя). Так же считает сервер (opWho в bankmatch.mjs).
  */
+/** Сумма покупки в валюте («70,00 TRY») — у валютной операции; учёт идёт в рублях (fx.mjs). */
+const foreign = (op) =>
+  op.orig_currency
+    ? `${(Math.abs(op.orig_amount) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${op.orig_currency}`
+    : null;
+
 const opWho = (op) => (op.op_group === 'TRANSFER' && /банк|bank|^клиенту|^втб$/i.test(op.merchant ?? '')
   ? op.description || op.merchant
   : op.merchant || op.description) || null;
@@ -1193,6 +1201,7 @@ async function screenOp() {
     category_slug: op.category_slug,
     same_name_count: op.same_count,
     merchant: opWho(op), // у перевода — получатель: по нему и «все траты этого продавца»
+    orig: foreign(op),
     note: op.note,
     card: op.card,
     account_name: op.account_name,
@@ -1235,6 +1244,8 @@ function itemCard(it) {
       <div class="card-name">${esc(it.name)}</div>
       ${kv([
         ['Дата', `${dateRu(it.purchased_at)} ${esc(timeRu(it.purchased_at))}`],
+        // Покупка в валюте: сверху — рубли, которые ушли, здесь — сколько было в валюте
+        ['В валюте', esc(it.orig ?? '')],
         ['Количество', it.quantity !== 1 ? `${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''],
         // У ручной записи продавца нет — «Ручная запись» уже сказано строкой «Источник»
         [it.income ? T.income.channel : 'Продавец', it.source === 'manual' ? '' : esc(it.seller ?? '')],
