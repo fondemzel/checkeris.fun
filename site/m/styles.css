@@ -1811,3 +1811,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 }
 .icon-inherit svg { width: 22px; height: 22px; }
 .icon-inherit.on { background: var(--pick, var(--accent)); color: #fff; }
+
+/* Меню фильтра расходов: источники, под чертой — группы; длинное — листается */
+.drop-menu { max-height: 70vh; overflow-y: auto; }
+.drop-sep { height: 1px; margin: 6px 4px; background: var(--border); }

@@ -283,6 +283,7 @@ const state = {
   q: '', // поиск в расходах и доходах: слова через пробел, все должны найтись
   ringGroup: '', // кольцо: раскрытая группа — тогда кольцо по её категориям
   ringRest: '', // кольцо: раскрытое «Остальное» — ключи слитых в него секторов через запятую
+  sg: '', // расходы: отбор по группе (NONE — без категории)
   mode: (() => {
     try {
       return localStorage.getItem('checker.mode') === 'ring' ? 'ring' : 'list'; // расходы и доходы: список или кольцо
@@ -417,8 +418,12 @@ const SOURCE_FILTERS = [
 
 const sourceChips = () => drop(UI.filter, 'Фильтр',
   dropRow('data-src=""', UI.layers, 'Все источники', !state.src)
-  + SOURCE_FILTERS.map(([key, label]) => dropRow(`data-src="${key}"`, SOURCES[key].icon, label, state.src === key)).join(''),
-  Boolean(state.src));
+  + SOURCE_FILTERS.map(([key, label]) => dropRow(`data-src="${key}"`, SOURCES[key].icon, label, state.src === key)).join('')
+  // Группа: все покупки только её категорий. Повторное нажатие снимает
+  + '<div class="drop-sep"></div>'
+  + (meta?.categories ?? []).map((g) => dropRow(`data-sg="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, state.sg === g.slug)).join('')
+  + dropRow(`data-sg="${NONE}"`, groupIcon('none'), 'Без категории', state.sg === NONE),
+  Boolean(state.src || state.sg));
 
 /** Сортировка. Выбранная строка показывает направление; повторное нажатие его разворачивает. */
 const sortDrop = (keys = ['date', 'name', 'sum']) => drop(UI.sort, 'Сортировка', keys
@@ -483,6 +488,7 @@ function go(patch, replace = false) {
   if (['set_cats', 'set_group', 'set_cat'].includes(state.screen) && state.tk) params.set('tk', state.tk);
   if (state.op) params.set('op', state.op);
   if (state.screen === 'summary' && state.src) params.set('src', state.src);
+  if (state.screen === 'summary' && state.sg) params.set('sg', state.sg);
   if (state.screen === 'income' && state.inf) params.set('inf', state.inf);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
@@ -517,6 +523,7 @@ function readUrl() {
   state.op = p.get('op') ?? '';
   state.src = ['receipt', 'market', 'bank', 'manual'].includes(p.get('src')) ? p.get('src') : '';
   state.inf = p.get('inf') ?? '';
+  state.sg = p.get('sg') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
   state.sort = Object.hasOwn(SORTS, p.get('sort') ?? '') ? p.get('sort') : defaultSort(state.screen);
@@ -674,13 +681,19 @@ async function screenSummary() {
   }
 
   // Фильтр по источнику: итог и число покупок считаем по тому, что осталось
-  const shownItems = (state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src))
+  let shownItems = (state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src))
     .filter((r) => (state.same ? sameAs('item', r) : matchesQ([r.name, r.seller, r.retail_place, SOURCES[itemSource(r)].title, T.sources[itemSource(r)],
       findCategory(r.category_slug)?.category.name], [r.sum, ...String(r.sums ?? '').split(','), ...String(r.prices ?? '').split(',')]
       .filter((v) => v !== '').map(Number))));
-  const shownOps = (!state.src || state.src === 'bank' ? bankRows : [])
+  let shownOps = (!state.src || state.src === 'bank' ? bankRows : [])
     .filter((op) => (state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
       bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name], [op.amount, op.orig_amount])));
+  // Отбор по группе — после источника и поиска: строки только её категорий
+  const inGroup = (slug) => !state.sg || (findCategory(slug)?.group.slug ?? NONE) === state.sg;
+  if (state.sg) {
+    shownItems = shownItems.filter((r) => inGroup(r.category_slug));
+    shownOps = shownOps.filter((op) => inGroup(op.category_slug));
+  }
   const total = shownItems.reduce((s, r) => s + r.sum, 0) + shownOps.reduce((s, op) => s + op.amount, 0);
   const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
 
@@ -691,6 +704,7 @@ async function screenSummary() {
     part('count', `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`),
     SORTS[state.sort] ? part('sort', SORTS[state.sort][0].toLowerCase()) : '',
     state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase()) : '',
+    state.sg ? part('src', state.sg === NONE ? 'без категории' : findGroup(state.sg)?.name ?? '') : '',
     state.q ? part('q', state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
   ].filter(Boolean).join(' · ');
 
@@ -712,7 +726,7 @@ async function screenSummary() {
     ? `<p class="note list-hint"><button class="link" type="button" data-to-failed>Сканы с ошибкой: ${int.format(failedCount)}</button></p>`
     : '';
 
-  const selfRows = (self?.rows ?? []).filter((op) => state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
+  const selfRows = (state.sg ? [] : self?.rows ?? []).filter((op) => state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
     T.sources.bank, bankById(op.bank)?.name, 'перевод себе'], [op.amount, op.orig_amount]));
   if (state.mode === 'ring') {
     // Кольцо: доли групп. Сумма группы — по категории каждой строки; без категории — серым
@@ -930,7 +944,7 @@ function ringView(parts, total, countText, kind, overall = null) {
   // его сектора (та же кривая, что у маски: ease-out по кубу). Только когда кольцо
   // показывают заново (другой период, группа, режим) — не при наборе в поиске и не по «назад»;
   // включает её playRing
-  const ringKey = [kind, state.from, state.to, state.ringGroup, state.ringRest, state.src, state.inf].join('|');
+  const ringKey = [kind, state.from, state.to, state.ringGroup, state.ringRest, state.src, state.sg, state.inf].join('|');
   const when = (f) => RING_SWEEP * (1 - Math.cbrt(1 - Math.min(1, Math.max(0, f)))); // обратная к ease-out
   const arcs = placed.order.map((p) => {
     const part = (p.sum / sum) * len;
@@ -3914,6 +3928,12 @@ async function onScreenClick(e) {
   // Фильтр по источнику: повторное нажатие снимает
   const inf = e.target.closest('[data-inf]');
   if (inf) return go({ inf: inf.dataset.inf }, true);
+  const sg = e.target.closest('[data-sg]');
+  if (sg) {
+    const next = state.sg === sg.dataset.sg ? '' : sg.dataset.sg;
+    pulseNext = 'count';
+    return go({ sg: next }, true);
+  }
 
   const src = e.target.closest('[data-src]');
   if (src) {
@@ -3949,6 +3969,9 @@ async function onScreenClick(e) {
     // Из кольца группы — в список этой же группы: у расходов её экран, у доходов — список,
     // отобранный по группе. «Назад» с экрана группы вернёт к общему списку, а не к кольцу
     const opened = state.mode === 'list' && !state.ringRest ? state.ringGroup : '';
+    // И обратно: список, отобранный по группе, — в кольцо этой группы
+    const back = state.mode === 'ring' && state.screen === 'summary' && state.sg && state.sg !== NONE ? state.sg : '';
+    const backIn = state.mode === 'ring' && state.screen === 'income' && state.inf && state.inf !== '-' ? state.inf : '';
     state.ringGroup = '';
     state.ringRest = '';
     try {
@@ -3958,8 +3981,10 @@ async function onScreenClick(e) {
     }
     // И в записи истории: «назад» на этот экран вернёт его в том же виде
     history.replaceState({ ...history.state, mode: state.mode, ringGroup: '', ringRest: '' }, '', location.href);
-    if (opened && state.screen === 'summary') return go({ screen: 'group', group: opened, category: '' });
+    if (opened && state.screen === 'summary') return go({ sg: opened }, true);
     if (opened && state.screen === 'income') return go({ inf: opened }, true);
+    if (back) return go({ sg: '', ringGroup: back }, true);
+    if (backIn) return go({ inf: '', ringGroup: backIn }, true);
     return render();
   }
 
@@ -4238,7 +4263,7 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
   if (!tab) return;
   const sort = defaultSort(tab.dataset.tab);
-  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '' }, true);
+  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '', sg: '' }, true);
 });
 
 /**
