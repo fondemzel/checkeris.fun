@@ -3626,7 +3626,7 @@ async function render() {
   if (state.screen !== 'added') manualCarry = null;
 
   $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
-  // Тестовая база — меткой под заголовком на любом экране
+  // Тестовый режим — меткой под заголовком на любом экране
   $('demo-pill').hidden = !meta?.demo;
   $('demo-pill').textContent = T.settings.help.pill;
   document.querySelector('.bar').classList.toggle('demo', Boolean(meta?.demo));
@@ -4594,16 +4594,16 @@ async function screenSettings() {
     link('profile', UI.user, S.profile.label, me?.name || (me?.telegram ? S.profile.viaTelegram : S.profile.viaPassword))
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
     + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
-    // «Данные» — сразу страница о данных, без промежуточного экрана
-    + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO })
     // Тема — сразу здесь переключателем: выбор хранится на телефоне (index.html ставит её до отрисовки)
     + srow({ icon: UI.moon, title: S.menu.dark, end: toggle('data-theme-toggle', theme() === 'dark', S.menu.dark) }))
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
       + link('incats', UI.income, S.cats.income, counts(meta?.income)))
-    // Помощь: тестовая база — год трат вымышленного человека вместо своих данных
+    // Помощь: что хранится и как удалить; тестовый режим — год трат вымышленного человека
     + section(S.help.label, S.help.note,
-      srow({ icon: UI.sparkle, title: S.help.demo, note: S.help.demoNote, end: toggle('data-demo-toggle', Boolean(meta?.demo), S.help.demo) }));
+      // «Данные» — сразу страница о данных, без промежуточного экрана
+      srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO })
+      + srow({ icon: UI.sparkle, title: S.help.demo, note: S.help.demoNote, end: toggle('data-demo-toggle', Boolean(meta?.demo), S.help.demo) }));
 }
 
 async function screenSetProfile() {

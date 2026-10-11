@@ -408,7 +408,7 @@ async function handleApi(req, res, url) {
   // удалить его и сменить имя — можно
   if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session'].includes(pathname)
     && isDemo(db, user.budget_id)) {
-    return sendJson(res, 409, { error: 'Это тестовая база — в ней ничего не меняется. Выключить её можно в настройках, в разделе «Помощь»', demo: true });
+    return sendJson(res, 409, { error: 'Это тестовый режим — в нём ничего не меняется. Выключить его можно в настройках, в разделе «Помощь»', demo: true });
   }
 
   // Кабинет спрашивает при загрузке, жив ли сохранённый токен

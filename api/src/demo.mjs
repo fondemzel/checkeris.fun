@@ -19,7 +19,7 @@ import { provisionIncome } from './incomecats.mjs';
 import { normalizeName } from './import.mjs';
 
 const DEMO_LOGIN = '__demo__';
-const DEMO_NAME = 'Тестовая база';
+const DEMO_NAME = 'Тестовый режим';
 const STALE_DAYS = 31;
 const now = () => new Date().toISOString();
 
@@ -32,7 +32,10 @@ function demoBudget(db) {
   let id = db.prepare('SELECT id FROM budgets WHERE demo = 1 ORDER BY id LIMIT 1').get()?.id;
   const last = id && db.prepare('SELECT MAX(purchased_date) AS d FROM receipts WHERE budget_id = ?').get(id).d;
   const fresh = last && Date.now() - Date.parse(`${last}T00:00:00`) < STALE_DAYS * 86400000;
-  if (fresh) return id;
+  if (fresh) {
+    db.prepare('UPDATE budgets SET name = ? WHERE id = ?').run(DEMO_NAME, id); // название могло смениться
+    return id;
+  }
   db.exec('BEGIN');
   try {
     if (id) clearBudget(db, id);
