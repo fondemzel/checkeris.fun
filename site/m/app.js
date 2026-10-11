@@ -3768,7 +3768,7 @@ function pullReset() {
 
 addEventListener('touchstart', (e) => {
   const allowed = window.scrollY <= 0 && e.touches.length === 1 && !pulling && !$('app').hidden
-    && PULLABLE.includes(state.screen) && !document.querySelector('.sheet, .picker');
+    && PULLABLE.includes(state.screen) && !document.querySelector('.sheet, .picker') && !e.target.closest('.drop-menu');
   pullFrom = allowed ? e.touches[0].clientY : null;
   pullBy = 0;
 }, { passive: true });
@@ -3818,6 +3818,8 @@ addEventListener('touchstart', (e) => {
   stretchFrom = null;
   stretchEdge = null;
   if (e.touches.length !== 1 || $('app').hidden || document.querySelector('.sheet, .picker')) return;
+  // Выпадающее меню листается само: «резина» перехватила бы жест, и меню бы не сдвинулось
+  if (e.target.closest('.drop-menu')) return;
   stretchFrom = e.touches[0].clientY;
   stretchEl.style.transition = '';
 }, { passive: true });
@@ -3875,7 +3877,7 @@ addEventListener('touchstart', (e) => {
   if (!stretchEl.querySelector('[data-shift]')) return;
   // У краёв — системный жест «назад»; полосы, листающиеся вбок, и поля ввода — свои
   if (t.clientX < 24 || t.clientX > window.innerWidth - 24) return;
-  if (e.target.closest('input, textarea, .chips, [data-shift]')) return;
+  if (e.target.closest('input, textarea, .chips, [data-shift], .drop-menu')) return;
   swipeFrom = { x: t.clientX, y: t.clientY, t: Date.now() };
 }, { passive: true });
 
