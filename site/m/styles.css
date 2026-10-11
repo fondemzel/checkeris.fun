@@ -1744,3 +1744,17 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .acc-title { display: flex; min-width: 0; }
 .acc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .acc-title .acc-tail { flex: none; white-space: pre; }
+
+/* Раскрытие и сворачивание разделов: строки проявляются лесенкой сверху, при сворачивании —
+   гаснут; стрелка в заголовке поворачивается. Только прозрачность и сдвиг — это дёшево */
+@keyframes sec-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes sec-out { to { opacity: 0; transform: translateY(-6px); } }
+.sec-in { animation: sec-in 0.22s ease-out both; animation-delay: calc(var(--i, 0) * 14ms); }
+.sec-out { animation: sec-out 0.14s ease-in forwards; }
+@keyframes arrow-open { from { transform: rotate(-90deg); } to { transform: none; } }
+@keyframes arrow-close { from { transform: none; } to { transform: rotate(-90deg); } }
+.arrow-opening .section-arrow svg { animation: arrow-open 0.2s ease-out; }
+.arrow-closing .section-arrow svg { animation: arrow-close 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .sec-in, .sec-out, .arrow-opening .section-arrow svg, .arrow-closing .section-arrow svg { animation: none; }
+}

@@ -3271,6 +3271,35 @@ $('screen').addEventListener('keydown', (e) => {
   if (e.target.id === 'q' && e.key === 'Enter') e.target.blur();
 });
 
+// ── анимация раскрытия ───────────────────────────────────
+// Лёгкая: только прозрачность и сдвиг (без высот — телефону это ничего не стоит). Анимируем
+// первые строки раздела: остальные всё равно за краем экрана
+
+const ANIMATED = 20;
+
+/** Строки раздела: всё после заголовка до следующего заголовка (или пока stop не скажет). */
+function sectionRows(head, stop = (el) => el.matches('.day, [data-section]')) {
+  const rows = [];
+  for (let el = head?.nextElementSibling; el && !stop(el); el = el.nextElementSibling) rows.push(el);
+  return rows;
+}
+
+function animateIn(rows) {
+  rows.slice(0, ANIMATED).forEach((el, i) => {
+    el.style.setProperty('--i', i);
+    el.classList.add('sec-in');
+    el.addEventListener('animationend', () => el.classList.remove('sec-in'), { once: true });
+  });
+}
+
+/** Погасить строки перед сворачиванием; ждём, только если есть что гасить. */
+async function animateOut(rows) {
+  const shown = rows.slice(0, ANIMATED);
+  if (!shown.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  shown.forEach((el) => el.classList.add('sec-out'));
+  await new Promise((r) => setTimeout(r, 140));
+}
+
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
 function secTop() {
   const head = document.querySelector('#screen .stuck-head');
@@ -3497,16 +3526,21 @@ async function onScreenClick(e) {
     // Сворачивают прилипший заголовок, уйдя вглубь раздела, — после сворачивания лента
     // встаёт так, чтобы этот заголовок был под шапкой, а не где-то ниже по списку
     const stuck = opened.has(key) && sectionBtn.getBoundingClientRect().top <= secTop() + 1;
+    const closing = opened.has(key);
+    if (closing) await animateOut(sectionRows(sectionBtn), sectionBtn); // строки гаснут — потом закрываем
     if (opened.has(key)) opened.delete(key);
     else {
       if (feedSections.single) opened.clear();
       opened.add(key);
     }
     await render();
-    if (stuck) {
-      const head = [...document.querySelectorAll('[data-section]')].find((el) => el.dataset.section === key);
-      if (head) window.scrollBy(0, head.getBoundingClientRect().top - secTop());
+    const head = [...document.querySelectorAll('[data-section]')].find((el) => el.dataset.section === key);
+    if (head) {
+      head.classList.add(closing ? 'arrow-closing' : 'arrow-opening');
+      setTimeout(() => head.classList.remove('arrow-closing', 'arrow-opening'), 250);
+      if (!closing) animateIn(sectionRows(head));
     }
+    if (stuck && head) window.scrollBy(0, head.getBoundingClientRect().top - secTop());
     return;
   }
 
@@ -3547,10 +3581,19 @@ async function onScreenClick(e) {
   // Стрелка у группы одинаковых покупок: развернуть или свернуть, не открывая карточку
   const toggle = e.target.closest('[data-expand]');
   if (toggle) {
-    const key = expandKey(toggle.dataset.expand);
+    const group = toggle.dataset.expand;
+    const key = expandKey(group);
+    const subRows = (row) => sectionRows(row, (el) => !el.classList.contains('sub-row') && !el.classList.contains('sub-more'));
+    const closing = expanded.has(key);
+    if (closing) await animateOut(subRows(toggle.closest('.row')));
     if (expanded.has(key)) expanded.delete(key);
     else expanded.add(key);
-    return render(); // тот же экран — список перерисуется на месте, прокрутка не сбросится
+    await render(); // тот же экран — список перерисуется на месте, прокрутка не сбросится
+    if (!closing) {
+      const row = [...document.querySelectorAll('[data-expand]')].find((el) => el.dataset.expand === group)?.closest('.row');
+      if (row) animateIn(subRows(row));
+    }
+    return;
   }
 
   // Трата из банка открывается карточкой, как товар; категория меняется уже в ней
