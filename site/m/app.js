@@ -761,14 +761,14 @@ function ringView(parts, total, countText, kind) {
   const point = (angle, radius) => [50 + Math.sin(angle) * radius, 50 - Math.cos(angle) * radius];
   const measure = (p) => {
     p.ang = (p.sum / sum) * TURN;
-    p.w = (Math.max(32, money(p.sum).length * 5.8 + 6) / side) * 100;
+    p.w = (Math.max(32, money(p.sum).length * 5.8 + 2) / side) * 100;
     p.h = (60 / side) * 100; // значок 32px, зазор и две строки подписи
     return p;
   };
   const apart = (a, b) => {
     const [x1, y1] = point(a.mid, R);
     const [x2, y2] = point(b.mid, R);
-    return Math.abs(x1 - x2) >= (a.w + b.w) / 2 + 1 || Math.abs(y1 - y2) >= (a.h + b.h) / 2 + 0.5;
+    return Math.abs(x1 - x2) >= (a.w + b.w) / 2 + 0.3 || Math.abs(y1 - y2) >= (a.h + b.h) / 2;
   };
   // Перебор с отсечением: самый крупный — первым, дальше крупные и мелкие вперемежку
   // (этот порядок пробуется первым). Каждый новый значок сверяется со всеми поставленными
@@ -806,7 +806,7 @@ function ringView(parts, total, countText, kind) {
   while (!placed && items.length > 2) {
     const rest = items.filter((p) => !p.other);
     const take = other ? [rest.pop()] : [rest.pop(), rest.pop()];
-    other ??= { key: '', name: 'Остальное', color: '#dfe3e8', icon: 'dots', sum: 0, other: true, parts: [] };
+    other ??= { key: '', name: 'Остальное', color: '#dfe3e8', icon: 'blocks', sum: 0, other: true, parts: [] };
     for (const p of take) {
       other.parts.push(p);
       other.sum += p.sum;
