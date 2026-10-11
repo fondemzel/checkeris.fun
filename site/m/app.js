@@ -282,6 +282,7 @@ const state = {
   src: '', // фильтр ленты по источнику: '' | receipt | market | bank | manual
   q: '', // поиск в расходах и доходах: слова через пробел, все должны найтись
   ringGroup: '', // кольцо: раскрытая группа — тогда кольцо по её категориям
+  ringRest: '', // кольцо: раскрытое «Остальное» — ключи слитых в него секторов через запятую
   mode: (() => {
     try {
       return localStorage.getItem('checker.mode') === 'ring' ? 'ring' : 'list'; // расходы и доходы: список или кольцо
@@ -467,7 +468,7 @@ function go(patch, replace = false) {
   // Уходим вглубь — запоминаем, где был список: «назад» вернёт ровно туда
   // Поиск набирают уже на экране, после того как его запись в истории сделана, — поэтому
   // запоминаем его здесь же: «назад» из карточки вернёт к той же выборке
-  if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY, q: state.q, same: state.same, mode: state.mode, ringGroup: state.ringGroup }, '', location.href);
+  if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY, q: state.q, same: state.same, mode: state.mode, ringGroup: state.ringGroup, ringRest: state.ringRest }, '', location.href);
   Object.assign(state, patch);
   const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
@@ -745,13 +746,30 @@ async function screenSummary() {
  * Значки групп — напротив своих секторов, с суммой и долей под каждым; ниже — расшифровка таблицей:
  * доля и сумма читаются и без цвета. Нажатие на значок, сегмент или строку открывает группу.
  */
+/** Заглавие экрана с кольцом: раскрытые группа и «Остальное» — через точку. */
+function ringTitle(base, groupName) {
+  if (state.mode !== 'ring') return base;
+  return [base, state.ringGroup && groupName(state.ringGroup), state.ringRest && 'Остальное'].filter(Boolean).join(' · ');
+}
+
 let lastRing = ''; // какое кольцо показано последним: то же самое заново не анимируем
 
 function ringView(parts, total, countText, kind) {
+  // Раскрытое «Остальное» — кольцо только из слитых в него секторов, итог — их сумма
+  if (state.ringRest) {
+    const keys = new Set(state.ringRest.split(','));
+    parts = parts.filter((p) => keys.has(p.key));
+    total = parts.reduce((n, p) => n + p.sum, 0);
+    countText = 'Остальное';
+  }
   const all = parts.filter((p) => p.sum > 0).sort((a, b) => b.sum - a.sum);
   if (!all.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период ничего нет'}</div>`;
   // Категории доходов — только посмотреть: отдельного списка категории у доходов нет
-  const tap = (p) => (p.other || kind === 'income-cat' ? '' : ` data-ring="${esc(kind)}|${esc(p.key)}"`);
+  // «Остальное» раскрывается всегда — его ключ: «~» и ключи слитых секторов
+  const tap = (p) => {
+    if (p.other) return ` data-ring="${esc(kind)}|~${esc(p.parts.map((x) => x.key).join(','))}"`;
+    return kind === 'income-cat' ? '' : ` data-ring="${esc(kind)}|${esc(p.key)}"`;
+  };
   const sum = all.reduce((n, p) => n + p.sum, 0);
   const pct = (p) => share.format(Math.round((p.sum / sum) * 1000) / 10);
   const TURN = 2 * Math.PI;
@@ -830,7 +848,7 @@ function ringView(parts, total, countText, kind) {
   // Появление: кольцо заполняется по кругу сектор за сектором, быстро в начале и мягко к концу;
   // значок проявляется, когда заливка доходит до середины его сектора. Только когда кольцо
   // показывают заново (другой период, группа, режим) — не при наборе в поиске и не по «назад»
-  const ringKey = [kind, state.from, state.to, state.ringGroup, state.src, state.inf].join('|');
+  const ringKey = [kind, state.from, state.to, state.ringGroup, state.ringRest, state.src, state.inf].join('|');
   const play = ringKey !== lastRing && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   lastRing = ringKey;
   const SWEEP = 900;
@@ -3237,7 +3255,7 @@ $('screen').addEventListener('change', (e) => {
 // ── экраны ───────────────────────────────────────────────
 
 const SCREENS = {
-  summary: { title: 'Расходы', render: screenSummary },
+  summary: { title: () => ringTitle('Расходы', (slug) => findGroup(slug)?.name), render: screenSummary },
   receipts: { title: 'Чеки', render: screenReceipts },
   add: { title: 'Добавить', render: screenAdd },
   // form — на экране поля, которые человек заполняет: закрытие попапа его не перерисовывает
@@ -3260,7 +3278,7 @@ const SCREENS = {
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem, after: () => { mountItemMap(); fitNote(); } },
   bank: { title: 'Операции банка', render: screenBank },
-  income: { title: 'Доход', render: screenIncome },
+  income: { title: () => ringTitle('Доход', (slug) => (meta?.income ?? []).find((g) => g.slug === slug)?.name), render: screenIncome },
   stats: {
     title: 'Статистика',
     render: () => soon(UI.stats, 'Статистика', 'Здесь будут графики: как меняются траты по месяцам и категориям.'),
@@ -3848,13 +3866,14 @@ async function onScreenClick(e) {
   if (e.target.closest('[data-mode-toggle]')) {
     state.mode = state.mode === 'ring' ? 'list' : 'ring';
     state.ringGroup = '';
+    state.ringRest = '';
     try {
       localStorage.setItem('checker.mode', state.mode);
     } catch {
       // не запомнится — не беда
     }
     // И в записи истории: «назад» на этот экран вернёт его в том же виде
-    history.replaceState({ ...history.state, mode: state.mode, ringGroup: '' }, '', location.href);
+    history.replaceState({ ...history.state, mode: state.mode, ringGroup: '', ringRest: '' }, '', location.href);
     return render();
   }
 
@@ -3862,10 +3881,12 @@ async function onScreenClick(e) {
   const ringPick = e.target.closest('[data-ring]');
   if (ringPick) {
     const [kind, key] = ringPick.dataset.ring.split('|');
+    // «Остальное» — своё кольцо из слитых в него секторов («назад» вернёт к общему)
+    if (key.startsWith('~')) return go({ ringRest: key.slice(1) });
     // Группа — кольцо её категорий на том же экране («назад» вернёт к группам).
     // Без категории раскрывать нечего: у расходов — её список
     if (kind === 'summary' || kind === 'income') {
-      if (key !== NONE) return go({ ringGroup: key });
+      if (key !== NONE) return go({ ringGroup: key, ringRest: '' });
       if (kind === 'summary') return go({ screen: 'group', group: NONE, category: '' });
       return null;
     }
@@ -4131,7 +4152,7 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
   if (!tab) return;
   const sort = defaultSort(tab.dataset.tab);
-  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '' }, true);
+  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '' }, true);
 });
 
 /**
