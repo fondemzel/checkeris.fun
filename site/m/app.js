@@ -565,7 +565,21 @@ function readUrl() {
  * Попап живёт одной записью в истории: «назад» закрывает его и остаётся на том же экране.
  * Повторно запись не добавляем — иначе после возврата из карточки товара их станет две.
  */
+// Листы снизу выезжают, а затемнение под ними проявляется; закрываются так же, обратно.
+// opening — только на первые мгновения: лист, который перерисовывает своё содержимое
+// (выбор категории: группы → категории), не должен выезжать заново на каждом шаге
+const POPUP_OUT = 180; // мс: столько уезжает закрытый лист
+const OPEN_POPUPS = '.sheet:not(.closing), .picker:not(.closing)';
+
+function removePopup(el) {
+  if (el.classList.contains('closing')) return;
+  el.classList.add('closing');
+  setTimeout(() => el.remove(), POPUP_OUT);
+}
+
 function openPopup(el) {
+  el.classList.add('opening');
+  setTimeout(() => el.classList.remove('opening'), 320);
   document.body.appendChild(el);
   if (!history.state?.popup) history.pushState({ ...state, popup: true }, '', location.href);
 }
@@ -575,8 +589,8 @@ function openPopup(el) {
  * выбор категории поверх чека закрывается сам по себе, а чек должен остаться.
  */
 function closePopup(el) {
-  el.remove();
-  if (document.querySelector('.sheet, .picker')) return; // под ним ещё один — историю не трогаем
+  removePopup(el);
+  if (document.querySelector(OPEN_POPUPS)) return; // под ним ещё один — историю не трогаем
   if (history.state?.popup) {
     closingPopup = true; // попап уже убран — обработчик «назад» узнает о нём по этой пометке
     history.back(); // экран перерисует обработчик «назад»
@@ -594,7 +608,7 @@ const keepsForm = () => Boolean(SCREENS[state.screen]?.form) && shownScreen === 
  * Попап уступает место переходу: запись истории не снимаем — её заменит сам переход
  * (go с replace). Иначе «назад» успевает вернуть прежнее состояние и отменяет выбор.
  */
-const dropPopup = (el) => el.remove();
+const dropPopup = (el) => removePopup(el);
 
 // Прокрутку возвращаем сами: браузер делает это раньше, чем список успевает отрисоваться
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -605,9 +619,9 @@ window.addEventListener('popstate', (e) => {
   if (e.state) Object.assign(state, screenState);
   else readUrl();
   // «Назад» закрывает открытый попап — и лист, и выбор категории, и календарь
-  const hadPopup = closingPopup || Boolean(document.querySelector('.sheet, .picker'));
+  const hadPopup = closingPopup || Boolean(document.querySelector(OPEN_POPUPS));
   closingPopup = false;
-  for (const el of document.querySelectorAll('.sheet, .picker')) el.remove();
+  for (const el of document.querySelectorAll(OPEN_POPUPS)) removePopup(el);
   // Закрыли попап над формой — форму не трогаем: иначе сумма и название сотрутся
   if (hadPopup && keepsForm()) return;
   // Вернулись к списку — туда же, где его оставили. Закрытие попапа экран не двигает

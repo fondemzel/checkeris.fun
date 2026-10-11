@@ -1872,3 +1872,17 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   background: #131a22;
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
+
+/* Листы снизу: выезжают снизу, затемнение под ними проявляется; при закрытии — обратно */
+@keyframes pop-dim-in { from { background-color: transparent; } }
+@keyframes pop-dim-out { to { background-color: transparent; } }
+@keyframes pop-up { from { transform: translateY(100%); } }
+@keyframes pop-down { to { transform: translateY(100%); } }
+.sheet.opening, .picker.opening { animation: pop-dim-in 0.24s ease-out; }
+.sheet.opening .sheet-box, .picker.opening .picker-box { animation: pop-up 0.28s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.sheet.closing, .picker.closing { animation: pop-dim-out 0.18s ease-in forwards; pointer-events: none; }
+.sheet.closing .sheet-box, .picker.closing .picker-box { animation: pop-down 0.18s ease-in forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .sheet.opening, .picker.opening, .sheet.closing, .picker.closing,
+  .sheet.opening .sheet-box, .picker.opening .picker-box, .sheet.closing .sheet-box, .picker.closing .picker-box { animation: none; }
+}
