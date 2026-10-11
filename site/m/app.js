@@ -3946,6 +3946,9 @@ async function onScreenClick(e) {
   // Список ↔ кольцо: выбор помним на телефоне
   if (e.target.closest('[data-mode-toggle]')) {
     state.mode = state.mode === 'ring' ? 'list' : 'ring';
+    // Из кольца группы — в список этой же группы: у расходов её экран, у доходов — список,
+    // отобранный по группе. «Назад» с экрана группы вернёт к общему списку, а не к кольцу
+    const opened = state.mode === 'list' && !state.ringRest ? state.ringGroup : '';
     state.ringGroup = '';
     state.ringRest = '';
     try {
@@ -3955,6 +3958,8 @@ async function onScreenClick(e) {
     }
     // И в записи истории: «назад» на этот экран вернёт его в том же виде
     history.replaceState({ ...history.state, mode: state.mode, ringGroup: '', ringRest: '' }, '', location.href);
+    if (opened && state.screen === 'summary') return go({ screen: 'group', group: opened, category: '' });
+    if (opened && state.screen === 'income') return go({ inf: opened }, true);
     return render();
   }
 
