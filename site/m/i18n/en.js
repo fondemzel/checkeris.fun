@@ -111,6 +111,7 @@ export const en = {
       deleteCatConfirm: 'Delete the category “{name}”?',
       moveNote: 'Deleting “{name}”. Choose where to move its {what}, otherwise they’ll be left without a category',
       moveWhat: 'spending and rules',
+      moveTitle: 'Move to',
       moveWhatIncome: 'income and rules',
       moveConfirm: 'Delete “{name}” and move its expenses to “{to}”?',
       gone: 'This entry no longer exists',

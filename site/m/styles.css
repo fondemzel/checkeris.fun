@@ -1926,3 +1926,4 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .picker.ask.opening .ask-box { animation: ask-in 0.18s ease-out; }
 .picker.ask.closing .ask-box { animation: ask-out 0.15s ease-in forwards; }
 @media (prefers-reduced-motion: reduce) { .picker.ask .ask-box { animation: none !important; } }
+.picker-for.full { display: block; -webkit-line-clamp: unset; overflow: visible; white-space: normal; } /* пояснение — целиком */

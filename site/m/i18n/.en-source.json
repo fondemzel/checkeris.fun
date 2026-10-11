@@ -132,6 +132,7 @@
  "settings.cats.deleteCatConfirm": "Удалить категорию «{name}»?",
  "settings.cats.moveNote": "Удаляем «{name}». Выберите, куда перенести её {what}, — иначе они останутся без категории",
  "settings.cats.moveWhat": "траты и правила",
+ "settings.cats.moveTitle": "Куда перенести",
  "settings.cats.moveWhatIncome": "поступления и правила",
  "settings.cats.moveConfirm": "Удалить «{name}» и перенести её траты в «{to}»?",
  "settings.cats.gone": "Такой записи больше нет",
