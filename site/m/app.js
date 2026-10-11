@@ -9,7 +9,26 @@
 // в приложении на Rust, поэтому вся логика здесь про экраны, а всё, что можно
 // посчитать в базе, считает сервер (/api/summary).
 import { groupIcon, searchIcons } from '/shared/icons.js';
-import { shades, edge, readableText, hslToHex, hexToHsl, tint } from '/shared/colors.js';
+import { shades as lightShades, edge, readableText, hslToHex, hexToHsl, tint, hexToRgb } from '/shared/colors.js';
+
+/**
+ * Оттенки категорий группы (см. shared/colors.js). В светлой теме цвет группы разбавляется
+ * белым; в тёмной так бледные категории превращались в белёсые точки, поэтому там он
+ * разбавляется фоном карточки и слабее — порядок и различимость те же, но в тон теме.
+ */
+function shades(hex, n, from = 25, to = 85) {
+  if (document.documentElement.dataset.theme !== 'dark') return lightShades(hex, n, from, to);
+  const rgb = hexToRgb(hex);
+  if (!rgb || n <= 0) return Array.from({ length: Math.max(0, n) }, () => null);
+  const base = { r: 0x18, g: 0x20, b: 0x29 }; // --surface тёмной темы
+  const mix = (pct) => {
+    const k = 0.35 + 0.65 * (pct / 100);
+    const ch = (c, b) => Math.round(b + (c - b) * k).toString(16).padStart(2, '0');
+    return `#${ch(rgb.r, base.r)}${ch(rgb.g, base.g)}${ch(rgb.b, base.b)}`;
+  };
+  if (n === 1) return [mix((from + to) / 2)];
+  return Array.from({ length: n }, (_, i) => mix(from + ((to - from) * i) / (n - 1)));
+}
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
 import { T, f, pl } from '/m/i18n/index.js';
@@ -5034,6 +5053,7 @@ function accountIcon(a) {
 const theme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 function setTheme(next) {
   document.documentElement.dataset.theme = next;
+  screenCache.clear(); // сохранённые экраны нарисованы оттенками прошлой темы
   // Полоса браузера и системная строка — в тон верхней панели
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#0b0f14' : '#131a26');
   try {
