@@ -1895,3 +1895,12 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .list > .day.section.stuck::after { content: ''; position: absolute; top: 0; width: 12px; height: 12px; pointer-events: none; }
 .list > .day.section.stuck::before { left: 0; background: radial-gradient(circle at 100% 100%, transparent 11.5px, var(--bg) 12px); }
 .list > .day.section.stuck::after { right: 0; background: radial-gradient(circle at 0 100%, transparent 11.5px, var(--bg) 12px); }
+
+/* Остров меню в тёмной теме: чуть светлее карточек и с тонкой светлой кромкой — иначе он
+   сливался с лентой; тень плотнее (тёмная на тёмном почти не видна). Всё статичное — без
+   пересчётов при прокрутке. Кольцо вокруг «+» — цвета острова: кнопка как бы вырезана в нём */
+:root[data-theme="dark"] .tabs {
+  background: color-mix(in srgb, #24303d 92%, transparent);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+:root[data-theme="dark"] .tab-add { border-color: #24303d; }
