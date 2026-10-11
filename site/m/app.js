@@ -124,6 +124,8 @@ const UI = {
     '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>' +
       '<circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
   ),
+  ring: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v5"/><path d="m19.8 16.5-4.3-2.5"/>'),
+  list: svg('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'),
   sparkle: svg('<path d="M9.94 14.06 4 20"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="m16.24 7.76 2.83-2.83"/>'),
   search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
   swap: svg('<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>'),
@@ -278,6 +280,13 @@ const state = {
   op: '', // операция банка, чья карточка открыта
   src: '', // фильтр ленты по источнику: '' | receipt | market | bank | manual
   q: '', // поиск в расходах и доходах: слова через пробел, все должны найтись
+  mode: (() => {
+    try {
+      return localStorage.getItem('checker.mode') === 'ring' ? 'ring' : 'list'; // расходы и доходы: список или кольцо
+    } catch {
+      return 'list';
+    }
+  })(),
   same: '', // точный отбор «все такие же» из карточки: 'item|название' | 'op|продавец' | 'in|описание'
   inf: '', // фильтр доходов: '' | '-' (без категории) | код группы доходов
   added: '', // чек, только что добавленный сканом или руками
@@ -359,7 +368,7 @@ function matchesQ(fields, amounts = []) {
   });
 }
 
-const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false }) => `
+const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false, mode = false }) => `
   <div class="total compact">
     <div class="head-top">
       <div class="head-sum">
@@ -367,7 +376,9 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
         <span class="total-note">${note}</span>
       </div>
       <div class="head-btns">
-        ${sorts ? sortDrop(sorts === true ? undefined : sorts) : ''}
+        ${mode ? `<button class="drop-btn${state.mode === 'ring' ? ' on' : ''}" type="button" data-mode-toggle
+          aria-label="${state.mode === 'ring' ? 'Показать списком' : 'Показать кольцом'}" title="${state.mode === 'ring' ? 'Списком' : 'Кольцом'}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
+        ${sorts && !(mode && state.mode === 'ring') ? sortDrop(sorts === true ? undefined : sorts) : ''}
         ${filters}
       </div>
     </div>
@@ -685,6 +696,7 @@ async function screenSummary() {
         sorts: ['date', 'category', 'name', 'sum'],
         filters: sourceChips(),
         search: true,
+        mode: true,
       })}
     </div>`;
 
@@ -696,7 +708,74 @@ async function screenSummary() {
 
   const selfRows = (self?.rows ?? []).filter((op) => state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
     T.sources.bank, bankById(op.bank)?.name, 'перевод себе'], [op.amount, op.orig_amount]));
+  if (state.mode === 'ring') {
+    // Кольцо: доли групп. Сумма группы — по категории каждой строки; без категории — серым
+    const byGroup = new Map();
+    const add = (slug, sum) => {
+      const g = slug ? findCategory(slug)?.group : null;
+      const key = g?.slug ?? NONE;
+      byGroup.set(key, (byGroup.get(key) ?? 0) + sum);
+    };
+    shownItems.forEach((r) => add(r.category_slug, r.sum));
+    shownOps.forEach((op) => add(op.category_slug, op.amount));
+    const parts = (meta?.categories ?? []).map((g) => ({ key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0 }));
+    parts.push({ key: NONE, name: 'Без категории', color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
+    return `${head}${failedLink}${ringView(parts, total, `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`, 'summary')}`;
+  }
   return `${head}${failedLink}${await spendingFeed(shownItems, shownOps, selfRows)}`;
+}
+
+/**
+ * Кольцо долей: сегмент на группу (её цвет, тонкий зазор между соседями), в центре — итог.
+ * Значки групп — по кругу равномерно, с суммой под каждым; ниже — расшифровка таблицей:
+ * доля и сумма читаются и без цвета. Нажатие на значок, сегмент или строку открывает группу.
+ */
+function ringView(parts, total, countText, kind) {
+  const shown = parts.filter((p) => p.sum > 0);
+  if (!shown.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период ничего нет'}</div>`;
+  const sum = shown.reduce((n, p) => n + p.sum, 0);
+  // Сегменты: окружность r=30 в квадрате 100×100; зазор 0.9 — около 2px на экране
+  const r = 30;
+  const len = 2 * Math.PI * r;
+  const gap = shown.length > 1 ? 0.9 : 0;
+  let at = 0;
+  const arcs = shown.map((p) => {
+    const part = (p.sum / sum) * len;
+    const dash = Math.max(0.01, part - gap);
+    const arc = `<circle class="ring-arc" cx="50" cy="50" r="${r}" fill="none" stroke="${p.color ?? '#c9ced6'}" stroke-width="9"
+      stroke-dasharray="${dash.toFixed(3)} ${(len - dash).toFixed(3)}" stroke-dashoffset="${(-at).toFixed(3)}"
+      transform="rotate(-90 50 50)" data-ring="${esc(kind)}|${esc(p.key)}"><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
+    at += part;
+    return arc;
+  }).join('');
+  // Значки — равномерно по кругу, начиная сверху, в порядке справочника
+  const icons = shown.map((p, i) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / shown.length;
+    const x = 50 + Math.cos(angle) * 41;
+    const y = 50 + Math.sin(angle) * 41;
+    const color = p.color ?? '#c9ced6';
+    return `
+      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-ring="${esc(kind)}|${esc(p.key)}" aria-label="${esc(p.name)}: ${money(p.sum)}">
+        <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
+        <span class="ring-sum">${money(p.sum)}</span>
+      </button>`;
+  }).join('');
+  const rows = [...shown].sort((a, b) => b.sum - a.sum).map((p) => `
+    <button class="ring-row" type="button" data-ring="${esc(kind)}|${esc(p.key)}">
+      <span class="op-cat" style="background:${p.color ?? '#c9ced6'}"></span>
+      <span class="ring-name">${esc(p.name)}</span>
+      <span class="ring-share">${Math.round((p.sum / sum) * 100)}%</span>
+      <b>${money(p.sum)}</b>
+    </button>`).join('');
+  return `
+    <div class="card ring-card">
+      <div class="ring-box">
+        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg>
+        <div class="ring-center"><b>${money(total)}</b><small class="note">${esc(countText)}</small></div>
+        ${icons}
+      </div>
+    </div>
+    <div class="list ring-list">${rows}</div>`;
 }
 
 async function screenGroup() {
@@ -1133,10 +1212,22 @@ async function screenIncome() {
         sorts: all.length > 0 ? ['category', 'date', 'name', 'sum'] : false,
         filters: all.length > 0 ? filters : '',
         search: all.length > 0,
+        mode: all.length > 0,
       })}
     </div>`;
 
   if (!rows.length) return `${head}<div class="empty">${filter ? T.income.emptyFilter : 'Поступлений за период нет'}</div>`;
+
+  if (state.mode === 'ring') {
+    const byGroup = new Map();
+    for (const op of rows) {
+      const key = incomeCat(op.category_slug)?.group.slug ?? NONE;
+      byGroup.set(key, (byGroup.get(key) ?? 0) + op.amount);
+    }
+    const parts = groups.map((g) => ({ key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0 }));
+    parts.push({ key: NONE, name: T.income.noCategory, color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
+    return `${head}${ringView(parts, sum, `${int.format(count)} ${pl(count, T.income.many)}`, 'income')}`;
+  }
 
   const byDate = state.sort === 'date';
   const byCat = state.sort === 'category';
@@ -3560,6 +3651,28 @@ async function onScreenClick(e) {
   }
 
   if (e.target.closest('[data-autolabel]')) return go({ screen: 'autolabel' });
+
+  // Список ↔ кольцо: выбор помним на телефоне
+  if (e.target.closest('[data-mode-toggle]')) {
+    state.mode = state.mode === 'ring' ? 'list' : 'ring';
+    try {
+      localStorage.setItem('checker.mode', state.mode);
+    } catch {
+      // не запомнится — не беда
+    }
+    return render();
+  }
+
+  // Группа на кольце: у расходов — её экран, у доходов — список, отобранный по группе
+  const ringPick = e.target.closest('[data-ring]');
+  if (ringPick) {
+    const [kind, key] = ringPick.dataset.ring.split('|');
+    if (kind === 'income') {
+      state.mode = 'list';
+      return go({ inf: key });
+    }
+    return go({ screen: 'group', group: key, category: '' });
+  }
 
   // «Затронет N таких же» → эти N: расходы или доходы за всё время, с поиском по продавцу
   // (у товара — по названию, у дохода — по описанию)
