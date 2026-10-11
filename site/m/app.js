@@ -758,9 +758,11 @@ function ringTitle(base, groupName) {
 // Какое кольцо анимировали последним и когда. Разметка кольца одна и та же при любом показе,
 // а анимацию включает playRing уже на экране: экран часто рисуется дважды — сначала
 // сохранённый вид, потом свежий, — и вторая отрисовка должна продолжить анимацию первой,
-// а не оборвать её или начать заново. at — первый нарисованный кадр, а не вставка в экран:
-// после вставки телефон ещё раскладывает страницу, и часы, пущенные раньше, съели бы начало
-let ringPlayed = { key: '', at: null };
+// а не оборвать её или начать заново. elapsed — свои часы анимации: идут только по кадрам и
+// за кадр не больше чем на 1/30 с. Телефон задумался (раскладывает страницу, разбирает ответ) —
+// анимация стоит на месте и продолжает с того же кадра, а не перескакивает вперёд
+let ringPlayed = { key: '', elapsed: 0 };
+const RING_STEP = 34; // мс: больше за один кадр часы не уходят
 const RING_SWEEP = 900; // заливка круга
 const RING_POP = 300; // проявление значка
 const RING_ANIM = 1300; // заливка и проявление последнего значка
@@ -768,8 +770,8 @@ const RING_ANIM = 1300; // заливка и проявление последн
 function playRing() {
   const box = document.querySelector('#screen .ring-box');
   if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: null };
-  if (ringPlayed.at != null && performance.now() - ringPlayed.at >= RING_ANIM) return; // уже показано
+  if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, elapsed: 0 };
+  if (ringPlayed.elapsed >= RING_ANIM) return; // уже показано
 
   // Заливка и значки — одним циклом по кадрам, на одних часах. Заливка: дуга дошла до места
   // sweep, каждому сектору видна его часть до этого места — одна кривая на весь круг, сколько
@@ -798,13 +800,14 @@ function playRing() {
     }
   };
   // До первого кадра — пустое кольцо (или то место, где анимацию прервала перерисовка)
-  paint(ringPlayed.at == null ? 0 : performance.now() - ringPlayed.at);
+  paint(ringPlayed.elapsed);
+  let last = null;
   const frame = (now) => {
     if (!box.isConnected) return; // экран перерисовали — продолжит новая отрисовка
-    ringPlayed.at ??= now;
-    const elapsed = now - ringPlayed.at;
-    paint(elapsed);
-    if (elapsed < RING_ANIM) requestAnimationFrame(frame);
+    if (last != null) ringPlayed.elapsed += Math.min(now - last, RING_STEP);
+    last = now;
+    paint(ringPlayed.elapsed);
+    if (ringPlayed.elapsed < RING_ANIM) requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 }
