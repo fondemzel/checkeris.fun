@@ -1950,3 +1950,16 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Плитка текущего выбора (группа категории в настройках) — обведена акцентом */
 .picker-tile.on { box-shadow: inset 0 0 0 2px var(--accent); }
 .picker-tile.on .picker-tile-name { color: var(--accent); font-weight: 600; }
+
+/* Многострочная правка на месте (подсказка категории): в покое — одна строка, текст дальше
+   спрятан; нажали — поле плавно раскрывается на четыре строки и листается, если длиннее */
+.inline-input.multi {
+  height: calc(1.35em + 4px);
+  line-height: 1.35;
+  font-family: inherit;
+  color: inherit;
+  resize: none;
+  overflow: hidden;
+  transition: height 0.2s ease-out;
+}
+.inline-input.multi:not([readonly]) { height: calc(1.35em * 4 + 4px); overflow-y: auto; }

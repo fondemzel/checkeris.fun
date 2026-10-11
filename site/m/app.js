@@ -4770,7 +4770,7 @@ async function screenSetCat() {
     + srow({ icon: UI.grid, title: C.icon, note: c.icon ? '' : C.iconOfGroup, attrs: 'data-tcat-icon', end: GO })
     + srow({ icon: groupBadge(g), bare: true, title: C.inGroup, note: esc(g.name), attrs: 'data-tcat-move', end: GO })
     // Подсказка нужна разметке чеков — у доходов её нет
-    + (state.tk === 'in' ? '' : srow({ icon: UI.pen, title: inlineEdit('thint', c.hint ?? '', { cls: 'srow-input', label: C.hintPlaceholder, placeholder: C.hintPlaceholder, max: 200 }), note: C.hintNote })))
+    + (state.tk === 'in' ? '' : srow({ icon: UI.pen, title: inlineEdit('thint', c.hint ?? '', { cls: 'srow-input', label: C.hintPlaceholder, placeholder: C.hintPlaceholder, max: 200, multi: true }), note: C.hintNote })))
     + section(C.manage, '', srow({
       icon: UI.trash, title: C.deleteCat, note: catUsed(c) + c.dictionary + c.links ? (state.tk === 'in' ? C.deleteIncomeNote : C.deleteCatNote) : '', attrs: 'data-tcat-delete', danger: true,
     }));
@@ -5422,7 +5422,13 @@ $('screen').addEventListener('click', (e) => {
  * строка, поэтому значков у действий нет: нажатие на текст открывает поле и клавиатуру.
  * Сохраняется, когда человек закончил: «Готово» на клавиатуре или уход из поля.
  */
-function inlineEdit(field, value, { cls = '', label = '', placeholder = '', max = 60 } = {}) {
+function inlineEdit(field, value, { cls = '', label = '', placeholder = '', max = 60, multi = false } = {}) {
+  // multi — длинный текст (подсказка категории): в покое одна строка, при правке — четыре
+  if (multi) {
+    return `
+    <textarea class="inline-input multi ${cls}" data-inline="${field}" rows="1" maxlength="${max}" enterkeyhint="done"
+      readonly placeholder="${esc(placeholder)}" aria-label="${esc(label)} — нажмите, чтобы изменить">${esc(value)}</textarea>`;
+  }
   return `
     <input class="inline-input ${cls}" data-inline="${field}" type="text" maxlength="${max}" enterkeyhint="done"
       readonly value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(label)} — нажмите, чтобы изменить" />`;
@@ -5464,7 +5470,11 @@ $('screen').addEventListener('click', (e) => {
 });
 
 $('screen').addEventListener('keydown', (e) => {
-  if (e.target.matches?.('[data-inline]') && e.key === 'Enter') e.target.blur();
+  // Enter — «готово» и в многострочном поле: подсказка — один абзац, перенос строки ей не нужен
+  if (e.target.matches?.('[data-inline]') && e.key === 'Enter') {
+    e.preventDefault();
+    e.target.blur();
+  }
 });
 
 $('screen').addEventListener('focusout', async (e) => {
@@ -5472,6 +5482,7 @@ $('screen').addEventListener('focusout', async (e) => {
   if (!input.matches?.('[data-inline]') || input.readOnly) return;
   input.readOnly = true;
   input.setSelectionRange(0, 0); // снимаем выделение, оставшееся от начала правки
+  input.scrollTop = 0; // свёрнутое многострочное поле — с начала текста
   window.getSelection()?.removeAllRanges();
   const value = input.value.replace(/\s+/g, ' ').trim();
   if (!value || value === input.defaultValue) {
