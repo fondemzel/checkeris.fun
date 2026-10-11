@@ -1260,7 +1260,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = []) {
   const order = [...new Set(spendings.map(sectionOf))].filter((k) => k != null);
   // По дням верхний (сегодняшний) день открыт; по категориям всё свёрнуто — видно разом, сколько где
   // Во время поиска раскрыто всё — иначе найденное пряталось бы в свёрнутых разделах
-  const opened = openSections(state.sort === 'category' ? null : order[0]);
+  const opened = openSections(state.sort === 'category' ? null : order[0], fewRows(spendings.length) ? order : null);
   const single = spendings.length > 500;
   if (single && opened.size > 1) {
     const keep = [...opened].pop();
@@ -1585,7 +1585,7 @@ async function screenIncome() {
   }
   let day = '';
   let cat = null;
-  const opened = openSections(null);
+  const opened = openSections(null, byCat && fewRows(list.length) ? [...new Set(list.map((op) => op.category_slug || NONE))] : null);
   feedSections = { order: [], single: false };
   const html = list
     .map((op) => {
@@ -1652,7 +1652,12 @@ const SOURCES = {
 const sectionState = new Map();
 let feedSections = { order: [], single: false };
 // Поиск в ключ не входит: раскрытое человеком остаётся раскрытым, что бы он ни искал
-const sectionsKey = () => `${state.screen}|${state.sort}|${state.group}|${state.category}|${state.from}|${state.to}`;
+// Отбор (источник, группа) — тоже часть ключа: отобранный список начинает со своих разделов
+const sectionsKey = () => `${state.screen}|${state.sort}|${state.group}|${state.category}|${state.from}|${state.to}|${state.src}|${state.sg}|${state.inf}`;
+// Строк немного — разделы сразу раскрыты: прятать нечего, а открывать по одному — лишние нажатия.
+// Не в поиске: найденное там намеренно свёрнуто, раскрывает человек
+const FEW_ROWS = 30;
+const fewRows = (n) => n <= FEW_ROWS && !state.q.trim();
 /** Раскрытые разделы списка. Впервые — first (один раздел) или all (все, например при поиске). */
 function openSections(first, all = null) {
   const key = sectionsKey();
