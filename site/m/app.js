@@ -618,7 +618,6 @@ function ask(text, { ok = T.common.yes, danger = false } = {}) {
       resolve(false);
     }, { once: true });
     openPopup(el);
-    el.querySelector('[data-ask="1"]').focus({ preventScroll: true });
   });
 }
 
