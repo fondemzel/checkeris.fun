@@ -848,8 +848,10 @@ function ringView(parts, total, countText, kind) {
   let at = (placed.start / TURN) * len;
   const at0 = at;
 
-  // Появление: кольцо заполняется по кругу сектор за сектором, быстро в начале и мягко к концу;
-  // значок проявляется, когда заливка доходит до середины его сектора. Только когда кольцо
+  // Появление: сектора нарисованы сразу, а открывает их одна маска — дуга, которая проходит
+  // круг одним движением, быстро в начале и мягко к концу. Скорость не зависит от того,
+  // сколько секторов и какого они размера. Значок проявляется, когда маска доходит до середины
+  // его сектора (та же кривая, что у маски: ease-out по кубу). Только когда кольцо
   // показывают заново (другой период, группа, режим) — не при наборе в поиске и не по «назад»
   const ringKey = [kind, state.from, state.to, state.ringGroup, state.ringRest, state.src, state.inf].join('|');
   const play = ringKey !== lastRing && !matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -862,12 +864,9 @@ function ringView(parts, total, countText, kind) {
     const f0 = (at - at0) / len;
     const f1 = (at - at0 + part) / len;
     p.show = when((f0 + f1) / 2);
-    const grow = play
-      ? ` style="--len:${len.toFixed(3)};animation:ring-grow ${(when(f1) - when(f0)).toFixed(0)}ms linear ${when(f0).toFixed(0)}ms backwards"`
-      : '';
     const arc = `<circle class="ring-arc" cx="50" cy="50" r="${r}" fill="none" stroke="${p.color ?? '#c9ced6'}" stroke-width="8"
       stroke-dasharray="${dash.toFixed(3)} ${(len - dash).toFixed(3)}" stroke-dashoffset="${(-at).toFixed(3)}"
-      transform="rotate(-90 50 50)"${grow}${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
+      transform="rotate(-90 50 50)"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
     at += part;
     return arc;
   }).join('');
@@ -892,7 +891,13 @@ function ringView(parts, total, countText, kind) {
   return `
     <div class="card ring-card">
       <div class="ring-box">
-        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg>
+        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${play ? `
+          <mask id="ring-sweep" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+            <circle cx="50" cy="50" r="${r}" fill="none" stroke="#fff" stroke-width="12" stroke-dasharray="${len.toFixed(3)} 0"
+              stroke-dashoffset="${(-at0).toFixed(3)}" transform="rotate(-90 50 50)"
+              style="--len:${len.toFixed(3)};animation:ring-grow ${SWEEP}ms cubic-bezier(0.33, 1, 0.68, 1) backwards" />
+          </mask>
+          <g mask="url(#ring-sweep)">${arcs}</g>` : arcs}</svg>
         <div class="ring-center"><b>${money(total)}</b><small class="note">${esc(countText)}</small></div>
         ${icons}
       </div>

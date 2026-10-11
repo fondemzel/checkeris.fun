@@ -1803,7 +1803,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
    clip, а не hidden: hidden ломает прилипание шапки */
 .screen { overflow-x: clip; }
 
-/* Появление кольца: сектор растёт от своего начала, значок проявляется (задержки — в разметке) */
+/* Появление кольца: маска-дуга открывает сектора одним движением, значки проявляются вслед (задержки — в разметке) */
 @keyframes ring-grow { from { stroke-dasharray: 0 var(--len); } }
 @keyframes ring-pop { from { opacity: 0; scale: 0.6; } }
 
