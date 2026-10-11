@@ -825,6 +825,36 @@ function ringTitle(base, groupName) {
 // начале. Поэтому сохранённый вид показываем пустым кольцом (playRing(false)), а заливку
 // пускаем после свежей отрисовки — как при смене периода, где кольцо появляется уже с данными
 let ringPlayed = { key: '', at: null };
+
+// Сектор кольца — фигура со слегка скруглёнными углами (у линии с dasharray углы только
+// острые или круглые на всю толщину). Углы — от вершины по часовой, в радианах; кольцо —
+// между радиусами 22 и 30 в квадрате 100×100. У узкого сектора радиус скругления меньше:
+// иначе углы съели бы его целиком
+const RING_IN = 22;
+const RING_OUT = 30;
+const RING_ROUND = 1.6;
+
+function ringSector(a0, a1) {
+  const w = a1 - a0;
+  if (w <= 1e-4) return '';
+  const at = (a, r) => `${(50 + Math.sin(a) * r).toFixed(3)} ${(50 - Math.cos(a) * r).toFixed(3)}`;
+  if (w >= 2 * Math.PI - 1e-4) {
+    // Целый круг (одна группа) — кольцо без углов
+    return `M${at(0, RING_OUT)}A${RING_OUT} ${RING_OUT} 0 1 1 ${at(Math.PI, RING_OUT)}A${RING_OUT} ${RING_OUT} 0 1 1 ${at(0, RING_OUT)}Z`
+      + `M${at(0, RING_IN)}A${RING_IN} ${RING_IN} 0 1 0 ${at(Math.PI, RING_IN)}A${RING_IN} ${RING_IN} 0 1 0 ${at(0, RING_IN)}Z`;
+  }
+  const half = Math.sin(Math.min(w, Math.PI) / 2);
+  const rc = Number(Math.max(0, Math.min(RING_ROUND, (RING_OUT - RING_IN) / 2, (RING_IN * half) / (1 - half) * 0.9)).toFixed(3));
+  const to = Math.asin(rc / (RING_OUT - rc)); // на столько угол скругления заходит на внешнюю дугу
+  const ti = Math.asin(rc / (RING_IN + rc)); // …и на внутреннюю
+  const eo = (RING_OUT - rc) * Math.cos(to); // где скругление сходит с боковой стороны
+  const ei = (RING_IN + rc) * Math.cos(ti);
+  const big = (r) => (w - 2 * (r === RING_OUT ? to : ti) > Math.PI ? 1 : 0);
+  return `M${at(a0, eo)}A${rc} ${rc} 0 0 1 ${at(a0 + to, RING_OUT)}`
+    + `A${RING_OUT} ${RING_OUT} 0 ${big(RING_OUT)} 1 ${at(a1 - to, RING_OUT)}A${rc} ${rc} 0 0 1 ${at(a1, eo)}`
+    + `L${at(a1, ei)}A${rc} ${rc} 0 0 1 ${at(a1 - ti, RING_IN)}`
+    + `A${RING_IN} ${RING_IN} 0 ${big(RING_IN)} 0 ${at(a0 + ti, RING_IN)}A${rc} ${rc} 0 0 1 ${at(a0, ei)}Z`;
+}
 const RING_SWEEP = 900; // заливка круга
 const RING_POP = 300; // проявление значка
 const RING_ANIM = 1300; // заливка и проявление последнего значка
@@ -843,23 +873,15 @@ function playRing(start = true) {
   // сектору видна его часть до этого места — одна кривая на весь круг, сколько бы ни было
   // секторов. Значок проявляется, когда заливка дошла до середины его сектора.
   // (Маска с анимацией не годится: браузер не перерисовывает её по ходу анимации.)
-  const len = Number(box.dataset.len);
-  // Полный вид сектора — из разметки: атрибут на экране уже мог опустошить прошлый вызов
-  const arcs = [...box.querySelectorAll('.ring-arc')].map((el) => {
-    const dash = Number(el.dataset.dash);
-    return { el, start: Number(el.dataset.start), dash, full: `${dash.toFixed(3)} ${(len - dash).toFixed(3)}` };
-  });
+  // Границы секторов — из разметки: фигура на экране уже могла быть урезана прошлым вызовом
+  const from = Number(box.dataset.from); // откуда начинается заливка
+  const arcs = [...box.querySelectorAll('.ring-arc')].map((el) => ({ el, a0: Number(el.dataset.a0), a1: Number(el.dataset.a1) }));
   const icons = [...box.querySelectorAll('.ring-ic')].map((el) => ({ el, show: Number(el.dataset.show) }));
   const paint = (elapsed) => {
     const t = Math.min(1, elapsed / RING_SWEEP);
-    const sweep = (1 - (1 - t) ** 3) * len; // ease-out по кубу
-    for (const a of arcs) {
-      if (t >= 1) a.el.setAttribute('stroke-dasharray', a.full);
-      else {
-        const shown = Math.min(a.dash, Math.max(0, sweep - a.start));
-        a.el.setAttribute('stroke-dasharray', `${shown.toFixed(3)} ${(len - shown).toFixed(3)}`);
-      }
-    }
+    const sweep = from + (1 - (1 - t) ** 3) * 2 * Math.PI; // ease-out по кубу
+    // Каждому сектору — его часть до места заливки, тоже со скруглёнными углами
+    for (const a of arcs) a.el.setAttribute('d', ringSector(a.a0, t >= 1 ? a.a1 : Math.min(a.a1, sweep)));
     for (const i of icons) {
       const k = Math.min(1, Math.max(0, (elapsed - i.show) / RING_POP));
       const e = 1 - (1 - k) ** 2;
@@ -978,7 +1000,8 @@ function ringView(parts, total, countText, kind, overall = null) {
   if (!placed) placed = { order: items, start: 0 };
   const merged = new Set(other?.parts ?? []);
 
-  // Сегменты: окружность r=26 в квадрате 100×100 (снаружи — место под значки); зазор ≈ 2px
+  // Сегменты: кольцо по средней окружности r=26 в квадрате 100×100 (снаружи — место под значки);
+  // зазор ≈ 2px. Рисует их ringSector — со скруглёнными углами
   const r = 26;
   const len = 2 * Math.PI * r;
   const gap = placed.order.length > 1 ? 0.9 : 0;
@@ -995,13 +1018,14 @@ function ringView(parts, total, countText, kind, overall = null) {
   const when = (f) => RING_SWEEP * (1 - Math.cbrt(1 - Math.min(1, Math.max(0, f)))); // обратная к ease-out
   const arcs = placed.order.map((p) => {
     const part = (p.sum / sum) * len;
-    const dash = Math.max(0.01, part - gap);
     const f0 = (at - at0) / len;
     const f1 = (at - at0 + part) / len;
     p.show = when((f0 + f1) / 2);
-    const arc = `<circle class="ring-arc" cx="50" cy="50" r="${r}" fill="none" stroke="${p.color ?? '#c9ced6'}" stroke-width="8"
-      stroke-dasharray="${dash.toFixed(3)} ${(len - dash).toFixed(3)}" stroke-dashoffset="${(-at).toFixed(3)}"
-      transform="rotate(-90 50 50)" data-start="${(at - at0).toFixed(3)}" data-dash="${dash.toFixed(3)}"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
+    // Сектор — от угла до угла, зазор поровну с обеих сторон (на средней линии ≈ 0,9)
+    const a0 = ((at + gap / 2) / len) * TURN;
+    const a1 = ((at + part - gap / 2) / len) * TURN;
+    const arc = `<path class="ring-arc" fill="${p.color ?? '#c9ced6'}" d="${ringSector(a0, a1)}"
+      data-a0="${a0.toFixed(4)}" data-a1="${a1.toFixed(4)}"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></path>`;
     at += part;
     return arc;
   }).join('');
@@ -1029,7 +1053,7 @@ function ringView(parts, total, countText, kind, overall = null) {
     </button>`).join('');
   return `
     <div class="card ring-card">
-      <div class="ring-box" data-ring-key="${esc(ringKey)}" data-len="${len.toFixed(3)}">
+      <div class="ring-box" data-ring-key="${esc(ringKey)}" data-from="${((at0 / len) * TURN).toFixed(4)}">
         <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg>
         <div class="ring-center"><b>${money(total)}</b><small class="note">${esc(countText)}</small></div>
         ${icons}
@@ -6115,6 +6139,7 @@ async function offerInvite() {
         <button class="btn" type="button" data-decline>Отказаться</button>
       </div>
     </div>`;
+  sheet.classList.add('opening'); // выезжает, как остальные листы (openPopup тут не нужен: без записи истории)
   document.body.appendChild(sheet);
 
   sheet.addEventListener('click', async (e) => {
