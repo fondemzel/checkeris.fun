@@ -755,7 +755,23 @@ function ringTitle(base, groupName) {
   return [base, state.ringGroup && groupName(state.ringGroup), state.ringRest && 'Остальное'].filter(Boolean).join(' · ');
 }
 
-let lastRing = ''; // какое кольцо показано последним: то же самое заново не анимируем
+// Какое кольцо анимировали последним и когда. Разметка кольца одна и та же при любом показе,
+// а анимацию включает playRing уже на экране: экран часто рисуется дважды — сначала
+// сохранённый вид, потом свежий, — и вторая отрисовка должна продолжить анимацию первой,
+// а не оборвать её или начать заново
+let ringPlayed = { key: '', at: 0 };
+const RING_ANIM = 1300; // заливка 900 мс и проявление последнего значка
+
+function playRing() {
+  const box = document.querySelector('#screen .ring-box');
+  if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const now = performance.now();
+  if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: now };
+  const elapsed = now - ringPlayed.at;
+  if (elapsed >= RING_ANIM) return; // это кольцо уже показано — без анимации
+  box.style.setProperty('--elapsed', `${Math.round(elapsed)}ms`);
+  box.classList.add('ring-play');
+}
 
 function ringView(parts, total, countText, kind) {
   // Раскрытое «Остальное» — кольцо только из слитых в него секторов, итог — их сумма
@@ -852,10 +868,9 @@ function ringView(parts, total, countText, kind) {
   // круг одним движением, быстро в начале и мягко к концу. Скорость не зависит от того,
   // сколько секторов и какого они размера. Значок проявляется, когда маска доходит до середины
   // его сектора (та же кривая, что у маски: ease-out по кубу). Только когда кольцо
-  // показывают заново (другой период, группа, режим) — не при наборе в поиске и не по «назад»
+  // показывают заново (другой период, группа, режим) — не при наборе в поиске и не по «назад»;
+  // включает её playRing
   const ringKey = [kind, state.from, state.to, state.ringGroup, state.ringRest, state.src, state.inf].join('|');
-  const play = ringKey !== lastRing && !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  lastRing = ringKey;
   const SWEEP = 900;
   const when = (f) => SWEEP * (1 - Math.cbrt(1 - Math.min(1, Math.max(0, f)))); // обратная к ease-out
   const arcs = placed.order.map((p) => {
@@ -874,7 +889,7 @@ function ringView(parts, total, countText, kind) {
     const [x, y] = point(p.mid, R);
     const color = p.color ?? '#c9ced6';
     return `
-      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%${play ? `;animation:ring-pop 0.3s ease-out ${p.show.toFixed(0)}ms backwards` : ''}"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
+      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;--show:${p.show.toFixed(0)}ms"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
         <span class="ring-sum">${pct(p)}%</span>
         <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
         <span class="ring-sum">${money(p.sum)}</span>
@@ -890,14 +905,13 @@ function ringView(parts, total, countText, kind) {
     </button>`).join('');
   return `
     <div class="card ring-card">
-      <div class="ring-box">
-        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${play ? `
+      <div class="ring-box" data-ring-key="${esc(ringKey)}">
+        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">
           <mask id="ring-sweep" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
-            <circle cx="50" cy="50" r="${r}" fill="none" stroke="#fff" stroke-width="12" stroke-dasharray="${len.toFixed(3)} 0"
-              stroke-dashoffset="${(-at0).toFixed(3)}" transform="rotate(-90 50 50)"
-              style="--len:${len.toFixed(3)};animation:ring-grow ${SWEEP}ms cubic-bezier(0.33, 1, 0.68, 1) backwards" />
+            <circle class="ring-sweep" cx="50" cy="50" r="${r}" fill="none" stroke="#fff" stroke-width="12" stroke-dasharray="${len.toFixed(3)} 0"
+              stroke-dashoffset="${(-at0).toFixed(3)}" transform="rotate(-90 50 50)" style="--len:${len.toFixed(3)}" />
           </mask>
-          <g mask="url(#ring-sweep)">${arcs}</g>` : arcs}</svg>
+          <g mask="url(#ring-sweep)">${arcs}</g></svg>
         <div class="ring-center"><b>${money(total)}</b><small class="note">${esc(countText)}</small></div>
         ${icons}
       </div>
@@ -3424,6 +3438,7 @@ async function render() {
     $('screen').innerHTML = cached;
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
     shownScreen = state.screen;
+    playRing();
   } else if (!sameScreen && !sameKind) {
     $('screen').innerHTML = loading();
     window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
@@ -3444,6 +3459,7 @@ async function render() {
     else if (html !== cached) {
       $('screen').innerHTML = html;
       window.scrollTo(0, keepScroll);
+      playRing();
     }
     shownScreen = state.screen;
     screen.after?.();

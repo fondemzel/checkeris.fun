@@ -1806,6 +1806,15 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Появление кольца: маска-дуга открывает сектора одним движением, значки проявляются вслед (задержки — в разметке) */
 @keyframes ring-grow { from { stroke-dasharray: 0 var(--len); } }
 @keyframes ring-pop { from { opacity: 0; scale: 0.6; } }
+/* Включает playRing; --elapsed — сколько анимация уже шла до перерисовки: продолжаем с того же места */
+.ring-play .ring-sweep {
+  animation: ring-grow 900ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
+  animation-delay: calc(0ms - var(--elapsed, 0ms));
+}
+.ring-play .ring-ic {
+  animation: ring-pop 0.3s ease-out backwards;
+  animation-delay: calc(var(--show, 0ms) - var(--elapsed, 0ms));
+}
 
 /* Значок категории: «как у группы» — отдельной кнопкой над набором */
 .icon-inherit {
