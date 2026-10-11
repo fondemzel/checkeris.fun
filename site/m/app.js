@@ -760,7 +760,8 @@ function ringTitle(base, groupName) {
 // сохранённый вид, потом свежий, — и вторая отрисовка должна продолжить анимацию первой,
 // а не оборвать её или начать заново
 let ringPlayed = { key: '', at: 0 };
-const RING_ANIM = 1300; // заливка 900 мс и проявление последнего значка
+const RING_SWEEP = 900; // заливка круга
+const RING_ANIM = 1300; // заливка и проявление последнего значка
 
 function playRing() {
   const box = document.querySelector('#screen .ring-box');
@@ -770,7 +771,29 @@ function playRing() {
   const elapsed = now - ringPlayed.at;
   if (elapsed >= RING_ANIM) return; // это кольцо уже показано — без анимации
   box.style.setProperty('--elapsed', `${Math.round(elapsed)}ms`);
-  box.classList.add('ring-play');
+  box.classList.add('ring-play'); // значки — CSS-анимацией с задержкой каждому
+
+  // Заливка — по кадрам: на каждом кадре дуга дошла до места sweep, и каждому сектору видна его
+  // часть до этого места. Одна кривая на весь круг, сколько бы ни было секторов. (Маска с
+  // анимацией не годится: браузер не перерисовывает её по ходу анимации.)
+  const len = Number(box.dataset.len);
+  const arcs = [...box.querySelectorAll('.ring-arc')].map((el) => ({
+    el, start: Number(el.dataset.start), dash: Number(el.dataset.dash), full: el.getAttribute('stroke-dasharray'),
+  }));
+  const frame = () => {
+    if (!box.isConnected) return; // экран перерисовали — продолжит новая отрисовка
+    const t = Math.min(1, (performance.now() - ringPlayed.at) / RING_SWEEP);
+    const sweep = (1 - (1 - t) ** 3) * len; // ease-out по кубу — та же кривая, что у значков
+    for (const a of arcs) {
+      if (t >= 1) a.el.setAttribute('stroke-dasharray', a.full);
+      else {
+        const shown = Math.min(a.dash, Math.max(0, sweep - a.start));
+        a.el.setAttribute('stroke-dasharray', `${shown.toFixed(3)} ${(len - shown).toFixed(3)}`);
+      }
+    }
+    if (t < 1) requestAnimationFrame(frame);
+  };
+  frame();
 }
 
 function ringView(parts, total, countText, kind) {
@@ -864,15 +887,14 @@ function ringView(parts, total, countText, kind) {
   let at = (placed.start / TURN) * len;
   const at0 = at;
 
-  // Появление: сектора нарисованы сразу, а открывает их одна маска — дуга, которая проходит
-  // круг одним движением, быстро в начале и мягко к концу. Скорость не зависит от того,
-  // сколько секторов и какого они размера. Значок проявляется, когда маска доходит до середины
+  // Появление: заливка проходит круг одним движением, быстро в начале и мягко к концу.
+  // Скорость не зависит от того, сколько секторов и какого они размера. Значок проявляется,
+  // когда заливка доходит до середины
   // его сектора (та же кривая, что у маски: ease-out по кубу). Только когда кольцо
   // показывают заново (другой период, группа, режим) — не при наборе в поиске и не по «назад»;
   // включает её playRing
   const ringKey = [kind, state.from, state.to, state.ringGroup, state.ringRest, state.src, state.inf].join('|');
-  const SWEEP = 900;
-  const when = (f) => SWEEP * (1 - Math.cbrt(1 - Math.min(1, Math.max(0, f)))); // обратная к ease-out
+  const when = (f) => RING_SWEEP * (1 - Math.cbrt(1 - Math.min(1, Math.max(0, f)))); // обратная к ease-out
   const arcs = placed.order.map((p) => {
     const part = (p.sum / sum) * len;
     const dash = Math.max(0.01, part - gap);
@@ -881,7 +903,7 @@ function ringView(parts, total, countText, kind) {
     p.show = when((f0 + f1) / 2);
     const arc = `<circle class="ring-arc" cx="50" cy="50" r="${r}" fill="none" stroke="${p.color ?? '#c9ced6'}" stroke-width="8"
       stroke-dasharray="${dash.toFixed(3)} ${(len - dash).toFixed(3)}" stroke-dashoffset="${(-at).toFixed(3)}"
-      transform="rotate(-90 50 50)"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
+      transform="rotate(-90 50 50)" data-start="${(at - at0).toFixed(3)}" data-dash="${dash.toFixed(3)}"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
     at += part;
     return arc;
   }).join('');
@@ -905,13 +927,8 @@ function ringView(parts, total, countText, kind) {
     </button>`).join('');
   return `
     <div class="card ring-card">
-      <div class="ring-box" data-ring-key="${esc(ringKey)}">
-        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">
-          <mask id="ring-sweep" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
-            <circle class="ring-sweep" cx="50" cy="50" r="${r}" fill="none" stroke="#fff" stroke-width="12" stroke-dasharray="${len.toFixed(3)} 0"
-              stroke-dashoffset="${(-at0).toFixed(3)}" transform="rotate(-90 50 50)" style="--len:${len.toFixed(3)}" />
-          </mask>
-          <g mask="url(#ring-sweep)">${arcs}</g></svg>
+      <div class="ring-box" data-ring-key="${esc(ringKey)}" data-len="${len.toFixed(3)}">
+        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg>
         <div class="ring-center"><b>${money(total)}</b><small class="note">${esc(countText)}</small></div>
         ${icons}
       </div>
