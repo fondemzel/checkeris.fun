@@ -3292,12 +3292,37 @@ function animateIn(rows) {
   });
 }
 
+/** Сколько места строки занимают в видимой части экрана (то, что за краем, не важно). */
+function visibleHeight(rows) {
+  if (!rows.length) return 0;
+  const top = Math.max(rows[0].getBoundingClientRect().top, secTop());
+  const bottom = Math.min(rows[rows.length - 1].getBoundingClientRect().bottom, window.innerHeight);
+  return Math.max(0, Math.round(bottom - top));
+}
+
+/**
+ * Свернули — на месте строк пустой блок их высоты, и он плавно сжимается до нуля: всё, что
+ * ниже, подтягивается мягко, а не прыжком. Анимируется один блок, а не строки.
+ */
+function collapseSpace(after, height) {
+  if (height < 8 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const spacer = document.createElement('div');
+  spacer.className = 'collapse-space';
+  spacer.style.height = `${height}px`;
+  after.after(spacer);
+  spacer.getBoundingClientRect(); // зафиксировать начальную высоту перед переходом
+  spacer.style.height = '0px';
+  const done = () => spacer.remove();
+  spacer.addEventListener('transitionend', done, { once: true });
+  setTimeout(done, 400); // на случай, если переход не случился
+}
+
 /** Погасить строки перед сворачиванием; ждём, только если есть что гасить. */
 async function animateOut(rows) {
   const shown = rows.slice(0, ANIMATED);
   if (!shown.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   shown.forEach((el) => el.classList.add('sec-out'));
-  await new Promise((r) => setTimeout(r, 140));
+  await new Promise((r) => setTimeout(r, 120));
 }
 
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
@@ -3527,6 +3552,7 @@ async function onScreenClick(e) {
     // встаёт так, чтобы этот заголовок был под шапкой, а не где-то ниже по списку
     const stuck = opened.has(key) && sectionBtn.getBoundingClientRect().top <= secTop() + 1;
     const closing = opened.has(key);
+    const room = closing ? visibleHeight(sectionRows(sectionBtn)) : 0; // сколько места они занимали на экране
     if (closing) await animateOut(sectionRows(sectionBtn), sectionBtn); // строки гаснут — потом закрываем
     if (opened.has(key)) opened.delete(key);
     else {
@@ -3541,6 +3567,7 @@ async function onScreenClick(e) {
       if (!closing) animateIn(sectionRows(head));
     }
     if (stuck && head) window.scrollBy(0, head.getBoundingClientRect().top - secTop());
+    if (closing && head) collapseSpace(head, room); // то, что ниже, подтягивается плавно, а не рывком
     return;
   }
 
@@ -3585,14 +3612,14 @@ async function onScreenClick(e) {
     const key = expandKey(group);
     const subRows = (row) => sectionRows(row, (el) => !el.classList.contains('sub-row') && !el.classList.contains('sub-more'));
     const closing = expanded.has(key);
+    const room = closing ? visibleHeight(subRows(toggle.closest('.row'))) : 0;
     if (closing) await animateOut(subRows(toggle.closest('.row')));
     if (expanded.has(key)) expanded.delete(key);
     else expanded.add(key);
     await render(); // тот же экран — список перерисуется на месте, прокрутка не сбросится
-    if (!closing) {
-      const row = [...document.querySelectorAll('[data-expand]')].find((el) => el.dataset.expand === group)?.closest('.row');
-      if (row) animateIn(subRows(row));
-    }
+    const row = [...document.querySelectorAll('[data-expand]')].find((el) => el.dataset.expand === group)?.closest('.row');
+    if (row && !closing) animateIn(subRows(row));
+    if (row && closing) collapseSpace(row, room);
     return;
   }
 
