@@ -1797,3 +1797,6 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ring-row b { font-variant-numeric: tabular-nums; }
 
 /* Линия от середины сектора к сдвинутому значку: тонкая и серая — только связь, не акцент */
+
+/* Листание периодов свайпом: уезжающий экран не должен растягивать страницу вбок (clip не ломает прилипание) */
+body { overflow-x: clip; }

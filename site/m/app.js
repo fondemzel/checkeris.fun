@@ -489,7 +489,7 @@ function go(patch, replace = false) {
     params.set('dir', state.dir);
   }
   history[replace ? 'replaceState' : 'pushState']({ ...state }, '', `?${params}`);
-  render();
+  return render();
 }
 
 function readUrl() {
@@ -3696,6 +3696,88 @@ function stretchBack() {
 }
 addEventListener('touchend', stretchBack);
 addEventListener('touchcancel', stretchBack);
+
+// ── листание периодов свайпом ────────────────────────────
+// На экранах с периодом (стрелки ‹ ›) горизонтальный свайп — то же, что стрелка: влево — позже,
+// вправо — раньше. Содержимое едет за пальцем; отпустили далеко или резко — уезжает, а новый
+// период въезжает с другой стороны. Сдвиг — свойством translate: transform занят «резиной»
+let swipeFrom = null; // { x, y, t } касания
+let swipeLock = ''; // '' — ещё не ясно, 'x' — листаем периоды, 'y' — обычная прокрутка
+let swipeBusy = false;
+
+addEventListener('touchstart', (e) => {
+  swipeFrom = null;
+  swipeLock = '';
+  const t = e.touches[0];
+  if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker')) return;
+  if (!stretchEl.querySelector('[data-shift]')) return;
+  // У краёв — системный жест «назад»; полосы, листающиеся вбок, и поля ввода — свои
+  if (t.clientX < 24 || t.clientX > window.innerWidth - 24) return;
+  if (e.target.closest('input, textarea, .chips, [data-shift]')) return;
+  swipeFrom = { x: t.clientX, y: t.clientY, t: Date.now() };
+}, { passive: true });
+
+addEventListener('touchmove', (e) => {
+  if (!swipeFrom) return;
+  const dx = e.touches[0].clientX - swipeFrom.x;
+  const dy = e.touches[0].clientY - swipeFrom.y;
+  if (!swipeLock) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    swipeLock = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'x' : 'y';
+    if (swipeLock === 'y') {
+      swipeFrom = null;
+      return;
+    }
+    // Листаем вбок: натяжение и «резина» в этом жесте не участвуют
+    if (pullFrom != null) {
+      pullFrom = null;
+      pullReset();
+    }
+    stretchFrom = null;
+    stretchEl.style.transform = '';
+    stretchEl.style.transition = '';
+  }
+  e.preventDefault(); // страница вверх-вниз не ездит, пока листаем вбок
+  stretchEl.style.translate = `${dx}px 0`;
+  stretchEl.style.opacity = String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth));
+}, { passive: false });
+
+async function swipeEnd(e) {
+  if (!swipeFrom || swipeLock !== 'x') {
+    swipeFrom = null;
+    return;
+  }
+  const dx = (e.changedTouches?.[0]?.clientX ?? swipeFrom.x) - swipeFrom.x;
+  const fast = Math.abs(dx) > 30 && Math.abs(dx) / Math.max(1, Date.now() - swipeFrom.t) > 0.5;
+  swipeFrom = null;
+  const ease = 'translate 0.18s ease-out, opacity 0.18s ease-out';
+  if (e.type === 'touchcancel' || (Math.abs(dx) < window.innerWidth * 0.25 && !fast)) {
+    stretchEl.style.transition = ease;
+    stretchEl.style.translate = '';
+    stretchEl.style.opacity = '';
+    return;
+  }
+  swipeBusy = true;
+  const dir = dx < 0 ? 1 : -1; // влево — следующий период
+  const w = window.innerWidth;
+  stretchEl.style.transition = ease;
+  stretchEl.style.translate = `${-dir * w}px 0`;
+  stretchEl.style.opacity = '0';
+  try {
+    await new Promise((r) => setTimeout(r, 180));
+    stretchEl.style.transition = 'none';
+    stretchEl.style.translate = `${dir * w * 0.35}px 0`;
+    await go(shiftPeriod(state.from, state.to, dir), true);
+  } finally {
+    void stretchEl.offsetWidth; // зафиксировать исходное место, иначе въезда не будет видно
+    stretchEl.style.transition = 'translate 0.22s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.22s ease-out';
+    stretchEl.style.translate = '';
+    stretchEl.style.opacity = '';
+    swipeBusy = false;
+  }
+}
+addEventListener('touchend', swipeEnd);
+addEventListener('touchcancel', swipeEnd);
 
 // Жест перехватила система (например, шторка уведомлений) — просто прячем кружок
 addEventListener('touchcancel', () => {
