@@ -1945,3 +1945,5 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   cursor: pointer;
 }
 .demo-pill[hidden] { display: none; }
+/* «Остальное» на кольце — кругом, а не скруглённым квадратом: это не группа, а сборная из мелких */
+.ring-ic .ic.round { border-radius: 50%; }

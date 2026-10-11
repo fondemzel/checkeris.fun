@@ -1080,7 +1080,7 @@ function ringView(parts, total, countText, kind, overall = null) {
     return `
       <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-show="${p.show.toFixed(0)}"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
         <span class="ring-sum">${nested ? pctAll(p) : pct(p)}%</span>
-        <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
+        <span class="ic${p.other ? ' round' : ''}" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
         <span class="ring-sum">${below(p)}</span>
       </button>`;
   }).join('');
