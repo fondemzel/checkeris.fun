@@ -745,7 +745,9 @@ async function screenSummary() {
  * доля и сумма читаются и без цвета. Нажатие на значок, сегмент или строку открывает группу.
  */
 function ringView(parts, total, countText, kind) {
-  const shown = parts.filter((p) => p.sum > 0);
+  // По убыванию, крупный — сверху и дальше по часовой: мелкие сектора собираются в конце круга,
+  // а рядом с ними — свободное место у начала крупного, куда можно раздвинуть их значки
+  const shown = parts.filter((p) => p.sum > 0).sort((a, b) => b.sum - a.sum);
   if (!shown.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период ничего нет'}</div>`;
   // Категории доходов — только посмотреть: отдельного списка категории у доходов нет
   const tap = (p) => (kind === 'income-cat' ? '' : ` data-ring="${esc(kind)}|${esc(p.key)}"`);
@@ -758,17 +760,47 @@ function ringView(parts, total, countText, kind) {
   const arcs = shown.map((p) => {
     const part = (p.sum / sum) * len;
     const dash = Math.max(0.01, part - gap);
+    // Середина сектора — угол от вершины по часовой: напротив неё и встанет значок
+    p.mid = ((at + part / 2) / len) * 2 * Math.PI;
     const arc = `<circle class="ring-arc" cx="50" cy="50" r="${r}" fill="none" stroke="${p.color ?? '#c9ced6'}" stroke-width="8"
       stroke-dasharray="${dash.toFixed(3)} ${(len - dash).toFixed(3)}" stroke-dashoffset="${(-at).toFixed(3)}"
       transform="rotate(-90 50 50)"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
     at += part;
     return arc;
   }).join('');
-  // Значки — равномерно по кругу, начиная сверху, в порядке справочника
-  const icons = shown.map((p, i) => {
-    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / shown.length;
-    const x = 50 + Math.cos(angle) * 41.5;
-    const y = 50 + Math.sin(angle) * 41.5;
+
+  // Значки — напротив середины своего сектора. Сектора меньше 1% — без значка: они есть в
+  // расшифровке. Тесно — раздвигаем вдоль окружности ровно настолько, чтобы не налезали
+  const marked = shown.filter((p) => p.sum / sum >= 0.01);
+  const minGap = Math.min(0.46, (2 * Math.PI) / Math.max(1, marked.length)); // ≈26°: ширина значка с подписью
+  marked.forEach((p) => (p.at = p.mid));
+  for (let pass = 0; pass < 200 && marked.length > 1; pass += 1) {
+    let moved = false;
+    for (let i = 0; i < marked.length; i += 1) {
+      const a = marked[i];
+      const b = marked[(i + 1) % marked.length];
+      const diff = (i + 1 === marked.length ? b.at + 2 * Math.PI : b.at) - a.at;
+      if (diff >= minGap - 1e-4) continue;
+      const push = (minGap - diff) / 2;
+      a.at -= push;
+      b.at += push;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  const R = 41.5; // где стоят значки (в процентах от стороны)
+  const point = (angle, radius) => [50 + Math.sin(angle) * radius, 50 - Math.cos(angle) * radius];
+  // Сдвинутый значок — с тонкой линией от середины своего сектора
+  const leaders = marked
+    .filter((p) => Math.abs(p.at - p.mid) > 0.06)
+    .map((p) => {
+      const [x1, y1] = point(p.mid, 30.5);
+      const [x2, y2] = point(p.at, 35);
+      return `<line class="ring-leader" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" />`;
+    })
+    .join('');
+  const icons = marked.map((p) => {
+    const [x, y] = point(p.at, R);
     const color = p.color ?? '#c9ced6';
     return `
       <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
@@ -786,7 +818,7 @@ function ringView(parts, total, countText, kind) {
   return `
     <div class="card ring-card">
       <div class="ring-box">
-        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg>
+        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${leaders}${arcs}</svg>
         <div class="ring-center"><b>${money(total)}</b><small class="note">${esc(countText)}</small></div>
         ${icons}
       </div>

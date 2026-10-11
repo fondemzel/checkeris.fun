@@ -1795,3 +1795,6 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ring-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ring-share { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .ring-row b { font-variant-numeric: tabular-nums; }
+
+/* Линия от середины сектора к сдвинутому значку: тонкая и серая — только связь, не акцент */
+.ring-leader { stroke: #c3c9d2; stroke-width: 0.35; stroke-linecap: round; }
