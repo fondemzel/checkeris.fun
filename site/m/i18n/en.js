@@ -175,7 +175,7 @@ export const en = {
     help: {
       label: 'Help',
       demo: 'Sample data',
-      demoNote: 'A year of spending of a made-up person — to see how it all works',
+      demoNote: 'A year of a made-up person’s spending',
       note: 'Your data stays in place: the sample is shown instead while it is on. Nothing can be changed in it',
       pill: 'sample data',
       offConfirm: 'Turn off the sample data and return to your own?',
