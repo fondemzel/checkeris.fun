@@ -5423,11 +5423,15 @@ $('screen').addEventListener('click', (e) => {
  * Сохраняется, когда человек закончил: «Готово» на клавиатуре или уход из поля.
  */
 function inlineEdit(field, value, { cls = '', label = '', placeholder = '', max = 60, multi = false } = {}) {
-  // multi — длинный текст (подсказка категории): в покое одна строка, при правке — четыре
+  // multi — длинный текст (подсказка категории). В покое — строка текста с многоточием (поле
+  // ввода обрезать многоточием не умеет); нажали — на её месте поле на четыре строки
   if (multi) {
     return `
-    <textarea class="inline-input multi ${cls}" data-inline="${field}" rows="1" maxlength="${max}" enterkeyhint="done"
-      readonly placeholder="${esc(placeholder)}" aria-label="${esc(label)} — нажмите, чтобы изменить">${esc(value)}</textarea>`;
+    <div class="inline-multi">
+      <span class="inline-view${value ? '' : ' empty'}" data-inline-view>${esc(value || placeholder)}</span>
+      <textarea class="inline-input multi ${cls}" data-inline="${field}" rows="4" maxlength="${max}" enterkeyhint="done"
+        readonly placeholder="${esc(placeholder)}" aria-label="${esc(label)} — нажмите, чтобы изменить">${esc(value)}</textarea>
+    </div>`;
   }
   return `
     <input class="inline-input ${cls}" data-inline="${field}" type="text" maxlength="${max}" enterkeyhint="done"
@@ -5462,7 +5466,8 @@ const INLINE_SAVE = {
 };
 
 $('screen').addEventListener('click', (e) => {
-  const input = e.target.closest('[data-inline]');
+  const view = e.target.closest('[data-inline-view]');
+  const input = view ? view.nextElementSibling : e.target.closest('[data-inline]');
   if (!input?.readOnly) return;
   input.readOnly = false;
   input.focus(); // в обработчике нажатия, иначе iOS не покажет клавиатуру
@@ -5494,6 +5499,12 @@ $('screen').addEventListener('focusout', async (e) => {
   } catch (err) {
     input.value = input.defaultValue;
     toast(`Не сохранилось: ${err.message}`);
+  }
+  // Строка-показ у многострочного поля — с новым текстом
+  const view = input.previousElementSibling;
+  if (view?.matches('[data-inline-view]')) {
+    view.textContent = input.value || input.placeholder;
+    view.classList.toggle('empty', !input.value);
   }
 });
 
