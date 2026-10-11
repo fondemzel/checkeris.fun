@@ -18,6 +18,7 @@ const $ = (id) => document.getElementById(id);
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
 const rubExact = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 });
 const int = new Intl.NumberFormat('ru-RU');
+const share = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }); // доли: 30 или 30,3
 
 const money = (k, exact = false) => (exact ? rubExact : rub).format(Number(k ?? 0) / 100);
 const dateRu = (iso) => (iso ? iso.slice(0, 10).split('-').reverse().join('.') : '');
@@ -750,7 +751,7 @@ function ringView(parts, total, countText, kind) {
   // Категории доходов — только посмотреть: отдельного списка категории у доходов нет
   const tap = (p) => (p.other || kind === 'income-cat' ? '' : ` data-ring="${esc(kind)}|${esc(p.key)}"`);
   const sum = all.reduce((n, p) => n + p.sum, 0);
-  const pct = (p) => Math.round((p.sum / sum) * 100);
+  const pct = (p) => share.format(Math.round((p.sum / sum) * 1000) / 10);
   const TURN = 2 * Math.PI;
 
   // Значок стоит строго напротив середины своего сектора — без указателей. Чтобы соседние
@@ -762,7 +763,7 @@ function ringView(parts, total, countText, kind) {
   const measure = (p) => {
     p.ang = (p.sum / sum) * TURN;
     p.w = (Math.max(32, money(p.sum).length * 5.8 + 2) / side) * 100;
-    p.h = (60 / side) * 100; // значок 32px, зазор и две строки подписи
+    p.h = (60 / side) * 100; // доля над значком 32px, сумма под ним
     return p;
   };
   const apart = (a, b) => {
@@ -836,8 +837,9 @@ function ringView(parts, total, countText, kind) {
     const color = p.color ?? '#c9ced6';
     return `
       <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
+        <span class="ring-sum">${pct(p)}%</span>
         <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
-        <span class="ring-sum">${money(p.sum)}<br>${pct(p)}%</span>
+        <span class="ring-sum">${money(p.sum)}</span>
       </button>`;
   }).join('');
   // Расшифровка — все по отдельности; ушедшие в «Остальное» — его цветом
