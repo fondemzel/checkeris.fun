@@ -1888,3 +1888,10 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   .sheet.opening, .picker.opening, .sheet.closing, .picker.closing,
   .sheet.opening .sheet-box, .picker.opening .picker-box, .sheet.closing .sheet-box, .picker.closing .picker-box { animation: none; }
 }
+
+/* Прилипший заголовок раздела: верхние углы скруглены, как у начала блока. Уголки цвета фона
+   поверх его квадратных углов — так и строки, уезжающие под заголовок, в углах не видны */
+.list > .day.section.stuck::before,
+.list > .day.section.stuck::after { content: ''; position: absolute; top: 0; width: 12px; height: 12px; pointer-events: none; }
+.list > .day.section.stuck::before { left: 0; background: radial-gradient(circle at 100% 100%, transparent 11.5px, var(--bg) 12px); }
+.list > .day.section.stuck::after { right: 0; background: radial-gradient(circle at 0 100%, transparent 11.5px, var(--bg) 12px); }

@@ -3767,6 +3767,22 @@ function updateSecTop() {
 }
 addEventListener('resize', updateSecTop);
 
+// Прилипший заголовок раздела — со скруглёнными верхними углами, как у начала блока: пометка
+// stuck, когда он стоит под шапкой, а не на своём месте в начале списка
+let stuckFrame = 0;
+function markStuck() {
+  stuckFrame = 0;
+  const top = secTop();
+  for (const el of document.querySelectorAll('#screen .list > .day.section.open')) {
+    const at = el.getBoundingClientRect().top;
+    const listTop = el.parentElement.getBoundingClientRect().top;
+    el.classList.toggle('stuck', Math.abs(at - top) < 1.5 && listTop < at - 1);
+  }
+}
+addEventListener('scroll', () => {
+  stuckFrame ||= requestAnimationFrame(markStuck);
+}, { passive: true });
+
 /** Долистали до «Показать ещё» (с запасом в пару экранов) — следующая порция сама. */
 let feedObserver = null;
 function watchFeedMore() {
