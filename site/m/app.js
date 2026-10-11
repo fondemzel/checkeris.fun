@@ -735,7 +735,7 @@ async function screenSummary() {
         key: c.slug, name: c.name, color: categoryColor(opened.slug, c.slug) ?? opened.color, icon: c.icon || opened.icon, sum: byCat.get(c.slug) ?? 0,
       }));
       const groupSum = cats.reduce((n, c) => n + c.sum, 0);
-      return `${head}${failedLink}${ringView(cats, groupSum, opened.name, 'summary-cat')}`;
+      return `${head}${failedLink}${ringView(cats, groupSum, opened.name, 'summary-cat', total)}`;
     }
     const parts = (meta?.categories ?? []).map((g) => ({ key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0 }));
     parts.push({ key: NONE, name: 'Без категории', color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
@@ -824,7 +824,14 @@ function playRing(start = true) {
   requestAnimationFrame(frame);
 }
 
-function ringView(parts, total, countText, kind) {
+/**
+ * overall — итог всего периода, когда кольцо вложенное (категории группы, «Остальное»): тогда
+ * над значком — доля от всех расходов (доходов), а под ним рядом с суммой — доля в этом кольце.
+ */
+function ringView(parts, total, countText, kind, overall = null) {
+  // Вложенное кольцо: категории группы или «Остальное». whole — итог, от которого доля над значком
+  const nested = overall != null || Boolean(state.ringRest);
+  const whole = overall ?? total;
   // Раскрытое «Остальное» — кольцо только из слитых в него секторов, итог — их сумма
   if (state.ringRest) {
     const keys = new Set(state.ringRest.split(','));
@@ -842,6 +849,8 @@ function ringView(parts, total, countText, kind) {
   };
   const sum = all.reduce((n, p) => n + p.sum, 0);
   const pct = (p) => share.format(Math.round((p.sum / sum) * 1000) / 10);
+  const pctAll = (p) => share.format(Math.round((p.sum / whole) * 1000) / 10);
+  const below = (p) => (nested ? `${money(p.sum)} · ${pct(p)}%` : money(p.sum)); // подпись под значком
   const TURN = 2 * Math.PI;
 
   // Значок стоит строго напротив середины своего сектора — без указателей. Чтобы соседние
@@ -852,7 +861,7 @@ function ringView(parts, total, countText, kind) {
   const point = (angle, radius) => [50 + Math.sin(angle) * radius, 50 - Math.cos(angle) * radius];
   const measure = (p) => {
     p.ang = (p.sum / sum) * TURN;
-    p.w = (Math.max(32, money(p.sum).length * 5.8 + 2) / side) * 100;
+    p.w = (Math.max(32, below(p).length * 5.8 + 2) / side) * 100;
     p.h = (60 / side) * 100; // доля над значком 32px, сумма под ним
     return p;
   };
@@ -940,9 +949,9 @@ function ringView(parts, total, countText, kind) {
     const color = p.color ?? '#c9ced6';
     return `
       <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-show="${p.show.toFixed(0)}"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
-        <span class="ring-sum">${pct(p)}%</span>
+        <span class="ring-sum">${nested ? pctAll(p) : pct(p)}%</span>
         <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
-        <span class="ring-sum">${money(p.sum)}</span>
+        <span class="ring-sum">${below(p)}</span>
       </button>`;
   }).join('');
   // Расшифровка — все по отдельности; ушедшие в «Остальное» — его цветом
@@ -1417,7 +1426,7 @@ async function screenIncome() {
       const cats = opened.subcategories.map((c) => ({
         key: c.slug, name: c.name, color: incomeCat(c.slug)?.color ?? opened.color, icon: c.icon || opened.icon, sum: byCat.get(c.slug) ?? 0,
       }));
-      return `${head}${ringView(cats, cats.reduce((n, c) => n + c.sum, 0), opened.name, 'income-cat')}`;
+      return `${head}${ringView(cats, cats.reduce((n, c) => n + c.sum, 0), opened.name, 'income-cat', sum)}`;
     }
     const parts = groups.map((g) => ({ key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0 }));
     parts.push({ key: NONE, name: T.income.noCategory, color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
