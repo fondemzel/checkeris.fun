@@ -745,6 +745,8 @@ async function screenSummary() {
  * Значки групп — напротив своих секторов, с суммой и долей под каждым; ниже — расшифровка таблицей:
  * доля и сумма читаются и без цвета. Нажатие на значок, сегмент или строку открывает группу.
  */
+let lastRing = ''; // какое кольцо показано последним: то же самое заново не анимируем
+
 function ringView(parts, total, countText, kind) {
   const all = parts.filter((p) => p.sum > 0).sort((a, b) => b.sum - a.sum);
   if (!all.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период ничего нет'}</div>`;
@@ -823,12 +825,28 @@ function ringView(parts, total, countText, kind) {
   const len = 2 * Math.PI * r;
   const gap = placed.order.length > 1 ? 0.9 : 0;
   let at = (placed.start / TURN) * len;
+  const at0 = at;
+
+  // Появление: кольцо заполняется по кругу сектор за сектором, быстро в начале и мягко к концу;
+  // значок проявляется, когда заливка доходит до середины его сектора. Только когда кольцо
+  // показывают заново (другой период, группа, режим) — не при наборе в поиске и не по «назад»
+  const ringKey = [kind, state.from, state.to, state.ringGroup, state.src, state.inf].join('|');
+  const play = ringKey !== lastRing && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  lastRing = ringKey;
+  const SWEEP = 900;
+  const when = (f) => SWEEP * (1 - Math.cbrt(1 - Math.min(1, Math.max(0, f)))); // обратная к ease-out
   const arcs = placed.order.map((p) => {
     const part = (p.sum / sum) * len;
     const dash = Math.max(0.01, part - gap);
+    const f0 = (at - at0) / len;
+    const f1 = (at - at0 + part) / len;
+    p.show = when((f0 + f1) / 2);
+    const grow = play
+      ? ` style="--len:${len.toFixed(3)};animation:ring-grow ${(when(f1) - when(f0)).toFixed(0)}ms linear ${when(f0).toFixed(0)}ms backwards"`
+      : '';
     const arc = `<circle class="ring-arc" cx="50" cy="50" r="${r}" fill="none" stroke="${p.color ?? '#c9ced6'}" stroke-width="8"
       stroke-dasharray="${dash.toFixed(3)} ${(len - dash).toFixed(3)}" stroke-dashoffset="${(-at).toFixed(3)}"
-      transform="rotate(-90 50 50)"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
+      transform="rotate(-90 50 50)"${grow}${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
     at += part;
     return arc;
   }).join('');
@@ -836,7 +854,7 @@ function ringView(parts, total, countText, kind) {
     const [x, y] = point(p.mid, R);
     const color = p.color ?? '#c9ced6';
     return `
-      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
+      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%${play ? `;animation:ring-pop 0.3s ease-out ${p.show.toFixed(0)}ms backwards` : ''}"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
         <span class="ring-sum">${pct(p)}%</span>
         <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
         <span class="ring-sum">${money(p.sum)}</span>

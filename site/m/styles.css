@@ -1802,3 +1802,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
    становится шире окна, и окно подстраивается — остров меню растягивается и прыгает.
    clip, а не hidden: hidden ломает прилипание шапки */
 .screen { overflow-x: clip; }
+
+/* Появление кольца: сектор растёт от своего начала, значок проявляется (задержки — в разметке) */
+@keyframes ring-grow { from { stroke-dasharray: 0 var(--len); } }
+@keyframes ring-pop { from { opacity: 0; scale: 0.6; } }
