@@ -1750,7 +1750,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 @keyframes sec-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @keyframes sec-out { to { opacity: 0; transform: translateY(-6px); } }
 .sec-in { animation: sec-in 0.22s ease-out both; animation-delay: calc(var(--i, 0) * 14ms); }
-.sec-out { animation: sec-out 0.12s ease-in forwards; }
+.sec-out { animation: sec-out 0.12s ease-out forwards; } /* быстро гаснет в начале: к 70 мс почти прозрачна */
 /* Место свёрнутых строк: сжимается, и то, что ниже, подтягивается плавно */
 .collapse-space { flex: none; transition: height 0.22s cubic-bezier(0.3, 0, 0.2, 1); }
 @keyframes arrow-open { from { transform: rotate(-90deg); } to { transform: none; } }

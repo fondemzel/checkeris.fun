@@ -3319,6 +3319,24 @@ function collapseSpace(after, height) {
 }
 
 /**
+ * Раскрыть или свернуть покупки группы одинаковых товаров — и по стрелке, и долгим нажатием.
+ * Шторкой: свернуть — сначала закрыть, потом перерисовать; раскрыть — перерисовать и открыть.
+ */
+async function toggleGroup(group, row) {
+  const key = expandKey(group);
+  const wrapOf = (el) => (el?.nextElementSibling?.classList.contains('sub-wrap') ? el.nextElementSibling : null);
+  const closing = expanded.has(key);
+  if (closing) await slideWrap(wrapOf(row), false);
+  if (expanded.has(key)) expanded.delete(key);
+  else expanded.add(key);
+  await render(); // тот же экран — список перерисуется на месте, прокрутка не сбросится
+  if (!closing) {
+    const fresh = [...document.querySelectorAll('[data-long]')].find((el) => el.dataset.long === group);
+    slideWrap(wrapOf(fresh), true);
+  }
+}
+
+/**
  * Шторка: блок плавно раскрывается от нуля до своей высоты (или сворачивается до нуля), а всё,
  * что ниже, едет вместе с краем. Для покупок группы — их немного, и высота известна точно.
  */
@@ -3343,7 +3361,8 @@ async function animateOut(rows) {
   const shown = rows.slice(0, ANIMATED);
   if (!shown.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   shown.forEach((el) => el.classList.add('sec-out'));
-  await new Promise((r) => setTimeout(r, 120));
+  // Не ждём полного угасания: место начинает сжиматься, пока строки ещё догасают
+  await new Promise((r) => setTimeout(r, 70));
 }
 
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
@@ -3629,19 +3648,7 @@ async function onScreenClick(e) {
   // Стрелка у группы одинаковых покупок: развернуть или свернуть, не открывая карточку
   const toggle = e.target.closest('[data-expand]');
   if (toggle) {
-    const group = toggle.dataset.expand;
-    const key = expandKey(group);
-    const wrapOf = (row) => (row?.nextElementSibling?.classList.contains('sub-wrap') ? row.nextElementSibling : null);
-    const closing = expanded.has(key);
-    if (closing) await slideWrap(wrapOf(toggle.closest('.row')), false); // шторка закрывается — потом перерисовка
-    if (expanded.has(key)) expanded.delete(key);
-    else expanded.add(key);
-    await render(); // тот же экран — список перерисуется на месте, прокрутка не сбросится
-    if (!closing) {
-      const row = [...document.querySelectorAll('[data-expand]')].find((el) => el.dataset.expand === group)?.closest('.row');
-      slideWrap(wrapOf(row), true);
-    }
-    return;
+    return toggleGroup(toggle.dataset.expand, toggle.closest('.row'));
   }
 
   // Трата из банка открывается карточкой, как товар; категория меняется уже в ней
@@ -4831,10 +4838,7 @@ $('screen').addEventListener('pointerdown', (e) => {
     timer: setTimeout(() => {
       longPressFired = true;
       navigator.vibrate?.(15); // короткий отклик: человек понимает, что сработало
-      const key = expandKey(row.dataset.long);
-      if (expanded.has(key)) expanded.delete(key);
-      else expanded.add(key);
-      render();
+      toggleGroup(row.dataset.long, row);
     }, 450),
   };
 });
