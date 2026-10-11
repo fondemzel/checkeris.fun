@@ -50,7 +50,9 @@
   --bar: #0b0f14;
   color-scheme: dark;
 }
-:root[data-theme="dark"] input,
+/* Поля — тёмные. Ползунки и переключатели не трогаем: у градиента два ползунка друг на друге,
+   и фон верхнего закрыл бы нижний вместе с бегунком */
+:root[data-theme="dark"] input:not([type="range"]):not([type="checkbox"]),
 :root[data-theme="dark"] textarea,
 :root[data-theme="dark"] select { color: var(--text); background-color: var(--surface); }
 

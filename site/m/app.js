@@ -9,7 +9,7 @@
 // в приложении на Rust, поэтому вся логика здесь про экраны, а всё, что можно
 // посчитать в базе, считает сервер (/api/summary).
 import { groupIcon, searchIcons } from '/shared/icons.js';
-import { shades as lightShades, edge, readableText, hslToHex, hexToHsl, tint, hexToRgb } from '/shared/colors.js';
+import { shades as lightShades, edge, readableText, hslToHex, hexToHsl, hexToRgb } from '/shared/colors.js';
 
 /**
  * Оттенки категорий группы (см. shared/colors.js). В светлой теме цвет группы разбавляется
@@ -4646,7 +4646,7 @@ async function screenSetGroup() {
       <div class="bar-label">${C.color}</div>
       <input class="hue" type="range" min="0" max="359" value="${Math.round(h)}" data-ghue data-s="${s}" data-l="${l}" aria-label="${esc(C.color)}" />
       <div class="bar-label">${C.shade}</div>
-      <div class="dual" style="background:linear-gradient(90deg, ${tint(color, 5)}, ${color})">
+      <div class="dual" style="background:linear-gradient(90deg, ${shades(color, 2, 5, 100).join(', ')})">
         <input type="range" min="5" max="100" value="${g.shade_from}" data-shade="shade_from" aria-label="${esc(C.shadeFrom)}" />
         <input type="range" min="5" max="100" value="${g.shade_to}" data-shade="shade_to" aria-label="${esc(C.shadeTo)}" />
       </div>
@@ -4734,7 +4734,7 @@ $('screen').addEventListener('input', (e) => {
   const { color, shade_from, shade_to } = groupBars();
   const row = e.target.closest('.bar-row');
   row.style.setProperty('--pick', color);
-  row.querySelector('.dual').style.background = `linear-gradient(90deg, ${tint(color, 5)}, ${color})`;
+  row.querySelector('.dual').style.background = `linear-gradient(90deg, ${shades(color, 2, 5, 100).join(', ')})`;
   const badge = document.querySelector('#screen .gic');
   badge.style.background = color;
   badge.style.color = readableText(color);
