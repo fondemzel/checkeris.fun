@@ -55,6 +55,7 @@ export const en = {
       label: 'General',
       members: ['member', 'members', 'members'],
       banksNone: 'no banks connected',
+      dark: 'Dark theme',
     },
     cats: {
       label: 'Categories',

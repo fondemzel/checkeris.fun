@@ -127,6 +127,7 @@ const UI = {
   ),
   ring: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v5"/><path d="m19.8 16.5-4.3-2.5"/>'),
   list: svg('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'),
+  moon: svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
   sparkle: svg('<path d="M9.94 14.06 4 20"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="m16.24 7.76 2.83-2.83"/>'),
   search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
   swap: svg('<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>'),
@@ -626,8 +627,8 @@ let failedCount = 0; // сканы с ошибкой: значок на вкла
 /** Строка списка: иконка или кружок цвета, название, сумма и доля от итога. */
 function row({ href, color, icon, title, note, sum, share }) {
   const swatch = icon
-    ? `<span class="ic" style="background:${color ?? '#eef1f5'};color:${readableText(color ?? '#eef1f5')}">${groupIcon(icon)}</span>`
-    : `<span class="dot" style="background:${color ?? '#eef1f5'};border-color:${edge(color ?? '#e1e4e8')}"></span>`;
+    ? `<span class="ic" style="background:${color ?? 'var(--fill)'};color:${readableText(color ?? 'var(--fill)')}">${groupIcon(icon)}</span>`
+    : `<span class="dot" style="background:${color ?? 'var(--fill)'};border-color:${edge(color ?? '#e1e4e8')}"></span>`;
   return `
     <button class="row" type="button" ${href}>
       ${swatch}
@@ -1199,7 +1200,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = []) {
       }
 
       const found = r.category && !r.self ? findCategory(r.category) : null;
-      const color = found?.group.color ?? '#eef1f5';
+      const color = found?.group.color ?? 'var(--fill)';
       const dot = found ? categoryColor(found.group.slug, r.category) ?? color : '#d7dbe2';
       const isOpen = r.group && parts.has(r.group);
       // Стрелка — внутри подписи, в размер текста: как бы ни рисовался значок, строка не поплывёт
@@ -1348,7 +1349,7 @@ async function screenBank() {
       const cat = op.receipt_id
         ? ''
         : found
-          ? `<span class="op-cat" style="background:${found.group.color ?? '#eef1f5'}"></span>${esc(found.category.name)}`
+          ? `<span class="op-cat" style="background:${found.group.color ?? 'var(--fill)'}"></span>${esc(found.category.name)}`
           : '<span class="op-cat none"></span><span class="pick-hint">выбрать категорию</span>';
       const action = op.receipt_id ? `data-receipt="${op.receipt_id}"` : `data-op="${op.id}"`;
       return `${header}
@@ -1675,7 +1676,7 @@ function itemCard(it) {
     <div class="card">
       <div class="card-label">Чек</div>
       <button class="cat-pick" type="button" data-item-receipt="${it.receipt_id}">
-        <span class="pick-ic" style="background:#eef1f5;color:#4b5563">${UI.receipt}</span>
+        <span class="pick-ic" style="background:var(--fill);color:var(--muted)">${UI.receipt}</span>
         <span class="cat-name">${money(it.receipt_total, true)}<small>${int.format(it.receipt_items)} ${plural(it.receipt_items, 'позиция', 'позиции', 'позиций')} · ${dateRu(it.purchased_at)}</small></span>
       </button>
     </div>` : ''}
@@ -2376,10 +2377,10 @@ function incomeCat(slug) {
 function incomeButton(slug) {
   const found = incomeCat(slug);
   if (!found) {
-    return `<span class="pick-ic" style="background:#eef1f5;color:#6b7280">${groupIcon('none')}</span>
+    return `<span class="pick-ic" style="background:var(--fill);color:var(--muted)">${groupIcon('none')}</span>
       <span class="cat-name muted">${T.income.pick}</span>`;
   }
-  const color = found.group.color ?? '#eef1f5';
+  const color = found.group.color ?? 'var(--fill)';
   return `<span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(catIcon(found))}</span>
     <span class="cat-name">${esc(found.name)}<small>${esc(found.group.name)}</small></span>`;
 }
@@ -2409,10 +2410,10 @@ async function saveIncomeCategory(id, slug, { only = false } = {}) {
 function categoryButton(slug) {
   const found = findCategory(slug);
   if (!found) {
-    return `<span class="pick-ic" style="background:#eef1f5;color:#6b7280">${groupIcon('none')}</span>
+    return `<span class="pick-ic" style="background:var(--fill);color:var(--muted)">${groupIcon('none')}</span>
       <span class="cat-name muted">Выбрать категорию</span>`;
   }
-  const color = found.group.color ?? '#eef1f5';
+  const color = found.group.color ?? 'var(--fill)';
   return `<span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(catIcon(found))}</span>
     <span class="cat-name">${esc(found.category.name)}<small>${esc(found.group.name)}</small></span>`;
 }
@@ -2513,7 +2514,7 @@ async function saveManual() {
 function sheetRow(item, { open = false } = {}) {
   itemCtx.set(`item:${item.id}`, item);
   const group = findGroup(item.group_slug);
-  const color = group?.color ?? '#eef1f5';
+  const color = group?.color ?? 'var(--fill)';
   // Зелёная точка на значке — категорию предложил Чекер, без точки — выбрал человек
   const human = ['manual', 'pinned', 'seller'].includes(item.category_source);
   const guess = item.category_slug && !human ? ' guess' : '';
@@ -2616,7 +2617,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
         ${transfer ? `
         <div class="picker-list picker-special">
           <button class="picker-item" type="button" data-category="${TRANSFER}">
-            <span class="pick-ic" style="background:#eef1f5;color:#4b5563">${UI.swap}</span>
+            <span class="pick-ic" style="background:var(--fill);color:var(--muted)">${UI.swap}</span>
             <span class="picker-special-text">Перевод себе<small class="note">не расход и не доход: на свою карту, в копилку</small></span>
           </button>
         </div>` : ''}
@@ -2625,7 +2626,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
             .map(
               (g) => `
               <button class="picker-tile" type="button" data-group="${esc(g.slug)}">
-                <span class="pick-ic big" style="background:${g.color ?? '#eef1f5'};color:${readableText(g.color ?? '#eef1f5')}">${groupIcon(g.icon ?? 'none')}</span>
+                <span class="pick-ic big" style="background:${g.color ?? 'var(--fill)'};color:${readableText(g.color ?? 'var(--fill)')}">${groupIcon(g.icon ?? 'none')}</span>
                 <span class="picker-tile-name">${esc(g.name)}</span>
               </button>`,
             )
@@ -2649,7 +2650,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
             .map(
               (s, i) => `
               <button class="picker-item" type="button" data-category="${esc(s.slug)}">
-                <span class="pick-ic" style="background:${tones[i] ?? group.color ?? '#eef1f5'};color:${readableText(tones[i] ?? group.color ?? '#eef1f5')}">${groupIcon(s.icon || group.icon || 'none')}</span>
+                <span class="pick-ic" style="background:${tones[i] ?? group.color ?? 'var(--fill)'};color:${readableText(tones[i] ?? group.color ?? 'var(--fill)')}">${groupIcon(s.icon || group.icon || 'none')}</span>
                 <span>${esc(s.name)}</span>
               </button>`,
             )
@@ -2760,7 +2761,7 @@ async function saveCategory(itemId, slug, { only = false, seller = false } = {})
     if (data.seller_affected > 1) toast(`У продавца теперь «${data.category?.name ?? ''}»: ${int.format(data.seller_affected)} ${plural(data.seller_affected, 'позиция', 'позиции', 'позиций')}`);
 
     const group = findCategory(slug)?.group;
-    const color = group?.color ?? '#eef1f5';
+    const color = group?.color ?? 'var(--fill)';
     const ic = row.querySelector('.pick-ic');
     ic.style.background = color;
     ic.style.color = readableText(color);
@@ -4422,7 +4423,9 @@ async function screenSettings() {
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
     + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
     // «Данные» — сразу страница о данных, без промежуточного экрана
-    + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO }))
+    + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO })
+    // Тема — сразу здесь переключателем: выбор хранится на телефоне (index.html ставит её до отрисовки)
+    + srow({ icon: UI.moon, title: S.menu.dark, end: toggle('data-theme-toggle', theme() === 'dark', S.menu.dark) }))
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
       + link('incats', UI.income, S.cats.income, counts(meta?.income)));
@@ -4502,7 +4505,7 @@ async function taxoCall(method, path, body) {
 }
 
 const groupBadge = (g) => {
-  const color = g.color ?? '#eef1f5';
+  const color = g.color ?? 'var(--fill)';
   return `<span class="gic" style="background:${color};color:${readableText(color)}">${groupIcon(g.icon ?? 'none')}</span>`;
 };
 const catDot = (color) => `<span class="cat-dot" style="background:${color ?? '#d7dbe2'}"></span>`;
@@ -5027,6 +5030,23 @@ function accountIcon(a) {
   return { icon: a.kind === 'saving' ? UI.piggy : a.kind === 'loan' ? UI.calendar : UI.bank };
 }
 
+/** Тема оформления: 'dark' или 'light'. Хранится на телефоне; ставит её index.html до отрисовки. */
+const theme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+function setTheme(next) {
+  document.documentElement.dataset.theme = next;
+  // Полоса браузера и системная строка — в тон верхней панели
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#0b0f14' : '#131a26');
+  try {
+    localStorage.setItem('checker.theme', next);
+  } catch {
+    // не запомнится — до перезапуска
+  }
+}
+
+$('screen').addEventListener('change', (e) => {
+  if (e.target.matches('[data-theme-toggle]')) setTheme(e.target.checked ? 'dark' : 'light');
+});
+
 /** Переключатель справа в строке: включает и выключает счёт. */
 const toggle = (attrs, on, label) => `
   <label class="switch" title="${esc(label)}">
@@ -5492,13 +5512,13 @@ const loadFresh = (bank, since) => api(`/api/fresh?bank=${encodeURIComponent(ban
 
 /** Как показать строку нового: название раздела, цвет и значок. */
 function freshLook(r) {
-  if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: '#eef1f5', icon: 'receipt' };
+  if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: 'var(--fill)', icon: 'receipt' };
   if (r.kind === 'income') {
     const c = r.category_slug ? incomeCat(r.category_slug) : null;
-    return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: catIcon(c) };
+    return { name: c?.name ?? 'Доход без категории', color: c?.color ?? 'var(--fill)', icon: catIcon(c) };
   }
   const found = r.category_slug ? findCategory(r.category_slug) : null;
-  return { name: found?.category.name ?? 'Без категории', color: found?.group.color ?? '#eef1f5', icon: catIcon(found) };
+  return { name: found?.category.name ?? 'Без категории', color: found?.group.color ?? 'var(--fill)', icon: catIcon(found) };
 }
 
 /** Одна строка нового: значок категории (с зелёной точкой, если её предложил Чекер), название, сумма. */

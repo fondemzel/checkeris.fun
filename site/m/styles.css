@@ -11,11 +11,48 @@
      Приглушённый, ближе к Telegram. Светлые подложки — производные от него, отдельно не задаются.
      Тот же цвет — в кабинете (site/cabinet/styles.css) */
   --accent: #3b7bce;
-  --accent-soft: color-mix(in srgb, var(--accent) 16%, #fff);
-  --accent-faint: color-mix(in srgb, var(--accent) 8%, #fff);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --accent-faint: color-mix(in srgb, var(--accent) 8%, var(--surface));
   --danger: #b42318;
   --bar: #131a26;
+  /* Нейтральные оттенки — по ролям, чтобы тёмная тема меняла их разом */
+  --surface-2: #fafbfc; /* второй фон: вложенные строки, шапки разделов */
+  --line: #f0f1f3; /* черта между строками */
+  --press: #eef2f9; /* строка, пока на неё нажимают */
+  --fill: #eef1f5; /* серая заливка: круглые кнопки, значок без цвета, полоски */
+  --fill-2: #e4e7ec; /* заливка плотнее: подложка переключателя сегментов */
+  --gray: #c9ced6; /* нейтральный серый: точки, дорожка переключателя */
+  --gray-text: #b6bcc6; /* бледный текст: будущие дни календаря */
+  --danger-soft: #fdeceb;
+  --danger-line: #f1c4c0;
+  color-scheme: light;
 }
+
+/* Тёмная тема — переключатель в настройках («Основные»), выбор хранится на телефоне.
+   Тона — как у ночной темы Telegram: синевато-серые, без чистого чёрного */
+:root[data-theme="dark"] {
+  --bg: #0e1218;
+  --surface: #182029;
+  --surface-2: #141b23;
+  --text: #e6e9ee;
+  --muted: #8d97a5;
+  --border: #2a333e;
+  --line: #232b35;
+  --press: #222c38;
+  --fill: #25303c;
+  --fill-2: #2c3743;
+  --gray: #4b5563;
+  --gray-text: #5d6773;
+  --accent: #5b9be6;
+  --danger: #f2786b;
+  --danger-soft: #3a2326;
+  --danger-line: #6b3530;
+  --bar: #0b0f14;
+  color-scheme: dark;
+}
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select { color: var(--text); background-color: var(--surface); }
 
 * { box-sizing: border-box; }
 
@@ -114,7 +151,7 @@ button, input, select { font: inherit; color: inherit; }
 .btn.tg[hidden] { display: none; }
 .tg-ic svg { display: block; width: 20px; height: 20px; }
 
-.tg-wait { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; background: #eef7fd; }
+.tg-wait { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; background: var(--accent-faint); }
 .tg-wait[hidden] { display: none; }
 .tg-web { align-self: center; color: var(--muted); font-size: 13px; }
 .tg-wait-title { margin: 0; font-weight: 600; }
@@ -294,7 +331,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .month-name svg { width: 17px; height: 17px; color: var(--accent); }
-.month-name:active { background: #e6eaf1; }
+.month-name:active { background: var(--press); }
 
 .month-arrow {
   width: 44px;
@@ -331,14 +368,14 @@ button, input, select { font: inherit; color: inherit; }
   min-height: 60px;
   padding: 10px 14px;
   border: none;
-  border-bottom: 1px solid #f0f1f3;
+  border-bottom: 1px solid var(--line);
   background: none;
   text-align: left;
   cursor: pointer;
 }
 
 .row:last-child { border-bottom: none; }
-.row:active { background: #eef2f9; }
+.row:active { background: var(--press); }
 
 .ic {
   flex: none;
@@ -358,7 +395,7 @@ button, input, select { font: inherit; color: inherit; }
 .row-note { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
 
 /* Полоска доли: сравнение соседних строк глазом, без чтения цифр */
-.row-bar { display: block; height: 3px; margin-top: 6px; border-radius: 2px; background: #eef1f5; }
+.row-bar { display: block; height: 3px; margin-top: 6px; border-radius: 2px; background: var(--fill); }
 .row-bar i { display: block; height: 100%; border-radius: 2px; opacity: 0.75; }
 
 .row-sum { flex: none; font-weight: 600; white-space: nowrap; }
@@ -378,7 +415,7 @@ button, input, select { font: inherit; color: inherit; }
 .card-name { margin: 4px 0 12px; }
 .card-label { margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
 
-.kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid #f0f1f3; font-size: 14px; }
+.kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .kv span { color: var(--muted); }
 .kv b { font-weight: 500; text-align: right; }
 
@@ -388,7 +425,7 @@ button, input, select { font: inherit; color: inherit; }
   height: 200px;
   margin: 0 -16px 10px; /* карта во всю ширину карточки */
   overflow: hidden;
-  background: #eef1f5;
+  background: var(--fill);
 }
 
 /* Пока API карт грузится, на пустом месте — подпись, а не серый прямоугольник */
@@ -397,7 +434,7 @@ button, input, select { font: inherit; color: inherit; }
 /* ── сканирование ──────────────────────────────────────── */
 
 .btn.big { width: 100%; height: 52px; font-size: 16px; }
-.btn.danger { border-color: #f1c4c0; color: var(--danger); }
+.btn.danger { border-color: var(--danger-line); color: var(--danger); }
 .btn.more { display: block; width: 100%; margin-top: 12px; }
 
 .link { padding: 0; border: none; background: none; color: var(--accent); font-size: 13px; text-decoration: underline; cursor: pointer; }
@@ -442,7 +479,7 @@ button, input, select { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-.add-btn:active { background: #eef2f9; }
+.add-btn:active { background: var(--press); }
 
 .add-ic {
   flex: none;
@@ -545,7 +582,7 @@ button, input, select { font: inherit; color: inherit; }
 .cat-name { display: flex; flex-direction: column; font-size: 15px; }
 .cat-name small { font-size: 12px; color: var(--muted); }
 .cat-name.muted { color: var(--muted); }
-.cat-pick:active { background: #eef2f9; }
+.cat-pick:active { background: var(--press); }
 .cat-pick:disabled { opacity: 0.6; }
 .card .cat-pick { margin-bottom: 8px; }
 .card .cat-pick:last-child { margin-bottom: 0; }
@@ -600,7 +637,7 @@ button, input, select { font: inherit; color: inherit; }
   background: var(--surface);
 }
 .picker-same-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
-.picker-same-row + .picker-same-row { border-top: 1px solid #f0f1f3; }
+.picker-same-row + .picker-same-row { border-top: 1px solid var(--line); }
 .same-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .same-text .note { margin: 0; }
 
@@ -625,7 +662,7 @@ button, input, select { font: inherit; color: inherit; }
 .chip.on.alert b { color: #ffb4ab; }
 
 /* «Категории | Чеки | Банк» внутри «Расхода» */
-.segments { display: flex; gap: 2px; padding: 2px; margin-bottom: 8px; border-radius: 10px; background: #e4e7ec; }
+.segments { display: flex; gap: 2px; padding: 2px; margin-bottom: 8px; border-radius: 10px; background: var(--fill-2); }
 
 .segment {
   position: relative;
@@ -659,7 +696,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Раздел, которого ещё нет */
 .soon { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 60px 24px; text-align: center; }
-.soon-ic { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; background: #e4e7ec; color: var(--muted); }
+.soon-ic { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; background: var(--fill-2); color: var(--muted); }
 .soon-ic svg { width: 30px; height: 30px; }
 .soon-title { font-size: 17px; font-weight: 600; }
 
@@ -690,13 +727,13 @@ button, input, select { font: inherit; color: inherit; }
   height: 36px;
   border: none;
   border-radius: 50%;
-  background: #eef1f5;
+  background: var(--fill);
   color: var(--muted);
   cursor: pointer;
 }
 
 .row-icon svg { width: 17px; height: 17px; }
-.row-icon:active { background: #e2e6ec; }
+.row-icon:active { background: var(--press); }
 .settings-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .settings-actions .note { margin-top: 4px; text-align: center; }
 .settings-actions .note a { color: inherit; }
@@ -719,7 +756,7 @@ button, input, select { font: inherit; color: inherit; }
   top: 0;
   left: 0;
   right: 0;
-  border-top: 1px solid #eceef1;
+  border-top: 1px solid var(--line);
 }
 .srow + .srow:has(> .srow-main > .srow-ic)::before,
 .bank-head + .srow:has(> .srow-main > .srow-ic)::before { left: 46px; }
@@ -739,7 +776,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 button.srow-main, a.srow-main { cursor: pointer; }
-button.srow-main:active, a.srow-main:active { background: #eef2f9; }
+button.srow-main:active, a.srow-main:active { background: var(--press); }
 
 /* Значок — на мягкой подложке; у логотипа банка подложка своя */
 .srow-ic {
@@ -750,7 +787,7 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: #eef1f5;
+  background: var(--fill);
   color: var(--muted);
 }
 
@@ -765,12 +802,12 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
 .srow .inline-input { padding: 0; font-size: 15px; font-weight: 400; }
 
 .srow.danger .srow-title { color: var(--danger); }
-.srow.danger .srow-ic { background: #fdeceb; color: var(--danger); }
+.srow.danger .srow-ic { background: var(--danger-soft); color: var(--danger); }
 .srow.off { opacity: 0.55; }
 .srow.off .srow-main { pointer-events: none; }
 
 /* Стрелка «дальше» — в сером кружке, как кнопки справа */
-.srow-go { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #eef1f5; color: var(--muted); }
+.srow-go { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--fill); color: var(--muted); }
 .srow-go svg { width: 17px; height: 17px; transform: rotate(-90deg); }
 /* «Изменение затронет N таких же» и стрелка к ним: подпись слева, кнопка справа */
 .pick-same { display: flex; align-items: center; gap: 10px; }
@@ -804,7 +841,7 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 /* Полосы цвета и градиента на экране группы */
-.bar-row { padding: 12px 0 2px; border-top: 1px solid #eceef1; }
+.bar-row { padding: 12px 0 2px; border-top: 1px solid var(--line); }
 .bar-label { margin-bottom: 8px; font-size: 13px; color: var(--muted); }
 /* Градиент категорий: одна полоса, два ползунка — от какого до какого оттенка */
 .dual { position: relative; height: 26px; margin-bottom: 14px; border-radius: 13px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06); }
@@ -880,7 +917,7 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
   height: 36px;
   border: none;
   border-radius: 50%;
-  background: #eef1f5;
+  background: var(--fill);
   color: var(--muted);
   cursor: pointer;
 }
@@ -912,7 +949,7 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
   white-space: nowrap;
   cursor: pointer;
 }
-.drop-row:active { background: #eef2f9; }
+.drop-row:active { background: var(--press); }
 .drop-row.on { color: var(--accent); font-weight: 600; }
 .drop-ic { display: flex; flex: none; width: 18px; color: var(--muted); }
 .drop-row.on .drop-ic { color: var(--accent); }
@@ -1032,7 +1069,7 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
   padding: 0;
   border: none;
   border-radius: 11px;
-  background: #eef1f5;
+  background: var(--fill);
   color: var(--muted);
   cursor: pointer;
 }
@@ -1093,8 +1130,8 @@ button.srow-main:active, a.srow-main:active { background: #eef2f9; }
   gap: 10px;
   min-height: 30px;
   padding: 6px 14px;
-  border-bottom: 1px solid #f0f1f3;
-  background: #fafbfc;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
@@ -1107,7 +1144,7 @@ button.bank-op { cursor: pointer; }
 .op-mark { display: flex; flex: none; color: var(--muted); } /* у операции есть чек */
 
 /* Откуда трата: чек, банк или руками. Значок неприметный — это подсказка, а не действие */
-.src { display: flex; flex: none; margin-left: -4px; color: #c3c9d2; } /* после суммы, вплотную к ней */
+.src { display: flex; flex: none; margin-left: -4px; color: var(--gray); } /* после суммы, вплотную к ней */
 .src svg { width: 15px; height: 15px; }
 
 /* Стрелка у группы одинаковых покупок. Размер задан жёстко и в размер строки подписи:
@@ -1121,7 +1158,7 @@ button.bank-op { cursor: pointer; }
   margin-left: 3px;
   overflow: hidden;
   border-radius: 50%;
-  background: #e3e6eb;
+  background: var(--fill);
   color: var(--text);
   vertical-align: -0.15em;
 }
@@ -1129,10 +1166,10 @@ button.bank-op { cursor: pointer; }
 .expand.open svg { transform: rotate(180deg); }
 
 /* Покупки развёрнутой группы — со сдвигом: видно, что это части строки над ними */
-.sub-row { padding-left: 30px; min-height: 48px; background: #fafbfc; }
+.sub-row { padding-left: 30px; min-height: 48px; background: var(--surface-2); }
 
 /* Раздел ленты — день или категория: заголовок нажимается и сворачивает раздел */
-.day.section { width: 100%; border: none; border-bottom: 1px solid #f0f1f3; font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
+.day.section { width: 100%; border: none; border-bottom: 1px solid var(--line); font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
 .day.section > span { display: flex; align-items: center; min-width: 0; }
 /* Заголовок раскрытого раздела прилипает под шапкой с итогом, пока листают его строки:
    свернуть можно, даже уйдя далеко вниз. Следующий заголовок сменяет его */
@@ -1157,7 +1194,7 @@ button.bank-op { cursor: pointer; }
 .note-save svg { width: 17px; height: 17px; stroke-width: 2.5; }
 .note-row:focus-within .note-save { display: flex; }
 .sub-row .row-title { font-size: 14px; }
-.sub-more { padding: 8px 14px 10px 30px; border-bottom: 1px solid #f0f1f3; background: #fafbfc; }
+.sub-more { padding: 8px 14px 10px 30px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
 /* Комментарий: выглядит как текст карточки, пока в него не начали писать */
 .note-input {
   display: block;
@@ -1181,7 +1218,7 @@ button.bank-op { cursor: pointer; }
 
 /* Кружок цвета группы перед названием категории — как в списках товаров */
 .op-cat { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; }
-.op-cat.none { background: #d7dbe2; }
+.op-cat.none { background: var(--gray); }
 .pick-hint { color: var(--accent); }
 .op-mark svg { width: 16px; height: 16px; }
 .row-sum.income { color: #1baf7a; }
@@ -1208,7 +1245,7 @@ button.bank-op { cursor: pointer; }
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  background: #eef1f5;
+  background: var(--fill);
   color: var(--muted);
   font-size: 14px;
   font-weight: 600;
@@ -1265,7 +1302,7 @@ button.bank-op { cursor: pointer; }
 .cal-day.to { background: linear-gradient(90deg, var(--accent-soft) 50%, transparent 50%); }
 .cal-day.edge span { background: var(--accent); color: #fff; font-weight: 600; }
 .cal-day.today:not(.edge) { color: var(--accent); font-weight: 600; }
-.cal-day.future:not(.edge) { color: #b6bcc6; }
+.cal-day.future:not(.edge) { color: var(--gray-text); }
 
 .cal-note { margin: 10px 0; text-align: center; }
 
@@ -1360,7 +1397,7 @@ button.bank-op { cursor: pointer; }
   font-size: 16px;
 }
 
-.scan-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #c9ced6; }
+.scan-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--gray); }
 .scan-dot.new, .scan-dot.sent { background: #eda100; }
 .scan-dot.done { background: #1baf7a; }
 .scan-dot.failed { background: var(--danger); }
@@ -1403,14 +1440,14 @@ button.bank-op { cursor: pointer; }
   width: 100%;
   padding: 8px 12px;
   border: none;
-  border-bottom: 1px solid #f0f1f3;
+  border-bottom: 1px solid var(--line);
   background: none;
   text-align: left;
   cursor: pointer;
 }
 
 .sheet-row:last-child { border-bottom: none; }
-button.sheet-row:active, .sheet-open:active { background: #eef2f9; }
+button.sheet-row:active, .sheet-open:active { background: var(--press); }
 
 /* Строка попапа чека: основная часть ведёт в карточку товара, значок справа — выбор категории */
 div.sheet-row { padding: 0; gap: 0; cursor: default; }
@@ -1443,7 +1480,7 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 }
 
 .sheet-edit svg { width: 18px; height: 18px; }
-.sheet-edit:active { background: #eef2f9; color: var(--accent); }
+.sheet-edit:active { background: var(--press); color: var(--accent); }
 
 /* Круглая кнопка со значком — «Готово» в попапе */
 .icon-btn {
@@ -1459,7 +1496,7 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
   cursor: pointer;
 }
 
-.icon-btn.soft { border: none; background: #e4e7ec; color: var(--text); }
+.icon-btn.soft { border: none; background: var(--fill-2); color: var(--text); }
 .icon-btn.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
 .icon-btn svg { width: 22px; height: 22px; stroke-width: 2.5; }
 .sheet-row.saving { opacity: 0.6; }
@@ -1528,7 +1565,7 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
   width: 100%;
   padding: 10px 12px;
   border: none;
-  border-bottom: 1px solid #f0f1f3;
+  border-bottom: 1px solid var(--line);
   background: var(--bg);
   color: var(--muted);
   font: inherit;
@@ -1540,7 +1577,7 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 .fresh-head b { color: var(--text); }
 .fresh-head.open .section-arrow svg { transform: none; }
 /* То же в мастере: список — часть страницы, заголовки не липнут, у списка своя рамка */
-.wiz-fresh .sheet-list { margin-top: 8px; border: 1px solid #f0f1f3; }
+.wiz-fresh .sheet-list { margin-top: 8px; border: 1px solid var(--line); }
 .wiz-fresh .fresh-head { position: static; background: var(--surface); }
 .wiz-fresh-empty { margin: 0; padding: 14px; }
 .sheet-sum.income { color: #1baf7a; }
@@ -1599,7 +1636,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 }
 
 .picker-tile-name { font-size: 12px; line-height: 1.2; text-align: center; color: var(--muted); }
-.picker-tile:active { background: #eef2f9; }
+.picker-tile:active { background: var(--press); }
 
 .picker-list { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--surface); }
 
@@ -1610,7 +1647,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   min-height: 52px;
   padding: 10px 14px;
   border: none;
-  border-bottom: 1px solid #f0f1f3;
+  border-bottom: 1px solid var(--line);
   background: none;
   text-align: left;
   cursor: pointer;
@@ -1621,11 +1658,11 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Лист приглашения: мессенджеры и почта */
 .share-list { margin-top: 12px; }
 .share-item { width: 100%; color: var(--text); font-size: 15px; text-decoration: none; }
-.share-ic { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #eef1f5; color: var(--muted); }
+.share-ic { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--fill); color: var(--muted); }
 .share-ic svg { width: 18px; height: 18px; }
 .share-logo { display: block; flex: none; width: 36px; height: 36px; }
 .share-more { align-self: center; margin-top: 12px; color: var(--muted); font-size: 14px; }
-.picker-item:active { background: #eef2f9; }
+.picker-item:active { background: var(--press); }
 .picker-item .dot { width: 14px; height: 14px; margin: 0; }
 
 /* Подпись под категорией в карточке: пустая — без отступа */
@@ -1717,7 +1754,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   height: 14px;
   margin: 0 2px;
   border-radius: 7px;
-  background: #bfc6cf;
+  background: var(--gray);
   transition: background 0.2s;
 }
 .switch-track::after {
@@ -1728,7 +1765,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   width: 18px;
   height: 18px;
   margin-top: -11px;
-  border: 2px solid #bfc6cf;
+  border: 2px solid var(--gray);
   border-radius: 50%;
   background: #fff;
   transition: transform 0.2s, border-color 0.2s;
@@ -1764,7 +1801,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Покупки группы одинаковых товаров — блоком-шторкой: раскрывается и сворачивается по высоте */
 .sub-wrap { overflow: hidden; }
 .sub-wrap.sliding { transition: height 0.24s cubic-bezier(0.3, 0, 0.2, 1); }
-.sub-wrap > .row:last-child { border-bottom: 1px solid #f0f1f3; } /* черта после группы — как между строками */
+.sub-wrap > .row:last-child { border-bottom: 1px solid var(--line); } /* черта после группы — как между строками */
 
 /* Кольцо долей групп (расходы и доходы): значки групп по кругу, итог в центре */
 .ring-card { padding: 8px; }
@@ -1789,7 +1826,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ring-list { margin-top: 12px; }
 .ring-row {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px;
-  border: none; border-bottom: 1px solid #f0f1f3; background: none; font: inherit; text-align: left; cursor: pointer;
+  border: none; border-bottom: 1px solid var(--line); background: none; font: inherit; text-align: left; cursor: pointer;
 }
 .ring-row:last-child { border-bottom: none; }
 .ring-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
