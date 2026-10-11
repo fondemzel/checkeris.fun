@@ -1760,3 +1760,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .sec-in, .sec-out, .arrow-opening .section-arrow svg, .arrow-closing .section-arrow svg { animation: none; }
 }
+
+/* Покупки группы одинаковых товаров — блоком-шторкой: раскрывается и сворачивается по высоте */
+.sub-wrap { overflow: hidden; }
+.sub-wrap.sliding { transition: height 0.24s cubic-bezier(0.3, 0, 0.2, 1); }
+.sub-wrap > .row:last-child { border-bottom: 1px solid #f0f1f3; } /* черта после группы — как между строками */

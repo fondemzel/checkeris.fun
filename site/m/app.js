@@ -952,7 +952,8 @@ async function spendingFeed(itemRows, bankRows, selfRows = []) {
       const more = part.totals.count > part.rows.length
         ? `<div class="sub-more note">Показаны последние ${int.format(part.rows.length)} из ${int.format(part.totals.count)}</div>`
         : '';
-      return row + subs + more;
+      // Покупки группы — в общем блоке: он раскрывается и сворачивается «шторкой» по высоте
+      return `${row}<div class="sub-wrap">${subs}${more}</div>`;
     })
     .join('');
 
@@ -3317,6 +3318,26 @@ function collapseSpace(after, height) {
   setTimeout(done, 400); // на случай, если переход не случился
 }
 
+/**
+ * Шторка: блок плавно раскрывается от нуля до своей высоты (или сворачивается до нуля), а всё,
+ * что ниже, едет вместе с краем. Для покупок группы — их немного, и высота известна точно.
+ */
+async function slideWrap(wrap, open) {
+  if (!wrap || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const full = wrap.scrollHeight;
+  wrap.style.height = `${open ? 0 : full}px`;
+  wrap.getBoundingClientRect(); // начальная высота — до перехода
+  wrap.classList.add('sliding');
+  wrap.style.height = `${open ? full : 0}px`;
+  await new Promise((r) => {
+    const done = () => r();
+    wrap.addEventListener('transitionend', done, { once: true });
+    setTimeout(done, 320);
+  });
+  wrap.classList.remove('sliding');
+  if (open) wrap.style.height = ''; // дальше — обычная высота по содержимому
+}
+
 /** Погасить строки перед сворачиванием; ждём, только если есть что гасить. */
 async function animateOut(rows) {
   const shown = rows.slice(0, ANIMATED);
@@ -3610,16 +3631,16 @@ async function onScreenClick(e) {
   if (toggle) {
     const group = toggle.dataset.expand;
     const key = expandKey(group);
-    const subRows = (row) => sectionRows(row, (el) => !el.classList.contains('sub-row') && !el.classList.contains('sub-more'));
+    const wrapOf = (row) => (row?.nextElementSibling?.classList.contains('sub-wrap') ? row.nextElementSibling : null);
     const closing = expanded.has(key);
-    const room = closing ? visibleHeight(subRows(toggle.closest('.row'))) : 0;
-    if (closing) await animateOut(subRows(toggle.closest('.row')));
+    if (closing) await slideWrap(wrapOf(toggle.closest('.row')), false); // шторка закрывается — потом перерисовка
     if (expanded.has(key)) expanded.delete(key);
     else expanded.add(key);
     await render(); // тот же экран — список перерисуется на месте, прокрутка не сбросится
-    const row = [...document.querySelectorAll('[data-expand]')].find((el) => el.dataset.expand === group)?.closest('.row');
-    if (row && !closing) animateIn(subRows(row));
-    if (row && closing) collapseSpace(row, room);
+    if (!closing) {
+      const row = [...document.querySelectorAll('[data-expand]')].find((el) => el.dataset.expand === group)?.closest('.row');
+      slideWrap(wrapOf(row), true);
+    }
     return;
   }
 
