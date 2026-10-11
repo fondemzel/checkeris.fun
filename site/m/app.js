@@ -439,10 +439,11 @@ const SOURCE_FILTERS = [
 const sourceChips = () => drop(UI.filter, 'Фильтр',
   dropRow('data-src=""', UI.layers, 'Все источники', !state.src)
   + SOURCE_FILTERS.map(([key, label]) => dropRow(`data-src="${key}"`, SOURCES[key].icon, label, state.src === key)).join('')
-  // Группа: все покупки только её категорий. Повторное нажатие снимает
-  + '<div class="drop-sep"></div>'
-  + (meta?.categories ?? []).map((g) => dropRow(`data-sg="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, state.sg === g.slug)).join('')
-  + dropRow(`data-sg="${NONE}"`, groupIcon('none'), 'Без категории', state.sg === NONE),
+  // Группа: все покупки только её категорий. Повторное нажатие снимает. Внутри кольца группы
+  // (и раскрытого «Остального») групп не предлагаем: другая группа дала бы пустое кольцо
+  + (state.mode === 'ring' && (state.ringGroup || state.ringRest) ? '' : '<div class="drop-sep"></div>'
+    + (meta?.categories ?? []).map((g) => dropRow(`data-sg="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, state.sg === g.slug)).join('')
+    + dropRow(`data-sg="${NONE}"`, groupIcon('none'), 'Без категории', state.sg === NONE)),
   Boolean(state.src || state.sg));
 
 /** Сортировка. Выбранная строка показывает направление; повторное нажатие его разворачивает. */
@@ -1540,7 +1541,8 @@ async function screenIncome() {
           !filter && transfers ? `${int.format(transfers.count)} переводов между своими` : '',
         ].filter(Boolean).map(esc).join(' · '),
         sorts: all.length > 0 ? ['category', 'date', 'name', 'sum'] : false,
-        filters: all.length > 0 ? filters : '',
+        // Внутри кольца группы отбор по группам дал бы пустое кольцо — фильтра нет
+        filters: all.length > 0 && !(state.mode === 'ring' && (state.ringGroup || state.ringRest)) ? filters : '',
         search: all.length > 0,
         mode: all.length > 0,
       })}
