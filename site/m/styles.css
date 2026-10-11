@@ -1860,3 +1860,15 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .choice-list .drop-row { padding: 12px 10px; font-size: 16px; }
 .choice-list .drop-row.on { color: var(--accent); }
 .choice-list .drop-mark { margin-left: auto; display: flex; color: var(--accent); }
+
+/* Листы снизу (меню, выбор категории, карточки): экран под ними заметно приглушён, а сам лист
+   приподнят тенью — внимание сразу на нём. В тёмной теме тёмно-синий слой на тёмном фоне
+   не виден, поэтому там он почти чёрный и плотнее, а лист — чуть светлее экрана, с кромкой */
+.sheet-box, .picker-box { box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18); }
+:root[data-theme="dark"] .sheet,
+:root[data-theme="dark"] .picker { background: rgba(0, 0, 0, 0.62); }
+:root[data-theme="dark"] .sheet-box,
+:root[data-theme="dark"] .picker-box {
+  background: #131a22;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
