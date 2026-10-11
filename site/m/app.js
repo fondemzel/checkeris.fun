@@ -741,84 +741,117 @@ async function screenSummary() {
 
 /**
  * Кольцо долей: сегмент на группу (её цвет, тонкий зазор между соседями), в центре — итог.
- * Значки групп — по кругу равномерно, с суммой под каждым; ниже — расшифровка таблицей:
+ * Значки групп — напротив своих секторов, с суммой и долей под каждым; ниже — расшифровка таблицей:
  * доля и сумма читаются и без цвета. Нажатие на значок, сегмент или строку открывает группу.
  */
 function ringView(parts, total, countText, kind) {
-  // По убыванию, крупный — сверху и дальше по часовой: мелкие сектора собираются в конце круга,
-  // а рядом с ними — свободное место у начала крупного, куда можно раздвинуть их значки
-  const shown = parts.filter((p) => p.sum > 0).sort((a, b) => b.sum - a.sum);
-  if (!shown.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период ничего нет'}</div>`;
+  const all = parts.filter((p) => p.sum > 0).sort((a, b) => b.sum - a.sum);
+  if (!all.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период ничего нет'}</div>`;
   // Категории доходов — только посмотреть: отдельного списка категории у доходов нет
-  const tap = (p) => (kind === 'income-cat' ? '' : ` data-ring="${esc(kind)}|${esc(p.key)}"`);
-  const sum = shown.reduce((n, p) => n + p.sum, 0);
+  const tap = (p) => (p.other || kind === 'income-cat' ? '' : ` data-ring="${esc(kind)}|${esc(p.key)}"`);
+  const sum = all.reduce((n, p) => n + p.sum, 0);
+  const pct = (p) => Math.round((p.sum / sum) * 100);
+  const TURN = 2 * Math.PI;
+
+  // Значок стоит строго напротив середины своего сектора — без указателей. Чтобы соседние
+  // не налезали, подбираем порядок секторов: прямоугольники значков с подписью (в процентах
+  // стороны кольца) не должны пересекаться. Наверху и внизу мешает ширина, по бокам — высота
+  const side = Math.min(380, (window.innerWidth || 400) - 48);
+  const R = 41;
+  const point = (angle, radius) => [50 + Math.sin(angle) * radius, 50 - Math.cos(angle) * radius];
+  const measure = (p) => {
+    p.ang = (p.sum / sum) * TURN;
+    p.w = (Math.max(32, money(p.sum).length * 5.8 + 6) / side) * 100;
+    p.h = (60 / side) * 100; // значок 32px, зазор и две строки подписи
+    return p;
+  };
+  const apart = (a, b) => {
+    const [x1, y1] = point(a.mid, R);
+    const [x2, y2] = point(b.mid, R);
+    return Math.abs(x1 - x2) >= (a.w + b.w) / 2 + 1 || Math.abs(y1 - y2) >= (a.h + b.h) / 2 + 0.5;
+  };
+  // Перебор с отсечением: самый крупный — первым, дальше крупные и мелкие вперемежку
+  // (этот порядок пробуется первым). Каждый новый значок сверяется со всеми поставленными
+  const arrange = (items) => {
+    const [first, ...rest] = items;
+    for (const k of [0.5, 0, 1, 0.25, 0.75]) {
+      let budget = 20000;
+      const order = [first];
+      const left = new Set(rest);
+      first.mid = -k * first.ang + first.ang / 2;
+      const dfs = (at) => {
+        if (!left.size) return true;
+        if ((budget -= 1) < 0) return false;
+        const cand = [...left];
+        if (order.length % 2) cand.reverse(); // после крупного — мелкий, после мелкого — крупный
+        for (const c of cand) {
+          c.mid = at + c.ang / 2;
+          if (!order.every((o) => apart(o, c))) continue;
+          order.push(c);
+          left.delete(c);
+          if (dfs(at + c.ang)) return true;
+          order.pop();
+          left.add(c);
+        }
+        return false;
+      };
+      if (dfs(-k * first.ang + first.ang)) return { order, start: -k * first.ang };
+    }
+    return null;
+  };
+  // Не помещаются — самые мелкие уходят в «Остальное» (серый сектор; по отдельности — в расшифровке)
+  let items = all.map(measure);
+  let other = null;
+  let placed = arrange(items);
+  while (!placed && items.length > 2) {
+    const rest = items.filter((p) => !p.other);
+    const take = other ? [rest.pop()] : [rest.pop(), rest.pop()];
+    other ??= { key: '', name: 'Остальное', color: '#dfe3e8', icon: 'dots', sum: 0, other: true, parts: [] };
+    for (const p of take) {
+      other.parts.push(p);
+      other.sum += p.sum;
+    }
+    items = [...rest, measure(other)].sort((a, b) => b.sum - a.sum);
+    placed = arrange(items);
+  }
+  if (!placed) placed = { order: items, start: 0 };
+  const merged = new Set(other?.parts ?? []);
+
   // Сегменты: окружность r=26 в квадрате 100×100 (снаружи — место под значки); зазор ≈ 2px
   const r = 26;
   const len = 2 * Math.PI * r;
-  const gap = shown.length > 1 ? 0.9 : 0;
-  let at = 0;
-  const arcs = shown.map((p) => {
+  const gap = placed.order.length > 1 ? 0.9 : 0;
+  let at = (placed.start / TURN) * len;
+  const arcs = placed.order.map((p) => {
     const part = (p.sum / sum) * len;
     const dash = Math.max(0.01, part - gap);
-    // Середина сектора — угол от вершины по часовой: напротив неё и встанет значок
-    p.mid = ((at + part / 2) / len) * 2 * Math.PI;
     const arc = `<circle class="ring-arc" cx="50" cy="50" r="${r}" fill="none" stroke="${p.color ?? '#c9ced6'}" stroke-width="8"
       stroke-dasharray="${dash.toFixed(3)} ${(len - dash).toFixed(3)}" stroke-dashoffset="${(-at).toFixed(3)}"
       transform="rotate(-90 50 50)"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></circle>`;
     at += part;
     return arc;
   }).join('');
-
-  // Значки — напротив середины своего сектора. Сектора меньше 1% — без значка: они есть в
-  // расшифровке. Тесно — раздвигаем вдоль окружности ровно настолько, чтобы не налезали
-  const marked = shown.filter((p) => p.sum / sum >= 0.01);
-  const minGap = Math.min(0.46, (2 * Math.PI) / Math.max(1, marked.length)); // ≈26°: ширина значка с подписью
-  marked.forEach((p) => (p.at = p.mid));
-  for (let pass = 0; pass < 200 && marked.length > 1; pass += 1) {
-    let moved = false;
-    for (let i = 0; i < marked.length; i += 1) {
-      const a = marked[i];
-      const b = marked[(i + 1) % marked.length];
-      const diff = (i + 1 === marked.length ? b.at + 2 * Math.PI : b.at) - a.at;
-      if (diff >= minGap - 1e-4) continue;
-      const push = (minGap - diff) / 2;
-      a.at -= push;
-      b.at += push;
-      moved = true;
-    }
-    if (!moved) break;
-  }
-  const R = 41.5; // где стоят значки (в процентах от стороны)
-  const point = (angle, radius) => [50 + Math.sin(angle) * radius, 50 - Math.cos(angle) * radius];
-  // Сдвинутый значок — с тонкой линией от середины своего сектора
-  const leaders = marked
-    .filter((p) => Math.abs(p.at - p.mid) > 0.06)
-    .map((p) => {
-      const [x1, y1] = point(p.mid, 30.5);
-      const [x2, y2] = point(p.at, 35);
-      return `<line class="ring-leader" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" />`;
-    })
-    .join('');
-  const icons = marked.map((p) => {
-    const [x, y] = point(p.at, R);
+  const icons = placed.order.map((p) => {
+    const [x, y] = point(p.mid, R);
     const color = p.color ?? '#c9ced6';
     return `
       <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
         <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
-        <span class="ring-sum">${money(p.sum)} · ${Math.round((p.sum / sum) * 100)}%</span>
+        <span class="ring-sum">${money(p.sum)}<br>${pct(p)}%</span>
       </button>`;
   }).join('');
-  const rows = [...shown].sort((a, b) => b.sum - a.sum).map((p) => `
+  // Расшифровка — все по отдельности; ушедшие в «Остальное» — его цветом
+  const rows = all.map((p) => `
     <button class="ring-row" type="button"${tap(p)}>
-      <span class="op-cat" style="background:${p.color ?? '#c9ced6'}"></span>
+      <span class="op-cat" style="background:${merged.has(p) ? other.color : (p.color ?? '#c9ced6')}"></span>
       <span class="ring-name">${esc(p.name)}</span>
-      <span class="ring-share">${Math.round((p.sum / sum) * 100)}%</span>
+      <span class="ring-share">${pct(p)}%</span>
       <b>${money(p.sum)}</b>
     </button>`).join('');
   return `
     <div class="card ring-card">
       <div class="ring-box">
-        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${leaders}${arcs}</svg>
+        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg>
         <div class="ring-center"><b>${money(total)}</b><small class="note">${esc(countText)}</small></div>
         ${icons}
       </div>
