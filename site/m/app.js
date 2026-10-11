@@ -2695,7 +2695,7 @@ function sameFor(kind, id) {
 /** Не категория, а вид: «перевод себе». Выбирается в том же окне, что и категория. */
 const TRANSFER = '#transfer';
 
-function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], same = null, { transfer = false } = {}) {
+function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], same = null, { transfer = false, note = '' } = {}) {
   const income = groups === meta?.income;
   // Выключены (по умолчанию) — категория меняется только у этой записи; включают, когда нужно
   // разложить всех таких же разом. Помним между шагами (группа → категория)
@@ -2722,7 +2722,10 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
     (state.screen === 'op' ? document.querySelector('.card-name')?.textContent : '') ||
     (!itemId ? document.getElementById('m-name')?.value.trim() : '') ||
     '';
-  const subtitle = name ? `<small class="picker-for">${f(income ? T.income.pickFor : 'Выберите категорию для расхода «{name}»', { name: esc(name) })}</small>` : '';
+  // note — своё пояснение под заголовком (например, зачем выбирать при удалении категории)
+  const subtitle = note
+    ? `<small class="picker-for">${esc(note)}</small>`
+    : name ? `<small class="picker-for">${f(income ? T.income.pickFor : 'Выберите категорию для расхода «{name}»', { name: esc(name) })}</small>` : '';
   const closeBtn = `<button class="icon-btn soft" data-close type="button" aria-label="Отмена" title="Отмена">${UI.close}</button>`;
 
   const showGroups = () => {
@@ -4960,7 +4963,7 @@ async function onCatsClick(e) {
         setTimeout(async () => {
           if (await ask(f(income ? C.moveIncomeConfirm : C.moveConfirm, { name: c.name, to: to.name }), { ok: T.common.move, danger: true })) remove(slug);
         }, 150);
-      }, income ? meta?.income ?? [] : undefined);
+      }, income ? meta?.income ?? [] : undefined, null, { note: f(C.moveNote, { name: c.name, what: income ? C.moveWhatIncome : C.moveWhat }) });
     } else if (await ask(f(C.deleteCatConfirm, { name: c.name }), { ok: T.common.delete, danger: true })) remove('');
   }
 }
