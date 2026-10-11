@@ -1927,3 +1927,10 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .picker.ask.closing .ask-box { animation: ask-out 0.15s ease-in forwards; }
 @media (prefers-reduced-motion: reduce) { .picker.ask .ask-box { animation: none !important; } }
 .picker-for.full { display: block; -webkit-line-clamp: unset; overflow: visible; white-space: normal; } /* пояснение — целиком */
+
+/* Готовые периоды в календаре — четыре строки (дни, недели, месяцы, годы), чипсы размером
+   с дату в шапке. Не помещаются в строку — она листается вбок, а не переносится */
+.cal-presets { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.cal-preset-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.cal-preset-row::-webkit-scrollbar { display: none; }
+.cal-preset-row .chip { flex: none; height: 28px; padding: 0 11px; border-radius: 14px; font-size: 13px; }

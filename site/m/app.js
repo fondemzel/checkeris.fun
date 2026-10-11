@@ -1831,16 +1831,26 @@ function openPeriodPicker() {
   let view = new Date(first.getFullYear(), first.getMonth(), 1);
   const today = isoDay(new Date());
 
+  // Готовые периоды — четырьмя строками: дни, недели, месяцы, годы. Неделя — с понедельника
   const now = new Date();
+  const span = (from, to) => ({ from: isoDay(from), to: isoDay(to) });
+  const monday = addDays(now, -((now.getDay() + 6) % 7));
   const presets = [
-    ['Этот месяц', () => monthPeriod(now.getFullYear(), now.getMonth())],
-    ['Прошлый месяц', () => monthPeriod(now.getFullYear(), now.getMonth() - 1)],
-    ['3 месяца', () => monthPeriod(now.getFullYear(), now.getMonth() - 2, 3)],
-    ['Этот год', () => monthPeriod(now.getFullYear(), 0, 12)],
-    ['Прошлый год', () => monthPeriod(now.getFullYear() - 1, 0, 12)],
+    ['days', 'Сегодня', () => span(now, now)],
+    ['days', 'Вчера', () => span(addDays(now, -1), addDays(now, -1))],
+    ['days', '7 дней', () => span(addDays(now, -6), now)],
+    ['days', '30 дней', () => span(addDays(now, -29), now)],
+    ['weeks', 'Эта неделя', () => span(monday, addDays(monday, 6))],
+    ['weeks', 'Прошлая неделя', () => span(addDays(monday, -7), addDays(monday, -1))],
+    ['weeks', '2 недели', () => span(addDays(monday, -7), addDays(monday, 6))],
+    ['months', 'Этот месяц', () => monthPeriod(now.getFullYear(), now.getMonth())],
+    ['months', 'Прошлый месяц', () => monthPeriod(now.getFullYear(), now.getMonth() - 1)],
+    ['months', '3 месяца', () => monthPeriod(now.getFullYear(), now.getMonth() - 2, 3)],
+    ['years', 'Этот год', () => monthPeriod(now.getFullYear(), 0, 12)],
+    ['years', 'Прошлый год', () => monthPeriod(now.getFullYear() - 1, 0, 12)],
   ];
   if (meta?.stats?.date_from) {
-    presets.push(['Всё время', () => ({ from: meta.stats.date_from.slice(0, 10), to: meta.stats.date_to.slice(0, 10) })]);
+    presets.push(['years', 'Всё время', () => ({ from: meta.stats.date_from.slice(0, 10), to: meta.stats.date_to.slice(0, 10) })]);
   }
 
   const el = document.createElement('div');
@@ -1873,9 +1883,16 @@ function openPeriodPicker() {
     el.innerHTML = `
       <div class="picker-box cal" role="dialog" aria-label="Выбор периода">
         <div class="picker-top"><div class="picker-title">Период</div><button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button></div>
-        <div class="chips">${presets
-          .map(([label], i) => `<button class="chip" type="button" data-preset="${i}">${label}</button>`)
-          .join('')}</div>
+        <div class="cal-presets">${['days', 'weeks', 'months', 'years'].map((row) => `
+          <div class="cal-preset-row">${presets
+            .map(([r, label, period], i) => {
+              if (r !== row) return '';
+              // Выбранный сейчас период — подсвечен
+              const p = period();
+              const on = p.from === start && p.to === (end ?? start);
+              return `<button class="chip${on ? ' on' : ''}" type="button" data-preset="${i}">${label}</button>`;
+            })
+            .join('')}</div>`).join('')}</div>
         <div class="cal-head">
           <button class="month-arrow" type="button" data-view="-1" aria-label="Предыдущий месяц">‹</button>
           <span>${cap(MONTHS[m])} ${y}</span>
@@ -1917,7 +1934,7 @@ function openPeriodPicker() {
     const preset = e.target.closest('[data-preset]');
     if (preset) {
       dropPopup(el);
-      return go(presets[Number(preset.dataset.preset)][1](), true);
+      return go(presets[Number(preset.dataset.preset)][2](), true);
     }
 
     if (e.target.closest('[data-apply]')) {
