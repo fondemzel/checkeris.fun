@@ -303,7 +303,7 @@ const state = {
   q: '', // поиск в расходах и доходах: слова через пробел, все должны найтись
   ringGroup: '', // кольцо: раскрытая группа — тогда кольцо по её категориям
   ringRest: '', // кольцо: раскрытое «Остальное» — ключи слитых в него секторов через запятую
-  sg: '', // расходы: отбор по группе (NONE — без категории)
+  sg: '', // расходы: отбор — группа или несколько групп/категорий через запятую (как «Остальное» кольца); NONE — без категории
   mode: (() => {
     try {
       return localStorage.getItem('checker.mode') === 'ring' ? 'ring' : 'list'; // расходы и доходы: список или кольцо
@@ -720,7 +720,9 @@ async function screenSummary() {
     .filter((op) => (state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
       bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name], [op.amount, op.orig_amount])));
   // Отбор по группе — после источника и поиска: строки только её категорий
-  const inGroup = (slug) => !state.sg || (findCategory(slug)?.group.slug ?? NONE) === state.sg;
+  // Ключи отбора — группы или категории (из «Остального» кольца категорий)
+  const picked = new Set(state.sg ? state.sg.split(',') : []);
+  const inGroup = (slug) => !state.sg || picked.has(slug ?? '') || picked.has(findCategory(slug)?.group.slug ?? NONE);
   if (state.sg) {
     shownItems = shownItems.filter((r) => inGroup(r.category_slug));
     shownOps = shownOps.filter((op) => inGroup(op.category_slug));
@@ -735,7 +737,7 @@ async function screenSummary() {
     part('count', `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`),
     SORTS[state.sort] ? part('sort', SORTS[state.sort][0].toLowerCase()) : '',
     state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase()) : '',
-    state.sg ? part('src', state.sg === NONE ? 'без категории' : findGroup(state.sg)?.name ?? '') : '',
+    state.sg ? part('src', [...picked].map((k) => (k === NONE ? 'без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
     state.q ? part('q', state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
   ].filter(Boolean).join(' · ');
 
@@ -1421,8 +1423,10 @@ async function screenIncome() {
 
   // Фильтр: группа доходов или «без категории». Итог и число считаем по тому, что осталось
   const groups = meta?.income ?? [];
-  const picked = groups.find((g) => g.slug === state.inf);
-  const filter = state.inf === '-' ? '-' : picked ? picked.slug : '';
+  // Отбор: группа, «без категории» или несколько групп/категорий через запятую («Остальное» кольца)
+  const keys = new Set(state.inf ? state.inf.split(',') : []);
+  const filter = state.inf ?? '';
+  const filterName = [...keys].map((k) => (k === '-' ? T.income.noCategory : groups.find((g) => g.slug === k)?.name ?? incomeCat(k)?.name ?? '')).join(', ');
   // Данные — из памяти (apiFeed): отбираем в свой список, ответ сервера не трогаем
   const all = data.rows;
   const narrowed = Boolean(filter || state.q.trim());
@@ -1430,7 +1434,7 @@ async function screenIncome() {
     .filter((op) => {
       if (!filter) return true;
       const found = incomeCat(op.category_slug);
-      return filter === '-' ? !found : found?.group.slug === filter;
+      return keys.has(op.category_slug ?? '') || keys.has(found?.group.slug ?? '-');
     })
     .filter((op) => (state.same ? sameAs('in', op) : matchesQ([op.description, op.merchant, op.account_name, SOURCES.bank.title, T.sources.bank,
       bankById(op.bank)?.name, incomeCat(op.category_slug)?.name], [op.amount, op.orig_amount])));
@@ -1449,7 +1453,7 @@ async function screenIncome() {
         note: [
           `${int.format(count)} ${pl(count, T.income.many)}`,
           SORTS[state.sort] ? SORTS[state.sort][0].toLowerCase() : '',
-          filter ? (picked?.name ?? T.income.noCategory).toLowerCase() : '',
+          filter ? filterName.toLowerCase() : '',
           state.q.trim() ? (state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
           !filter && transfers ? `${int.format(transfers.count)} переводов между своими` : '',
         ].filter(Boolean).map(esc).join(' · '),
@@ -4005,10 +4009,20 @@ async function onScreenClick(e) {
     state.mode = state.mode === 'ring' ? 'list' : 'ring';
     // Из кольца группы — в список этой же группы: у расходов её экран, у доходов — список,
     // отобранный по группе. «Назад» с экрана группы вернёт к общему списку, а не к кольцу
-    const opened = state.mode === 'list' && !state.ringRest ? state.ringGroup : '';
-    // И обратно: список, отобранный по группе, — в кольцо этой группы
-    const back = state.mode === 'ring' && state.screen === 'summary' && state.sg && state.sg !== NONE ? state.sg : '';
-    const backIn = state.mode === 'ring' && state.screen === 'income' && state.inf && state.inf !== '-' ? state.inf : '';
+    // «Остальное» — отбор по всем слитым в него группам (или категориям, если это кольцо группы)
+    const opened = state.mode === 'list' ? state.ringRest || state.ringGroup : '';
+    // И обратно: список, отобранный по группе, — в кольцо этой группы; по нескольким — в их
+    // «Остальное» (категории — внутри кольца своей группы)
+    const listed = state.mode === 'ring' ? (state.screen === 'summary' ? state.sg : state.screen === 'income' ? state.inf : '') : '';
+    let back = null;
+    if (listed) {
+      const keys = listed.split(',');
+      const catOf = (k) => (state.screen === 'summary' ? findCategory(k)?.group.slug : incomeCat(k)?.group.slug);
+      const group = catOf(keys[0]);
+      if (group) back = { ringGroup: group, ringRest: keys.join(',') };
+      else if (keys.length > 1) back = { ringGroup: '', ringRest: keys.join(',') };
+      else if (keys[0] !== NONE) back = { ringGroup: keys[0], ringRest: '' };
+    }
     state.ringGroup = '';
     state.ringRest = '';
     try {
@@ -4020,8 +4034,7 @@ async function onScreenClick(e) {
     history.replaceState({ ...history.state, mode: state.mode, ringGroup: '', ringRest: '' }, '', location.href);
     if (opened && state.screen === 'summary') return go({ sg: opened }, true);
     if (opened && state.screen === 'income') return go({ inf: opened }, true);
-    if (back) return go({ sg: '', ringGroup: back }, true);
-    if (backIn) return go({ inf: '', ringGroup: backIn }, true);
+    if (back) return go({ ...back, [state.screen === 'summary' ? 'sg' : 'inf']: '' }, true);
     return render();
   }
 
