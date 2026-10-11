@@ -755,27 +755,29 @@ function ringTitle(base, groupName) {
   return [base, state.ringGroup && groupName(state.ringGroup), state.ringRest && 'Остальное'].filter(Boolean).join(' · ');
 }
 
-// Какое кольцо анимировали последним и когда. Разметка кольца одна и та же при любом показе,
-// а анимацию включает playRing уже на экране: экран часто рисуется дважды — сначала
-// сохранённый вид, потом свежий, — и вторая отрисовка должна продолжить анимацию первой,
-// а не оборвать её или начать заново. elapsed — свои часы анимации: идут только по кадрам и
-// за кадр не больше чем на 1/30 с. Телефон задумался (раскладывает страницу, разбирает ответ) —
-// анимация стоит на месте и продолжает с того же кадра, а не перескакивает вперёд
-let ringPlayed = { key: '', elapsed: 0 };
-const RING_STEP = 34; // мс: больше за один кадр часы не уходят
+// Какое кольцо анимировали последним и когда (at — первый нарисованный кадр). Разметка кольца
+// одна и та же при любом показе, а анимацию включает playRing уже на экране.
+//
+// Запускать её можно только когда телефону больше нечем заняться. При переходе на вкладку
+// сначала мгновенно показывается сохранённый вид экрана, а свежие данные приходят следом и
+// разбираются — телефон на это время замирает, и анимация, пущенная сразу, запиналась в самом
+// начале. Поэтому сохранённый вид показываем пустым кольцом (playRing(false)), а заливку
+// пускаем после свежей отрисовки — как при смене периода, где кольцо появляется уже с данными
+let ringPlayed = { key: '', at: null };
 const RING_SWEEP = 900; // заливка круга
 const RING_POP = 300; // проявление значка
 const RING_ANIM = 1300; // заливка и проявление последнего значка
 
-function playRing() {
+function playRing(start = true) {
   const box = document.querySelector('#screen .ring-box');
   if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, elapsed: 0 };
-  if (ringPlayed.elapsed >= RING_ANIM) return; // уже показано
+  if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: null };
+  if (ringPlayed.at != null && performance.now() - ringPlayed.at >= RING_ANIM) return; // уже показано
+  if (box.dataset.playing) return; // это кольцо уже анимируется
 
-  // Заливка и значки — одним циклом по кадрам, на одних часах. Заливка: дуга дошла до места
-  // sweep, каждому сектору видна его часть до этого места — одна кривая на весь круг, сколько
-  // бы ни было секторов. Значок проявляется, когда заливка дошла до середины его сектора.
+  // Заливка и значки — одним циклом по кадрам. Заливка: дуга дошла до места sweep, каждому
+  // сектору видна его часть до этого места — одна кривая на весь круг, сколько бы ни было
+  // секторов. Значок проявляется, когда заливка дошла до середины его сектора.
   // (Маска с анимацией не годится: браузер не перерисовывает её по ходу анимации.)
   const len = Number(box.dataset.len);
   const arcs = [...box.querySelectorAll('.ring-arc')].map((el) => ({
@@ -799,15 +801,16 @@ function playRing() {
       i.el.style.scale = k >= 1 ? '' : (0.6 + 0.4 * e).toFixed(3);
     }
   };
-  // До первого кадра — пустое кольцо (или то место, где анимацию прервала перерисовка)
-  paint(ringPlayed.elapsed);
-  let last = null;
+  // Пока не пустили — пустое кольцо (или то место, где анимацию прервала перерисовка)
+  paint(ringPlayed.at == null ? 0 : performance.now() - ringPlayed.at);
+  if (!start) return;
+  box.dataset.playing = '1';
   const frame = (now) => {
     if (!box.isConnected) return; // экран перерисовали — продолжит новая отрисовка
-    if (last != null) ringPlayed.elapsed += Math.min(now - last, RING_STEP);
-    last = now;
-    paint(ringPlayed.elapsed);
-    if (ringPlayed.elapsed < RING_ANIM) requestAnimationFrame(frame);
+    ringPlayed.at ??= now;
+    const elapsed = now - ringPlayed.at;
+    paint(elapsed);
+    if (elapsed < RING_ANIM) requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 }
@@ -3471,7 +3474,10 @@ async function render() {
     $('screen').innerHTML = cached;
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
     shownScreen = state.screen;
-    playRing();
+    // Кольцо — пустым: заливку пустим после свежей отрисовки (см. playRing). Ответ задержался —
+    // не держим пустое кольцо дольше 0,6 с
+    playRing(false);
+    setTimeout(() => seq === renderSeq && playRing(), 600);
   } else if (!sameScreen && !sameKind) {
     $('screen').innerHTML = loading();
     window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
@@ -3492,8 +3498,8 @@ async function render() {
     else if (html !== cached) {
       $('screen').innerHTML = html;
       window.scrollTo(0, keepScroll);
-      playRing();
     }
+    playRing(); // и когда свежий вид совпал с сохранённым: тот ждёт пустым
     shownScreen = state.screen;
     screen.after?.();
     updateSecTop();
