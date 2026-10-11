@@ -931,3 +931,11 @@ tbody tr.child-more td { padding-left: 24px; }
 
 /* Значок категории: «как у группы» — над сеткой */
 .icon-option.icon-inherit { width: auto; gap: 8px; margin-bottom: 8px; padding: 0 12px; }
+
+/* Своё окно подтверждения вместо системного (dialog в app.js) */
+.dialog { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(15, 20, 28, 0.45); }
+.dialog-box { width: 100%; max-width: 400px; padding: 20px; border-radius: 12px; background: var(--surface); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); animation: dialog-in 0.15s ease-out; }
+.dialog-text { margin: 0 0 16px; font-size: 15px; line-height: 1.45; }
+.dialog-btns { display: flex; justify-content: flex-end; gap: 8px; }
+@keyframes dialog-in { from { opacity: 0; transform: scale(0.96); } }
+.dialog .btn.primary { border-color: var(--accent); background: var(--accent); color: #fff; }

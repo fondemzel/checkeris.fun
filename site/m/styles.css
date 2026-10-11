@@ -1904,3 +1904,25 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 :root[data-theme="dark"] .tab-add { border-color: #24303d; }
+
+/* Подтверждение (ask): окно по центру, как в Telegram — текст и кнопки-слова справа.
+   Появляется из лёгкого уменьшения, исчезает растворением */
+.picker.ask { align-items: center; justify-content: center; padding: 24px; }
+.ask-box {
+  width: 100%; max-width: 340px; padding: 20px 20px 10px;
+  border-radius: 16px; background: var(--surface); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.ask-text { margin: 0 0 14px; font-size: 16px; line-height: 1.4; }
+.ask-btns { display: flex; justify-content: flex-end; gap: 4px; margin-right: -10px; }
+.ask-btn {
+  padding: 10px 12px; border: none; border-radius: 8px; background: none;
+  color: var(--accent); font: inherit; font-weight: 600; cursor: pointer;
+}
+.ask-btn:active { background: var(--press); }
+.ask-btn.danger { color: var(--danger); }
+.ask-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@keyframes ask-in { from { opacity: 0; transform: scale(0.94); } }
+@keyframes ask-out { to { opacity: 0; transform: scale(0.97); } }
+.picker.ask.opening .ask-box { animation: ask-in 0.18s ease-out; }
+.picker.ask.closing .ask-box { animation: ask-out 0.15s ease-in forwards; }
+@media (prefers-reduced-motion: reduce) { .picker.ask .ask-box { animation: none !important; } }

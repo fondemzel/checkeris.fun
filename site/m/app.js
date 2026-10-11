@@ -577,6 +577,51 @@ function removePopup(el) {
   setTimeout(() => el.remove(), POPUP_OUT);
 }
 
+/**
+ * Подтверждение — своим окном вместо системного confirm (тот в приложении выглядит как
+ * «Подтвердите действие на сайте …»). Окно по центру: текст и две кнопки — «Отмена» и
+ * само действие глаголом; опасное — красным. Возвращает промис: true — согласились.
+ * «Назад» и нажатие мимо — отказ. Ответ приходит, когда окно уже закрыто и запись истории
+ * снята: следующий шаг (переход, «назад» из карточки) не столкнётся с её снятием.
+ */
+function ask(text, { ok = T.common.yes, danger = false } = {}) {
+  return new Promise((resolve) => {
+    const el = document.createElement('div');
+    el.className = 'picker ask';
+    el.innerHTML = `
+      <div class="ask-box" role="alertdialog" aria-label="${esc(text)}">
+        <p class="ask-text">${esc(text)}</p>
+        <div class="ask-btns">
+          <button class="ask-btn" type="button" data-ask="0">${esc(T.common.cancel)}</button>
+          <button class="ask-btn${danger ? ' danger' : ''}" type="button" data-ask="1">${esc(ok)}</button>
+        </div>
+      </div>`;
+    let done = false;
+    const finish = (yes) => {
+      if (done) return;
+      done = true;
+      // Закрытие снимет запись истории, только если под окном нет другого попапа
+      const waits = history.state?.popup && ![...document.querySelectorAll(OPEN_POPUPS)].some((x) => x !== el);
+      if (waits) addEventListener('popstate', () => setTimeout(() => resolve(yes), 0), { once: true });
+      else setTimeout(() => resolve(yes), 0);
+      closePopup(el);
+    };
+    el.addEventListener('click', (e) => {
+      if (e.target === el) return finish(false);
+      const btn = e.target.closest('[data-ask]');
+      if (btn) finish(btn.dataset.ask === '1');
+    });
+    // «Назад» закрыл окно (обработчик истории убрал его сам) — это отказ
+    addEventListener('popstate', () => {
+      if (done) return;
+      done = true;
+      resolve(false);
+    }, { once: true });
+    openPopup(el);
+    el.querySelector('[data-ask="1"]').focus({ preventScroll: true });
+  });
+}
+
 function openPopup(el) {
   el.classList.add('opening');
   setTimeout(() => el.classList.remove('opening'), 320);
@@ -2141,7 +2186,7 @@ async function openScanSheet(jobId) {
     }
 
     if (e.target.closest('[data-delete]')) {
-      if (!confirm('Удалить скан? Чек можно будет отсканировать заново.')) return;
+      if (!(await ask('Удалить скан? Чек можно будет отсканировать заново.', { ok: T.common.delete, danger: true }))) return;
       try {
         await api(`/api/scan/${job.id}`, { method: 'DELETE' });
         toast('Скан удалён');
@@ -3387,7 +3432,7 @@ $('screen').addEventListener('change', async (e) => {
   const box = e.target.closest('[data-bank-acc]');
   if (!box) return;
   const ops = Number(box.dataset.ops) || 0;
-  if (!box.checked && ops && !confirm(f(T.bankCard.accounts.offConfirm, { ops: int.format(ops), opsWord: pl(ops, T.common.ops) }))) {
+  if (!box.checked && ops && !(await ask(f(T.bankCard.accounts.offConfirm, { ops: int.format(ops), opsWord: pl(ops, T.common.ops) }), { ok: T.common.disable }))) {
     box.checked = true;
     return;
   }
@@ -4166,7 +4211,8 @@ async function onScreenClick(e) {
   const hide = e.target.closest('[data-item-hide]');
   if (hide) {
     const manual = hide.textContent.includes('Удалить');
-    if (!confirm(manual ? 'Удалить эту запись?' : 'Убрать товар из расходов? Он перестанет учитываться в суммах.')) return;
+    if (!(await ask(manual ? 'Удалить эту запись?' : 'Убрать товар из расходов? Он перестанет учитываться в суммах.',
+      { ok: manual ? T.common.delete : T.common.remove, danger: true }))) return;
     try {
       await post(`/api/items/${hide.dataset.itemHide}/hide`, {});
       toast(manual ? 'Запись удалена' : 'Товар убран из расходов');
@@ -4181,9 +4227,10 @@ async function onScreenClick(e) {
   if (opKind) {
     const transfer = opKind.dataset.opKind === 'transfer';
     const income = itemShown?.income;
-    if (!confirm(transfer
+    if (!(await ask(transfer
       ? income ? T.income.transferConfirm : 'Отметить как перевод себе? Он не будет считаться расходом.'
-      : income ? T.income.excludeConfirm : 'Не учитывать эту трату? Она пропадёт из расходов.')) return;
+      : income ? T.income.excludeConfirm : 'Не учитывать эту трату? Она пропадёт из расходов.',
+    { ok: transfer ? T.common.mark : T.common.skip }))) return;
     try {
       await post(`/api/bank/ops/${opKind.dataset.id}/kind`, { kind: opKind.dataset.opKind });
       toast(transfer ? 'Отмечено как перевод себе' : income ? T.income.excluded : 'Трата больше не учитывается');
@@ -4235,14 +4282,15 @@ async function onScreenClick(e) {
     }
     if (bank.dataset.bank === 'sync') return startBankSync(id);
     if (bank.dataset.bank === 'forget') {
-      if (!confirm(T.bankCard.manage.forgetConfirm)) return;
+      if (!(await ask(T.bankCard.manage.forgetConfirm, { ok: T.common.disable }))) return;
       bankBridge(id).forget();
       await api(`/api/bank?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
       return render();
     }
     if (bank.dataset.bank === 'wipe') {
       const shop = bankById(id)?.shop;
-      if (!confirm(shop ? f(T.bankCard.manage.wipeShopConfirm, { name: bankById(id).from }) : T.bankCard.manage.wipeConfirm)) return;
+      if (!(await ask(shop ? f(T.bankCard.manage.wipeShopConfirm, { name: bankById(id).from }) : T.bankCard.manage.wipeConfirm,
+        { ok: T.common.delete, danger: true }))) return;
       bankBridge(id).forget();
       const res = await api(`/api/bank/ops?bank=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
       if (wiz?.bank === id) wiz = null; // мастер этого магазина — заново, со входа
@@ -4873,7 +4921,7 @@ async function onCatsClick(e) {
   if (hit('[data-tcat-icon]')) return openCatLook(state.tc);
   if (hit('[data-tgroup-delete]')) {
     const g = (await taxo()).groups.find((x) => x.slug === state.tg);
-    if (!g || !confirm(f(C.deleteGroupConfirm, { name: g.name }))) return;
+    if (!g || !(await ask(f(C.deleteGroupConfirm, { name: g.name }), { ok: T.common.delete, danger: true }))) return;
     try {
       await taxoCall('DELETE', `/groups/${encodeURIComponent(g.slug)}`);
       history.back();
@@ -4910,9 +4958,11 @@ async function onCatsClick(e) {
         const to = cats.find((x) => x.slug === slug);
         if (slug === c.slug || !to) return;
         // Лист выбора закрывается шагом «назад» — ждём его, прежде чем идти дальше
-        setTimeout(() => { if (confirm(f(income ? C.moveIncomeConfirm : C.moveConfirm, { name: c.name, to: to.name }))) remove(slug); }, 150);
+        setTimeout(async () => {
+          if (await ask(f(income ? C.moveIncomeConfirm : C.moveConfirm, { name: c.name, to: to.name }), { ok: T.common.move, danger: true })) remove(slug);
+        }, 150);
       }, income ? meta?.income ?? [] : undefined);
-    } else if (confirm(f(C.deleteCatConfirm, { name: c.name }))) remove('');
+    } else if (await ask(f(C.deleteCatConfirm, { name: c.name }), { ok: T.common.delete, danger: true })) remove('');
   }
 }
 
@@ -5249,7 +5299,7 @@ async function onSettingsClick(e) {
     if (invite) return shareInvite(invite);
 
     if (e.target.closest('[data-leave]')) {
-      if (!confirm(T.settings.budget.leaveConfirm)) return;
+      if (!(await ask(T.settings.budget.leaveConfirm, { ok: T.common.leave, danger: true }))) return;
       try {
         await api('/api/budget/leave', { method: 'POST' });
         location.reload();
@@ -5261,7 +5311,7 @@ async function onSettingsClick(e) {
 
     const remove = e.target.closest('[data-remove-member]');
     if (remove) {
-      if (!confirm(T.settings.budget.removeConfirm)) return;
+      if (!(await ask(T.settings.budget.removeConfirm, { ok: T.common.exclude, danger: true }))) return;
       try {
         await api(`/api/budget/members/${remove.dataset.removeMember}`, { method: 'DELETE' });
         meta = await api('/api/meta');
@@ -5273,15 +5323,15 @@ async function onSettingsClick(e) {
     }
 
     if (e.target.closest('[data-logout]')) {
-      if (!confirm(T.settings.profile.logoutConfirm)) return;
+      if (!(await ask(T.settings.profile.logoutConfirm, { ok: T.common.leave }))) return;
       await api('/api/logout', { method: 'POST' }).catch(() => {});
       token.clear();
       location.reload();
     }
 
     if (e.target.closest('[data-delete-account]')) {
-      if (!confirm(T.settings.deleteConfirm)) return;
-      if (!confirm(T.settings.deleteConfirm2)) return;
+      if (!(await ask(T.settings.deleteConfirm, { ok: T.common.delete, danger: true }))) return;
+      if (!(await ask(T.settings.deleteConfirm2, { ok: T.common.delete, danger: true }))) return;
       try {
         await api('/api/account', { method: 'DELETE' });
         token.clear();

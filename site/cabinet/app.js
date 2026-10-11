@@ -1646,17 +1646,56 @@ async function saveNote(button) {
   }
 }
 
+/**
+ * Своё окно вместо системных confirm и alert: текст и кнопки-слова. ok — подпись действия;
+ * без cancel — просто сообщение с одной кнопкой. Промис: true — согласились.
+ * Esc и нажатие мимо — отказ, Enter — согласие.
+ */
+function dialog(text, { ok = 'Да', cancel = 'Отмена', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const el = document.createElement('div');
+    el.className = 'dialog';
+    el.innerHTML = `
+      <div class="dialog-box" role="alertdialog" aria-label="${esc(text)}">
+        <p class="dialog-text">${esc(text)}</p>
+        <div class="dialog-btns">
+          ${cancel ? `<button class="btn" type="button" data-answer="0">${esc(cancel)}</button>` : ''}
+          <button class="btn ${danger ? 'danger' : 'primary'}" type="button" data-answer="1">${esc(ok)}</button>
+        </div>
+      </div>`;
+    const finish = (yes) => {
+      el.remove();
+      removeEventListener('keydown', onKey);
+      resolve(yes);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') finish(false);
+      if (e.key === 'Enter') finish(true);
+    };
+    el.addEventListener('click', (e) => {
+      if (e.target === el) return finish(false);
+      const btn = e.target.closest('[data-answer]');
+      if (btn) finish(btn.dataset.answer === '1');
+    });
+    addEventListener('keydown', onKey);
+    document.body.append(el);
+    el.querySelector('[data-answer="1"]').focus();
+  });
+}
+const failedDialog = (err) => dialog(`Не вышло: ${err.message}`, { ok: 'Понятно', cancel: '' });
+
 /** Убрать товар из расходов (задвоение, учтено где-то ещё) или удалить ручную запись. */
 async function hideItem(button) {
   const manual = button.textContent.includes('Удалить');
-  if (!confirm(manual ? 'Удалить эту запись?' : 'Убрать товар из расходов? Он перестанет учитываться в суммах.')) return;
+  if (!(await dialog(manual ? 'Удалить эту запись?' : 'Убрать товар из расходов? Он перестанет учитываться в суммах.',
+    { ok: manual ? 'Удалить' : 'Убрать', danger: true }))) return;
   try {
     await postJson(`/api/items/${button.dataset.hide}/hide`);
     state.card = '';
     renderCard();
     reload();
   } catch (err) {
-    alert(`Не вышло: ${err.message}`);
+    failedDialog(err);
   }
 }
 
@@ -1668,14 +1707,14 @@ async function setOpKind(button) {
     transfer: `Отметить как перевод себе? Он не будет считаться ${income ? 'доходом' : 'расходом'}.`,
     excluded: income ? 'Не учитывать это поступление? Оно пропадёт из доходов.' : 'Не учитывать эту трату? Она пропадёт из расходов.',
   }[kind];
-  if (ask && !confirm(ask)) return;
+  if (ask && !(await dialog(ask, { ok: kind === 'transfer' ? 'Отметить' : 'Не учитывать' }))) return;
   try {
     await postJson(`/api/bank/ops/${button.dataset.id}/kind`, { kind });
     if (kind !== 'expense' && kind !== 'income') state.card = '';
     renderCard();
     reload();
   } catch (err) {
-    alert(`Не вышло: ${err.message}`);
+    failedDialog(err);
   }
 }
 
