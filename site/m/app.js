@@ -455,13 +455,24 @@ const sortDrop = (keys = ['date', 'name', 'sum']) => drop(UI.sort, 'Сортир
   })
   .join(''));
 
-// Список открывается под своей кнопкой; нажатие мимо или на другую кнопку закрывает его.
-// Выбор строки перерисовывает шапку — список закрывается сам
+// Меню (фильтр, сортировка) на телефоне — листом снизу, как принято в мобильных приложениях:
+// выпадающий список не помещался и не листался пальцем. Строки листа — копия скрытого меню
+// у кнопки; нажатая строка нажимает свою копию в меню, и дальше работают обычные обработчики.
+// Сначала лист закрывается (снимает свою запись истории), выбор — уже после: иначе «назад»
+// от закрытия вернул бы прежнее состояние поверх выбора
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-drop]');
-  const own = btn?.nextElementSibling;
-  for (const menu of document.querySelectorAll('.drop-menu')) if (menu !== own) menu.hidden = true;
-  if (own) own.hidden = !own.hidden;
+  if (!btn) return;
+  const menu = btn.nextElementSibling;
+  const sheet = openChoice(btn.title, `<div class="choice-list">${menu.innerHTML}</div>`, (ev, close) => {
+    const row = ev.target.closest('.drop-row');
+    if (!row) return;
+    const i = [...sheet.querySelectorAll('.drop-row')].indexOf(row);
+    const pick = () => menu.querySelectorAll('.drop-row')[i]?.click();
+    if (history.state?.popup) addEventListener('popstate', () => setTimeout(pick, 0), { once: true });
+    else setTimeout(pick, 0);
+    close();
+  });
 });
 
 // Корневые экраны: у них нет «назад». «Банк» — такой же вид «Расхода», как чеки,

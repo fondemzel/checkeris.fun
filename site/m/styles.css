@@ -1854,3 +1854,9 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .drop-sep { height: 1px; margin: 6px 4px; background: var(--border); }
 .ring-row .ic { width: 30px; height: 30px; border-radius: 9px; }
 .ring-row .ic svg { width: 16px; height: 16px; }
+
+/* Меню листом снизу: строки те же, что в выпадающем меню, но крупнее и на всю ширину */
+.choice-list { display: flex; flex-direction: column; padding: 4px; border-radius: 12px; background: var(--surface); }
+.choice-list .drop-row { padding: 12px 10px; font-size: 16px; }
+.choice-list .drop-row.on { color: var(--accent); }
+.choice-list .drop-mark { margin-left: auto; display: flex; color: var(--accent); }
