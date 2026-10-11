@@ -758,32 +758,31 @@ function ringTitle(base, groupName) {
 // Какое кольцо анимировали последним и когда. Разметка кольца одна и та же при любом показе,
 // а анимацию включает playRing уже на экране: экран часто рисуется дважды — сначала
 // сохранённый вид, потом свежий, — и вторая отрисовка должна продолжить анимацию первой,
-// а не оборвать её или начать заново
-let ringPlayed = { key: '', at: 0 };
+// а не оборвать её или начать заново. at — первый нарисованный кадр, а не вставка в экран:
+// после вставки телефон ещё раскладывает страницу, и часы, пущенные раньше, съели бы начало
+let ringPlayed = { key: '', at: null };
 const RING_SWEEP = 900; // заливка круга
+const RING_POP = 300; // проявление значка
 const RING_ANIM = 1300; // заливка и проявление последнего значка
 
 function playRing() {
   const box = document.querySelector('#screen .ring-box');
   if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const now = performance.now();
-  if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: now };
-  const elapsed = now - ringPlayed.at;
-  if (elapsed >= RING_ANIM) return; // это кольцо уже показано — без анимации
-  box.style.setProperty('--elapsed', `${Math.round(elapsed)}ms`);
-  box.classList.add('ring-play'); // значки — CSS-анимацией с задержкой каждому
+  if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: null };
+  if (ringPlayed.at != null && performance.now() - ringPlayed.at >= RING_ANIM) return; // уже показано
 
-  // Заливка — по кадрам: на каждом кадре дуга дошла до места sweep, и каждому сектору видна его
-  // часть до этого места. Одна кривая на весь круг, сколько бы ни было секторов. (Маска с
-  // анимацией не годится: браузер не перерисовывает её по ходу анимации.)
+  // Заливка и значки — одним циклом по кадрам, на одних часах. Заливка: дуга дошла до места
+  // sweep, каждому сектору видна его часть до этого места — одна кривая на весь круг, сколько
+  // бы ни было секторов. Значок проявляется, когда заливка дошла до середины его сектора.
+  // (Маска с анимацией не годится: браузер не перерисовывает её по ходу анимации.)
   const len = Number(box.dataset.len);
   const arcs = [...box.querySelectorAll('.ring-arc')].map((el) => ({
     el, start: Number(el.dataset.start), dash: Number(el.dataset.dash), full: el.getAttribute('stroke-dasharray'),
   }));
-  const frame = () => {
-    if (!box.isConnected) return; // экран перерисовали — продолжит новая отрисовка
-    const t = Math.min(1, (performance.now() - ringPlayed.at) / RING_SWEEP);
-    const sweep = (1 - (1 - t) ** 3) * len; // ease-out по кубу — та же кривая, что у значков
+  const icons = [...box.querySelectorAll('.ring-ic')].map((el) => ({ el, show: Number(el.dataset.show) }));
+  const paint = (elapsed) => {
+    const t = Math.min(1, elapsed / RING_SWEEP);
+    const sweep = (1 - (1 - t) ** 3) * len; // ease-out по кубу
     for (const a of arcs) {
       if (t >= 1) a.el.setAttribute('stroke-dasharray', a.full);
       else {
@@ -791,9 +790,23 @@ function playRing() {
         a.el.setAttribute('stroke-dasharray', `${shown.toFixed(3)} ${(len - shown).toFixed(3)}`);
       }
     }
-    if (t < 1) requestAnimationFrame(frame);
+    for (const i of icons) {
+      const k = Math.min(1, Math.max(0, (elapsed - i.show) / RING_POP));
+      const e = 1 - (1 - k) ** 2;
+      i.el.style.opacity = k >= 1 ? '' : e.toFixed(3);
+      i.el.style.scale = k >= 1 ? '' : (0.6 + 0.4 * e).toFixed(3);
+    }
   };
-  frame();
+  // До первого кадра — пустое кольцо (или то место, где анимацию прервала перерисовка)
+  paint(ringPlayed.at == null ? 0 : performance.now() - ringPlayed.at);
+  const frame = (now) => {
+    if (!box.isConnected) return; // экран перерисовали — продолжит новая отрисовка
+    ringPlayed.at ??= now;
+    const elapsed = now - ringPlayed.at;
+    paint(elapsed);
+    if (elapsed < RING_ANIM) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 function ringView(parts, total, countText, kind) {
@@ -911,7 +924,7 @@ function ringView(parts, total, countText, kind) {
     const [x, y] = point(p.mid, R);
     const color = p.color ?? '#c9ced6';
     return `
-      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;--show:${p.show.toFixed(0)}ms"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
+      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-show="${p.show.toFixed(0)}"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
         <span class="ring-sum">${pct(p)}%</span>
         <span class="ic" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
         <span class="ring-sum">${money(p.sum)}</span>
