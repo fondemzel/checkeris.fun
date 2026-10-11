@@ -968,10 +968,14 @@ function ringView(parts, total, countText, kind, overall = null) {
         <span class="ring-sum">${below(p)}</span>
       </button>`;
   }).join('');
-  // Расшифровка — все по отдельности; ушедшие в «Остальное» — его цветом
+  // Расшифровка — все по отдельности, со значками; ушедшие в «Остальное» — его цветом
   const rows = all.map((p) => `
     <button class="ring-row" type="button"${tap(p)}>
-      <span class="op-cat" style="background:${merged.has(p) ? other.color : (p.color ?? '#c9ced6')}"></span>
+      ${(() => {
+        // Значок группы или категории — в цвете её сектора (ушедшие в «Остальное» — его цветом)
+        const c = merged.has(p) ? other.color : p.color ?? '#c9ced6';
+        return `<span class="ic" style="background:${c};color:${readableText(c)}">${groupIcon(p.icon ?? 'none')}</span>`;
+      })()}
       <span class="ring-name">${esc(p.name)}</span>
       <span class="ring-share">${pct(p)}%</span>
       <b>${money(p.sum)}</b>

@@ -1815,3 +1815,5 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Меню фильтра расходов: источники, под чертой — группы; длинное — листается */
 .drop-menu { max-height: 70vh; overflow-y: auto; }
 .drop-sep { height: 1px; margin: 6px 4px; background: var(--border); }
+.ring-row .ic { width: 30px; height: 30px; border-radius: 9px; }
+.ring-row .ic svg { width: 16px; height: 16px; }
