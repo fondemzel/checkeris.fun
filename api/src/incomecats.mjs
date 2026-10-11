@@ -101,8 +101,8 @@ export function updateIncomeGroup(db, budgetId, slug, body) {
   if (!name) return fail(400, 'название не может быть пустым');
   const icon = body.icon === undefined ? group.icon : trim(body.icon) || null;
   const color = body.color === undefined ? group.color : hex(body.color);
-  let from = body.shade_from === undefined ? group.shade_from : clamp(body.shade_from, 5, 100);
-  let to = body.shade_to === undefined ? group.shade_to : clamp(body.shade_to, 5, 100);
+  let from = body.shade_from === undefined ? group.shade_from : clamp(body.shade_from, 1, 99);
+  let to = body.shade_to === undefined ? group.shade_to : clamp(body.shade_to, 1, 99);
   if (from > to) [from, to] = [to, from];
   db.prepare('UPDATE income_groups SET name = ?, icon = ?, color = ?, shade_from = ?, shade_to = ? WHERE budget_id = ? AND slug = ?')
     .run(name, icon, color, from, to, budgetId, slug);

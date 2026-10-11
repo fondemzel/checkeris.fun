@@ -14,7 +14,7 @@ import { shades as lightShades, edge, readableText, hslToHex, hexToHsl, hexToRgb
 /**
  * Оттенки категорий группы (см. shared/colors.js). В светлой теме цвет группы разбавляется
  * белым; в тёмной так бледные категории превращались в белёсые точки, поэтому там он
- * разбавляется фоном карточки и слабее — порядок и различимость те же, но в тон теме.
+ * разбавляется фоном карточки — порядок и различимость те же, но в тон теме.
  */
 function shades(hex, n, from = 25, to = 85) {
   if (document.documentElement.dataset.theme !== 'dark') return lightShades(hex, n, from, to);
@@ -22,7 +22,7 @@ function shades(hex, n, from = 25, to = 85) {
   if (!rgb || n <= 0) return Array.from({ length: Math.max(0, n) }, () => null);
   const base = { r: 0x18, g: 0x20, b: 0x29 }; // --surface тёмной темы
   const mix = (pct) => {
-    const k = 0.35 + 0.65 * (pct / 100);
+    const k = 0.08 + 0.92 * (pct / 100); // 1% — почти фон, как в светлой теме почти белый
     const ch = (c, b) => Math.round(b + (c - b) * k).toString(16).padStart(2, '0');
     return `#${ch(rgb.r, base.r)}${ch(rgb.g, base.g)}${ch(rgb.b, base.b)}`;
   };
@@ -4646,9 +4646,9 @@ async function screenSetGroup() {
       <div class="bar-label">${C.color}</div>
       <input class="hue" type="range" min="0" max="359" value="${Math.round(h)}" data-ghue data-s="${s}" data-l="${l}" aria-label="${esc(C.color)}" />
       <div class="bar-label">${C.shade}</div>
-      <div class="dual" style="background:linear-gradient(90deg, ${shades(color, 2, 5, 100).join(', ')})">
-        <input type="range" min="5" max="100" value="${g.shade_from}" data-shade="shade_from" aria-label="${esc(C.shadeFrom)}" />
-        <input type="range" min="5" max="100" value="${g.shade_to}" data-shade="shade_to" aria-label="${esc(C.shadeTo)}" />
+      <div class="dual" style="background:linear-gradient(90deg, ${shades(color, 2, 1, 99).join(', ')})">
+        <input type="range" min="1" max="99" value="${g.shade_from}" data-shade="shade_from" aria-label="${esc(C.shadeFrom)}" />
+        <input type="range" min="1" max="99" value="${g.shade_to}" data-shade="shade_to" aria-label="${esc(C.shadeTo)}" />
       </div>
     </div>`;
   return section(C.groupSettings, '',
@@ -4734,7 +4734,7 @@ $('screen').addEventListener('input', (e) => {
   const { color, shade_from, shade_to } = groupBars();
   const row = e.target.closest('.bar-row');
   row.style.setProperty('--pick', color);
-  row.querySelector('.dual').style.background = `linear-gradient(90deg, ${shades(color, 2, 5, 100).join(', ')})`;
+  row.querySelector('.dual').style.background = `linear-gradient(90deg, ${shades(color, 2, 1, 99).join(', ')})`;
   const badge = document.querySelector('#screen .gic');
   badge.style.background = color;
   badge.style.color = readableText(color);

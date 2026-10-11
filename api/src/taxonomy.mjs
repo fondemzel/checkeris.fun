@@ -141,9 +141,9 @@ export function updateGroup(db, budgetId, slug, body) {
   const color = body.color === undefined ? group.color : hexColor(body.color);
 
   // Диапазон оттенков: между ними раскладываются категории группы. Держим from < to
-  // и не даём подойти вплотную к белому — иначе первая категория станет неразличимой.
-  let from = body.shade_from === undefined ? group.shade_from : clamp(body.shade_from, 5, 100);
-  let to = body.shade_to === undefined ? group.shade_to : clamp(body.shade_to, 5, 100);
+  // и не даём дойти до самых краёв: 0% — сам фон, категория на нём пропала бы.
+  let from = body.shade_from === undefined ? group.shade_from : clamp(body.shade_from, 1, 99);
+  let to = body.shade_to === undefined ? group.shade_to : clamp(body.shade_to, 1, 99);
   if (from > to) [from, to] = [to, from];
 
   db.prepare(

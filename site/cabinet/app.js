@@ -1071,7 +1071,7 @@ function bindColorPicker() {
     const box = pane.querySelector('.color-picker');
     const rect = $('shade-bar').getBoundingClientRect();
     const value = Math.round(clampPct(((event.clientX - rect.left) / rect.width) * 100));
-    box.dataset[which] = String(Math.max(5, value));
+    box.dataset[which] = String(Math.min(99, Math.max(1, value))); // как на сервере: 1–99
     // Ползунки не должны меняться местами — тянем ближний край за собой
     if (Number(box.dataset.from) > Number(box.dataset.to)) {
       box.dataset[which === 'from' ? 'to' : 'from'] = box.dataset[which];
