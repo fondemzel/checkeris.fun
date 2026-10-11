@@ -5067,7 +5067,7 @@ $('screen').addEventListener('click', (e) => {
   if (set && ['cats', 'incats'].includes(set.dataset.set)) return go({ screen: 'set_cats', tk: set.dataset.set === 'incats' ? 'in' : '' });
   if (set) return go({ screen: `set_${set.dataset.set}` });
   if (!state.screen.startsWith('set')) return;
-  if (e.target.closest('[data-tlook], [data-tcat], [data-tgroup], [data-tcat-add], [data-tgroup-add], [data-tgroup-icon], [data-tgroup-delete], [data-tcat-move], [data-tcat-delete]')) return onCatsClick(e);
+  if (e.target.closest('[data-tlook], [data-tcat], [data-tgroup], [data-tcat-add], [data-tgroup-add], [data-tgroup-icon], [data-tcat-icon], [data-tgroup-delete], [data-tcat-move], [data-tcat-delete]')) return onCatsClick(e);
   onSettingsClick(e);
 });
 
