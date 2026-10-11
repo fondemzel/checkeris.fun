@@ -22,7 +22,7 @@ import {
   setItemNote,
   hideItem,
 } from './queries.mjs';
-import { loadCategories, syncCategories } from './categories.mjs';
+import { flatten, loadCategories, syncCategories } from './categories.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
 import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
 import { unlabeled, labelBatch } from './autolabel.mjs';
@@ -42,7 +42,7 @@ import { freshItems } from './fresh.mjs';
 import { knownShop, knownCheques, importCheque, finishSync, shopStats, forgetShop } from './shops.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import {
-  getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat,
+  getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat, fillIncomeIcons,
 } from './incomecats.mjs';
 import { listAccounts, saveAccounts, rememberLoadedAccounts, mergePrefixedAccounts } from './bankaccounts.mjs';
 import { loadEnv } from './llm.mjs';
@@ -122,6 +122,25 @@ if (!db.prepare('SELECT COUNT(*) c FROM sys_categories').get().c) {
   } catch (err) {
     console.error('системный справочник не залит:', err.message);
   }
+}
+
+// Значки категорий появились позже справочника: NULL — ещё не проставлен. Системным — из
+// файла, копиям системных в бюджетах — от их системной, остальным — «как у группы» ('').
+// Выбор человека (имя или '') не трогаем, поэтому каждый следующий запуск ничего не меняет
+try {
+  const fileIcons = flatten(loadCategories());
+  const setSys = db.prepare('UPDATE sys_categories SET icon = ? WHERE slug = ? AND icon IS NULL');
+  for (const c of fileIcons) setSys.run(c.icon, c.slug);
+  db.prepare("UPDATE sys_categories SET icon = '' WHERE icon IS NULL").run();
+  db.prepare(
+    `UPDATE categories SET icon = COALESCE((SELECT s.icon FROM sys_categories s
+        JOIN category_links k ON k.sys_slug = s.slug AND k.slug = s.slug
+       WHERE s.slug = categories.slug AND k.budget_id = categories.budget_id), '')
+     WHERE icon IS NULL`,
+  ).run();
+  fillIncomeIcons(db);
+} catch (err) {
+  console.error('значки категорий не проставлены:', err.message);
 }
 
 // У каждого пользователя есть бюджет со справочником. Если кого-то завели без него

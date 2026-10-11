@@ -54,7 +54,7 @@ const findGroup = (db, budgetId, slug) =>
   db.prepare(`SELECT ${GROUP_COLUMNS} FROM groups WHERE budget_id = ? AND slug = ?`).get(budgetId, slug);
 
 const findCategory = (db, budgetId, slug) =>
-  db.prepare('SELECT slug, group_slug, name, hint, sort FROM categories WHERE budget_id = ? AND slug = ?').get(budgetId, slug);
+  db.prepare('SELECT slug, group_slug, name, icon, hint, sort FROM categories WHERE budget_id = ? AND slug = ?').get(budgetId, slug);
 
 /**
  * Справочник новому бюджету — копия системного, и каждая системная категория
@@ -69,8 +69,8 @@ export function provisionTaxonomy(db, budgetId) {
      SELECT ?, ${GROUP_COLUMNS} FROM sys_groups`,
   ).run(budgetId);
   db.prepare(
-    `INSERT INTO categories (budget_id, slug, group_slug, name, hint, sort)
-     SELECT ?, slug, group_slug, name, hint, sort FROM sys_categories`,
+    `INSERT INTO categories (budget_id, slug, group_slug, name, icon, hint, sort)
+     SELECT ?, slug, group_slug, name, COALESCE(icon, ''), hint, sort FROM sys_categories`,
   ).run(budgetId);
   db.prepare(
     `INSERT INTO category_links (budget_id, sys_slug, slug)
@@ -86,7 +86,7 @@ export function getTaxonomy(db, budgetId) {
     .all(budgetId);
   const cats = db
     .prepare(
-      `SELECT c.slug, c.group_slug, c.name, c.hint, c.sort,
+      `SELECT c.slug, c.group_slug, c.name, c.icon, c.hint, c.sort,
               (SELECT COUNT(*) FROM item_labels l
                 WHERE l.budget_id = c.budget_id AND l.category_slug = c.slug) AS items,
               (SELECT COUNT(*) FROM budget_dictionary d
@@ -174,11 +174,12 @@ export function createCategory(db, budgetId, body) {
 
   // slug рождается с префиксом группы — так он читаем; связь с группой держит колонка
   const slug = freeSlug(db, 'categories', budgetId, `${groupSlug}.${translit(name) || 'category'}`);
-  db.prepare('INSERT INTO categories (budget_id, slug, group_slug, name, hint, sort) VALUES (?, ?, ?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO categories (budget_id, slug, group_slug, name, icon, hint, sort) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
     budgetId,
     slug,
     groupSlug,
     name,
+    trim(body.icon), // пусто — значок группы
     trim(body.hint) || null,
     nextSort(db, 'categories', budgetId, 'AND group_slug = ?', [groupSlug]),
   );
@@ -197,10 +198,12 @@ export function updateCategory(db, budgetId, slug, body) {
 
   const hint = body.hint === undefined ? category.hint : trim(body.hint) || null;
   const sort = body.sort === undefined ? category.sort : Number(body.sort);
+  const icon = body.icon === undefined ? category.icon ?? '' : trim(body.icon); // '' — как у группы
 
-  db.prepare('UPDATE categories SET name = ?, group_slug = ?, hint = ?, sort = ? WHERE budget_id = ? AND slug = ?').run(
+  db.prepare('UPDATE categories SET name = ?, group_slug = ?, icon = ?, hint = ?, sort = ? WHERE budget_id = ? AND slug = ?').run(
     name,
     groupSlug,
+    icon,
     hint,
     sort,
     budgetId,

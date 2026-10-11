@@ -17,27 +17,37 @@ const stamp = () => Date.now().toString(36) + Math.floor(Math.random() * 36).toS
 // Стартовый набор — общий для всех; дальше каждый бюджет правит его как хочет:
 // заводит «Проекты» с категорией на проект или «Аренду» с категорией на квартиру
 const DEFAULTS = [
-  ['work', 'Работа', 'briefcase', '#46a758', [['in.salary', 'Зарплата'], ['in.bonus', 'Премии']]],
-  ['invest', 'Инвестиции', 'trending', '#3b7bce', [['in.dividends', 'Дивиденды'], ['in.interest', 'Проценты по вкладам']]],
-  ['other', 'Прочее', 'dots', '#7c8894', [['in.cashback', 'Кэшбэк'], ['in.gifts', 'Подарки'], ['in.other', 'Другое']]],
+  ['work', 'Работа', 'briefcase', '#46a758', [['in.salary', 'Зарплата', 'banknote'], ['in.bonus', 'Премии', 'award']]],
+  ['invest', 'Инвестиции', 'trending', '#3b7bce', [['in.dividends', 'Дивиденды', 'pie'], ['in.interest', 'Проценты по вкладам', 'percent']]],
+  ['other', 'Прочее', 'dots', '#7c8894', [['in.cashback', 'Кэшбэк', 'badge_percent'], ['in.gifts', 'Подарки', 'gift'], ['in.other', 'Другое', 'dots']]],
 ];
 
 /** Стартовый справочник новому бюджету. Своей транзакции не открывает. */
 export function provisionIncome(db, budgetId) {
   if (db.prepare('SELECT 1 FROM income_groups WHERE budget_id = ? LIMIT 1').get(budgetId)) return;
   const group = db.prepare('INSERT INTO income_groups (budget_id, slug, name, icon, color, sort) VALUES (?, ?, ?, ?, ?, ?)');
-  const cat = db.prepare('INSERT INTO income_cats (budget_id, slug, group_slug, name, sort) VALUES (?, ?, ?, ?, ?)');
+  const cat = db.prepare('INSERT INTO income_cats (budget_id, slug, group_slug, name, icon, sort) VALUES (?, ?, ?, ?, ?, ?)');
   DEFAULTS.forEach(([slug, name, icon, color, cats], i) => {
     group.run(budgetId, slug, name, icon, color, i * 10);
-    cats.forEach(([cslug, cname], j) => cat.run(budgetId, cslug, slug, cname, j * 10));
+    cats.forEach(([cslug, cname, cicon], j) => cat.run(budgetId, cslug, slug, cname, cicon, j * 10));
   });
+}
+
+/**
+ * Значки категориям, у которых их ещё нет (NULL — колонка появилась позже справочника):
+ * стартовым — из набора выше, своим — «как у группы». Выбор человека ('' или имя) не трогает.
+ */
+export function fillIncomeIcons(db) {
+  const set = db.prepare('UPDATE income_cats SET icon = ? WHERE slug = ? AND icon IS NULL');
+  for (const [, , , , cats] of DEFAULTS) for (const [slug, , icon] of cats) set.run(icon, slug);
+  db.prepare("UPDATE income_cats SET icon = '' WHERE icon IS NULL").run();
 }
 
 const GROUP_COLUMNS = 'slug, name, icon, color, shade_from, shade_to, sort';
 const findGroup = (db, budgetId, slug) =>
   db.prepare(`SELECT ${GROUP_COLUMNS} FROM income_groups WHERE budget_id = ? AND slug = ?`).get(budgetId, slug);
 const findCat = (db, budgetId, slug) =>
-  db.prepare('SELECT slug, group_slug, name, sort FROM income_cats WHERE budget_id = ? AND slug = ?').get(budgetId, slug);
+  db.prepare('SELECT slug, group_slug, name, icon, sort FROM income_cats WHERE budget_id = ? AND slug = ?').get(budgetId, slug);
 const nextSort = (db, table, budgetId, where = '', args = []) =>
   db.prepare(`SELECT COALESCE(MAX(sort), 0) + 10 AS s FROM ${table} WHERE budget_id = ? ${where}`).get(budgetId, ...args).s;
 
@@ -46,7 +56,7 @@ export function getIncomeTaxonomy(db, budgetId) {
   const groups = db.prepare(`SELECT ${GROUP_COLUMNS} FROM income_groups WHERE budget_id = ? ORDER BY sort, slug`).all(budgetId);
   const cats = db
     .prepare(
-      `SELECT c.slug, c.group_slug, c.name, c.sort,
+      `SELECT c.slug, c.group_slug, c.name, c.icon, c.sort,
               (SELECT COUNT(*) FROM bank_ops o WHERE o.budget_id = c.budget_id AND o.category_slug = c.slug) AS ops
          FROM income_cats c WHERE c.budget_id = ? ORDER BY c.sort, c.slug`,
     )
@@ -62,7 +72,7 @@ export function incomeMeta(db, budgetId) {
   return getIncomeTaxonomy(db, budgetId).groups.map(({ categories, ...g }) => ({
     ...g,
     items: categories.reduce((n, c) => n + c.ops, 0),
-    subcategories: categories.map((c) => ({ slug: c.slug, name: c.name, items: c.ops })),
+    subcategories: categories.map((c) => ({ slug: c.slug, name: c.name, icon: c.icon || null, items: c.ops })),
   }));
 }
 
@@ -116,8 +126,8 @@ export function createIncomeCat(db, budgetId, body) {
   if (!name) return fail(400, 'нужно название категории');
   if (!findGroup(db, budgetId, groupSlug)) return fail(400, 'нет такой группы');
   const slug = `in.c${stamp()}`;
-  db.prepare('INSERT INTO income_cats (budget_id, slug, group_slug, name, sort) VALUES (?, ?, ?, ?, ?)')
-    .run(budgetId, slug, groupSlug, name, nextSort(db, 'income_cats', budgetId, 'AND group_slug = ?', [groupSlug]));
+  db.prepare('INSERT INTO income_cats (budget_id, slug, group_slug, name, icon, sort) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(budgetId, slug, groupSlug, name, trim(body.icon), nextSort(db, 'income_cats', budgetId, 'AND group_slug = ?', [groupSlug]));
   return { category: findCat(db, budgetId, slug) };
 }
 
@@ -128,7 +138,8 @@ export function updateIncomeCat(db, budgetId, slug, body) {
   if (!name) return fail(400, 'название не может быть пустым');
   const groupSlug = body.group_slug === undefined ? cat.group_slug : trim(body.group_slug);
   if (!findGroup(db, budgetId, groupSlug)) return fail(400, 'нет такой группы');
-  db.prepare('UPDATE income_cats SET name = ?, group_slug = ? WHERE budget_id = ? AND slug = ?').run(name, groupSlug, budgetId, slug);
+  const icon = body.icon === undefined ? cat.icon ?? '' : trim(body.icon); // '' — как у группы
+  db.prepare('UPDATE income_cats SET name = ?, group_slug = ?, icon = ? WHERE budget_id = ? AND slug = ?').run(name, groupSlug, icon, budgetId, slug);
   return { category: findCat(db, budgetId, slug) };
 }
 

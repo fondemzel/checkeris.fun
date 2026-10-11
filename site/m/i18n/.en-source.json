@@ -105,6 +105,7 @@
  "settings.cats.nameNote": "название",
  "settings.cats.icon": "Значок",
  "settings.cats.iconSearch": "Поиск: еда, дом, машина…",
+ "settings.cats.iconOfGroup": "Как у группы",
  "settings.cats.color": "Цвет",
  "settings.cats.deleteGroup": "Удалить группу",
  "settings.cats.deleteGroupBusy": "сначала перенесите или удалите её категории",

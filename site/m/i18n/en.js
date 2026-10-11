@@ -84,6 +84,7 @@ export const en = {
       nameNote: 'name',
       icon: 'Icon',
       iconSearch: 'Search: food, home, car…',
+      iconOfGroup: 'Same as group',
       color: 'Colour',
       deleteGroup: 'Delete group',
       deleteGroupBusy: 'move or delete its categories first',

@@ -791,15 +791,18 @@ function renderTree() {
     .map((g) => {
       const active = state.node === `g:${g.slug}`;
       const tones = categoryShades(g);
-      const swatch = (color) =>
-        color ? `<span class="tree-swatch" style="background:${color};border-color:${edge(color)}"></span>` : '';
+      // Категория — её значком (не выбран — значком группы) в её оттенке
+      const swatch = (color, icon) =>
+        color
+          ? `<span class="tree-swatch tree-ic" style="background:${color};border-color:${edge(color)};color:${readableText(color)}">${groupIcon(icon || g.icon || 'none')}</span>`
+          : '';
       const rows = g.categories
         .map((c, i) => {
           const on = state.node === `c:${c.slug}`;
           return (
             `<button class="tree-row tree-cat${on ? ' selected' : ''}" type="button" draggable="true"` +
             ` data-node="c:${esc(c.slug)}" data-cat="${esc(c.slug)}" data-group="${esc(g.slug)}">` +
-            `${swatch(tones[i])}<span class="ellipsis-text">${esc(c.name)}</span>` +
+            `${swatch(tones[i], c.icon)}<span class="ellipsis-text">${esc(c.name)}</span>` +
             `<span class="dim tree-count">${c.items ? int.format(c.items) : ''}</span></button>`
           );
         })
@@ -836,7 +839,12 @@ const iconGrid = (names, current) =>
 
 // Выбранная иконка хранится на сетке, а не ищется в DOM: поиск может её отфильтровать,
 // и тогда выбор бы потерялся при следующем нажатии клавиши.
-const iconPicker = (current) =>
+// inherit — значок группы: у категории первым вариантом «как у группы» (значок — пустая строка)
+const iconPicker = (current, inherit) =>
+  (inherit
+    ? `<button class="icon-option icon-inherit${current ? '' : ' selected'}" type="button" data-icon="">` +
+      `${groupIcon(inherit)}<span>Как у группы</span></button>`
+    : '') +
   `<input id="icon-search" type="search" placeholder="Поиск иконки: еда, ремонт, налог…" autocomplete="off" />` +
   `<div class="icon-picker" id="icon-grid" data-current="${esc(current ?? '')}">${iconGrid(searchIcons(''), current)}</div>` +
   `<p class="dim" id="icon-empty" hidden>Ничего не нашлось. Попробуйте другое слово.</p>`;
@@ -959,6 +967,8 @@ function categoryEditor(c) {
         .map((g) => `<option value="${esc(g.slug)}"${g.slug === c.group_slug ? ' selected' : ''}>${esc(g.name)}</option>`)
         .join('')}</select>
     </div>
+    <div class="card-section">Иконка</div>
+    <div class="editor">${iconPicker(c.icon ?? '', taxonomy.groups.find((g) => g.slug === c.group_slug)?.icon || 'none')}</div>
     <div class="card-section">Подсказка модели</div>
     <div class="editor">
       <textarea id="node-hint" rows="3" placeholder="что относится к категории, а что нет">${esc(c.hint ?? '')}</textarea>
@@ -1150,7 +1160,7 @@ async function saveNode() {
         const { color, from, to } = pickerState($('detail').querySelector('.color-picker'));
         return { name: $('node-name').value, icon: $('icon-grid').dataset.current, color, shade_from: from, shade_to: to };
       })()
-    : { name: $('node-name').value, group_slug: $('node-group').value, hint: $('node-hint').value };
+    : { name: $('node-name').value, group_slug: $('node-group').value, hint: $('node-hint').value, icon: $('icon-grid').dataset.current };
 
   try {
     await taxonomyCall('PATCH', `/${isGroup ? 'groups' : 'categories'}/${encodeURIComponent(slug)}`, body);

@@ -41,6 +41,10 @@ export function migrate(db) {
   // Колонки, на которые смотрит v_items, — до схемы: она пересоздаёт представление
   addColumn(db, 'receipts', 'prepay_kind', 'TEXT');
   addColumn(db, 'receipts', 'prepaid_by', 'INTEGER');
+  // Значки категорий: пустая строка — «как у группы», NULL — ещё не проставлен (server.mjs)
+  addColumn(db, 'sys_categories', 'icon', 'TEXT');
+  addColumn(db, 'categories', 'icon', 'TEXT');
+  addColumn(db, 'income_cats', 'icon', 'TEXT');
   // Чеки Озона стали чеками магазинов: таблица та же, имя общее
   if (tableExists(db, 'ozon_cheques') && !tableExists(db, 'shop_cheques')) db.exec('ALTER TABLE ozon_cheques RENAME TO shop_cheques');
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'));

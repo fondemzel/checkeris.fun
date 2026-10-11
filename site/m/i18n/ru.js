@@ -111,6 +111,7 @@ export const ru = {
       nameNote: 'название',
       icon: 'Значок',
       iconSearch: 'Поиск: еда, дом, машина…',
+      iconOfGroup: 'Как у группы',
       color: 'Цвет',
       deleteGroup: 'Удалить группу',
       deleteGroupBusy: 'сначала перенесите или удалите её категории',

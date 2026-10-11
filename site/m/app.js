@@ -444,6 +444,9 @@ document.addEventListener('click', (e) => {
 const TOP = ['summary', 'receipts', 'bank', 'income', 'settings', 'stats'];
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;
+/** Значок категории: свой, а не выбран — её группы. found — из findCategory или incomeCat. */
+const catIcon = (found) => found?.category?.icon || found?.group?.icon || 'none';
+
 const findCategory = (slug) => {
   for (const g of meta?.categories ?? []) {
     const s = g.subcategories.find((x) => x.slug === slug);
@@ -729,7 +732,7 @@ async function screenSummary() {
       shownItems.forEach((r) => addCat(r.category_slug, r.sum));
       shownOps.forEach((op) => addCat(op.category_slug, op.amount));
       const cats = opened.subcategories.map((c) => ({
-        key: c.slug, name: c.name, color: categoryColor(opened.slug, c.slug) ?? opened.color, icon: opened.icon, sum: byCat.get(c.slug) ?? 0,
+        key: c.slug, name: c.name, color: categoryColor(opened.slug, c.slug) ?? opened.color, icon: c.icon || opened.icon, sum: byCat.get(c.slug) ?? 0,
       }));
       const groupSum = cats.reduce((n, c) => n + c.sum, 0);
       return `${head}${failedLink}${ringView(cats, groupSum, opened.name, 'summary-cat')}`;
@@ -917,7 +920,7 @@ async function screenGroup() {
       row({
         href: `data-category="${esc(r.key ?? NONE)}"`,
         color: categoryColor(state.group, r.key),
-        icon: null,
+        icon: r.key ? catIcon(findCategory(r.key)) : null,
         title: r.name ?? 'Без категории',
         note: `${int.format(r.count)} ${plural(r.count, 'позиция', 'позиции', 'позиций')}`,
         sum: r.sum,
@@ -1122,7 +1125,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = []) {
 
       const row = `${head}
       <button class="row item" type="button" ${r.action}${r.group ? ` data-long="${esc(r.group)}"` : ''}>
-        <span class="ic" style="background:${color};color:${readableText(color)}">${r.self ? UI.swap : groupIcon(found?.group.icon ?? 'none')}</span>
+        <span class="ic" style="background:${color};color:${readableText(color)}">${r.self ? UI.swap : groupIcon(catIcon(found))}</span>
         <span class="row-main">
           <span class="row-title">${esc(r.name)}</span>
           <span class="row-note">${note}${toggle}</span>
@@ -1348,7 +1351,7 @@ async function screenIncome() {
       const byCat = new Map();
       for (const op of rows) byCat.set(op.category_slug, (byCat.get(op.category_slug) ?? 0) + op.amount);
       const cats = opened.subcategories.map((c) => ({
-        key: c.slug, name: c.name, color: incomeCat(c.slug)?.color ?? opened.color, icon: opened.icon, sum: byCat.get(c.slug) ?? 0,
+        key: c.slug, name: c.name, color: incomeCat(c.slug)?.color ?? opened.color, icon: c.icon || opened.icon, sum: byCat.get(c.slug) ?? 0,
       }));
       return `${head}${ringView(cats, cats.reduce((n, c) => n + c.sum, 0), opened.name, 'income-cat')}`;
     }
@@ -2286,7 +2289,7 @@ function incomeButton(slug) {
       <span class="cat-name muted">${T.income.pick}</span>`;
   }
   const color = found.group.color ?? '#eef1f5';
-  return `<span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(found.group.icon ?? 'none')}</span>
+  return `<span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(catIcon(found))}</span>
     <span class="cat-name">${esc(found.name)}<small>${esc(found.group.name)}</small></span>`;
 }
 
@@ -2319,7 +2322,7 @@ function categoryButton(slug) {
       <span class="cat-name muted">Выбрать категорию</span>`;
   }
   const color = found.group.color ?? '#eef1f5';
-  return `<span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(found.group.icon ?? 'none')}</span>
+  return `<span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(catIcon(found))}</span>
     <span class="cat-name">${esc(found.category.name)}<small>${esc(found.group.name)}</small></span>`;
 }
 
@@ -2425,7 +2428,7 @@ function sheetRow(item, { open = false } = {}) {
   const guess = item.category_slug && !human ? ' guess' : '';
 
   const body = `
-      <span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(group?.icon ?? 'none')}</span>
+      <span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(catIcon(findCategory(item.category_slug) ?? { group }))}</span>
       <span class="sheet-main">
         <span class="sheet-name">${esc(item.name)}</span>
         <span class="sheet-cat">${esc(item.category_name ?? 'выбрать категорию')}</span>
@@ -2555,7 +2558,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
             .map(
               (s, i) => `
               <button class="picker-item" type="button" data-category="${esc(s.slug)}">
-                <span class="dot" style="background:${tones[i] ?? group.color ?? '#eef1f5'}"></span>
+                <span class="pick-ic" style="background:${tones[i] ?? group.color ?? '#eef1f5'};color:${readableText(tones[i] ?? group.color ?? '#eef1f5')}">${groupIcon(s.icon || group.icon || 'none')}</span>
                 <span>${esc(s.name)}</span>
               </button>`,
             )
@@ -2670,7 +2673,7 @@ async function saveCategory(itemId, slug, { only = false, seller = false } = {})
     const ic = row.querySelector('.pick-ic');
     ic.style.background = color;
     ic.style.color = readableText(color);
-    ic.innerHTML = groupIcon(group?.icon ?? 'none');
+    ic.innerHTML = groupIcon(catIcon(findCategory(slug)));
     row.classList.remove('guess'); // выбор человека, точку снимаем
     row.querySelector('.sheet-cat').textContent =
       (data.category?.name ?? 'выбрать категорию') +
@@ -4391,6 +4394,11 @@ const groupBadge = (g) => {
   return `<span class="gic" style="background:${color};color:${readableText(color)}">${groupIcon(g.icon ?? 'none')}</span>`;
 };
 const catDot = (color) => `<span class="cat-dot" style="background:${color ?? '#d7dbe2'}"></span>`;
+// Значок категории в настройках: её оттенок и её значок (не выбран — значок группы)
+const catBadge = (color, icon) => {
+  const c = color ?? '#d7dbe2';
+  return `<span class="gic" style="background:${c};color:${readableText(c)}">${groupIcon(icon || 'none')}</span>`;
+};
 const catTones = (g) => shades(g.color ?? '', g.categories.length, g.shade_from, g.shade_to);
 const catUsed = (c) => c.items + (c.ops ?? 0);
 
@@ -4425,7 +4433,7 @@ async function screenSetGroup() {
   const cats = g.categories.map((c, i) => {
     const n = catUsed(c);
     return srow({
-      icon: catDot(tones[i] ?? g.color).replace('class="cat-dot"', 'class="cat-dot" data-tone'),
+      icon: catBadge(tones[i] ?? g.color, c.icon || g.icon).replace('class="gic"', 'class="gic" data-tone'),
       bare: true,
       title: esc(c.name),
       note: n ? `${int.format(n)} ${pl(n, usedWord())}` : C.unused,
@@ -4463,7 +4471,8 @@ async function screenSetCat() {
   if (!c) return `<div class="empty">${C.gone}</div>`;
   const tone = catTones(g)[g.categories.indexOf(c)] ?? g.color;
   return section(C.category, '',
-    srow({ icon: catDot(tone), bare: true, title: inlineEdit('tcat', c.name, { cls: 'srow-input', label: C.category, max: 40 }), note: C.nameNote })
+    srow({ icon: catBadge(tone, c.icon || g.icon), bare: true, title: inlineEdit('tcat', c.name, { cls: 'srow-input', label: C.category, max: 40 }), note: C.nameNote })
+    + srow({ icon: UI.grid, title: C.icon, note: c.icon ? '' : C.iconOfGroup, attrs: 'data-tcat-icon', end: GO })
     + srow({ icon: groupBadge(g), bare: true, title: C.inGroup, note: esc(g.name), attrs: 'data-tcat-move', end: GO })
     // Подсказка нужна разметке чеков — у доходов её нет
     + (state.tk === 'in' ? '' : srow({ icon: UI.pen, title: inlineEdit('thint', c.hint ?? '', { cls: 'srow-input', label: C.hintPlaceholder, placeholder: C.hintPlaceholder, max: 200 }), note: C.hintNote })))
@@ -4532,7 +4541,10 @@ $('screen').addEventListener('input', (e) => {
   badge.style.background = color;
   badge.style.color = readableText(color);
   const dots = [...document.querySelectorAll('#screen [data-tone]')];
-  shades(color, dots.length, shade_from, shade_to).forEach((tone, i) => (dots[i].style.background = tone));
+  shades(color, dots.length, shade_from, shade_to).forEach((tone, i) => {
+    dots[i].style.background = tone;
+    dots[i].style.color = readableText(tone);
+  });
 });
 
 $('screen').addEventListener('change', (e) => {
@@ -4553,7 +4565,23 @@ async function openGroupLook(slug, what) {
   if (g) openLook({ ...g, save: (body) => taxoCall('PATCH', `/groups/${encodeURIComponent(slug)}`, body) }, what);
 }
 
-/** g — у чего меняем вид: название, цвет, значок и save(изменения) — куда сохранять. */
+/** Значок категории: из того же набора, что у групп, или «как у группы». */
+async function openCatLook(slug) {
+  const { groups } = await taxo();
+  const g = groups.find((x) => x.categories.some((c) => c.slug === slug));
+  const c = g?.categories.find((x) => x.slug === slug);
+  if (!c) return;
+  const tone = catTones(g)[g.categories.indexOf(c)] ?? g.color;
+  openLook({
+    name: c.name, color: tone, icon: c.icon ?? '', inherit: g.icon ?? 'none',
+    save: (body) => taxoCall('PATCH', `/categories/${encodeURIComponent(slug)}`, body),
+  }, 'icon');
+}
+
+/**
+ * g — у чего меняем вид: название, цвет, значок и save(изменения) — куда сохранять.
+ * inherit — значок группы: у категории можно выбрать «как у группы» (значок — пустая строка).
+ */
 function openLook(g, what) {
   const C = T.settings.cats;
   let color = g.color ?? NEW_GROUP_COLOR;
@@ -4567,14 +4595,15 @@ function openLook(g, what) {
   const el = openChoice(what === 'icon' ? C.icon : C.look, `
     <div class="look-head"><span class="gic big" id="look-badge"></span><b>${esc(g.name)}</b></div>
     ${what === 'icon' ? '' : `<input class="hue" type="range" min="0" max="359" value="${Math.round(hue0)}" aria-label="${esc(C.color)}" />`}
+    ${g.inherit ? `<button class="icon-inherit${icon === '' ? ' on' : ''}" type="button" data-icon="">${groupIcon(g.inherit)}<span>${esc(C.iconOfGroup)}</span></button>` : ''}
     <input class="icon-search" type="search" placeholder="${esc(C.iconSearch)}" />
     <div class="icon-cells">${grid(searchIcons(''))}</div>`,
   async (ev, close) => {
     const picked = ev.target.closest('[data-icon]')?.dataset.icon;
-    if (!picked) return;
+    if (picked == null) return;
     icon = picked;
     paint();
-    for (const cell of el.querySelectorAll('.icon-cell')) cell.classList.toggle('on', cell.dataset.icon === icon);
+    for (const cell of el.querySelectorAll('.icon-cell, .icon-inherit')) cell.classList.toggle('on', cell.dataset.icon === icon);
     await save({ icon });
     if (what === 'icon') close();
   });
@@ -4584,7 +4613,7 @@ function openLook(g, what) {
     const badge = el.querySelector('#look-badge');
     badge.style.background = color;
     badge.style.color = readableText(color);
-    badge.innerHTML = groupIcon(icon);
+    badge.innerHTML = groupIcon(icon || g.inherit);
     el.style.setProperty('--pick', color);
   }
   paint();
@@ -4627,6 +4656,7 @@ async function onCatsClick(e) {
   }
 
   if (hit('[data-tgroup-icon]')) return openGroupLook(state.tg, 'icon');
+  if (hit('[data-tcat-icon]')) return openCatLook(state.tc);
   if (hit('[data-tgroup-delete]')) {
     const g = (await taxo()).groups.find((x) => x.slug === state.tg);
     if (!g || !confirm(f(C.deleteGroupConfirm, { name: g.name }))) return;
@@ -5353,10 +5383,10 @@ function freshLook(r) {
   if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: '#eef1f5', icon: 'receipt' };
   if (r.kind === 'income') {
     const c = r.category_slug ? incomeCat(r.category_slug) : null;
-    return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: c?.group?.icon ?? 'none' };
+    return { name: c?.name ?? 'Доход без категории', color: c?.color ?? '#eef1f5', icon: catIcon(c) };
   }
   const found = r.category_slug ? findCategory(r.category_slug) : null;
-  return { name: found?.category.name ?? 'Без категории', color: found?.group.color ?? '#eef1f5', icon: found?.group.icon ?? 'none' };
+  return { name: found?.category.name ?? 'Без категории', color: found?.group.color ?? '#eef1f5', icon: catIcon(found) };
 }
 
 /** Одна строка нового: значок категории (с зелёной точкой, если её предложил Чекер), название, сумма. */

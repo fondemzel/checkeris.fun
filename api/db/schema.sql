@@ -203,6 +203,7 @@ CREATE TABLE IF NOT EXISTS sys_categories (
   slug          TEXT PRIMARY KEY,        -- food.groceries
   group_slug    TEXT NOT NULL REFERENCES sys_groups (slug),
   name          TEXT NOT NULL,           -- Еда
+  icon          TEXT,                    -- значок из site/shared/icons.js; '' — как у группы
   hint          TEXT,                    -- подсказка модели: из неё собирается промпт
   sort          INTEGER NOT NULL DEFAULT 0,
   fallback_slug TEXT REFERENCES sys_categories (slug)
@@ -262,6 +263,7 @@ CREATE TABLE IF NOT EXISTS categories (
   slug       TEXT NOT NULL,
   group_slug TEXT NOT NULL,
   name       TEXT NOT NULL,
+  icon       TEXT,                       -- '' — как у группы; NULL — ещё не проставлен (db.mjs)
   hint       TEXT,
   sort       INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (budget_id, slug),
@@ -640,6 +642,7 @@ CREATE TABLE IF NOT EXISTS income_cats (
   slug       TEXT NOT NULL,
   group_slug TEXT NOT NULL,
   name       TEXT NOT NULL,
+  icon       TEXT,                       -- '' — как у группы
   sort       INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (budget_id, slug),
   FOREIGN KEY (budget_id, group_slug) REFERENCES income_groups (budget_id, slug) ON DELETE CASCADE

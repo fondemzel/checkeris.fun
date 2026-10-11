@@ -924,3 +924,10 @@ tbody tr.child-more td { padding-left: 24px; }
 .same-opts { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
 .same-opt { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
 .same-opt input { margin-top: 2px; }
+
+/* Категория в дереве — значком в своём оттенке */
+.tree-swatch.tree-ic { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; }
+.tree-ic .chip-icon { width: 13px; height: 13px; }
+
+/* Значок категории: «как у группы» — над сеткой */
+.icon-option.icon-inherit { width: auto; gap: 8px; margin-bottom: 8px; padding: 0 12px; }

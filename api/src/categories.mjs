@@ -75,6 +75,7 @@ export function flatten(catalog) {
         group_slug: group.slug,
         group_name: group.name,
         name: sub.name,
+        icon: sub.icon ?? '',
         hint: sub.hint ?? null,
         sort: gi * 100 + si,
       });
@@ -97,7 +98,7 @@ export function flattenGroups(catalog) {
 /** Справочник из базы в том же виде, в каком лежит в файле — для --export. */
 export function dumpCatalog(db) {
   const groups = db.prepare('SELECT slug, name, icon, color FROM sys_groups ORDER BY sort, slug').all();
-  const cats = db.prepare('SELECT slug, group_slug, name, hint FROM sys_categories ORDER BY sort, slug').all();
+  const cats = db.prepare('SELECT slug, group_slug, name, icon, hint FROM sys_categories ORDER BY sort, slug').all();
   return {
     groups: groups.map((g) => ({
       slug: g.slug,
@@ -106,7 +107,7 @@ export function dumpCatalog(db) {
       color: g.color ?? undefined,
       subcategories: cats
         .filter((c) => c.group_slug === g.slug)
-        .map((c) => ({ slug: c.slug, name: c.name, hint: c.hint ?? undefined })),
+        .map((c) => ({ slug: c.slug, name: c.name, icon: c.icon || undefined, hint: c.hint ?? undefined })),
     })),
   };
 }
@@ -182,10 +183,10 @@ export function syncCategories(db, catalog) {
       name = :name, icon = :icon, color = :color, sort = :sort`);
 
   const upsert = db.prepare(`
-    INSERT INTO sys_categories (slug, group_slug, name, hint, sort)
-    VALUES (:slug, :group_slug, :name, :hint, :sort)
+    INSERT INTO sys_categories (slug, group_slug, name, icon, hint, sort)
+    VALUES (:slug, :group_slug, :name, :icon, :hint, :sort)
     ON CONFLICT (slug) DO UPDATE SET
-      group_slug = :group_slug, name = :name, hint = :hint, sort = :sort`);
+      group_slug = :group_slug, name = :name, icon = :icon, hint = :hint, sort = :sort`);
 
   db.exec('BEGIN');
   try {
@@ -242,7 +243,7 @@ function show(db) {
  */
 export function publishFromUser(db, budgetId) {
   const groups = db.prepare('SELECT slug, name, icon, color, shade_from, shade_to, sort FROM groups WHERE budget_id = ?').all(budgetId);
-  const cats = db.prepare('SELECT slug, group_slug, name, hint, sort FROM categories WHERE budget_id = ?').all(budgetId);
+  const cats = db.prepare('SELECT slug, group_slug, name, icon, hint, sort FROM categories WHERE budget_id = ?').all(budgetId);
   const linkedTo = new Map(
     db.prepare('SELECT sys_slug, slug FROM category_links WHERE budget_id = ?').all(budgetId).map((r) => [r.sys_slug, r.slug]),
   );
@@ -254,8 +255,8 @@ export function publishFromUser(db, budgetId) {
     VALUES (:slug, :name, :icon, :color, :shade_from, :shade_to, :sort)
     ON CONFLICT (slug) DO UPDATE SET name = :name, icon = :icon, color = :color,
       shade_from = :shade_from, shade_to = :shade_to, sort = :sort`);
-  const updateCat = db.prepare('UPDATE sys_categories SET group_slug = ?, name = ?, hint = ?, sort = ? WHERE slug = ?');
-  const insertCat = db.prepare('INSERT INTO sys_categories (slug, group_slug, name, hint, sort) VALUES (?, ?, ?, ?, ?)');
+  const updateCat = db.prepare('UPDATE sys_categories SET group_slug = ?, name = ?, icon = ?, hint = ?, sort = ? WHERE slug = ?');
+  const insertCat = db.prepare('INSERT INTO sys_categories (slug, group_slug, name, icon, hint, sort) VALUES (?, ?, ?, ?, ?, ?)');
   const link = db.prepare('INSERT OR REPLACE INTO category_links (budget_id, sys_slug, slug) VALUES (?, ?, ?)');
 
   db.exec('BEGIN');
@@ -266,10 +267,10 @@ export function publishFromUser(db, budgetId) {
     }
     for (const c of cats) {
       if (linkedTo.get(c.slug) === c.slug) {
-        updateCat.run(c.group_slug, c.name, c.hint, c.sort, c.slug);
+        updateCat.run(c.group_slug, c.name, c.icon ?? '', c.hint, c.sort, c.slug);
         report.updated += 1;
       } else if (!sysSlugs.has(c.slug)) {
-        insertCat.run(c.slug, c.group_slug, c.name, c.hint, c.sort);
+        insertCat.run(c.slug, c.group_slug, c.name, c.icon ?? '', c.hint, c.sort);
         link.run(budgetId, c.slug, c.slug);
         report.added.push(c.name);
       } else {
