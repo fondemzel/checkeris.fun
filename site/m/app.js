@@ -4964,8 +4964,16 @@ async function onCatsClick(e) {
 
   if (hit('[data-tcat-move]')) {
     const { groups } = await taxo();
-    const body = `<div class="picker-list">${groups.map((g) => `
-      <button class="picker-item" type="button" data-to="${esc(g.slug)}">${groupBadge(g)}<span>${esc(g.name)}</span></button>`).join('')}</div>`;
+    // Сеткой плиток, как выбор группы везде в приложении; текущая группа отмечена
+    const current = groups.find((g) => g.categories.some((c) => c.slug === state.tc))?.slug;
+    const body = `<div class="picker-grid">${groups.map((g) => {
+      const color = g.color ?? 'var(--fill)';
+      return `
+      <button class="picker-tile${g.slug === current ? ' on' : ''}" type="button" data-to="${esc(g.slug)}">
+        <span class="pick-ic big" style="background:${color};color:${readableText(color)}">${groupIcon(g.icon ?? 'none')}</span>
+        <span class="picker-tile-name">${esc(g.name)}</span>
+      </button>`;
+    }).join('')}</div>`;
     openChoice(C.inGroup, body, async (ev, close) => {
       const to = ev.target.closest('[data-to]')?.dataset.to;
       if (!to) return;

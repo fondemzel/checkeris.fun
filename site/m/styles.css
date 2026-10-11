@@ -1947,3 +1947,6 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .demo-pill[hidden] { display: none; }
 /* «Остальное» на кольце — кругом, а не скруглённым квадратом: это не группа, а сборная из мелких */
 .ring-ic .ic.round { border-radius: 50%; }
+/* Плитка текущего выбора (группа категории в настройках) — обведена акцентом */
+.picker-tile.on { box-shadow: inset 0 0 0 2px var(--accent); }
+.picker-tile.on .picker-tile-name { color: var(--accent); font-weight: 600; }
