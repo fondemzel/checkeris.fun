@@ -770,6 +770,9 @@ const RING_ANIM = 1300; // заливка и проявление последн
 
 function playRing(start = true) {
   const box = document.querySelector('#screen .ring-box');
+  // Экран кольца, а кольца нет (период пуст) — забываем показанное: следующее кольцо, даже то
+  // же самое, снова заливается. Уход на другие экраны («назад» из категории) память не трогает
+  if (!box && state.mode === 'ring' && ['summary', 'income'].includes(state.screen)) ringPlayed = { key: '', at: null };
   if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: null };
   if (ringPlayed.at != null && performance.now() - ringPlayed.at >= RING_ANIM) return; // уже показано
