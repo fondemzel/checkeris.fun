@@ -780,9 +780,11 @@ function playRing(start = true) {
   // секторов. Значок проявляется, когда заливка дошла до середины его сектора.
   // (Маска с анимацией не годится: браузер не перерисовывает её по ходу анимации.)
   const len = Number(box.dataset.len);
-  const arcs = [...box.querySelectorAll('.ring-arc')].map((el) => ({
-    el, start: Number(el.dataset.start), dash: Number(el.dataset.dash), full: el.getAttribute('stroke-dasharray'),
-  }));
+  // Полный вид сектора — из разметки: атрибут на экране уже мог опустошить прошлый вызов
+  const arcs = [...box.querySelectorAll('.ring-arc')].map((el) => {
+    const dash = Number(el.dataset.dash);
+    return { el, start: Number(el.dataset.start), dash, full: `${dash.toFixed(3)} ${(len - dash).toFixed(3)}` };
+  });
   const icons = [...box.querySelectorAll('.ring-ic')].map((el) => ({ el, show: Number(el.dataset.show) }));
   const paint = (elapsed) => {
     const t = Math.min(1, elapsed / RING_SWEEP);
@@ -805,8 +807,12 @@ function playRing(start = true) {
   paint(ringPlayed.at == null ? 0 : performance.now() - ringPlayed.at);
   if (!start) return;
   box.dataset.playing = '1';
-  const frame = (now) => {
+  // Время — performance.now(), а не метка кадра из requestAnimationFrame: та — когда кадр
+  // запланировали. Если перед этим телефон разбирал данные, метка отстаёт на сотни мс, и
+  // первый же кадр перескакивал далеко вперёд — это и был рывок в начале заливки
+  const frame = () => {
     if (!box.isConnected) return; // экран перерисовали — продолжит новая отрисовка
+    const now = performance.now();
     ringPlayed.at ??= now;
     const elapsed = now - ringPlayed.at;
     paint(elapsed);
