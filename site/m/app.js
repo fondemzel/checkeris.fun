@@ -3624,6 +3624,10 @@ async function render() {
   if (state.screen !== 'added') manualCarry = null;
 
   $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
+  // Тестовая база — меткой под заголовком на любом экране
+  $('demo-pill').hidden = !meta?.demo;
+  $('demo-pill').textContent = T.settings.help.pill;
+  document.querySelector('.bar').classList.toggle('demo', Boolean(meta?.demo));
   $('back').hidden = top;
 
   const actions = screen.actions?.() ?? '';
@@ -4594,7 +4598,10 @@ async function screenSettings() {
     + srow({ icon: UI.moon, title: S.menu.dark, end: toggle('data-theme-toggle', theme() === 'dark', S.menu.dark) }))
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
-      + link('incats', UI.income, S.cats.income, counts(meta?.income)));
+      + link('incats', UI.income, S.cats.income, counts(meta?.income)))
+    // Помощь: тестовая база — год трат вымышленного человека вместо своих данных
+    + section(S.help.label, S.help.note,
+      srow({ icon: UI.sparkle, title: S.help.demo, note: S.help.demoNote, end: toggle('data-demo-toggle', Boolean(meta?.demo), S.help.demo) }));
 }
 
 async function screenSetProfile() {
@@ -5214,6 +5221,29 @@ function setTheme(next) {
 
 $('screen').addEventListener('change', (e) => {
   if (e.target.matches('[data-theme-toggle]')) setTheme(e.target.checked ? 'dark' : 'light');
+  if (e.target.matches('[data-demo-toggle]')) switchDemo(e.target.checked, e.target);
+});
+
+/**
+ * Тестовая база: включить или выключить (сервер переключает бюджет, demo.mjs). Дальше
+ * перезагрузка: справочники, сохранённые экраны и счётчики — уже другого бюджета.
+ */
+async function switchDemo(on, box = null) {
+  if (box) box.disabled = true;
+  try {
+    await post('/api/demo', { on });
+    location.reload();
+  } catch (err) {
+    if (box) {
+      box.checked = !on;
+      box.disabled = false;
+    }
+    toast(`${T.common.failed}: ${err.message}`);
+  }
+}
+
+$('demo-pill').addEventListener('click', async () => {
+  if (await ask(T.settings.help.offConfirm, { ok: T.settings.help.off })) switchDemo(false);
 });
 
 /** Переключатель справа в строке: включает и выключает счёт. */

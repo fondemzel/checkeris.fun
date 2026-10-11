@@ -18,7 +18,7 @@ const now = () => new Date().toISOString();
 const fail = (status, error) => ({ error, status });
 
 const userRow = (db, id) => db.prepare('SELECT id, login, name, budget_id, home_budget_id FROM users WHERE id = ?').get(id);
-const budgetRow = (db, id) => db.prepare('SELECT id, name, owner_id FROM budgets WHERE id = ?').get(id);
+const budgetRow = (db, id) => db.prepare('SELECT id, name, owner_id, demo FROM budgets WHERE id = ?').get(id);
 const membersOf = (db, id) => db.prepare('SELECT COUNT(*) c FROM users WHERE budget_id = ?').get(id).c;
 
 /**
@@ -53,6 +53,10 @@ export function getBudget(db, user) {
   const budget = budgetRow(db, user.budget_id);
   if (!budget) return fail(404, 'бюджет не найден');
   const isOwner = budget.owner_id === user.id;
+  // Тестовая база — общая на всех, кто её включил: другие люди в ней — не участники
+  if (budget.demo) {
+    return { id: budget.id, name: budget.name, demo: true, is_owner: false, is_home: false, members: [{ id: user.id, name: user.name ?? user.login, is_me: true, is_owner: false, receipts: 0 }], invites: [] };
+  }
 
   const members = db
     .prepare(
@@ -288,6 +292,11 @@ export function removeMember(db, user, memberId) {
 export function deleteAccount(db, userId) {
   const user = userRow(db, userId);
   if (!user) return fail(404, 'пользователь не найден');
+
+  // Включена тестовая база — она общая и удалению не подлежит: в счёт идёт бюджет, из которого в неё ушли
+  if (budgetRow(db, user.budget_id)?.demo) {
+    user.budget_id = db.prepare('SELECT demo_return FROM users WHERE id = ?').get(userId).demo_return;
+  }
 
   db.exec('BEGIN');
   try {

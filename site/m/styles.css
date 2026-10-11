@@ -1934,3 +1934,14 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .cal-preset-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .cal-preset-row::-webkit-scrollbar { display: none; }
 .cal-preset-row .chip { flex: none; height: 28px; padding: 0 11px; border-radius: 14px; font-size: 13px; }
+
+/* Включена тестовая база: метка под заголовком, заголовок чуть выше */
+.bar { position: sticky; }
+.bar.demo .bar-title { padding-bottom: 12px; }
+.demo-pill {
+  position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%);
+  padding: 1px 8px; border: none; border-radius: 8px;
+  background: #eda100; color: #1f2328; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.demo-pill[hidden] { display: none; }

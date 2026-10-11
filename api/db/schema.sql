@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS users (
   name_set    INTEGER NOT NULL DEFAULT 0, -- 1 — имя задал сам человек: вход через Telegram его не трогает
   role        TEXT NOT NULL DEFAULT 'user', -- user | admin: админ без квот, правит системный справочник
   budget_id      INTEGER REFERENCES budgets (id), -- текущий бюджет: его данные человек видит и правит
-  home_budget_id INTEGER REFERENCES budgets (id)  -- свой бюджет: в него человек вернётся, выйдя из общего
+  home_budget_id INTEGER REFERENCES budgets (id), -- свой бюджет: в него человек вернётся, выйдя из общего
+  demo_return    INTEGER                          -- включена тестовая база: в какой бюджет вернуться (demo.mjs)
 );
 
 -- Бюджет — хозяин данных. Обычно в нём один человек; семья — несколько человек
@@ -42,7 +43,8 @@ CREATE TABLE IF NOT EXISTS budgets (
   id         INTEGER PRIMARY KEY,
   name       TEXT NOT NULL,
   owner_id   INTEGER REFERENCES users (id) ON DELETE SET NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  demo       INTEGER NOT NULL DEFAULT 0  -- 1 — общая тестовая база (demo.mjs): только для чтения
 );
 
 -- Приглашение в бюджет: одноразовая ссылка со сроком жизни, в базе — хеш кода.

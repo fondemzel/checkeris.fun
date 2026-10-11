@@ -23,6 +23,7 @@ import {
   hideItem,
 } from './queries.mjs';
 import { flatten, loadCategories, syncCategories } from './categories.mjs';
+import { isDemo, enableDemo, disableDemo } from './demo.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
 import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
 import { unlabeled, labelBatch } from './autolabel.mjs';
@@ -391,6 +392,25 @@ async function handleApi(req, res, url) {
   // Бюджет мог пропасть (удалён вместе с последним участником) — выдаём свой
   if (!user.budget_id) user.budget_id = ensureBudget(db, user.id);
 
+  // Тестовая база (demo.mjs): включить, выключить, спросить
+  if (pathname === '/api/demo') {
+    if (req.method === 'GET') return sendJson(res, 200, { demo: isDemo(db, user.budget_id) });
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    return sendJson(res, 200, body.on ? enableDemo(db, user) : disableDemo(db, user));
+  }
+  // Тестовая база общая — в ней ничего не меняется и ничего не загружается: правка одного
+  // была бы видна всем, а настоящие операции из банка пропали бы в ней. Выйти из аккаунта,
+  // удалить его и сменить имя — можно
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session'].includes(pathname)
+    && isDemo(db, user.budget_id)) {
+    return sendJson(res, 409, { error: 'Это тестовая база — в ней ничего не меняется. Выключить её можно в настройках, в разделе «Помощь»', demo: true });
+  }
+
   // Кабинет спрашивает при загрузке, жив ли сохранённый токен
   if (pathname === '/api/session') {
     // Своё имя вместо имени из Telegram: его видят участники общего бюджета
@@ -756,7 +776,7 @@ async function handleApi(req, res, url) {
     // в кабинете разработчика Яндекса
     loadEnv();
     const maps = process.env.YANDEX_JAVASCRIPT_API_KEY ? { key: process.env.YANDEX_JAVASCRIPT_API_KEY } : null;
-    return sendJson(res, 200, { version: VERSION, ...getMeta(db, user.budget_id), maps });
+    return sendJson(res, 200, { version: VERSION, ...getMeta(db, user.budget_id), maps, demo: isDemo(db, user.budget_id) });
   }
 
   // ── сканирование чеков ──

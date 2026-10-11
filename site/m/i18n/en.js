@@ -172,6 +172,15 @@ export const en = {
     deleteAccount: 'Delete account and all data',
     deleteConfirm: 'Delete your account? All receipts, manual entries, categories and edits will be gone.',
     deleteConfirm2: 'Are you sure? The account cannot be restored.',
+    help: {
+      label: 'Help',
+      demo: 'Sample data',
+      demoNote: 'A year of spending of a made-up person — to see how it all works',
+      note: 'Your data stays in place: the sample is shown instead while it is on. Nothing can be changed in it',
+      pill: 'sample data',
+      offConfirm: 'Turn off the sample data and return to your own?',
+      off: 'Turn off',
+    },
   },
   bankAdd: {
     title: 'Connect a bank',

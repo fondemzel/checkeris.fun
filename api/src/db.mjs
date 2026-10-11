@@ -41,6 +41,8 @@ export function migrate(db) {
   // Колонки, на которые смотрит v_items, — до схемы: она пересоздаёт представление
   addColumn(db, 'receipts', 'prepay_kind', 'TEXT');
   addColumn(db, 'receipts', 'prepaid_by', 'INTEGER');
+  addColumn(db, 'budgets', 'demo', 'INTEGER NOT NULL DEFAULT 0'); // тестовая база (demo.mjs)
+  addColumn(db, 'users', 'demo_return', 'INTEGER');
   // Значки категорий: пустая строка — «как у группы», NULL — ещё не проставлен (server.mjs)
   addColumn(db, 'sys_categories', 'icon', 'TEXT');
   addColumn(db, 'categories', 'icon', 'TEXT');
