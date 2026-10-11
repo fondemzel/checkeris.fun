@@ -46,6 +46,16 @@ export async function openBrowser({ headless = true } = {}) {
   if (process.platform === 'linux' && process.getuid?.() === 0) args.push('--no-sandbox');
 
   const proc = spawn(chromePath(), [...args, 'about:blank'], { stdio: 'ignore' });
+  // Программа, открывшая браузер, завершилась (в том числе с ошибкой, не дойдя до close) —
+  // браузер не должен пережить её: брошенные Chrome съедали память сервера, и он вставал
+  const orphan = () => {
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // уже закрыт
+    }
+  };
+  process.once('exit', orphan);
 
   // Chrome сам выбирает порт и пишет его в профиль
   let port;
@@ -109,6 +119,7 @@ export async function openBrowser({ headless = true } = {}) {
   };
 
   const close = async () => {
+    process.removeListener('exit', orphan);
     try {
       await raw('Browser.close');
     } catch {
