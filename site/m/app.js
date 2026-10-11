@@ -3700,10 +3700,17 @@ addEventListener('touchcancel', stretchBack);
 // ── листание периодов свайпом ────────────────────────────
 // На экранах с периодом (стрелки ‹ ›) горизонтальный свайп — то же, что стрелка: влево — позже,
 // вправо — раньше. Содержимое едет за пальцем; отпустили далеко или резко — уезжает, а новый
-// период въезжает с другой стороны. Сдвиг — свойством translate: transform занят «резиной»
+// период въезжает с другой стороны. Шапка с суммой и периодом стоит на месте, остров меню — тоже
 let swipeFrom = null; // { x, y, t } касания
 let swipeLock = ''; // '' — ещё не ясно, 'x' — листаем периоды, 'y' — обычная прокрутка
 let swipeBusy = false;
+// Что едет: всё на экране, кроме закреплённой шапки
+const swipeParts = () => [...stretchEl.children].filter((el) => !el.classList.contains('stuck-head'));
+const swipeSet = (shift, opacity, transition) => swipeParts().forEach((el) => {
+  el.style.transition = transition;
+  el.style.translate = shift ? `${shift}px 0` : '';
+  el.style.opacity = opacity;
+});
 
 addEventListener('touchstart', (e) => {
   swipeFrom = null;
@@ -3738,8 +3745,7 @@ addEventListener('touchmove', (e) => {
     stretchEl.style.transition = '';
   }
   e.preventDefault(); // страница вверх-вниз не ездит, пока листаем вбок
-  stretchEl.style.translate = `${dx}px 0`;
-  stretchEl.style.opacity = String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth));
+  swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
 }, { passive: false });
 
 async function swipeEnd(e) {
@@ -3752,27 +3758,21 @@ async function swipeEnd(e) {
   swipeFrom = null;
   const ease = 'translate 0.18s ease-out, opacity 0.18s ease-out';
   if (e.type === 'touchcancel' || (Math.abs(dx) < window.innerWidth * 0.25 && !fast)) {
-    stretchEl.style.transition = ease;
-    stretchEl.style.translate = '';
-    stretchEl.style.opacity = '';
+    swipeSet(0, '', ease);
     return;
   }
   swipeBusy = true;
   const dir = dx < 0 ? 1 : -1; // влево — следующий период
   const w = window.innerWidth;
-  stretchEl.style.transition = ease;
-  stretchEl.style.translate = `${-dir * w}px 0`;
-  stretchEl.style.opacity = '0';
+  swipeSet(-dir * w, '0', ease);
   try {
     await new Promise((r) => setTimeout(r, 180));
-    stretchEl.style.transition = 'none';
-    stretchEl.style.translate = `${dir * w * 0.35}px 0`;
     await go(shiftPeriod(state.from, state.to, dir), true);
-  } finally {
+    // Новый период — уже на экране: ставим его чуть в стороне и въезжаем на место
+    swipeSet(dir * w * 0.35, '0', 'none');
     void stretchEl.offsetWidth; // зафиксировать исходное место, иначе въезда не будет видно
-    stretchEl.style.transition = 'translate 0.22s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.22s ease-out';
-    stretchEl.style.translate = '';
-    stretchEl.style.opacity = '';
+  } finally {
+    swipeSet(0, '', 'translate 0.22s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.22s ease-out');
     swipeBusy = false;
   }
 }
