@@ -3670,7 +3670,9 @@ async function render() {
   const shown = Boolean($('screen').firstChild);
   const sameScreen = shown && state.screen === shownScreen;
   // Итог в шапке до перерисовки: на том же экране новый «прокрутится» к себе от него
-  const prevSum = sameScreen ? document.querySelector('#screen .total-sum')?.textContent : null;
+  // (посреди прокрутки текст элемента — столбики цифр, поэтому показанное число — в data-sum)
+  const prevEl = sameScreen ? document.querySelector('#screen .total-sum') : null;
+  const prevSum = prevEl ? prevEl.dataset.sum ?? prevEl.textContent : null;
   const sameKind = shown && EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen);
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
@@ -3862,6 +3864,7 @@ async function animateOut(rows) {
 function rollNumber(el, from) {
   const to = el?.textContent;
   if (!to || to === from || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  el.dataset.sum = to;
   const old = [...from].filter((c) => c >= '0' && c <= '9').reverse();
   const digits = [...to].filter((c) => c >= '0' && c <= '9').length;
   let k = digits; // номер разряда справа — у какой цифры старого числа брать начало
@@ -3876,8 +3879,9 @@ function rollNumber(el, from) {
     if (el.isConnected) {
       el.classList.remove('odo-go');
       el.textContent = to;
+      delete el.dataset.sum;
     }
-  }, 900);
+  }, 1000);
 }
 
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
