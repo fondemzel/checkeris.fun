@@ -990,7 +990,7 @@ function ringView(parts, total, countText, kind, overall = null) {
   const pct = (p) => share.format(Math.round((p.sum / sum) * 1000) / 10);
   const pctAll = (p) => share.format(Math.round((p.sum / whole) * 1000) / 10);
   // Доля: во вложенном кольце — своя (в группе) и в скобках общая (от всех расходов/доходов).
-  // Над значком — в строку, в таблице под кольцом — общая второй строкой; под значком — сумма
+  // Над значком и в таблице под кольцом (там скобки мельче); под значком — только сумма
   const shares = (p) => (nested ? `${pct(p)}% (${pctAll(p)}%)` : `${pct(p)}%`);
   const TURN = 2 * Math.PI;
 
@@ -1106,7 +1106,7 @@ function ringView(parts, total, countText, kind, overall = null) {
         return `<span class="ic" style="background:${c};color:${readableText(c)}">${groupIcon(p.icon ?? 'none')}</span>`;
       })()}
       <span class="ring-name">${esc(p.name)}</span>
-      <span class="ring-share">${pct(p)}%${nested ? `<small>(${pctAll(p)}%)</small>` : ''}</span>
+      <span class="ring-share">${pct(p)}%${nested ? ` <small>(${pctAll(p)}%)</small>` : ''}</span>
       <b>${money(p.sum)}</b>
     </button>`).join('');
   return `
