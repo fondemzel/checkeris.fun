@@ -354,7 +354,7 @@ button, input, select { font: inherit; color: inherit; }
   text-align: center;
 }
 
-.total-sum { display: block; font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.total-sum { display: block; font-size: 28px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .total-note { display: block; margin-top: 4px; font-size: 13px; color: var(--muted); }
 
 /* ── список ────────────────────────────────────────────── */
@@ -1964,3 +1964,18 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Доля во вложенном кольце: своя и в той же строке, мельче, — от всех расходов (доходов) */
 .ring-share { white-space: nowrap; }
 .ring-share small { font-size: 11px; opacity: 0.75; }
+
+/* Сумма в шапке меняется «счётчиком» (rollNumber): цифра — окошко высотой в строку, в нём
+   столбик 0–9 (по цифре на строку), сдвигается от прежней цифры к новой. Младшие разряды
+   доезжают чуть позже старших — волной справа налево */
+.total-sum .odo { display: inline-block; height: 1.15em; overflow: hidden; vertical-align: top; line-height: 1.15; }
+.total-sum .odo-strip {
+  display: block; width: 1ch; word-spacing: 100vw; /* по цифре на строку */
+  font-variant-numeric: tabular-nums;
+  transform: translateY(calc(var(--from) * -1.15em));
+}
+.total-sum.odo-go .odo-strip {
+  transform: translateY(calc(var(--to) * -1.15em));
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.3, 1);
+  transition-delay: calc(var(--i) * 25ms);
+}

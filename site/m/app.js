@@ -3669,6 +3669,8 @@ async function render() {
   // на месте: иначе экран мигает на каждое нажатие
   const shown = Boolean($('screen').firstChild);
   const sameScreen = shown && state.screen === shownScreen;
+  // Итог в шапке до перерисовки: на том же экране новый «прокрутится» к себе от него
+  const prevSum = sameScreen ? document.querySelector('#screen .total-sum')?.textContent : null;
   const sameKind = shown && EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen);
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
@@ -3703,6 +3705,7 @@ async function render() {
       $('screen').innerHTML = html;
       window.scrollTo(0, keepScroll);
     }
+    if (prevSum) rollNumber(document.querySelector('#screen .total-sum'), prevSum);
     playRing(); // и когда свежий вид совпал с сохранённым: тот ждёт пустым
     shownScreen = state.screen;
     screen.after?.();
@@ -3849,6 +3852,32 @@ async function animateOut(rows) {
   shown.forEach((el) => el.classList.add('sec-out'));
   // Не ждём полного угасания: место начинает сжиматься, пока строки ещё догасают
   await new Promise((r) => setTimeout(r, 70));
+}
+
+/**
+ * Смена суммы — «счётчиком»: каждая цифра — окошко со столбиком 0–9, который сдвигается от
+ * прежней цифры к новой (разряды совпадают по единицам; новый старший разряд едет от нуля).
+ * Одно CSS-движение на цифру, без пересчёта страницы; потом — снова обычный текст.
+ */
+function rollNumber(el, from) {
+  const to = el?.textContent;
+  if (!to || to === from || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const old = [...from].filter((c) => c >= '0' && c <= '9').reverse();
+  const digits = [...to].filter((c) => c >= '0' && c <= '9').length;
+  let k = digits; // номер разряда справа — у какой цифры старого числа брать начало
+  el.innerHTML = [...to].map((c) => {
+    if (c < '0' || c > '9') return esc(c);
+    k -= 1;
+    const start = Number(old[k] ?? 0);
+    return `<span class="odo"><span class="odo-strip" style="--from:${start};--to:${c};--i:${digits - 1 - k}">0 1 2 3 4 5 6 7 8 9</span></span>`;
+  }).join('');
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('odo-go')));
+  setTimeout(() => {
+    if (el.isConnected) {
+      el.classList.remove('odo-go');
+      el.textContent = to;
+    }
+  }, 900);
 }
 
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
