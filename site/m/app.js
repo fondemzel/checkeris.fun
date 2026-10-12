@@ -3887,10 +3887,8 @@ function rollNumber(el, from, elapsed = 0) {
     const strip = Array.from({ length: 10 }, (_, d) => `<span>${d}</span>`).join('');
     return `<span class="odo"><span class="odo-strip" style="--from:${start};--to:${c};--i:${digits - 1 - k}">${strip}</span></span>`;
   }).join('');
-  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('odo-go')));
   setTimeout(() => {
     if (el.isConnected) {
-      el.classList.remove('odo-go');
       el.textContent = to;
       delete el.dataset.sum;
     }
