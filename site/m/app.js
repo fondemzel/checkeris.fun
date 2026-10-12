@@ -319,7 +319,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -574,6 +574,7 @@ const OPEN_POPUPS = '.sheet:not(.closing), .picker:not(.closing)';
 
 function removePopup(el) {
   if (el.classList.contains('closing')) return;
+  if (!motion('sheets')) return el.remove(); // без анимации — сразу
   el.classList.add('closing');
   setTimeout(() => el.remove(), POPUP_OUT);
 }
@@ -921,7 +922,7 @@ function playRing(start = true) {
   // появившись снова (в том числе по «назад»), заливается заново. Пока кольцо на экране
   // (набор в поиске, свежие данные), анимация не повторяется
   if (!box) ringPlayed = { key: '', at: null };
-  if (!box || calm()) return;
+  if (!box || !motion('ring')) return;
   if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: null };
   if (ringPlayed.at != null && performance.now() - ringPlayed.at >= RING_ANIM) return; // уже показано
   if (box.dataset.playing) return; // это кольцо уже анимируется
@@ -3543,6 +3544,7 @@ const SCREENS = {
   },
   settings: { title: 'Настройки', render: screenSettings },
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
+  set_motion: { title: T.settings.look.motion, render: screenSetMotion },
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
   set_banks: { title: T.settings.banks.label, render: screenSetBanks },
   privacy: { title: T.settings.data.label, render: screenPrivacy },
@@ -3582,7 +3584,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary', autolabel: 'summary',
-  set_profile: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
+  set_profile: 'settings', set_motion: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
 };
 
 /**
@@ -3801,7 +3803,7 @@ function visibleHeight(rows) {
  * ниже, подтягивается мягко, а не прыжком. Анимируется один блок, а не строки.
  */
 function collapseSpace(after, height) {
-  if (height < 8 || calm()) return;
+  if (height < 8 || !motion('sections')) return;
   const spacer = document.createElement('div');
   spacer.className = 'collapse-space';
   spacer.style.height = `${height}px`;
@@ -3836,7 +3838,7 @@ async function toggleGroup(group, row) {
  * что ниже, едет вместе с краем. Для покупок группы — их немного, и высота известна точно.
  */
 async function slideWrap(wrap, open) {
-  if (!wrap || calm()) return;
+  if (!wrap || !motion('sections')) return;
   const full = wrap.scrollHeight;
   wrap.style.height = `${open ? 0 : full}px`;
   wrap.getBoundingClientRect(); // начальная высота — до перехода
@@ -3854,7 +3856,7 @@ async function slideWrap(wrap, open) {
 /** Погасить строки перед сворачиванием; ждём, только если есть что гасить. */
 async function animateOut(rows) {
   const shown = rows.slice(0, ANIMATED);
-  if (!shown.length || calm()) return;
+  if (!shown.length || !motion('sections')) return;
   shown.forEach((el) => el.classList.add('sec-out'));
   // Не ждём полного угасания: место начинает сжиматься, пока строки ещё догасают
   await new Promise((r) => setTimeout(r, 70));
@@ -3870,7 +3872,7 @@ const ROLL_MS = 900;
 
 function rollNumber(el, from, elapsed = 0) {
   const to = el?.textContent;
-  if (!to || to === from || calm()) return;
+  if (!to || to === from || !motion('counter')) return;
   el.dataset.sum = to;
   if (!elapsed) rolled = { from, to, at: performance.now() };
   // Продолжение после перерисовки: анимация начинается «в прошлом» — с того же места
@@ -4110,6 +4112,7 @@ addEventListener('touchmove', (e) => {
     stretchEl.style.transition = '';
   }
   e.preventDefault(); // страница вверх-вниз не ездит, пока листаем вбок
+  if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
   swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
 }, { passive: false });
 
@@ -4128,6 +4131,14 @@ async function swipeEnd(e) {
   }
   swipeBusy = true;
   const dir = dx < 0 ? 1 : -1; // влево — следующий период
+  if (!motion('swipe')) {
+    try {
+      await go(shiftPeriod(state.from, state.to, dir), true);
+    } finally {
+      swipeBusy = false;
+    }
+    return;
+  }
   const w = window.innerWidth;
   swipeSet(-dir * w, '0', ease);
   try {
@@ -4672,7 +4683,7 @@ async function screenSettings() {
     // Внешний вид: тема и анимации — выбор хранится на телефоне (index.html ставит их до отрисовки)
     + section(S.look.label, '',
       srow({ icon: UI.moon, title: S.menu.dark, end: toggle('data-theme-toggle', theme() === 'dark', S.menu.dark) })
-      + srow({ icon: groupIcon('zap'), title: S.look.motion, note: S.look.motionNote, end: toggle('data-motion-toggle', !calm(), S.look.motion) }))
+      + link('motion', groupIcon('zap'), S.look.motion, motionNote()))
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
       + link('incats', UI.income, S.cats.income, counts(meta?.income)))
@@ -5314,6 +5325,52 @@ function setTheme(next) {
 function calm() {
   return document.documentElement.dataset.motion === 'off' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
+// Отдельные виды анимации: выключенные — в localStorage (checker.motion.kinds)
+const MOTION_KINDS = ['ring', 'counter', 'sheets', 'sections', 'swipe'];
+function motionPrefs() {
+  try {
+    const v = JSON.parse(localStorage.getItem('checker.motion.kinds') || '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+/** Этот вид анимации сейчас показывать? Нет, если выключены все или он сам. */
+const motion = (kind) => !calm() && motionPrefs()[kind] !== false;
+function setMotionKind(kind, on) {
+  const prefs = { ...motionPrefs(), [kind]: on };
+  try {
+    localStorage.setItem('checker.motion.kinds', JSON.stringify(prefs));
+  } catch {
+    // не запомнится — до перезапуска
+  }
+  // Листы — CSS-анимации: гасит правило :root[data-no-sheets]
+  if (prefs.sheets === false) document.documentElement.dataset.noSheets = '1';
+  else delete document.documentElement.dataset.noSheets;
+}
+
+/** Экран «Анимации»: все разом и каждая по отдельности. */
+function screenSetMotion() {
+  const L = T.settings.look;
+  const all = document.documentElement.dataset.motion !== 'off';
+  const prefs = motionPrefs();
+  const system = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return section(L.motion, system ? L.systemNote : '',
+    srow({ icon: groupIcon('zap'), title: L.motion, end: toggle('data-motion-toggle', all, L.motion) }))
+    + section(L.kindsLabel, L.kindsNote, MOTION_KINDS.map((k) => srow({
+      title: L.kinds[k], off: !all,
+      end: toggle(`data-motion-kind="${k}"${all ? '' : ' disabled'}`, prefs[k] !== false, L.kinds[k]),
+    })).join(''));
+}
+
+/** Подстрочник строки «Анимации» в настройках: все, выключены или сколько из скольких. */
+function motionNote() {
+  const L = T.settings.look;
+  if (calm()) return L.allOff;
+  const on = MOTION_KINDS.filter((k) => motionPrefs()[k] !== false).length;
+  return on === MOTION_KINDS.length ? L.allOn : f(L.some, { n: on, total: MOTION_KINDS.length });
+}
+
 function setMotion(on) {
   if (on) delete document.documentElement.dataset.motion;
   else document.documentElement.dataset.motion = 'off';
@@ -5326,7 +5383,11 @@ function setMotion(on) {
 
 $('screen').addEventListener('change', (e) => {
   if (e.target.matches('[data-theme-toggle]')) setTheme(e.target.checked ? 'dark' : 'light');
-  if (e.target.matches('[data-motion-toggle]')) setMotion(e.target.checked);
+  if (e.target.matches('[data-motion-toggle]')) {
+    setMotion(e.target.checked);
+    if (state.screen === 'set_motion') render(); // отдельные переключатели — доступны или нет
+  }
+  if (e.target.matches('[data-motion-kind]')) setMotionKind(e.target.dataset.motionKind, e.target.checked);
   if (e.target.matches('[data-demo-toggle]')) switchDemo(e.target.checked, e.target);
 });
 

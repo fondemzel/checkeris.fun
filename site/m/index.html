@@ -13,6 +13,7 @@
   <script>
     try {
       if (localStorage.getItem('checker.motion') === 'off') document.documentElement.dataset.motion = 'off';
+      if (JSON.parse(localStorage.getItem('checker.motion.kinds') || '{}').sheets === false) document.documentElement.dataset.noSheets = '1';
       if (localStorage.getItem('checker.theme') === 'dark') {
         document.documentElement.dataset.theme = 'dark';
         document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b0f14');

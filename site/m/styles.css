@@ -1993,3 +1993,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 :root[data-motion="off"] *,
 :root[data-motion="off"] *::before,
 :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
+
+/* Листы и окна без анимации (экран «Анимации»): появляются и исчезают сразу */
+:root[data-no-sheets] .sheet, :root[data-no-sheets] .picker,
+:root[data-no-sheets] .sheet-box, :root[data-no-sheets] .picker-box, :root[data-no-sheets] .ask-box { animation: none !important; }
