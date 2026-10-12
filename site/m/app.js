@@ -3707,7 +3707,11 @@ async function render() {
       $('screen').innerHTML = html;
       window.scrollTo(0, keepScroll);
     }
-    if (prevSum) rollNumber(document.querySelector('#screen .total-sum'), prevSum);
+    // Сумма прокручивается: впервые — от прежней; перерисовали посреди прокрутки — продолжаем её
+    const sumEl = document.querySelector('#screen .total-sum');
+    const rolling = rolled && sumEl?.textContent === rolled.to && performance.now() - rolled.at < ROLL_MS;
+    if (rolling) rollNumber(sumEl, rolled.from, performance.now() - rolled.at);
+    else if (prevSum) rollNumber(sumEl, prevSum);
     playRing(); // и когда свежий вид совпал с сохранённым: тот ждёт пустым
     shownScreen = state.screen;
     screen.after?.();
@@ -3861,10 +3865,16 @@ async function animateOut(rows) {
  * прежней цифры к новой (разряды совпадают по единицам; новый старший разряд едет от нуля).
  * Одно CSS-движение на цифру, без пересчёта страницы; потом — снова обычный текст.
  */
-function rollNumber(el, from) {
+let rolled = null; // идущая прокрутка: откуда, куда и когда началась
+const ROLL_MS = 900;
+
+function rollNumber(el, from, elapsed = 0) {
   const to = el?.textContent;
   if (!to || to === from || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   el.dataset.sum = to;
+  if (!elapsed) rolled = { from, to, at: performance.now() };
+  // Продолжение после перерисовки: анимация начинается «в прошлом» — с того же места
+  el.style.setProperty('--el', `${Math.round(elapsed)}ms`);
   const old = [...from].filter((c) => c >= '0' && c <= '9').reverse();
   const digits = [...to].filter((c) => c >= '0' && c <= '9').length;
   let k = digits; // номер разряда справа — у какой цифры старого числа брать начало
@@ -3872,7 +3882,10 @@ function rollNumber(el, from) {
     if (c < '0' || c > '9') return esc(c);
     k -= 1;
     const start = Number(old[k] ?? 0);
-    return `<span class="odo"><span class="odo-strip" style="--from:${start};--to:${c};--i:${digits - 1 - k}">0 1 2 3 4 5 6 7 8 9</span></span>`;
+    // Каждая цифра столбика — отдельный блок ровно в высоту окошка: перенос текста по пробелам
+    // в WebView давал строки другой высоты, и цифры вставали криво
+    const strip = Array.from({ length: 10 }, (_, d) => `<span>${d}</span>`).join('');
+    return `<span class="odo"><span class="odo-strip" style="--from:${start};--to:${c};--i:${digits - 1 - k}">${strip}</span></span>`;
   }).join('');
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('odo-go')));
   setTimeout(() => {
@@ -3881,7 +3894,7 @@ function rollNumber(el, from) {
       el.textContent = to;
       delete el.dataset.sum;
     }
-  }, 1000);
+  }, ROLL_MS + 100 - elapsed);
 }
 
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
