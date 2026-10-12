@@ -951,6 +951,10 @@ function playRing(start = true) {
   paint(ringPlayed.at == null ? 0 : performance.now() - ringPlayed.at);
   if (!start) return;
   box.dataset.playing = '1';
+  // Кольцо заливается с нуля — и сумма в шапке вместе с ним прокручивается от нуля. Если она
+  // уже крутится (свайп периода — от прежней суммы), не перезапускаем
+  const sumEl = document.querySelector('#screen .total-sum');
+  if (ringPlayed.at == null && sumEl && !sumEl.dataset.sum) rollNumber(sumEl, '0');
   // Время — performance.now(), а не метка кадра из requestAnimationFrame: та — когда кадр
   // запланировали. Если перед этим телефон разбирал данные, метка отстаёт на сотни мс, и
   // первый же кадр перескакивал далеко вперёд — это и был рывок в начале заливки
