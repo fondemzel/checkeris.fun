@@ -5359,7 +5359,7 @@ function screenSetMotion() {
   return section('', system ? L.systemNote : '',
     srow({ icon: groupIcon('zap'), title: L.allLabel, end: toggle('data-motion-toggle', all, L.allLabel) }))
     + section(L.kindsLabel, L.kindsNote, MOTION_KINDS.map((k) => srow({
-      title: L.kinds[k], note: L.kindNotes[k], off: !all,
+      title: L.kinds[k], note: L.kindNotes[k], wrap: true, off: !all, // пояснение — целиком, в две строки
       end: toggle(`data-motion-kind="${k}"${all ? '' : ' disabled'}`, prefs[k] !== false, L.kinds[k]),
     })).join(''));
 }
