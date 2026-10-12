@@ -175,7 +175,7 @@ export const en = {
     look: {
       label: 'Appearance',
       motion: 'Animations',
-      motionNote: 'Rings, counters, sliding sheets',
+      motionNote: 'Rings, counters, sheets',
     },
     help: {
       label: 'Help',
