@@ -19,7 +19,7 @@ import { provisionIncome } from './incomecats.mjs';
 import { normalizeName } from './import.mjs';
 
 const DEMO_LOGIN = '__demo__';
-const DEMO_NAME = 'Тестовый режим';
+const DEMO_NAME = 'Демо-режим';
 const STALE_DAYS = 31;
 const now = () => new Date().toISOString();
 
