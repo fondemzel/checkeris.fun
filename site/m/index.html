@@ -9,9 +9,10 @@
   <link rel="manifest" href="/m/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/m/icon-192.png" />
   <link rel="stylesheet" href="/m/styles.css" />
-  <!-- Тёмная тема — до первой отрисовки, иначе при запуске мелькнёт светлый экран -->
+  <!-- Тема и анимации — до первой отрисовки, иначе при запуске мелькнёт светлый экран -->
   <script>
     try {
+      if (localStorage.getItem('checker.motion') === 'off') document.documentElement.dataset.motion = 'off';
       if (localStorage.getItem('checker.theme') === 'dark') {
         document.documentElement.dataset.theme = 'dark';
         document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b0f14');

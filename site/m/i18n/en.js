@@ -172,6 +172,11 @@ export const en = {
     deleteAccount: 'Delete account and all data',
     deleteConfirm: 'Delete your account? All receipts, manual entries, categories and edits will be gone.',
     deleteConfirm2: 'Are you sure? The account cannot be restored.',
+    look: {
+      label: 'Appearance',
+      motion: 'Animations',
+      motionNote: 'Rings, counters, sliding sheets',
+    },
     help: {
       label: 'Help',
       demo: 'Demo mode',

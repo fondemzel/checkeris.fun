@@ -921,7 +921,7 @@ function playRing(start = true) {
   // появившись снова (в том числе по «назад»), заливается заново. Пока кольцо на экране
   // (набор в поиске, свежие данные), анимация не повторяется
   if (!box) ringPlayed = { key: '', at: null };
-  if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!box || calm()) return;
   if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: null };
   if (ringPlayed.at != null && performance.now() - ringPlayed.at >= RING_ANIM) return; // уже показано
   if (box.dataset.playing) return; // это кольцо уже анимируется
@@ -3801,7 +3801,7 @@ function visibleHeight(rows) {
  * ниже, подтягивается мягко, а не прыжком. Анимируется один блок, а не строки.
  */
 function collapseSpace(after, height) {
-  if (height < 8 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (height < 8 || calm()) return;
   const spacer = document.createElement('div');
   spacer.className = 'collapse-space';
   spacer.style.height = `${height}px`;
@@ -3836,7 +3836,7 @@ async function toggleGroup(group, row) {
  * что ниже, едет вместе с краем. Для покупок группы — их немного, и высота известна точно.
  */
 async function slideWrap(wrap, open) {
-  if (!wrap || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!wrap || calm()) return;
   const full = wrap.scrollHeight;
   wrap.style.height = `${open ? 0 : full}px`;
   wrap.getBoundingClientRect(); // начальная высота — до перехода
@@ -3854,7 +3854,7 @@ async function slideWrap(wrap, open) {
 /** Погасить строки перед сворачиванием; ждём, только если есть что гасить. */
 async function animateOut(rows) {
   const shown = rows.slice(0, ANIMATED);
-  if (!shown.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!shown.length || calm()) return;
   shown.forEach((el) => el.classList.add('sec-out'));
   // Не ждём полного угасания: место начинает сжиматься, пока строки ещё догасают
   await new Promise((r) => setTimeout(r, 70));
@@ -3870,7 +3870,7 @@ const ROLL_MS = 900;
 
 function rollNumber(el, from, elapsed = 0) {
   const to = el?.textContent;
-  if (!to || to === from || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!to || to === from || calm()) return;
   el.dataset.sum = to;
   if (!elapsed) rolled = { from, to, at: performance.now() };
   // Продолжение после перерисовки: анимация начинается «в прошлом» — с того же места
@@ -4668,9 +4668,11 @@ async function screenSettings() {
   return section(S.menu.label, '',
     link('profile', UI.user, S.profile.label, me?.name || (me?.telegram ? S.profile.viaTelegram : S.profile.viaPassword))
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
-    + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
-    // Тема — сразу здесь переключателем: выбор хранится на телефоне (index.html ставит её до отрисовки)
-    + srow({ icon: UI.moon, title: S.menu.dark, end: toggle('data-theme-toggle', theme() === 'dark', S.menu.dark) }))
+    + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : ''))
+    // Внешний вид: тема и анимации — выбор хранится на телефоне (index.html ставит их до отрисовки)
+    + section(S.look.label, '',
+      srow({ icon: UI.moon, title: S.menu.dark, end: toggle('data-theme-toggle', theme() === 'dark', S.menu.dark) })
+      + srow({ icon: groupIcon('zap'), title: S.look.motion, note: S.look.motionNote, end: toggle('data-motion-toggle', !calm(), S.look.motion) }))
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
       + link('incats', UI.income, S.cats.income, counts(meta?.income)))
@@ -5304,8 +5306,27 @@ function setTheme(next) {
   }
 }
 
+/**
+ * Анимации выключены — в настройках («Внешний вид») или системным «уменьшить движение».
+ * Тогда кольцо, счётчик суммы, листы и разделы появляются сразу; CSS-анимации гасит
+ * правило :root[data-motion="off"] в стилях.
+ */
+function calm() {
+  return document.documentElement.dataset.motion === 'off' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+function setMotion(on) {
+  if (on) delete document.documentElement.dataset.motion;
+  else document.documentElement.dataset.motion = 'off';
+  try {
+    localStorage.setItem('checker.motion', on ? 'on' : 'off');
+  } catch {
+    // не запомнится — до перезапуска
+  }
+}
+
 $('screen').addEventListener('change', (e) => {
   if (e.target.matches('[data-theme-toggle]')) setTheme(e.target.checked ? 'dark' : 'light');
+  if (e.target.matches('[data-motion-toggle]')) setMotion(e.target.checked);
   if (e.target.matches('[data-demo-toggle]')) switchDemo(e.target.checked, e.target);
 });
 

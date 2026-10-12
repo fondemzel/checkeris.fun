@@ -1987,3 +1987,9 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   from { transform: translateY(calc(var(--from) * -10%)); }
   to { transform: translateY(calc(var(--to) * -10%)); }
 }
+
+/* Анимации выключены в настройках («Внешний вид»): всё появляется сразу. Анимации, которые
+   ведёт код (кольцо, счётчик, разделы), проверяют то же самое — calm() в app.js */
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
