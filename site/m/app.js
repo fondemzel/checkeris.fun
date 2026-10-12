@@ -4199,7 +4199,8 @@ async function onScreenClick(e) {
     // Группа — кольцо её категорий на том же экране («назад» вернёт к группам). В группе одна
     // непустая категория — сразу список: кольцо из одного сектора ничего не покажет
     if (kind === 'summary' || kind === 'income') {
-      if (key === NONE) return kind === 'summary' ? go({ screen: 'group', group: NONE, category: '' }) : toList({ inf: '-' });
+      // Без категории — список неразмеченного (раздел «Без категории» с авторазметкой)
+      if (key === NONE) return toList(kind === 'summary' ? { sg: NONE } : { inf: '-' });
       if (how === 'list') return toList(kind === 'summary' ? { sg: key } : { inf: key });
       return go({ ringGroup: key, ringRest: '' });
     }
