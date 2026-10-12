@@ -191,6 +191,7 @@
  "settings.look.label": "Внешний вид",
  "settings.look.motion": "Анимации",
  "settings.look.motionNote": "Кольца, счётчики, листы",
+ "settings.look.allLabel": "Все анимации",
  "settings.look.allOn": "все включены",
  "settings.look.allOff": "выключены",
  "settings.look.some": "{n} из {total}",

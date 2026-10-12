@@ -220,6 +220,7 @@ export const ru = {
       label: 'Внешний вид',
       motion: 'Анимации',
       motionNote: 'Кольца, счётчики, листы',
+      allLabel: 'Все анимации',
       allOn: 'все включены',
       allOff: 'выключены',
       some: '{n} из {total}',

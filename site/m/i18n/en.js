@@ -176,6 +176,7 @@ export const en = {
       label: 'Appearance',
       motion: 'Animations',
       motionNote: 'Rings, counters, sheets',
+      allLabel: 'All animations',
       allOn: 'all on',
       allOff: 'off',
       some: '{n} of {total}',
