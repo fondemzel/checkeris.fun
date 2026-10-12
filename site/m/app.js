@@ -843,7 +843,18 @@ async function screenSummary() {
       const groupSum = cats.reduce((n, c) => n + c.sum, 0);
       return `${head}${failedLink}${ringView(cats, groupSum, opened.name, 'summary-cat', total)}`;
     }
-    const parts = (meta?.categories ?? []).map((g) => ({ key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0 }));
+    // Сколько непустых категорий в группе: одна — нажатие ведёт сразу в список, кольцо из
+    // одного сектора ничего не добавляет
+    const catsOf = new Map();
+    const note = (slug, sum) => {
+      const g = slug && sum > 0 ? findCategory(slug)?.group.slug : null;
+      if (g) catsOf.set(g, (catsOf.get(g) ?? new Set()).add(slug));
+    };
+    shownItems.forEach((r) => note(r.category_slug, r.sum));
+    shownOps.forEach((op) => note(op.category_slug, op.amount));
+    const parts = (meta?.categories ?? []).map((g) => ({
+      key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0, single: catsOf.get(g.slug)?.size === 1,
+    }));
     parts.push({ key: NONE, name: 'Без категории', color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
     return `${head}${failedLink}${ringView(parts, total, `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`, 'summary')}`;
   }
@@ -969,11 +980,10 @@ function ringView(parts, total, countText, kind, overall = null) {
   }
   const all = parts.filter((p) => p.sum > 0).sort((a, b) => b.sum - a.sum);
   if (!all.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период ничего нет'}</div>`;
-  // Категории доходов — только посмотреть: отдельного списка категории у доходов нет
   // «Остальное» раскрывается всегда — его ключ: «~» и ключи слитых секторов
   const tap = (p) => {
     if (p.other) return ` data-ring="${esc(kind)}|~${esc(p.parts.map((x) => x.key).join(','))}"`;
-    return kind === 'income-cat' ? '' : ` data-ring="${esc(kind)}|${esc(p.key)}"`;
+    return ` data-ring="${esc(kind)}|${esc(p.key)}${p.single ? '|list' : ''}"`;
   };
   const sum = all.reduce((n, p) => n + p.sum, 0);
   const pct = (p) => share.format(Math.round((p.sum / sum) * 1000) / 10);
@@ -1565,7 +1575,14 @@ async function screenIncome() {
       }));
       return `${head}${ringView(cats, cats.reduce((n, c) => n + c.sum, 0), opened.name, 'income-cat', sum)}`;
     }
-    const parts = groups.map((g) => ({ key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0 }));
+    const catsOf = new Map(); // одна непустая категория в группе — сразу список (как у расходов)
+    for (const op of rows) {
+      const g = op.amount > 0 ? incomeCat(op.category_slug)?.group.slug : null;
+      if (g) catsOf.set(g, (catsOf.get(g) ?? new Set()).add(op.category_slug));
+    }
+    const parts = groups.map((g) => ({
+      key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0, single: catsOf.get(g.slug)?.size === 1,
+    }));
     parts.push({ key: NONE, name: T.income.noCategory, color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
     return `${head}${ringView(parts, sum, `${int.format(count)} ${pl(count, T.income.many)}`, 'income')}`;
   }
@@ -4170,17 +4187,22 @@ async function onScreenClick(e) {
   // Группа на кольце: у расходов — её экран, у доходов — список, отобранный по группе
   const ringPick = e.target.closest('[data-ring]');
   if (ringPick) {
-    const [kind, key] = ringPick.dataset.ring.split('|');
+    const [kind, key, how] = ringPick.dataset.ring.split('|');
     // «Остальное» — своё кольцо из слитых в него секторов («назад» вернёт к общему)
     if (key.startsWith('~')) return go({ ringRest: key.slice(1) });
-    // Группа — кольцо её категорий на том же экране («назад» вернёт к группам).
-    // Без категории раскрывать нечего: у расходов — её список
+    // Список, отобранный по нажатому, — новой записью истории: «назад» вернёт к кольцу.
+    // Выбранный вид (localStorage) не трогаем: это переход, а не смена вида
+    const toList = (patch) => go({ mode: 'list', ringGroup: '', ringRest: '', ...patch });
+    // Группа — кольцо её категорий на том же экране («назад» вернёт к группам). В группе одна
+    // непустая категория — сразу список: кольцо из одного сектора ничего не покажет
     if (kind === 'summary' || kind === 'income') {
-      if (key !== NONE) return go({ ringGroup: key, ringRest: '' });
-      if (kind === 'summary') return go({ screen: 'group', group: NONE, category: '' });
-      return null;
+      if (key === NONE) return kind === 'summary' ? go({ screen: 'group', group: NONE, category: '' }) : toList({ inf: '-' });
+      if (how === 'list') return toList(kind === 'summary' ? { sg: key } : { inf: key });
+      return go({ ringGroup: key, ringRest: '' });
     }
     if (kind === 'summary-cat') return go({ screen: 'category', group: state.ringGroup, category: key });
+    // Категория доходов: отдельного экрана нет — список доходов, отобранный по ней
+    if (kind === 'income-cat') return toList({ inf: key });
     return null;
   }
 
