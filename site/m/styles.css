@@ -745,6 +745,8 @@ button, input, select { font: inherit; color: inherit; }
    серым текстом под карточкой. Внутри строки одного вида: значок слева (необязательно),
    название, подстрочник (необязательно), действие справа */
 .sec { padding: 12px 16px 2px; }
+/* Блок без заголовка: сверху отступ не под заголовок — как снизу, строки ровно посередине */
+.sec:not(:has(.sec-title)) { padding-top: 2px; }
 /* Пояснение между блоками: отступ сверху и снизу одинаковый — текст ровно посередине */
 .sec:has(+ .sec-foot) { margin-bottom: 0; }
 .sec-title { margin-bottom: 2px; font-size: 14px; font-weight: 600; color: var(--accent); }
