@@ -3657,7 +3657,7 @@ async function render() {
   if (state.screen !== 'added') manualCarry = null;
 
   $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
-  // Тестовый режим — меткой под заголовком на любом экране
+  // Демо-режим — меткой под заголовком на любом экране
   $('demo-pill').hidden = !meta?.demo;
   $('demo-pill').textContent = T.settings.help.pill;
   document.querySelector('.bar').classList.toggle('demo', Boolean(meta?.demo));
@@ -4691,7 +4691,7 @@ async function screenSettings() {
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
       + link('incats', UI.income, S.cats.income, counts(meta?.income)))
-    // Помощь: что хранится и как удалить; тестовый режим — год трат вымышленного человека
+    // Помощь: что хранится и как удалить; демо-режим — год трат вымышленного человека
     + section(S.help.label, S.help.note,
       // «Данные» — сразу страница о данных, без промежуточного экрана
       srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO })
