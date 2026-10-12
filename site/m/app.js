@@ -917,9 +917,10 @@ const RING_ANIM = 1300; // заливка и проявление последн
 
 function playRing(start = true) {
   const box = document.querySelector('#screen .ring-box');
-  // Экран кольца, а кольца нет (период пуст) — забываем показанное: следующее кольцо, даже то
-  // же самое, снова заливается. Уход на другие экраны («назад» из категории) память не трогает
-  if (!box && state.mode === 'ring' && ['summary', 'income'].includes(state.screen)) ringPlayed = { key: '', at: null };
+  // На экране нет кольца (список, карточка, пустой период) — забываем показанное: кольцо,
+  // появившись снова (в том числе по «назад»), заливается заново. Пока кольцо на экране
+  // (набор в поиске, свежие данные), анимация не повторяется
+  if (!box) ringPlayed = { key: '', at: null };
   if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (box.dataset.ringKey !== ringPlayed.key) ringPlayed = { key: box.dataset.ringKey, at: null };
   if (ringPlayed.at != null && performance.now() - ringPlayed.at >= RING_ANIM) return; // уже показано
@@ -1067,7 +1068,7 @@ function ringView(parts, total, countText, kind, overall = null) {
   // Скорость не зависит от того, сколько секторов и какого они размера. Значок проявляется,
   // когда заливка доходит до середины
   // его сектора (та же кривая, что у маски: ease-out по кубу). Только когда кольцо
-  // показывают заново (другой период, группа, режим) — не при наборе в поиске и не по «назад»;
+  // показывают заново (другой период, группа, режим, возврат с экрана без кольца) — не при наборе в поиске;
   // включает её playRing
   const ringKey = [kind, state.from, state.to, state.ringGroup, state.ringRest, state.src, state.sg, state.inf].join('|');
   const when = (f) => RING_SWEEP * (1 - Math.cbrt(1 - Math.min(1, Math.max(0, f)))); // обратная к ease-out
