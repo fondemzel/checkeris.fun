@@ -989,7 +989,9 @@ function ringView(parts, total, countText, kind, overall = null) {
   const sum = all.reduce((n, p) => n + p.sum, 0);
   const pct = (p) => share.format(Math.round((p.sum / sum) * 1000) / 10);
   const pctAll = (p) => share.format(Math.round((p.sum / whole) * 1000) / 10);
-  const below = (p) => (nested ? `${money(p.sum)} · ${pct(p)}%` : money(p.sum)); // подпись под значком
+  // Доля: во вложенном кольце — своя (в группе) и в скобках общая (от всех расходов/доходов).
+  // Над значком и в таблице под кольцом; под значком — только сумма
+  const shares = (p) => (nested ? `${pct(p)}% (${pctAll(p)}%)` : `${pct(p)}%`);
   const TURN = 2 * Math.PI;
 
   // Значок стоит строго напротив середины своего сектора — без указателей. Чтобы соседние
@@ -1000,7 +1002,7 @@ function ringView(parts, total, countText, kind, overall = null) {
   const point = (angle, radius) => [50 + Math.sin(angle) * radius, 50 - Math.cos(angle) * radius];
   const measure = (p) => {
     p.ang = (p.sum / sum) * TURN;
-    p.w = (Math.max(32, below(p).length * 5.8 + 2) / side) * 100;
+    p.w = (Math.max(32, Math.max(money(p.sum).length, shares(p).length) * 5.8 + 2) / side) * 100;
     p.h = (60 / side) * 100; // доля над значком 32px, сумма под ним
     return p;
   };
@@ -1090,9 +1092,9 @@ function ringView(parts, total, countText, kind, overall = null) {
     const color = p.color ?? '#c9ced6';
     return `
       <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-show="${p.show.toFixed(0)}"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
-        <span class="ring-sum">${nested ? pctAll(p) : pct(p)}%</span>
+        <span class="ring-sum">${shares(p)}</span>
         <span class="ic${p.other ? ' round' : ''}" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
-        <span class="ring-sum">${below(p)}</span>
+        <span class="ring-sum">${money(p.sum)}</span>
       </button>`;
   }).join('');
   // Расшифровка — все по отдельности, со значками; ушедшие в «Остальное» — его цветом
@@ -1104,7 +1106,7 @@ function ringView(parts, total, countText, kind, overall = null) {
         return `<span class="ic" style="background:${c};color:${readableText(c)}">${groupIcon(p.icon ?? 'none')}</span>`;
       })()}
       <span class="ring-name">${esc(p.name)}</span>
-      <span class="ring-share">${pct(p)}%</span>
+      <span class="ring-share">${shares(p)}</span>
       <b>${money(p.sum)}</b>
     </button>`).join('');
   return `
