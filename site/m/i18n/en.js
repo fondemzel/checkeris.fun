@@ -184,11 +184,11 @@ export const en = {
       kindsNote: 'Turned off items appear at once, without motion',
       systemNote: 'Reduce motion is on in the phone settings — no animations until it is turned off',
       kindNotes: {
-        ring: 'Spending and income rings fill in a circle',
-        counter: 'The header total rolls to the new amount',
-        sheets: 'Menus and category pickers slide up',
-        sections: 'List categories open smoothly',
-        swipe: 'The list slides aside on period change',
+        ring: 'Smooth ring fill',
+        counter: 'Smooth change of the total',
+        sheets: 'Smooth display of menus and dialogs',
+        sections: 'Smooth opening of list categories',
+        swipe: 'Smooth list slide on period change',
       },
       kinds: {
         ring: 'Ring fill',
