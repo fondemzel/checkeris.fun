@@ -273,7 +273,7 @@ function humanPeriod(from, to) {
   const monday = addDays(now, -((now.getDay() + 6) % 7));
   if (from === isoDay(monday) && to === isoDay(addDays(monday, 6))) return 'Эта неделя';
   if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, -1))) return 'Прошлая неделя';
-  if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, 6))) return 'Эта и прошлая неделя';
+  if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, 6))) return 'Две недели';
   if (to === today) {
     if (days === 1) return 'Сегодня';
     if (days === 7) return 'За неделю';
@@ -906,10 +906,13 @@ async function screenSummary() {
  * Значки групп — напротив своих секторов, с суммой и долей под каждым; ниже — расшифровка таблицей:
  * доля и сумма читаются и без цвета. Нажатие на значок, сегмент или строку открывает группу.
  */
-/** Заглавие экрана с кольцом: раскрытые группа и «Остальное» — через точку. */
+/** Заглавие экрана с кольцом: раскрытая группа (и «Остальное») вместо названия раздела. */
 function ringTitle(base, groupName) {
   if (state.mode !== 'ring') return base;
-  return [base, state.ringGroup && groupName(state.ringGroup), state.ringRest && 'Остальное'].filter(Boolean).join(' · ');
+  // Раскрыта группа или «Остальное» — их название вместо «Расходы»: рядом ещё период, а что
+  // это расходы, видно по вкладке
+  const inner = [state.ringGroup && groupName(state.ringGroup), state.ringRest && 'Остальное'].filter(Boolean);
+  return inner.length ? inner.join(' · ') : base;
 }
 
 // Какое кольцо анимировали последним и когда (at — первый нарисованный кадр). Разметка кольца
