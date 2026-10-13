@@ -508,21 +508,15 @@ const PERIOD_SCREENS = ['summary', 'income', 'group', 'category', 'receipts', 'b
 const demoPill = $('demo-pill');
 
 /**
- * Заголовок экрана: название и под ним мелкой строкой — период (если есть) и метка
- * демо-режима (на любом экране, нажатие предлагает выключить).
+ * Заголовок экрана: название и в той же строке — период человеческим языком. Не помещается —
+ * сокращается название, период виден целиком. Метка демо-режима — под заголовком.
  */
 function setTitle(main, sub = '') {
   const el = $('title');
-  el.innerHTML = `<span class="bar-main">${esc(main)}</span>`;
-  const line = document.createElement('span');
-  line.className = 'bar-sub';
-  if (sub) line.insertAdjacentHTML('beforeend', `<span>${esc(sub)}</span>`);
+  el.innerHTML = `<span class="bar-main">${esc(main)}</span>${sub ? `<span class="bar-period">&nbsp;· ${esc(sub)}</span>` : ''}`;
   demoPill.hidden = !meta?.demo;
-  if (meta?.demo) {
-    demoPill.textContent = T.settings.help.pill;
-    line.append(demoPill);
-  }
-  if (line.childNodes.length) el.append(line);
+  demoPill.textContent = T.settings.help.pill;
+  document.querySelector('.bar').classList.toggle('demo', Boolean(meta?.demo));
 }
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;

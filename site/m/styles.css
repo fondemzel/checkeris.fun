@@ -1998,8 +1998,10 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 :root[data-no-sheets] .sheet, :root[data-no-sheets] .picker,
 :root[data-no-sheets] .sheet-box, :root[data-no-sheets] .picker-box, :root[data-no-sheets] .ask-box { animation: none !important; }
 
-/* Заголовок экрана: название и под ним мелко — период человеческим языком и метка демо-режима */
-.bar-title { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; line-height: 1.2; }
-.bar-main { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar-sub { display: flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 1px; font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.7); white-space: nowrap; }
-.bar-sub > span { overflow: hidden; text-overflow: ellipsis; }
+/* Заголовок экрана: название и в той же строке период; длинное — сокращается название */
+.bar-title { display: flex; justify-content: center; min-width: 0; white-space: nowrap; }
+.bar-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bar-period { flex: none; }
+/* Демо-режим: метка под заголовком, заголовок чуть выше */
+.bar.demo .bar-title { padding-bottom: 12px; }
+.demo-pill { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); }
