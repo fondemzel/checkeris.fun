@@ -273,6 +273,7 @@ function humanPeriod(from, to) {
   const monday = addDays(now, -((now.getDay() + 6) % 7));
   if (from === isoDay(monday) && to === isoDay(addDays(monday, 6))) return 'Эта неделя';
   if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, -1))) return 'Прошлая неделя';
+  if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, 6))) return 'Эта и прошлая неделя';
   if (to === today) {
     if (days === 1) return 'Сегодня';
     if (days === 7) return 'За неделю';
