@@ -262,6 +262,28 @@ function periodTitle(from, to) {
 }
 
 /**
+ * Период человеческим языком — для заголовка экрана: «Сентябрь 2026», «2026 год»; отрезок до
+ * сегодняшнего дня — «За три недели», «За 30 дней»; «Сегодня», «Вчера», «Эта неделя».
+ */
+function humanPeriod(from, to) {
+  if (wholeMonths(from, to)) return periodTitle(from, to);
+  const now = new Date();
+  const today = isoDay(now);
+  const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
+  const monday = addDays(now, -((now.getDay() + 6) % 7));
+  if (from === isoDay(monday) && to === isoDay(addDays(monday, 6))) return 'Эта неделя';
+  if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, -1))) return 'Прошлая неделя';
+  if (to === today) {
+    if (days === 1) return 'Сегодня';
+    if (days === 7) return 'За неделю';
+    if (days % 7 === 0 && days <= 28) return `За ${['', '', 'две', 'три', 'четыре'][days / 7]} недели`;
+    return `За ${days} ${plural(days, 'день', 'дня', 'дней')}`;
+  }
+  if (from === to && from === isoDay(addDays(now, -1))) return 'Вчера';
+  return periodTitle(from, to);
+}
+
+/**
  * Период цифрами — для шапки, где рядом стоит сортировка и словам тесно:
  * месяц — «09.26», несколько месяцев — «01.26–09.26», год — «2026», дни — «01.09.26».
  * Полное название («Сентябрь 2026») видно в подсказке и в календаре.
@@ -479,6 +501,28 @@ document.addEventListener('click', (e) => {
 // Корневые экраны: у них нет «назад». «Банк» — такой же вид «Расхода», как чеки,
 // в него приходят переключателем, а не вглубь
 const TOP = ['summary', 'receipts', 'bank', 'income', 'settings', 'stats'];
+
+// Экраны с периодом: в заголовке под названием — период человеческим языком
+const PERIOD_SCREENS = ['summary', 'income', 'group', 'category', 'receipts', 'bank'];
+const demoPill = $('demo-pill');
+
+/**
+ * Заголовок экрана: название и под ним мелкой строкой — период (если есть) и метка
+ * демо-режима (на любом экране, нажатие предлагает выключить).
+ */
+function setTitle(main, sub = '') {
+  const el = $('title');
+  el.innerHTML = `<span class="bar-main">${esc(main)}</span>`;
+  const line = document.createElement('span');
+  line.className = 'bar-sub';
+  if (sub) line.insertAdjacentHTML('beforeend', `<span>${esc(sub)}</span>`);
+  demoPill.hidden = !meta?.demo;
+  if (meta?.demo) {
+    demoPill.textContent = T.settings.help.pill;
+    line.append(demoPill);
+  }
+  if (line.childNodes.length) el.append(line);
+}
 
 const findGroup = (slug) => (meta?.categories ?? []).find((g) => g.slug === slug) ?? null;
 /** Значок категории: свой, а не выбран — её группы. found — из findCategory или incomeCat. */
@@ -1709,7 +1753,7 @@ async function screenItem() {
 async function screenOp() {
   const op = await api(`/api/bank/ops/${state.op}`);
   const income = op.direction === 'credit';
-  $('title').textContent = income ? T.income.one : 'Товар'; // вид операции известен только теперь
+  setTitle(income ? T.income.one : 'Товар'); // вид операции известен только теперь
   for (const tab of document.querySelectorAll('[data-tab]')) tab.classList.toggle('on', tab.dataset.tab === (income ? 'income' : 'summary'));
   return itemCard({
     id: op.id,
@@ -3656,11 +3700,8 @@ async function render() {
   if (state.screen !== 'manual') manualPrefill = null; // заготовка из скана — только для этого захода
   if (state.screen !== 'added') manualCarry = null;
 
-  $('title').textContent = typeof screen.title === 'function' ? screen.title() : screen.title;
-  // Демо-режим — меткой под заголовком на любом экране
-  $('demo-pill').hidden = !meta?.demo;
-  $('demo-pill').textContent = T.settings.help.pill;
-  document.querySelector('.bar').classList.toggle('demo', Boolean(meta?.demo));
+  setTitle(typeof screen.title === 'function' ? screen.title() : screen.title,
+    PERIOD_SCREENS.includes(state.screen) ? humanPeriod(state.from, state.to) : '');
   $('back').hidden = top;
 
   const actions = screen.actions?.() ?? '';
@@ -5414,7 +5455,7 @@ async function switchDemo(on, box = null) {
   }
 }
 
-$('demo-pill').addEventListener('click', async () => {
+demoPill.addEventListener('click', async () => {
   if (await ask(T.settings.help.offConfirm, { ok: T.settings.help.off })) switchDemo(false);
 });
 
