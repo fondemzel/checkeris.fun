@@ -3599,7 +3599,8 @@ const SCREENS = {
     title: () => (state.group === NONE ? 'Без категории' : findGroup(state.group)?.name ?? 'Группа'),
     render: screenGroup,
   },
-  category: { title: 'Позиции', render: screenCategory },
+  // Название категории, как у других экранов раздела (рядом — период)
+  category: { title: () => (state.category === NONE ? 'Без категории' : findCategory(state.category)?.category.name ?? 'Расходы'), render: screenCategory },
   item: { title: 'Товар', render: screenItem, after: () => { mountItemMap(); fitNote(); } },
   bank: { title: 'Операции банка', render: screenBank },
   income: {
