@@ -6598,15 +6598,18 @@ if (token.get()) {
 // Месяц аналитики — из общего периода приложения: месяц, в котором он заканчивается. Листается
 // свайпом (swipeTarget), в заголовке — его название (anaTitle)
 let anaData = null; // последний ответ /api/analytics — для правки лимита
-const monthKey = (iso) => iso.slice(0, 7);
+// Объявления функций, а не стрелки в константах: первая отрисовка идёт раньше этого места файла
+function monthKey(iso) {
+  return iso.slice(0, 7);
+}
 function anaTitle() {
   const [y, m] = monthKey(state.to).split('-').map(Number);
   return periodTitle(...Object.values(monthPeriod(y, m - 1)));
 }
-const currentMonthKey = () => {
+function currentMonthKey() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
+}
 
 async function screenAnalytics() {
   const month = monthKey(state.to) > currentMonthKey() ? currentMonthKey() : monthKey(state.to);
