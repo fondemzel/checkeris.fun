@@ -2001,8 +2001,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Заголовок экрана: название и в той же строке период; длинное — сокращается название */
 .bar-title { display: flex; justify-content: center; min-width: 0; white-space: nowrap; }
 .bar-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.bar-period { flex: none; }
+.bar-period { flex: none; font-weight: 400; color: rgba(255, 255, 255, 0.75); } /* период — легче названия: короче и отделён */
 /* Демо-режим: метка под заголовком, заголовок чуть выше */
 .bar.demo .bar-title { padding-bottom: 12px; }
 .demo-pill { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); }
-.bar-title.long { font-size: 16px; }
+.bar-title.long { font-size: 16px; letter-spacing: -0.01em; }
