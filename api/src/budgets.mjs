@@ -81,6 +81,9 @@ export function getBudget(db, user) {
     id: budget.id,
     name: budget.name,
     is_owner: isOwner,
+    // Сообщать ли мне в Telegram о тратах других участников (members.mjs)
+    notify_members: Boolean(db.prepare('SELECT COALESCE(notify_members, 1) AS n FROM users WHERE id = ?').get(user.id)?.n),
+    telegram: Boolean(db.prepare('SELECT telegram_id FROM users WHERE id = ?').get(user.id)?.telegram_id),
     // Свой ли это бюджет: из своего выйти нельзя, можно только принять чужой
     is_home: user.home_budget_id === budget.id,
     members,

@@ -4713,8 +4713,15 @@ function budgetSection(budget) {
     .join('');
   const invite = budget.is_owner ? srow({ icon: UI.userPlus, title: B.invite, note: B.inviteNote, attrs: 'data-invite' }) : '';
   const leave = budget.is_home ? '' : srow({ icon: UI.logout, title: B.leave, note: B.leaveNote, attrs: 'data-leave', danger: true });
+  // Сообщения в Telegram о тратах и доходах других участников — только в общем бюджете
+  const notifyRow = budget.members.length > 1
+    ? section('', budget.telegram ? B.notifyNote : B.notifyNoTelegram, srow({
+      icon: UI.mail, title: B.notify, end: toggle(`data-notify-members${budget.telegram ? '' : ' disabled'}`, budget.notify_members && budget.telegram, B.notify),
+    }))
+    : '';
   return section(B.main, '', name + leave)
-    + section(B.members, budget.members.length > 1 ? B.noteShared : B.noteAlone, members + invite);
+    + section(B.members, budget.members.length > 1 ? B.noteShared : B.noteAlone, members + invite)
+    + notifyRow;
 }
 
 /**
@@ -5540,6 +5547,15 @@ $('screen').addEventListener('change', (e) => {
   }
   if (e.target.matches('[data-motion-kind]')) setMotionKind(e.target.dataset.motionKind, e.target.checked);
   if (e.target.matches('[data-demo-toggle]')) switchDemo(e.target.checked, e.target);
+  if (e.target.matches('[data-notify-members]')) {
+    const box = e.target;
+    api('/api/session', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notify_members: box.checked }) })
+      .then(() => kept.delete('/api/budget'))
+      .catch((err) => {
+        box.checked = !box.checked;
+        toast(`${T.common.failed}: ${err.message}`);
+      });
+  }
 });
 
 /**

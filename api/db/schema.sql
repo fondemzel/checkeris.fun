@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS users (
   role        TEXT NOT NULL DEFAULT 'user', -- user | admin: админ без квот, правит системный справочник
   budget_id      INTEGER REFERENCES budgets (id), -- текущий бюджет: его данные человек видит и правит
   home_budget_id INTEGER REFERENCES budgets (id), -- свой бюджет: в него человек вернётся, выйдя из общего
-  demo_return    INTEGER                          -- включена тестовая база: в какой бюджет вернуться (demo.mjs)
+  demo_return    INTEGER,                         -- включена тестовая база: в какой бюджет вернуться (demo.mjs)
+  notify_members INTEGER NOT NULL DEFAULT 1       -- сообщать в Telegram, что другой участник внёс трату (members.mjs)
 );
 
 -- Бюджет — хозяин данных. Обычно в нём один человек; семья — несколько человек

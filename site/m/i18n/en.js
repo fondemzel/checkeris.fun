@@ -145,6 +145,9 @@ export const en = {
       inviteNote: 'send a link by messenger or email',
       leave: 'Leave shared budget',
       leaveNote: 'you return to your own; your expenses stay here',
+      notify: 'Notify about members’ spending',
+      notifyNote: 'In Telegram, when another member adds spending or income: manually, by scan or from a bank',
+      notifyNoTelegram: 'Link Telegram in your profile to get messages about other members’ spending',
       leaveConfirm: 'Leave the shared budget? You will return to your own. Your expenses stay in the shared one.',
     },
     banks: {

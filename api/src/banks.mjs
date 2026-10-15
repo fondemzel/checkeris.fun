@@ -5,6 +5,7 @@
 //
 // Пока банк один — Т-Банк (tbank.mjs). Сессия живёт, пока её пингуют; умерла —
 // подключение помечается expired, а человеку уходит сообщение в Telegram: войти заново.
+import { notifyBankOps } from './members.mjs';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { loadEnv } from './llm.mjs';
 import { matchBank, opWhoSql } from './bankmatch.mjs';
@@ -175,6 +176,7 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   const adopt = db.prepare('UPDATE bank_ops SET ext_id = ? WHERE id = ?');
   let count = 0;
   let added = 0; // сколько операций человек видит впервые: остальные приехали на повторную проверку
+  const fresh = []; // их номера — для сообщения другим участникам бюджета (members.mjs)
   let skipped = 0;
   db.exec('BEGIN');
   try {
@@ -192,13 +194,17 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
           // Списанная, а у нас она ещё «в обработке» под старым номером — это она же
           const pending = pendingTwin.get(key);
           if (pending) adopt.run(row.ext_id, pending.id);
-          else added += 1;
+          else {
+            added += 1;
+            fresh.push(row.ext_id);
+          }
         } else if (settledTwin.get(key)) {
           // Банк снова прислал вариант «в обработке», а проведённая уже есть — не плодим
           count += 1;
           continue;
         } else {
           added += 1;
+          fresh.push(row.ext_id);
         }
       }
       upsert.run({ ...row, now: at });
@@ -215,6 +221,12 @@ export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   // Сразу разбираем: что покрыто чеком, что перевод между своими, что доход
   const marks = matchBank(db, budgetId);
   convertForeign(db).catch((err) => console.error('валюта:', err.message)); // траты в валюте — в рубли
+  // Другим участникам бюджета — что пришло (вид операций уже разобран: переводы себе не в счёт)
+  try {
+    notifyBankOps(db, link.id, fresh);
+  } catch (err) {
+    console.error('сообщение участникам:', err.message);
+  }
   return { ops: count, added, total, skipped, ...marks };
 }
 

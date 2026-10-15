@@ -13,6 +13,7 @@
 //
 // Опрос идёт с нарастающей паузой, потому что суточный лимит обращений к ФНС — 1000
 // на всё приложение, и цикл «спрашивать раз в секунду» съел бы его за час.
+import { notifyReceipt } from './members.mjs';
 import { parseQr, requestTicket, fetchTicket, fnsReady, fnsUsage } from './fns.mjs';
 import { saveReceipt, importStatements } from './import.mjs';
 import { matchBank } from './bankmatch.mjs';
@@ -207,6 +208,11 @@ async function step(db, job) {
     "UPDATE scan_jobs SET status = 'done', receipt_id = ?, error = NULL, error_code = NULL, next_at = NULL, updated_at = ? WHERE id = ?",
   )
     .run(saved.id, now(), job.id);
+  try {
+    notifyReceipt(db, saved.id, job.user_id); // другим участникам бюджета
+  } catch (err) {
+    console.error('сообщение участникам:', err.message);
+  }
   return true;
 }
 

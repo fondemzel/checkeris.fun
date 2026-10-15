@@ -25,6 +25,7 @@ import {
 import { flatten, loadCategories, syncCategories } from './categories.mjs';
 import { isDemo, enableDemo, disableDemo } from './demo.mjs';
 import { getAnalytics, getLimits, setLimits } from './limits.mjs';
+import { notifyManual } from './members.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
 import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
 import { unlabeled, labelBatch } from './autolabel.mjs';
@@ -421,6 +422,11 @@ async function handleApi(req, res, url) {
         body = await readJson(req);
       } catch {
         return sendJson(res, 400, { error: 'bad request body' });
+      }
+      // Сообщения о тратах других участников бюджета: включить или выключить у себя
+      if (body.notify_members !== undefined) {
+        db.prepare('UPDATE users SET notify_members = ? WHERE id = ?').run(body.notify_members ? 1 : 0, user.id);
+        return sendJson(res, 200, { notify_members: Boolean(body.notify_members) });
       }
       const name = String(body.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
       if (!name) return sendJson(res, 400, { error: 'нужно имя' });
@@ -852,6 +858,11 @@ async function handleApi(req, res, url) {
       return sendJson(res, 400, { error: 'bad request body' });
     }
     const result = addManual(db, user.budget_id, body, user.id);
+    if (!result.error) {
+      // Другим участникам бюджета — что внесено
+      const item = db.prepare('SELECT name, sum FROM items WHERE id = ?').get(result.item_id);
+      if (item) notifyManual(db, user.budget_id, user.id, item.name, item.sum);
+    }
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
   }
 
