@@ -3775,6 +3775,9 @@ async function render() {
     // не держим пустое кольцо дольше 0,6 с
     playRing(false);
     setTimeout(() => seq === renderSeq && playRing(), 600);
+    // Лента проявляется сразу с сохранённым видом: иначе строки были бы видны, потом пропадали
+    // и проявлялись заново, когда придёт свежий вид
+    playList();
   } else if (!sameScreen && !sameKind) {
     $('screen').innerHTML = loading();
     window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
