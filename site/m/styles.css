@@ -2006,3 +2006,4 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .bar.demo .bar-title { padding-bottom: 12px; }
 .demo-pill { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); }
 .bar-title.long { font-size: 16px; letter-spacing: -0.01em; }
+.bar-title.long.tight { font-size: 15px; }

@@ -515,6 +515,10 @@ function setTitle(main, sub = '') {
   const el = $('title');
   el.innerHTML = `<span class="bar-main">${esc(main)}</span>${sub ? `<span class="bar-period">&nbsp;· ${esc(sub)}</span>` : ''}`;
   el.classList.toggle('long', Boolean(sub)); // с периодом — на пиксель мельче: длинное реже сокращается
+  // Всё равно не помещается — ещё на пиксель мельче; дальше уже сокращается название
+  el.classList.remove('tight');
+  const main = el.querySelector('.bar-main');
+  if (main.scrollWidth > main.clientWidth) el.classList.add('tight');
   demoPill.hidden = !meta?.demo;
   demoPill.textContent = T.settings.help.pill;
   document.querySelector('.bar').classList.toggle('demo', Boolean(meta?.demo));
