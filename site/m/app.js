@@ -6580,7 +6580,7 @@ if (token.get()) {
 // ── Аналитика: лимиты по группам на месяц (limits.mjs) ────────────────────────
 // Месяц календарный; лимит — общий для бюджета; остаток не переносится. Сверху — сколько
 // ещё можно тратить в день до конца месяца, ниже — группы: потрачено из лимита и прогноз
-// к концу месяца по нынешнему темпу. Нажатие на группу — правка её лимита.
+// к концу месяца (потрачено + сколько обычно уходит в группе после сегодняшнего числа). Нажатие на группу — правка её лимита.
 
 let anaMonth = ''; // 'ГГГГ-ММ', пусто — текущий
 let anaData = null; // последний ответ /api/analytics — для правки лимита
@@ -6653,7 +6653,8 @@ async function screenAnalytics() {
     .map((g) => {
       const spent = spentOf(g.slug);
       const limit = lim[g.slug];
-      const forecast = current && passed >= 3 ? (spent / passed) * daysIn : null;
+      // Прогноз — по привычке самого человека: потрачено + сколько обычно уходит до конца месяца
+      const forecast = current ? spent + (data.rest?.[g.slug] ?? 0) : null;
       const tone = spent > limit ? 'over' : (forecast ?? spent) > limit ? 'warn' : 'ok';
       return { g, spent, limit, forecast, tone, ratio: spent / limit };
     })

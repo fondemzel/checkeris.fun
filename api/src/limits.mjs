@@ -48,9 +48,31 @@ export function suggestLimits(db, budgetId, month) {
   return out;
 }
 
-/** Всё для экрана «Аналитика» за месяц: траты по группам, лимиты, предложения. */
+/**
+ * Сколько обычно тратится в группе после такого-то числа месяца: среднее за три прошлых
+ * месяца по дням day+1…конец. Прогноз к концу месяца = потрачено + это. Так разовые
+ * платежи (аренда в начале месяца) не «умножаются» на остаток месяца, как при продлении темпа,
+ * а ежедневные траты (еда) растут как обычно.
+ */
+function usualRest(db, budgetId, y, m, day) {
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const out = {};
+  for (let k = 1; k <= 3; k += 1) {
+    const first = new Date(y, m - 1 - k, 1);
+    const last = new Date(y, m - k, 0);
+    if (day >= last.getDate()) continue; // месяц короче — после этого числа ничего
+    const spent = spentByGroup(db, budgetId, iso(new Date(first.getFullYear(), first.getMonth(), day + 1)), iso(last));
+    for (const [g, sum] of Object.entries(spent)) out[g] = (out[g] ?? 0) + sum / 3;
+  }
+  for (const g of Object.keys(out)) out[g] = Math.round(out[g]);
+  return out;
+}
+
+/** Всё для экрана «Аналитика» за месяц: траты по группам, лимиты, предложения; для текущего — прогноз. */
 export function getAnalytics(db, budgetId, month) {
   const range = monthRange(month);
+  const now = new Date();
+  const current = range.y === now.getFullYear() && range.m === now.getMonth() + 1;
   return {
     month: range.month,
     from: range.from,
@@ -58,6 +80,7 @@ export function getAnalytics(db, budgetId, month) {
     spent: spentByGroup(db, budgetId, range.from, range.to),
     limits: getLimits(db, budgetId),
     suggest: suggestLimits(db, budgetId, range.month),
+    rest: current ? usualRest(db, budgetId, range.y, range.m, now.getDate()) : {}, // обычно ещё до конца месяца
   };
 }
 
