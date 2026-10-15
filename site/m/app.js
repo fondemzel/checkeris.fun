@@ -4289,7 +4289,8 @@ async function onScreenClick(e) {
       const keys = listed.split(',');
       const catOf = (k) => (state.screen === 'summary' ? findCategory(k)?.group.slug : incomeCat(k)?.group.slug);
       const group = catOf(keys[0]);
-      if (group) back = { ringGroup: group, ringRest: keys.join(',') };
+      // Одна категория — кольцо её группы; несколько — их «Остальное» внутри группы
+      if (group) back = { ringGroup: group, ringRest: keys.length > 1 ? keys.join(',') : '' };
       else if (keys.length > 1) back = { ringGroup: '', ringRest: keys.join(',') };
       else if (keys[0] !== NONE) back = { ringGroup: keys[0], ringRest: '' };
     }
@@ -4325,7 +4326,8 @@ async function onScreenClick(e) {
       if (how === 'list') return toList(kind === 'summary' ? { sg: key } : { inf: key });
       return go({ ringGroup: key, ringRest: '' });
     }
-    if (kind === 'summary-cat') return go({ screen: 'category', group: state.ringGroup, category: key });
+    // Категория — основной список расходов, отобранный по ней (фильтр, поиск, кольцо — все на месте)
+    if (kind === 'summary-cat') return toList({ sg: key });
     // Категория доходов: отдельного экрана нет — список доходов, отобранный по ней
     if (kind === 'income-cat') return toList({ inf: key });
     return null;
