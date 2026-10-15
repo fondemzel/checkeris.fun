@@ -975,6 +975,29 @@ const RING_SWEEP = 900; // заливка круга
 const RING_POP = 300; // проявление значка
 const RING_ANIM = 1300; // заливка и проявление последнего значка
 
+/**
+ * Появление ленты расходов и доходов: заголовки разделов и строки — по одной сверху вниз, как
+ * группы в аналитике («Раскрытие разделов»). Только новый список — другой период, отбор, вход на
+ * экран; набор в поиске и перерисовка теми же данными его заново не проявляют.
+ */
+let listPlayed = '';
+function playList() {
+  const fresh = ['summary', 'income'].includes(state.screen) && state.mode !== 'ring' && document.querySelector('#screen .list');
+  if (!fresh) {
+    listPlayed = '';
+    return;
+  }
+  const key = sectionsKey();
+  if (key === listPlayed) return;
+  listPlayed = key;
+  if (!motion('sections')) return;
+  [...document.querySelectorAll('#screen .list > *')].slice(0, 25).forEach((el, i) => {
+    el.style.setProperty('--i', i);
+    el.classList.add('row-in');
+    el.addEventListener('animationend', () => el.classList.remove('row-in'), { once: true });
+  });
+}
+
 function playRing(start = true) {
   const box = document.querySelector('#screen .ring-box');
   // На экране нет кольца (список, карточка, пустой период) — забываем показанное: кольцо,
@@ -3779,6 +3802,7 @@ async function render() {
     if (rolling) rollNumber(sumEl, rolled.from, performance.now() - rolled.at);
     else if (prevSum) rollNumber(sumEl, prevSum);
     playRing(); // и когда свежий вид совпал с сохранённым: тот ждёт пустым
+    playList();
     shownScreen = state.screen;
     screen.after?.();
     updateSecTop();
@@ -4105,8 +4129,9 @@ addEventListener('touchend', async () => {
 
 // ── своя «резина» у краёв ────────────────────────────────
 // Системную «резину» приложение выключает: Android растягивает ею всё окно, и закреплённые меню
-// и шапка съезжают. Вместо неё — своя, похожая: тянется только содержимое экрана, от того края,
-// за который тянут; отпустили — упруго возвращается. Меню и верхняя полоса стоят на месте
+// и шапка съезжают. Вместо неё — своя: содержимое под шапкой туго сдвигается за пальцем от того
+// края, за который тянут; отпустили — упруго возвращается. Меню, верхняя полоса и шапка с итогом
+// (те же, что не уезжают при свайпе периода — swipeParts) стоят на месте
 const stretchEl = $('screen');
 let stretchFrom = null; // где палец, пока лента ещё не упёрлась в край
 let stretchEdge = null; // 'top' | 'bottom' — за какой край тянут
@@ -4118,8 +4143,16 @@ addEventListener('touchstart', (e) => {
   // Выпадающее меню листается само: «резина» перехватила бы жест, и меню бы не сдвинулось
   if (e.target.closest('.drop-menu')) return;
   stretchFrom = e.touches[0].clientY;
-  stretchEl.style.transition = '';
+  swipeParts().forEach((el) => (el.style.transition = ''));
 }, { passive: true });
+
+/** Сдвиг содержимого «резиной»: вниз (тянут за верхний край) или вверх (за нижний). */
+function setStretch(offset, transition = '') {
+  for (const el of swipeParts()) {
+    el.style.transition = transition;
+    el.style.transform = offset ? `translateY(${offset.toFixed(1)}px)` : '';
+  }
+}
 
 addEventListener('touchmove', (e) => {
   if (stretchFrom == null) return;
@@ -4133,20 +4166,21 @@ addEventListener('touchmove', (e) => {
       stretchFrom = y; // лента ещё листается — тянуть начнём от места, где она упрётся
       return;
     }
-    stretchEl.style.transformOrigin = stretchEdge === 'top' ? '50% 0' : '50% 100%';
   }
-  const pulled = stretchEdge === 'top' ? y - stretchFrom : stretchFrom - y;
-  // Чем дальше тянут, тем туже — до ~6%, как у системной
-  const scale = pulled > 0 ? 1 + 0.06 * (1 - Math.exp(-pulled / 300)) : 1;
-  stretchEl.style.transform = scale > 1 ? `scaleY(${scale.toFixed(4)})` : '';
+  const pulled = Math.max(0, stretchEdge === 'top' ? y - stretchFrom : stretchFrom - y);
+  // Чем дальше тянут, тем туже — не дальше 70 px
+  const offset = 70 * (1 - Math.exp(-pulled / 220));
+  setStretch(stretchEdge === 'top' ? offset : -offset);
+  stretched = offset > 0;
 }, { passive: true });
 
+let stretched = false;
 function stretchBack() {
-  if (!stretchEl.style.transform) return;
-  stretchEl.style.transition = 'transform 0.35s cubic-bezier(0.2, 0.8, 0.3, 1)';
-  stretchEl.style.transform = '';
   stretchFrom = null;
   stretchEdge = null;
+  if (!stretched) return;
+  stretched = false;
+  setStretch(0, 'transform 0.35s cubic-bezier(0.2, 0.8, 0.3, 1)');
 }
 addEventListener('touchend', stretchBack);
 addEventListener('touchcancel', stretchBack);
@@ -4196,8 +4230,8 @@ addEventListener('touchmove', (e) => {
       pullReset();
     }
     stretchFrom = null;
-    stretchEl.style.transform = '';
-    stretchEl.style.transition = '';
+    stretched = false;
+    setStretch(0);
   }
   e.preventDefault(); // страница вверх-вниз не ездит, пока листаем вбок
   if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
