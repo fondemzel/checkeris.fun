@@ -1031,8 +1031,18 @@ function playRing(start = true) {
   };
   // Пока не пустили — пустое кольцо (или то место, где анимацию прервала перерисовка)
   paint(ringPlayed.at == null ? 0 : performance.now() - ringPlayed.at);
+  // Таблица под кольцом проявляется по строке вместе с заливкой. Пока заливка ждёт старта
+  // (сохранённый вид, свежие данные ещё в пути) — строки скрыты: иначе мелькнули бы и пропали
+  const legend = ringPlayed.at == null && motion('sections') ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
+  legend.forEach((el) => el.classList.add('row-wait'));
   if (!start) return;
   box.dataset.playing = '1';
+  legend.forEach((el, i) => {
+    el.style.setProperty('--i', i);
+    el.classList.remove('row-wait');
+    el.classList.add('row-in');
+    el.addEventListener('animationend', () => el.classList.remove('row-in'), { once: true });
+  });
   // Кольцо заливается с нуля — и сумма в шапке вместе с ним прокручивается от нуля. Если она
   // уже крутится (свайп периода — от прежней суммы), не перезапускаем
   const sumEl = document.querySelector('#screen .total-sum');

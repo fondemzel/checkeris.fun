@@ -2053,3 +2053,4 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-bar i.ana-fill { transition: width 0.6s cubic-bezier(0.2, 0.8, 0.3, 1); }
 /* Лента расходов и доходов появляется по строке (playList) — как группы в аналитике */
 .row-in { animation: ana-in 0.3s ease-out both; animation-delay: calc(var(--i, 0) * 35ms); }
+.row-wait { opacity: 0; } /* строка ждёт своей очереди проявиться */
