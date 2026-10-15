@@ -184,14 +184,14 @@ export const en = {
       kindsNote: 'Turned off items appear at once, without motion',
       systemNote: 'Reduce motion is on in the phone settings — no animations until it is turned off',
       kindNotes: {
-        ring: 'Smooth ring fill',
+        ring: 'Smooth fill of rings and progress bars',
         counter: 'Smooth change of the total',
         sheets: 'Smooth display of menus and dialogs',
         sections: 'Smooth opening of list categories',
         swipe: 'Smooth list slide on period change',
       },
       kinds: {
-        ring: 'Ring fill',
+        ring: 'Ring and bar fill',
         counter: 'Total counter',
         sheets: 'Sheets and dialogs',
         sections: 'Opening sections',

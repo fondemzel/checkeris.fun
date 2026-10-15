@@ -3608,7 +3608,7 @@ const SCREENS = {
     title: () => ringTitle('Доход', (k) => (k === '-' ? T.income.noCategory : (meta?.income ?? []).find((g) => g.slug === k)?.name ?? incomeCat(k)?.name)),
     render: screenIncome,
   },
-  stats: { title: 'Аналитика', render: screenAnalytics },
+  stats: { title: 'Аналитика', render: screenAnalytics, after: () => animateAnalytics() },
   settings: { title: 'Настройки', render: screenSettings },
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
@@ -4159,7 +4159,8 @@ let swipeFrom = null; // { x, y, t } касания
 let swipeLock = ''; // '' — ещё не ясно, 'x' — листаем периоды, 'y' — обычная прокрутка
 let swipeBusy = false;
 // Что едет: всё на экране, кроме закреплённой шапки
-const swipeParts = () => [...stretchEl.children].filter((el) => !el.classList.contains('stuck-head'));
+// Шапка расходов и карточка итога аналитики стоят на месте — меняется только их содержимое
+const swipeParts = () => [...stretchEl.children].filter((el) => !el.classList.contains('stuck-head') && !el.classList.contains('ana-hero'));
 const swipeSet = (shift, opacity, transition) => swipeParts().forEach((el) => {
   el.style.transition = transition;
   el.style.translate = shift ? `${shift}px 0` : '';
@@ -6711,6 +6712,33 @@ async function screenAnalytics() {
   return hero
     + (rows ? `<section class="card sec ana-sec"><div class="sec-title">Лимиты</div>${rows}</section>` : '')
     + (free ? `<section class="card sec ana-sec"><div class="sec-title">Без лимита</div>${free}</section><p class="sec-foot">Нажмите на группу, чтобы задать или поменять её лимит</p>` : '');
+}
+
+/**
+ * Появление аналитики: строки групп — по одной сверху вниз («Раскрытие разделов»), полосы
+ * прогресса заполняются от нуля, каждая — когда появилась её строка («Заливка колец и полос»).
+ */
+function animateAnalytics() {
+  const rows = [...document.querySelectorAll('#screen .ana-row')];
+  const rowsOn = motion('sections');
+  if (rowsOn) {
+    rows.forEach((el, i) => {
+      el.style.setProperty('--i', i);
+      el.classList.add('ana-in');
+      el.addEventListener('animationend', () => el.classList.remove('ana-in'), { once: true });
+    });
+  }
+  if (!motion('ring')) return;
+  const bars = [...document.querySelectorAll('#screen .ana-bar i')];
+  const target = bars.map((b) => b.style.width);
+  bars.forEach((b) => (b.style.width = '0'));
+  void document.body.offsetWidth; // зафиксировать нулевую ширину, иначе заполнения не будет видно
+  bars.forEach((b, k) => {
+    const row = rows.indexOf(b.closest('.ana-row'));
+    b.style.transitionDelay = `${(rowsOn && row >= 0 ? row * 45 : 0) + 120}ms`;
+    b.classList.add('ana-fill');
+    b.style.width = target[k];
+  });
 }
 
 /** Правка лимита группы: сумма в месяц, подсказка «обычно», снять лимит, траты группы. */
