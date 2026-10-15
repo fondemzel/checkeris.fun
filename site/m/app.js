@@ -3720,7 +3720,7 @@ async function render() {
   if (state.screen !== 'added') manualCarry = null;
 
   setTitle(typeof screen.title === 'function' ? screen.title() : screen.title,
-    PERIOD_SCREENS.includes(state.screen) ? humanPeriod(state.from, state.to) : '');
+    state.screen === 'stats' ? anaTitle() : PERIOD_SCREENS.includes(state.screen) ? humanPeriod(state.from, state.to) : '');
   $('back').hidden = top;
 
   const actions = screen.actions?.() ?? '';
@@ -4171,7 +4171,7 @@ addEventListener('touchstart', (e) => {
   swipeLock = '';
   const t = e.touches[0];
   if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker')) return;
-  if (!stretchEl.querySelector('[data-shift]')) return;
+  if (!stretchEl.querySelector('[data-shift]') && state.screen !== 'stats') return;
   // У краёв — системный жест «назад»; полосы, листающиеся вбок, и поля ввода — свои
   if (t.clientX < 24 || t.clientX > window.innerWidth - 24) return;
   if (e.target.closest('input, textarea, .chips, [data-shift], .drop-menu')) return;
@@ -4203,6 +4203,14 @@ addEventListener('touchmove', (e) => {
   swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
 }, { passive: false });
 
+/** Куда листать свайпом: соседний период; в аналитике — соседний месяц, не позже текущего. */
+function swipeTarget(dir) {
+  if (state.screen !== 'stats') return shiftPeriod(state.from, state.to, dir);
+  const [y, m] = monthKey(state.to).split('-').map(Number);
+  const next = monthPeriod(y, m - 1 + dir);
+  return next.from > monthPeriod(new Date().getFullYear(), new Date().getMonth()).from ? null : next;
+}
+
 async function swipeEnd(e) {
   if (!swipeFrom || swipeLock !== 'x') {
     swipeFrom = null;
@@ -4216,11 +4224,16 @@ async function swipeEnd(e) {
     swipeSet(0, '', ease);
     return;
   }
-  swipeBusy = true;
   const dir = dx < 0 ? 1 : -1; // влево — следующий период
+  const next = swipeTarget(dir);
+  if (!next) {
+    swipeSet(0, '', ease); // дальше листать некуда (аналитика — не позже текущего месяца)
+    return;
+  }
+  swipeBusy = true;
   if (!motion('swipe')) {
     try {
-      await go(shiftPeriod(state.from, state.to, dir), true);
+      await go(next, true);
     } finally {
       swipeBusy = false;
     }
@@ -4230,7 +4243,7 @@ async function swipeEnd(e) {
   swipeSet(-dir * w, '0', ease);
   try {
     await new Promise((r) => setTimeout(r, 180));
-    await go(shiftPeriod(state.from, state.to, dir), true);
+    await go(next, true);
     // Новый период — уже на экране: ставим его чуть в стороне и въезжаем на место
     swipeSet(dir * w * 0.35, '0', 'none');
     void stretchEl.offsetWidth; // зафиксировать исходное место, иначе въезда не будет видно
@@ -6582,15 +6595,21 @@ if (token.get()) {
 // ещё можно тратить в день до конца месяца, ниже — группы: потрачено из лимита и прогноз
 // к концу месяца (потрачено + сколько обычно уходит в группе после сегодняшнего числа). Нажатие на группу — правка её лимита.
 
-let anaMonth = ''; // 'ГГГГ-ММ', пусто — текущий
+// Месяц аналитики — из общего периода приложения: месяц, в котором он заканчивается. Листается
+// свайпом (swipeTarget), в заголовке — его название (anaTitle)
 let anaData = null; // последний ответ /api/analytics — для правки лимита
+const monthKey = (iso) => iso.slice(0, 7);
+function anaTitle() {
+  const [y, m] = monthKey(state.to).split('-').map(Number);
+  return periodTitle(...Object.values(monthPeriod(y, m - 1)));
+}
 const currentMonthKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
 async function screenAnalytics() {
-  const month = anaMonth || currentMonthKey();
+  const month = monthKey(state.to) > currentMonthKey() ? currentMonthKey() : monthKey(state.to);
   const data = await api(`/api/analytics?month=${month}`);
   anaData = data;
   const [y, m] = month.split('-').map(Number);
@@ -6609,12 +6628,6 @@ async function screenAnalytics() {
     return `<span class="ic" style="background:${c};color:${readableText(c)}">${groupIcon(g.icon ?? 'none')}</span>`;
   };
 
-  const nav = `
-    <div class="ana-nav">
-      <button class="month-arrow" type="button" data-ana="-1" aria-label="Прошлый месяц">‹</button>
-      <b>${cap(MONTHS[m - 1])} ${y}</b>
-      <button class="month-arrow" type="button" data-ana="1" aria-label="Следующий месяц"${current ? ' disabled' : ''}>›</button>
-    </div>`;
 
   let hero;
   if (!limited.length) {
@@ -6692,7 +6705,7 @@ async function screenAnalytics() {
       </button>`)
     .join('');
 
-  return nav + hero
+  return hero
     + (rows ? `<section class="card sec ana-sec"><div class="sec-title">Лимиты</div>${rows}</section>` : '')
     + (free ? `<section class="card sec ana-sec"><div class="sec-title">Без лимита</div>${free}</section><p class="sec-foot">Нажмите на группу, чтобы задать или поменять её лимит</p>` : '');
 }
@@ -6755,14 +6768,6 @@ function openLimitEditor(slug) {
 
 $('screen').addEventListener('click', async (e) => {
   if (state.screen !== 'stats') return;
-  const shift = e.target.closest('[data-ana]');
-  if (shift) {
-    const [y, m] = (anaMonth || currentMonthKey()).split('-').map(Number);
-    const d = new Date(y, m - 1 + Number(shift.dataset.ana), 1);
-    const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    anaMonth = next > currentMonthKey() ? currentMonthKey() : next;
-    return render();
-  }
   const limit = e.target.closest('[data-limit]');
   if (limit) return openLimitEditor(limit.dataset.limit);
   if (e.target.closest('[data-limits-suggest]') && anaData) {

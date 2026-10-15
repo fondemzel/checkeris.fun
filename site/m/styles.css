@@ -2009,8 +2009,6 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .bar-title.long.tight { font-size: 15px; }
 
 /* ── Аналитика ─────────────────────────────────────────── */
-.ana-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; font-size: 16px; }
-.ana-nav .month-arrow:disabled { opacity: 0.35; }
 .ana-hero { padding: 16px; margin-bottom: 12px; }
 .ana-hero .note { margin: 4px 0 0; }
 .ana-hero .btn { margin-top: 12px; width: 100%; }
