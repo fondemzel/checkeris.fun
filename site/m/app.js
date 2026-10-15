@@ -6661,7 +6661,8 @@ async function screenAnalytics() {
     .sort((a, b) => b.ratio - a.ratio)
     .map(({ g, spent, limit, forecast, tone, ratio }) => {
       const note = current
-        ? `${money(spent)} из ${money(limit)}${forecast != null ? ` · к концу ≈ ${money(forecast)}` : ''}`
+        // «9 676 из 12 000 ₽ · прогноз 14 496 ₽»; прогноз — только если ещё что-то ожидается
+        ? `${int.format(Math.round(spent / 100))} из ${money(limit)}${forecast != null && Math.round(forecast / 100) > Math.round(spent / 100) ? ` · прогноз ${money(forecast)}` : ''}`
         : spent > limit ? `перерасход ${money(spent - limit)}` : `осталось ${money(limit - spent)}`;
       return `
         <button class="ana-row" type="button" data-limit="${esc(g.slug)}">
