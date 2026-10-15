@@ -514,6 +514,7 @@ const demoPill = $('demo-pill');
 function setTitle(main, sub = '') {
   const el = $('title');
   el.innerHTML = `<span class="bar-main">${esc(main)}</span>${sub ? `<span class="bar-period">&nbsp;· ${esc(sub)}</span>` : ''}`;
+  el.classList.toggle('long', Boolean(sub)); // с периодом — на пиксель мельче: длинное реже сокращается
   demoPill.hidden = !meta?.demo;
   demoPill.textContent = T.settings.help.pill;
   document.querySelector('.bar').classList.toggle('demo', Boolean(meta?.demo));
@@ -906,13 +907,22 @@ async function screenSummary() {
  * Значки групп — напротив своих секторов, с суммой и долей под каждым; ниже — расшифровка таблицей:
  * доля и сумма читаются и без цвета. Нажатие на значок, сегмент или строку открывает группу.
  */
-/** Заглавие экрана с кольцом: раскрытая группа (и «Остальное») вместо названия раздела. */
-function ringTitle(base, groupName) {
-  if (state.mode !== 'ring') return base;
-  // Раскрыта группа или «Остальное» — их название вместо «Расходы»: рядом ещё период, а что
-  // это расходы, видно по вкладке
-  const inner = [state.ringGroup && groupName(state.ringGroup), state.ringRest && 'Остальное'].filter(Boolean);
-  return inner.length ? inner.join(' · ') : base;
+/**
+ * Заглавие расходов и доходов: раздел и что раскрыто — группа (кольцо группы или список,
+ * отобранный по ней), категория или «Остальное». nameOf — название группы или категории по ключу.
+ */
+function ringTitle(base, nameOf) {
+  const names = [];
+  if (state.mode === 'ring') {
+    if (state.ringGroup) names.push(nameOf(state.ringGroup));
+    if (state.ringRest) names.push('Остальное');
+  } else {
+    const filter = state.screen === 'summary' ? state.sg : state.screen === 'income' ? state.inf : '';
+    const keys = filter ? filter.split(',') : [];
+    if (keys.length === 1) names.push(nameOf(keys[0]));
+    if (keys.length > 1) names.push('Остальное');
+  }
+  return [base, ...names.filter(Boolean)].join(' · ');
 }
 
 // Какое кольцо анимировали последним и когда (at — первый нарисованный кадр). Разметка кольца
@@ -3560,7 +3570,10 @@ $('screen').addEventListener('change', (e) => {
 // ── экраны ───────────────────────────────────────────────
 
 const SCREENS = {
-  summary: { title: () => ringTitle('Расходы', (slug) => findGroup(slug)?.name), render: screenSummary },
+  summary: {
+    title: () => ringTitle('Расходы', (k) => (k === NONE ? 'Без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name)),
+    render: screenSummary,
+  },
   receipts: { title: 'Чеки', render: screenReceipts },
   add: { title: 'Добавить', render: screenAdd },
   // form — на экране поля, которые человек заполняет: закрытие попапа его не перерисовывает
@@ -3583,7 +3596,10 @@ const SCREENS = {
   category: { title: 'Позиции', render: screenCategory },
   item: { title: 'Товар', render: screenItem, after: () => { mountItemMap(); fitNote(); } },
   bank: { title: 'Операции банка', render: screenBank },
-  income: { title: () => ringTitle('Доход', (slug) => (meta?.income ?? []).find((g) => g.slug === slug)?.name), render: screenIncome },
+  income: {
+    title: () => ringTitle('Доход', (k) => (k === '-' ? T.income.noCategory : (meta?.income ?? []).find((g) => g.slug === k)?.name ?? incomeCat(k)?.name)),
+    render: screenIncome,
+  },
   stats: {
     title: 'Статистика',
     render: () => soon(UI.stats, 'Статистика', 'Здесь будут графики: как меняются траты по месяцам и категориям.'),
