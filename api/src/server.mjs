@@ -24,6 +24,7 @@ import {
 } from './queries.mjs';
 import { flatten, loadCategories, syncCategories } from './categories.mjs';
 import { isDemo, enableDemo, disableDemo } from './demo.mjs';
+import { getAnalytics, getLimits, setLimits } from './limits.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
 import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
 import { unlabeled, labelBatch } from './autolabel.mjs';
@@ -776,7 +777,23 @@ async function handleApi(req, res, url) {
     // в кабинете разработчика Яндекса
     loadEnv();
     const maps = process.env.YANDEX_JAVASCRIPT_API_KEY ? { key: process.env.YANDEX_JAVASCRIPT_API_KEY } : null;
-    return sendJson(res, 200, { version: VERSION, ...getMeta(db, user.budget_id), maps, demo: isDemo(db, user.budget_id) });
+    return sendJson(res, 200, {
+      version: VERSION, ...getMeta(db, user.budget_id), maps, demo: isDemo(db, user.budget_id), limits: getLimits(db, user.budget_id),
+    });
+  }
+
+  // ── аналитика: лимиты по группам на месяц ──
+  if (pathname === '/api/analytics' && req.method === 'GET') {
+    return sendJson(res, 200, getAnalytics(db, user.budget_id, url.searchParams.get('month')));
+  }
+  if (pathname === '/api/limits' && req.method === 'PUT') {
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    return sendJson(res, 200, setLimits(db, user.budget_id, body.limits));
   }
 
   // ── сканирование чеков ──

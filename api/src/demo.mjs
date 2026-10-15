@@ -17,6 +17,7 @@
 import { provisionTaxonomy } from './taxonomy.mjs';
 import { provisionIncome } from './incomecats.mjs';
 import { normalizeName } from './import.mjs';
+import { setLimits, suggestLimits } from './limits.mjs';
 
 const DEMO_LOGIN = '__demo__';
 const DEMO_NAME = 'Демо-режим';
@@ -45,6 +46,8 @@ function demoBudget(db) {
     provisionTaxonomy(db, id);
     provisionIncome(db, id);
     generate(db, id);
+    // Лимиты — по обычным тратам этого же человека: «Аналитике» сразу есть что показать
+    setLimits(db, id, suggestLimits(db, id));
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
@@ -75,7 +78,7 @@ export function disableDemo(db, user) {
 /** Содержимое тестовой базы — перед новой генерацией. Сам бюджет и люди в нём остаются. */
 function clearBudget(db, budgetId) {
   // Разметка и справочник держатся за бюджет без каскада от него — чистим явно
-  for (const table of ['item_labels', 'item_notes', 'budget_dictionary', 'budget_seller_rules', 'bank_rules', 'bank_kind_marks',
+  for (const table of ['budget_limits', 'item_labels', 'item_notes', 'budget_dictionary', 'budget_seller_rules', 'bank_rules', 'bank_kind_marks',
     'category_links', 'categories', 'groups', 'income_cats', 'income_groups']) {
     if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) {
       const cols = db.prepare('SELECT name FROM pragma_table_info(?)').all(table).map((c) => c.name);

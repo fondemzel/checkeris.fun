@@ -627,6 +627,15 @@ CREATE TABLE IF NOT EXISTS shop_cheques (
 -- Справочник доходов бюджета: группы и категории в них (incomecats.mjs). Устроен как
 -- справочник расходов, но в своих таблицах. Код категории начинается с «in.» и лежит у
 -- поступления в bank_ops.category_slug, как категория у траты без чека.
+-- Лимиты трат на месяц по группам (limits.mjs): основа «Аналитики». Общие для бюджета.
+CREATE TABLE IF NOT EXISTS budget_limits (
+  budget_id  INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
+  group_slug TEXT NOT NULL,
+  amount     INTEGER NOT NULL,             -- копейки в месяц
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (budget_id, group_slug)
+);
+
 CREATE TABLE IF NOT EXISTS income_groups (
   budget_id  INTEGER NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,
   slug       TEXT NOT NULL,

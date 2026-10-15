@@ -2007,3 +2007,44 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .demo-pill { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); }
 .bar-title.long { font-size: 16px; letter-spacing: -0.01em; }
 .bar-title.long.tight { font-size: 15px; }
+
+/* ── Аналитика ─────────────────────────────────────────── */
+.ana-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; font-size: 16px; }
+.ana-nav .month-arrow:disabled { opacity: 0.35; }
+.ana-hero { padding: 16px; margin-bottom: 12px; }
+.ana-hero .note { margin: 4px 0 0; }
+.ana-hero .btn { margin-top: 12px; width: 100%; }
+.ana-title { font-size: 17px; font-weight: 600; }
+.ana-big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ana-big small { font-size: 15px; font-weight: 500; color: var(--muted); }
+.ana-big.over { color: var(--danger); font-size: 22px; }
+.ana-bars { display: grid; gap: 4px; margin-top: 12px; }
+.ana-bar-label { font-size: 12px; color: var(--muted); }
+.ana-bar { display: block; height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.ana-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.ana-bar.ok i { background: #1baf7a; }
+.ana-bar.warn i { background: #eda100; }
+.ana-bar.over i { background: var(--danger); }
+.ana-sec { padding-bottom: 6px; }
+.ana-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0;
+  border: none; border-top: 1px solid var(--line); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.sec-title + .ana-row { border-top: none; }
+.ana-row .ic { width: 34px; height: 34px; border-radius: 10px; }
+.ana-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ana-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ana-note { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ana-main .ana-bar { height: 4px; margin-top: 2px; }
+.ana-pct { flex: none; min-width: 42px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ana-pct.warn { color: #c98400; }
+.ana-pct.over { color: var(--danger); }
+.ana-set { flex: none; font-size: 13px; color: var(--accent); }
+.limit-edit { display: flex; flex-direction: column; gap: 10px; }
+.limit-field { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--surface); }
+.limit-field input { flex: 1; min-width: 0; border: none; background: none; font: inherit; font-size: 20px; font-weight: 600; outline: none; }
+.limit-field span { color: var(--muted); font-size: 14px; }
+.limit-edit .chip { align-self: flex-start; }
+.limit-btns { display: flex; gap: 8px; }
+.limit-btns .btn { flex: 1; }
+.limit-edit .link { align-self: center; margin-top: 4px; }

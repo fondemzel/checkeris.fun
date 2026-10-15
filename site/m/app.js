@@ -843,6 +843,7 @@ async function screenSummary() {
     state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase()) : '',
     state.sg ? part('src', [...picked].map((k) => (k === NONE ? 'без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
     state.q ? part('q', state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
+    perDayNote(shownItems, shownOps, part),
   ].filter(Boolean).join(' · ');
 
   const head = `
@@ -3607,10 +3608,7 @@ const SCREENS = {
     title: () => ringTitle('Доход', (k) => (k === '-' ? T.income.noCategory : (meta?.income ?? []).find((g) => g.slug === k)?.name ?? incomeCat(k)?.name)),
     render: screenIncome,
   },
-  stats: {
-    title: 'Статистика',
-    render: () => soon(UI.stats, 'Статистика', 'Здесь будут графики: как меняются траты по месяцам и категориям.'),
-  },
+  stats: { title: 'Аналитика', render: screenAnalytics },
   settings: { title: 'Настройки', render: screenSettings },
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
@@ -3961,6 +3959,29 @@ function rollNumber(el, from, elapsed = 0) {
       delete el.dataset.sum;
     }
   }, ROLL_MS + 100 - elapsed);
+}
+
+/**
+ * Подпись в шапке «Расходов»: сколько ещё можно тратить в день до конца месяца по лимитам
+ * («Аналитика»). Только для текущего месяца целиком и без отборов — иначе цифра врала бы.
+ */
+function perDayNote(items, ops, part) {
+  const lim = meta?.limits ?? {};
+  const keys = Object.keys(lim);
+  if (!keys.length || state.src || state.sg || state.q.trim()) return '';
+  const now = new Date();
+  const month = monthPeriod(now.getFullYear(), now.getMonth());
+  if (state.from !== month.from || state.to !== month.to) return '';
+  let spent = 0;
+  const add = (slug, sum) => {
+    const g = findCategory(slug)?.group.slug;
+    if (g && lim[g]) spent += sum;
+  };
+  items.forEach((r) => add(r.category_slug, r.sum));
+  ops.forEach((op) => add(op.category_slug, op.amount));
+  const left = keys.reduce((n, k) => n + lim[k], 0) - spent;
+  const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
+  return part('day', left > 0 ? `≈ ${money(left / daysLeft)} в день` : 'лимиты превышены');
 }
 
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
@@ -6555,3 +6576,202 @@ if (token.get()) {
 } else {
   showLogin();
 }
+
+// ── Аналитика: лимиты по группам на месяц (limits.mjs) ────────────────────────
+// Месяц календарный; лимит — общий для бюджета; остаток не переносится. Сверху — сколько
+// ещё можно тратить в день до конца месяца, ниже — группы: потрачено из лимита и прогноз
+// к концу месяца по нынешнему темпу. Нажатие на группу — правка её лимита.
+
+let anaMonth = ''; // 'ГГГГ-ММ', пусто — текущий
+let anaData = null; // последний ответ /api/analytics — для правки лимита
+const currentMonthKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+async function screenAnalytics() {
+  const month = anaMonth || currentMonthKey();
+  const data = await api(`/api/analytics?month=${month}`);
+  anaData = data;
+  const [y, m] = month.split('-').map(Number);
+  const daysIn = new Date(y, m, 0).getDate();
+  const current = month === currentMonthKey();
+  const passed = current ? new Date().getDate() : daysIn;
+  const groups = meta?.categories ?? [];
+  const lim = data.limits;
+  const spentOf = (slug) => data.spent[slug] ?? 0;
+  const limited = groups.filter((g) => lim[g.slug] > 0);
+  const totalLimit = limited.reduce((n, g) => n + lim[g.slug], 0);
+  const spentLimited = limited.reduce((n, g) => n + spentOf(g.slug), 0);
+  const left = totalLimit - spentLimited;
+  const badge = (g) => {
+    const c = g.color ?? 'var(--fill)';
+    return `<span class="ic" style="background:${c};color:${readableText(c)}">${groupIcon(g.icon ?? 'none')}</span>`;
+  };
+
+  const nav = `
+    <div class="ana-nav">
+      <button class="month-arrow" type="button" data-ana="-1" aria-label="Прошлый месяц">‹</button>
+      <b>${cap(MONTHS[m - 1])} ${y}</b>
+      <button class="month-arrow" type="button" data-ana="1" aria-label="Следующий месяц"${current ? ' disabled' : ''}>›</button>
+    </div>`;
+
+  let hero;
+  if (!limited.length) {
+    const can = Object.keys(data.suggest).length > 0;
+    hero = `
+      <div class="card ana-hero">
+        <div class="ana-title">Лимиты не заданы</div>
+        <p class="note">Задайте, сколько готовы тратить в месяц на каждую группу, — здесь будет видно, сколько ещё можно тратить в день и где перебор.</p>
+        ${can ? '<button class="btn primary big" type="button" data-limits-suggest>Предложить лимиты по моим тратам</button>' : '<p class="note">Пока не по чему предложить: нужны траты хотя бы за прошлый месяц.</p>'}
+      </div>`;
+  } else if (current) {
+    const daysLeft = daysIn - passed + 1;
+    hero = `
+      <div class="card ana-hero">
+        ${left > 0
+    ? `<div class="ana-big">≈ ${money(left / daysLeft)} <small>в день</small></div>
+           <p class="note">до конца ${MONTHS_GEN[m - 1]} · осталось ${money(left)} из ${money(totalLimit)}</p>`
+    : `<div class="ana-big over">Перерасход ${money(-left)}</div><p class="note">лимиты на ${MONTHS[m - 1]} уже превышены</p>`}
+        <div class="ana-bars">
+          <span class="ana-bar-label">Месяц: ${passed} из ${daysIn} ${plural(daysIn, 'дня', 'дней', 'дней')}</span>
+          <span class="ana-bar"><i style="width:${Math.round((passed / daysIn) * 100)}%"></i></span>
+          <span class="ana-bar-label">Потрачено ${Math.round((spentLimited / totalLimit) * 100)}% лимитов</span>
+          <span class="ana-bar ${spentLimited > totalLimit ? 'over' : spentLimited / totalLimit > passed / daysIn ? 'warn' : 'ok'}"><i style="width:${Math.min(100, Math.round((spentLimited / totalLimit) * 100))}%"></i></span>
+        </div>
+      </div>`;
+  } else {
+    hero = `
+      <div class="card ana-hero">
+        <div class="ana-big${left < 0 ? ' over' : ''}">${left >= 0 ? `Уложились · сэкономили ${money(left)}` : `Перерасход ${money(-left)}`}</div>
+        <p class="note">потрачено ${money(spentLimited)} из ${money(totalLimit)} по лимитам</p>
+      </div>`;
+  }
+
+  // Группы с лимитом: самые близкие к перебору — сверху
+  const rows = limited
+    .map((g) => {
+      const spent = spentOf(g.slug);
+      const limit = lim[g.slug];
+      const forecast = current && passed >= 3 ? (spent / passed) * daysIn : null;
+      const tone = spent > limit ? 'over' : (forecast ?? spent) > limit ? 'warn' : 'ok';
+      return { g, spent, limit, forecast, tone, ratio: spent / limit };
+    })
+    .sort((a, b) => b.ratio - a.ratio)
+    .map(({ g, spent, limit, forecast, tone, ratio }) => {
+      const note = current
+        ? `${money(spent)} из ${money(limit)}${forecast != null ? ` · к концу ≈ ${money(forecast)}` : ''}`
+        : spent > limit ? `перерасход ${money(spent - limit)}` : `осталось ${money(limit - spent)}`;
+      return `
+        <button class="ana-row" type="button" data-limit="${esc(g.slug)}">
+          ${badge(g)}
+          <span class="ana-main">
+            <span class="ana-name">${esc(g.name)}</span>
+            <span class="ana-note">${note}</span>
+            <span class="ana-bar ${tone}"><i style="width:${Math.min(100, Math.round(ratio * 100))}%"></i></span>
+          </span>
+          <span class="ana-pct ${tone}">${Math.round(ratio * 100)}%</span>
+        </button>`;
+    })
+    .join('');
+
+  // Без лимита: что потрачено и сколько обычно
+  const free = groups
+    .filter((g) => !(lim[g.slug] > 0) && (spentOf(g.slug) > 0 || data.suggest[g.slug]))
+    .sort((a, b) => spentOf(b.slug) - spentOf(a.slug))
+    .map((g) => `
+      <button class="ana-row" type="button" data-limit="${esc(g.slug)}">
+        ${badge(g)}
+        <span class="ana-main">
+          <span class="ana-name">${esc(g.name)}</span>
+          <span class="ana-note">потрачено ${money(spentOf(g.slug))}${data.suggest[g.slug] ? ` · обычно ≈ ${money(data.suggest[g.slug])}` : ''}</span>
+        </span>
+        <span class="ana-set">задать</span>
+      </button>`)
+    .join('');
+
+  return nav + hero
+    + (rows ? `<section class="card sec ana-sec"><div class="sec-title">Лимиты</div>${rows}</section>` : '')
+    + (free ? `<section class="card sec ana-sec"><div class="sec-title">Без лимита</div>${free}</section><p class="sec-foot">Нажмите на группу, чтобы задать или поменять её лимит</p>` : '');
+}
+
+/** Правка лимита группы: сумма в месяц, подсказка «обычно», снять лимит, траты группы. */
+function openLimitEditor(slug) {
+  const g = findGroup(slug);
+  if (!g || !anaData) return;
+  const cur = anaData.limits[slug];
+  const sug = anaData.suggest[slug];
+  const save = async (amount) => {
+    await api('/api/limits', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ limits: { [slug]: amount } }),
+    });
+    meta = await api('/api/meta'); // лимиты нужны и шапке «Расходов»
+  };
+  const el = openChoice(g.name, `
+    <div class="limit-edit">
+      <label class="limit-field"><input id="limit-input" type="text" inputmode="numeric" autocomplete="off"
+        placeholder="Лимит в месяц" value="${cur ? Math.round(cur / 100) : ''}" /><span>₽ в месяц</span></label>
+      ${sug ? `<button class="chip" type="button" data-limit-sug="${sug}">обычно ${money(sug)}</button>` : ''}
+      <div class="limit-btns">
+        ${cur ? '<button class="btn" type="button" data-limit-clear>Убрать лимит</button>' : ''}
+        <button class="btn primary" type="button" data-limit-save>Сохранить</button>
+      </div>
+      <button class="link" type="button" data-limit-list>Траты группы за месяц</button>
+    </div>`, async (ev, close) => {
+    const input = el.querySelector('#limit-input');
+    const sugBtn = ev.target.closest('[data-limit-sug]');
+    if (sugBtn) {
+      input.value = Math.round(Number(sugBtn.dataset.limitSug) / 100);
+      return;
+    }
+    try {
+      if (ev.target.closest('[data-limit-save]')) {
+        const rub = Number(input.value.replace(/[^\d]/g, ''));
+        await save(rub * 100);
+        return close();
+      }
+      if (ev.target.closest('[data-limit-clear]')) {
+        await save(0);
+        return close();
+      }
+    } catch (err) {
+      return toast(`${T.common.failed}: ${err.message}`);
+    }
+    if (ev.target.closest('[data-limit-list]')) {
+      dropPopup(el);
+      const [yy, mm] = (anaData.month).split('-').map(Number);
+      return go({ screen: 'summary', ...monthPeriod(yy, mm - 1), mode: 'list', sg: slug, src: '', q: '', ringGroup: '', ringRest: '' });
+    }
+    return null;
+  });
+  el.querySelector('#limit-input').addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  });
+}
+
+$('screen').addEventListener('click', async (e) => {
+  if (state.screen !== 'stats') return;
+  const shift = e.target.closest('[data-ana]');
+  if (shift) {
+    const [y, m] = (anaMonth || currentMonthKey()).split('-').map(Number);
+    const d = new Date(y, m - 1 + Number(shift.dataset.ana), 1);
+    const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    anaMonth = next > currentMonthKey() ? currentMonthKey() : next;
+    return render();
+  }
+  const limit = e.target.closest('[data-limit]');
+  if (limit) return openLimitEditor(limit.dataset.limit);
+  if (e.target.closest('[data-limits-suggest]') && anaData) {
+    if (!(await ask('Поставить лимиты по вашим обычным тратам? Каждый можно потом поменять.', { ok: 'Поставить' }))) return null;
+    try {
+      await api('/api/limits', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limits: anaData.suggest }) });
+      meta = await api('/api/meta');
+      return render();
+    } catch (err) {
+      return toast(`${T.common.failed}: ${err.message}`);
+    }
+  }
+  return null;
+});
