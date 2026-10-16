@@ -4967,10 +4967,14 @@ function settingsSearch() {
     main.hidden = false;
     return;
   }
-  const found = settingsIndex().filter((e) => {
-    const hay = searchNorm(`${e.title} ${e.where} ${e.words}`);
-    return words.every((w) => hay.includes(w));
-  });
+  // Сначала — совпавшие названием, потом — найденные по разделу или ключевым словам
+  const byTitle = (e) => words.every((w) => searchNorm(e.title).includes(w));
+  const found = settingsIndex()
+    .filter((e) => {
+      const hay = searchNorm(`${e.title} ${e.where} ${e.words}`);
+      return words.every((w) => hay.includes(w));
+    })
+    .sort((a, b) => byTitle(b) - byTitle(a));
   const S = T.settings;
   const rows = found.slice(0, 40).map((e, i) => {
     const end = e.how.toggle ? settingsToggle(e.how.toggle, e.title) : '';
