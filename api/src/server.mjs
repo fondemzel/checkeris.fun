@@ -860,8 +860,7 @@ async function handleApi(req, res, url) {
     const result = addManual(db, user.budget_id, body, user.id);
     if (!result.error) {
       // Другим участникам бюджета — что внесено
-      const item = db.prepare('SELECT name, sum FROM items WHERE id = ?').get(result.item_id);
-      if (item) notifyManual(db, user.budget_id, user.id, item.name, item.sum);
+      notifyManual(db, user.budget_id, user.id, result.item_id);
     }
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
   }

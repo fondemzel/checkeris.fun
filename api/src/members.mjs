@@ -1,14 +1,22 @@
 // Сообщения в Telegram другим участникам общего бюджета: кто-то внёс трату или доход —
 // остальные узнают. Каждый может выключить их у себя (users.notify_members, «Бюджет»).
 //
-// Сообщения коротко и по одному на событие: ручная запись, скан чека, загрузка из банка
-// (одной сводкой на загрузку, а не по операции). Историю банка, которую грузят сотнями
-// операций, не сообщаем. В тестовой базе (демо-режим) ничего не вносится — и не сообщается.
+// По одному сообщению на событие: ручная запись, скан чека, загрузка из банка (одной сводкой
+// на загрузку, а не по операции). Историю банка, которую грузят сотнями операций, не сообщаем.
+// В тестовой базе (демо-режим) ничего не вносится — и не сообщается.
+//
+// Вид сообщения: значок и «Имя · что случилось» в первой строке, ниже — суть (где, сколько,
+// категория) и ссылка, которая открывает это в приложении. Имя — в начале, а не при глаголе:
+// по имени нельзя надёжно понять, «добавил» или «добавила».
 import { notify } from './banks.mjs';
 import { isDemo } from './demo.mjs';
+import { opWho } from './bankmatch.mjs';
 
-const BANKS = { tbank: 'Т-Банка', sber: 'Сбера' };
+const SITE = (process.env.SITE_ORIGIN || 'https://checkeris.fun').replace(/\/$/, '');
+const BANK_FROM = { tbank: 'из Т-Банка', sber: 'из Сбера' };
+const BANK_TO = { tbank: 'в Т-Банк', sber: 'в Сбер' };
 const rub = (kop) => `${new Intl.NumberFormat('ru-RU').format(Math.round(kop / 100))} ₽`;
+const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim(); // в чеках бывают двойные пробелы
 const plural = (n, one, few, many) => {
   const d = n % 10;
   const dd = n % 100;
@@ -16,34 +24,70 @@ const plural = (n, one, few, many) => {
   if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return few;
   return many;
 };
+// Название товара — первые два-три слова: «Молоко Простоквашино 3,2% 930 мл» → «Молоко Простоквашино»
+// и обычным регистром: в чеках названия бывают ЗАГЛАВНЫМИ («ЖИГУЛЕВСКОЕ Пиво» → «Жигулевское пиво»)
+const shortName = (name) => {
+  const words = clean(name).split(' ');
+  const two = words.slice(0, 2).join(' ');
+  const short = (two.length < 12 && words[2] && !/\d/.test(words[2]) ? words.slice(0, 3).join(' ') : two).toLowerCase();
+  return short.charAt(0).toUpperCase() + short.slice(1);
+};
 
-/** Разослать text остальным участникам бюджета от имени actorId. */
-export function notifyMembers(db, budgetId, actorId, text) {
+/** Разослать участникам бюджета, кроме actorId: «значок Имя · заголовок», ниже — строки. */
+export function notifyMembers(db, budgetId, actorId, icon, title, lines = []) {
   if (!budgetId || !actorId || isDemo(db, budgetId)) return 0;
   const actor = db.prepare('SELECT COALESCE(name, login) AS name FROM users WHERE id = ?').get(actorId)?.name ?? 'Участник';
   const others = db
     .prepare('SELECT id FROM users WHERE budget_id = ? AND id <> ? AND telegram_id IS NOT NULL AND COALESCE(notify_members, 1) = 1')
     .all(budgetId, actorId);
-  for (const u of others) notify(db, u.id, `${actor}: ${text}`);
+  const text = [`${icon} ${actor} · ${title}`, ...lines.filter(Boolean)].join('\n');
+  for (const u of others) notify(db, u.id, text);
   return others.length;
 }
 
-/** Ручная запись: «Кофе» — 350 ₽. */
-export function notifyManual(db, budgetId, actorId, name, sum) {
-  return notifyMembers(db, budgetId, actorId, `«${name}» — ${rub(sum)}`);
+const categoryName = (db, budgetId, slug) =>
+  slug
+    ? db.prepare('SELECT name FROM categories WHERE budget_id = ? AND slug = ?').get(budgetId, slug)?.name
+      ?? db.prepare('SELECT name FROM income_cats WHERE budget_id = ? AND slug = ?').get(budgetId, slug)?.name
+    : null;
+
+/** Ручная запись: «✍️ Ольга · запись вручную / Кофе — 350 ₽ · Рестораны и кафе / ссылка». */
+export function notifyManual(db, budgetId, actorId, itemId) {
+  const it = db
+    .prepare('SELECT i.name, i.sum, l.category_slug FROM items i LEFT JOIN item_labels l ON l.item_id = i.id WHERE i.id = ?')
+    .get(itemId);
+  if (!it) return 0;
+  const cat = categoryName(db, budgetId, it.category_slug);
+  return notifyMembers(db, budgetId, actorId, '✍️', 'запись вручную', [
+    `${clean(it.name)} — ${rub(it.sum)}${cat ? ` · ${cat}` : ''}`,
+    `Посмотреть: ${SITE}/m/?screen=item&item=${itemId}`,
+  ]);
 }
 
-/** Скан чека: чек «Пятёрочка» на 1 234 ₽. */
+/** Скан чека: «🧾 Ольга · новый чек / Пятёрочка — 1 234 ₽ / Молоко, хлеб и ещё 9 позиций / ссылка». */
 export function notifyReceipt(db, receiptId, actorId) {
   const r = db.prepare('SELECT budget_id, COALESCE(retail_place, seller) AS place, total_sum FROM receipts WHERE id = ?').get(receiptId);
   if (!r) return 0;
-  const place = String(r.place ?? '').replace(/\s+/g, ' ').trim(); // в чеках бывают двойные пробелы
-  return notifyMembers(db, r.budget_id, actorId, `чек${place ? ` «${place}»` : ''} на ${rub(r.total_sum)}`);
+  const items = db.prepare('SELECT name FROM items WHERE receipt_id = ? ORDER BY pos').all(receiptId);
+  // Разные товары — повторы одного (два пива) не тратят место в строке
+  const names = [...new Set(items.map((i) => shortName(i.name)))];
+  const first = names.slice(0, 3);
+  const more = names.length - first.length;
+  const goods = first.length
+    ? `${first.join(', ')}${more > 0 ? ` и ещё ${more} ${plural(more, 'позиция', 'позиции', 'позиций')}` : ''}`
+    : '';
+  const place = clean(r.place);
+  return notifyMembers(db, r.budget_id, actorId, '🧾', 'новый чек', [
+    `${place || 'Чек'} — ${rub(r.total_sum)}`,
+    goods,
+    `Посмотреть чек: ${SITE}/m/?receipt=${receiptId}`,
+  ]);
 }
 
 /**
  * Загрузка из банка: новые операции одной сводкой. Переводы себе и исключённые не в счёт.
- * Одна — «трата 350 ₽ — Пятёрочка (Т-Банк)»; несколько — «из Т-Банка 3 траты на 2 400 ₽».
+ * Одна — «💳 Дима · трата из Т-Банка / Пятёрочка — 500 ₽ · Еда / ссылка на неё»;
+ * несколько — «💳 Дима · новые операции из Т-Банка / 3 траты на 1 100 ₽: Пятёрочка, …».
  */
 export function notifyBankOps(db, linkId, extIds) {
   if (!extIds.length) return 0;
@@ -52,22 +96,35 @@ export function notifyBankOps(db, linkId, extIds) {
   const marks = extIds.map(() => '?').join(', ');
   const ops = db
     .prepare(
-      `SELECT direction, amount, COALESCE(merchant, description) AS who, kind FROM bank_ops
-        WHERE link_id = ? AND ext_id IN (${marks}) AND COALESCE(kind, '') NOT IN ('transfer', 'excluded')`,
+      `SELECT id, at, direction, amount, merchant, description, op_group, category_slug, kind FROM bank_ops
+        WHERE link_id = ? AND ext_id IN (${marks}) AND COALESCE(kind, '') NOT IN ('transfer', 'excluded')
+        ORDER BY at`,
     )
     .all(linkId, ...extIds);
   const spent = ops.filter((o) => o.direction === 'debit');
   const got = ops.filter((o) => o.direction === 'credit');
-  if (!spent.length && !got.length) return 0;
-  const from = BANKS[link.bank] ?? 'банка';
+  if (!ops.length) return 0;
+  const from = BANK_FROM[link.bank] ?? 'из банка';
+  const who = (o) => clean(opWho(o)) || 'Операция';
+
   if (ops.length === 1) {
     const [o] = ops;
-    const what = o.direction === 'debit' ? 'трата' : 'поступление';
-    return notifyMembers(db, link.budget_id, link.user_id, `${what} ${rub(o.amount)}${o.who ? ` — ${o.who}` : ''} (из ${from})`);
+    const income = o.direction === 'credit';
+    const cat = categoryName(db, link.budget_id, o.category_slug);
+    return notifyMembers(db, link.budget_id, link.user_id, income ? '💰' : '💳',
+      income ? `поступление ${BANK_TO[link.bank] ?? 'в банк'}` : `трата ${from}`, [
+        `${who(o)} — ${rub(o.amount)}${cat ? ` · ${cat}` : ''}`,
+        `Посмотреть: ${SITE}/m/?screen=op&op=${o.id}`,
+      ]);
   }
+
   const sum = (list) => list.reduce((n, o) => n + o.amount, 0);
-  const parts = [];
-  if (spent.length) parts.push(`${spent.length} ${plural(spent.length, 'трата', 'траты', 'трат')} на ${rub(sum(spent))}`);
-  if (got.length) parts.push(`${got.length} ${plural(got.length, 'поступление', 'поступления', 'поступлений')} на ${rub(sum(got))}`);
-  return notifyMembers(db, link.budget_id, link.user_id, `из ${from} ${parts.join(' и ')}`);
+  const names = (list) => [...new Set(list.map(who))].slice(0, 3).join(', ');
+  const first = ops[0].at.slice(0, 10);
+  const last = ops[ops.length - 1].at.slice(0, 10);
+  return notifyMembers(db, link.budget_id, link.user_id, '💳', `новые операции ${from}`, [
+    spent.length ? `${spent.length} ${plural(spent.length, 'трата', 'траты', 'трат')} на ${rub(sum(spent))}: ${names(spent)}` : '',
+    got.length ? `${got.length} ${plural(got.length, 'поступление', 'поступления', 'поступлений')} на ${rub(sum(got))}` : '',
+    `Посмотреть: ${SITE}/m/?screen=summary&from=${first}&to=${last}`,
+  ]);
 }

@@ -578,8 +578,13 @@ function go(patch, replace = false) {
   return render();
 }
 
+// Ссылка на чек (сообщение бота о новом чеке участника): ?receipt=ID — после первой
+// отрисовки поверх экрана открывается этот чек
+let pendingReceipt = 0;
+
 function readUrl() {
   const p = new URLSearchParams(location.search);
+  pendingReceipt = Number(p.get('receipt')) || 0;
   state.screen = SCREEN_NAMES.includes(p.get('screen')) ? p.get('screen') : 'summary';
   if (isDay(p.get('from')) && isDay(p.get('to')) && p.get('from') <= p.get('to')) {
     state.from = p.get('from');
@@ -3818,6 +3823,15 @@ async function render() {
     playList();
     shownScreen = state.screen;
     screen.after?.();
+    if (pendingReceipt) {
+      const id = pendingReceipt;
+      pendingReceipt = 0;
+      // Номер чека из адреса убираем: «назад» закроет чек, а не откроет его снова
+      const params = new URLSearchParams(location.search);
+      params.delete('receipt');
+      history.replaceState({ ...state }, '', `?${params}`);
+      openReceiptSheet(id);
+    }
     updateSecTop();
     watchFeedMore();
     if (pulseNext) pulse(pulseNext);
