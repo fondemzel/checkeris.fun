@@ -195,7 +195,8 @@ async function pumpOutbox() {
   for (const m of messages) {
     const call = m.delete_msg
       ? tg('deleteMessage', { chat_id: m.chat_id, message_id: m.delete_msg })
-      : tg('sendMessage', { chat_id: m.chat_id, text: m.text, disable_web_page_preview: true });
+      // html — уведомления с ссылкой под словом «Посмотреть»; остальное — обычным текстом
+      : tg('sendMessage', { chat_id: m.chat_id, text: m.text, disable_web_page_preview: true, ...(m.html ? { parse_mode: 'HTML' } : {}) });
     await call.catch((err) => console.error('outbox:', err.message));
   }
 }

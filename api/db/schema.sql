@@ -693,6 +693,7 @@ CREATE TABLE IF NOT EXISTS tg_outbox (
   chat_id    INTEGER NOT NULL,
   text       TEXT NOT NULL,            -- что отправить; пусто — вместо отправки удалить сообщение
   delete_msg INTEGER,                  -- номер сообщения, которое надо убрать
+  html       INTEGER NOT NULL DEFAULT 0, -- текст с HTML-разметкой (ссылка под словом)
   created_at TEXT NOT NULL,
   sent_at    TEXT
 );

@@ -63,18 +63,21 @@ export function saveSession(db, userId, bank, sessionId) {
   return db.prepare('SELECT id FROM bank_links WHERE user_id = ? AND bank = ?').get(userId, bank).id;
 }
 
-/** Сообщение в Telegram: его заберёт и отправит бот на зарубежном сервере. */
-export function notify(db, userId, text) {
+/**
+ * Сообщение в Telegram: его заберёт и отправит бот на зарубежном сервере. html — текст
+ * с разметкой Telegram (ссылка под словом); всё, что пришло из данных, должно быть экранировано.
+ */
+export function notify(db, userId, text, { html = false } = {}) {
   const chat = db.prepare('SELECT telegram_id FROM users WHERE id = ?').get(userId)?.telegram_id;
   if (!chat) return false;
-  db.prepare('INSERT INTO tg_outbox (chat_id, text, created_at) VALUES (?, ?, ?)').run(chat, text, now());
+  db.prepare('INSERT INTO tg_outbox (chat_id, text, html, created_at) VALUES (?, ?, ?, ?)').run(chat, text, html ? 1 : 0, now());
   return true;
 }
 
 /** Для бота: неотправленные сообщения. Отдаём один раз — повторить уведомление не страшно пропустить. */
 export function takeOutbox(db) {
   const rows = db
-    .prepare('SELECT id, chat_id, text, delete_msg FROM tg_outbox WHERE sent_at IS NULL ORDER BY id LIMIT 20')
+    .prepare('SELECT id, chat_id, text, delete_msg, html FROM tg_outbox WHERE sent_at IS NULL ORDER BY id LIMIT 20')
     .all();
   const mark = db.prepare('UPDATE tg_outbox SET sent_at = ? WHERE id = ?');
   for (const r of rows) mark.run(now(), r.id);

@@ -16,7 +16,11 @@ const SITE = (process.env.SITE_ORIGIN || 'https://checkeris.fun').replace(/\/$/,
 const BANK_FROM = { tbank: 'из Т-Банка', sber: 'из Сбера' };
 const BANK_TO = { tbank: 'в Т-Банк', sber: 'в Сбер' };
 const rub = (kop) => `${new Intl.NumberFormat('ru-RU').format(Math.round(kop / 100))} ₽`;
-const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim(); // в чеках бывают двойные пробелы
+// Текст из данных — в разметку HTML только экранированным: «<» в названии сломал бы сообщение
+const html = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const clean = (s) => html(String(s ?? '').replace(/\s+/g, ' ').trim()); // в чеках бывают двойные пробелы
+// Ссылка под словом — последней строкой сообщения
+const look = (url, word = 'Посмотреть') => `<a href="${html(url)}">${word}</a>`;
 const plural = (n, one, few, many) => {
   const d = n % 10;
   const dd = n % 100;
@@ -36,12 +40,12 @@ const shortName = (name) => {
 /** Разослать участникам бюджета, кроме actorId: «значок Имя · заголовок», ниже — строки. */
 export function notifyMembers(db, budgetId, actorId, icon, title, lines = []) {
   if (!budgetId || !actorId || isDemo(db, budgetId)) return 0;
-  const actor = db.prepare('SELECT COALESCE(name, login) AS name FROM users WHERE id = ?').get(actorId)?.name ?? 'Участник';
+  const actor = html(db.prepare('SELECT COALESCE(name, login) AS name FROM users WHERE id = ?').get(actorId)?.name ?? 'Участник');
   const others = db
     .prepare('SELECT id FROM users WHERE budget_id = ? AND id <> ? AND telegram_id IS NOT NULL AND COALESCE(notify_members, 1) = 1')
     .all(budgetId, actorId);
   const text = [`${icon} ${actor} · ${title}`, ...lines.filter(Boolean)].join('\n');
-  for (const u of others) notify(db, u.id, text);
+  for (const u of others) notify(db, u.id, text, { html: true });
   return others.length;
 }
 
@@ -59,8 +63,8 @@ export function notifyManual(db, budgetId, actorId, itemId) {
   if (!it) return 0;
   const cat = categoryName(db, budgetId, it.category_slug);
   return notifyMembers(db, budgetId, actorId, '✍️', 'запись вручную', [
-    `${clean(it.name)} — ${rub(it.sum)}${cat ? ` · ${cat}` : ''}`,
-    `Посмотреть: ${SITE}/m/?screen=item&item=${itemId}`,
+    `${clean(it.name)} — ${rub(it.sum)}${cat ? ` · ${html(cat)}` : ''}`,
+    look(`${SITE}/m/?screen=item&item=${itemId}`),
   ]);
 }
 
@@ -80,7 +84,7 @@ export function notifyReceipt(db, receiptId, actorId) {
   return notifyMembers(db, r.budget_id, actorId, '🧾', 'новый чек', [
     `${place || 'Чек'} — ${rub(r.total_sum)}`,
     goods,
-    `Посмотреть чек: ${SITE}/m/?receipt=${receiptId}`,
+    look(`${SITE}/m/?receipt=${receiptId}`, 'Посмотреть чек'),
   ]);
 }
 
@@ -113,8 +117,8 @@ export function notifyBankOps(db, linkId, extIds) {
     const cat = categoryName(db, link.budget_id, o.category_slug);
     return notifyMembers(db, link.budget_id, link.user_id, income ? '💰' : '💳',
       income ? `поступление ${BANK_TO[link.bank] ?? 'в банк'}` : `трата ${from}`, [
-        `${who(o)} — ${rub(o.amount)}${cat ? ` · ${cat}` : ''}`,
-        `Посмотреть: ${SITE}/m/?screen=op&op=${o.id}`,
+        `${who(o)} — ${rub(o.amount)}${cat ? ` · ${html(cat)}` : ''}`,
+        look(`${SITE}/m/?screen=op&op=${o.id}`),
       ]);
   }
 
@@ -125,6 +129,6 @@ export function notifyBankOps(db, linkId, extIds) {
   return notifyMembers(db, link.budget_id, link.user_id, '💳', `новые операции ${from}`, [
     spent.length ? `${spent.length} ${plural(spent.length, 'трата', 'траты', 'трат')} на ${rub(sum(spent))}: ${names(spent)}` : '',
     got.length ? `${got.length} ${plural(got.length, 'поступление', 'поступления', 'поступлений')} на ${rub(sum(got))}` : '',
-    `Посмотреть: ${SITE}/m/?screen=summary&from=${first}&to=${last}`,
+    look(`${SITE}/m/?screen=summary&from=${first}&to=${last}`),
   ]);
 }

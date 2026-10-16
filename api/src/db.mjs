@@ -75,6 +75,7 @@ function addUserColumns(db) {
   addColumn(db, 'tg_logins', 'bot_chat', 'INTEGER');
   addColumn(db, 'tg_logins', 'bot_msg', 'INTEGER');
   addColumn(db, 'tg_outbox', 'delete_msg', 'INTEGER');
+  addColumn(db, 'tg_outbox', 'html', 'INTEGER NOT NULL DEFAULT 0'); // разметка: ссылка под словом
   addColumn(db, 'receipts', 'place_key', 'TEXT');
   addColumn(db, 'bank_ops', 'kind', 'TEXT');
   addColumn(db, 'bank_ops', 'category_slug', 'TEXT');
