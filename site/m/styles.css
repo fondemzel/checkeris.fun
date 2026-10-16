@@ -2056,6 +2056,6 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .row-wait { opacity: 0; } /* строка ждёт своей очереди проявиться */
 
 /* Поиск по настройкам: крупнее, чем поиск в шапке расходов, — он здесь главный элемент */
-.set-search { height: 42px; margin-bottom: 12px; padding: 0 6px 0 12px; border-radius: 21px; }
+.set-search { height: 42px; padding: 0 6px 0 12px; border-radius: 21px; } /* в закреплённой полосе (stuck-head) — видно при прокрутке */
 .set-search .search-ic svg { width: 17px; height: 17px; }
 .set-search input { font-size: 16px; }

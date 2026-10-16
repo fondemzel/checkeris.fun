@@ -4855,11 +4855,11 @@ async function screenSettings() {
   // Разделы — строками: каждая ведёт на свой экран. Так в настройки помещаются новые
   // разделы, а главный экран остаётся коротким. Сверху — поиск по всем настройкам (settingsSearch)
   return `
-    <label class="search set-search">
+    <div class="stuck-head"><label class="search set-search">
       <span class="search-ic">${UI.search}</span>
       <input id="sq" type="search" value="${esc(settingsQ)}" placeholder="Поиск по настройкам и категориям" enterkeyhint="search" autocomplete="off" />
       <button class="search-x" type="button" data-sq-clear aria-label="Очистить"${settingsQ ? '' : ' hidden'}>${UI.close}</button>
-    </label>
+    </label></div>
     <div id="set-results" hidden></div>
     <div id="set-main">`
     + section(S.menu.label, '',
