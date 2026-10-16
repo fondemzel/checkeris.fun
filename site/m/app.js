@@ -4836,7 +4836,7 @@ function apiKept(path) {
 }
 
 async function screenSettings() {
-  const [me, budget, bank] = await Promise.all([
+  const [me, budget, bank] = settingsData = await Promise.all([
     apiKept('/api/session').catch(() => null),
     apiKept('/api/budget').catch(() => null),
     inApp() ? apiKept('/api/bank').catch(() => null) : null,
@@ -4889,20 +4889,41 @@ async function screenSettings() {
 // со страницы результата возвращает к тем же результатам
 let settingsQ = '';
 
+let settingsData = []; // [me, budget, bank] последнего показа настроек — для поиска по вложенному
+
 function settingsIndex() {
   const S = T.settings;
   const L = S.look;
+  const B = S.budget;
+  const budget = settingsData[1];
   const out = [];
+  // how: { screen, … } — куда перейти; { toggle } — переключить прямо в результатах
   const add = (title, where, icon, how, words = '') => out.push({ title, where, icon, how, words });
-  add(S.profile.label, S.menu.label, UI.user, { screen: 'set_profile' }, 'имя выйти выход аккаунт телеграм удалить');
-  add(S.budget.label, S.menu.label, UI.wallet, { screen: 'set_budget' }, 'участники пригласить приглашение семья общий сообщения уведомления');
-  if (inApp()) add(S.banks.label, S.menu.label, UI.bank, { screen: 'set_banks' }, 'т-банк сбер сбербанк озон ozon wildberries вб подключить счета');
+  // Основные: разделы и то, что внутри них (находится сам пункт, а не его раздел)
+  add(S.profile.label, S.menu.label, UI.user, { screen: 'set_profile' });
+  add(S.profile.nameLabel, S.profile.label, UI.user, { screen: 'set_profile' }, 'имя как вас видят');
+  add(S.profile.logout, S.profile.label, UI.logout, { screen: 'set_profile' }, 'выход выйти');
+  add(T.settings.deleteAccount, S.profile.label, UI.trash, { screen: 'set_profile' }, 'удалить аккаунт');
+  add(B.label, S.menu.label, UI.wallet, { screen: 'set_budget' });
+  add(B.nameLabel, B.label, UI.wallet, { screen: 'set_budget' });
+  add(B.members, B.label, UI.user, { screen: 'set_budget' }, 'семья участник');
+  if (budget?.is_owner) add(B.invite, B.label, UI.userPlus, { screen: 'set_budget' }, 'приглашение семья ссылка');
+  if (budget && !budget.is_home) add(B.leave, B.label, UI.logout, { screen: 'set_budget' });
+  if (budget?.members.length > 1) add(B.notify, B.label, UI.mail, { toggle: 'notify' }, 'уведомления сообщения бот телеграм');
+  if (inApp()) {
+    add(S.banks.label, S.menu.label, UI.bank, { screen: 'set_banks' });
+    add(S.banks.add, S.banks.label, UI.bank, { screen: 'set_banks' }, 'т-банк тинькофф сбер сбербанк озон ozon wildberries вб подключить');
+  }
+  // Внешний вид
   add(S.menu.dark, L.label, UI.moon, { toggle: 'theme' }, 'тема ночная темная оформление');
-  add(L.motion, L.label, groupIcon('zap'), { screen: 'set_motion' }, 'анимация движение');
-  for (const k of MOTION_KINDS) add(L.kinds[k], `${L.label} · ${L.motion}`, groupIcon('zap'), { screen: 'set_motion' }, L.kindNotes[k]);
+  add(L.motion, L.label, groupIcon('zap'), { screen: 'set_motion' });
+  add(L.allLabel, `${L.label} · ${L.motion}`, groupIcon('zap'), { toggle: 'motion' }, 'анимация движение');
+  for (const k of MOTION_KINDS) add(L.kinds[k], `${L.label} · ${L.motion}`, groupIcon('zap'), { toggle: `kind:${k}` }, `${L.kindNotes[k]} анимация`);
+  // Категории
   add(S.cats.expense, S.cats.label, UI.wallet, { screen: 'set_cats', tk: '' }, 'группы категории расходов справочник');
   add(S.cats.income, S.cats.label, UI.income, { screen: 'set_cats', tk: 'in' }, 'группы категории доходов справочник');
-  add(S.data.label, S.help.label, UI.shield, { privacy: true }, 'данные хранение конфиденциальность удалить приватность');
+  // Помощь
+  add(S.data.label, S.help.label, UI.shield, { privacy: true }, 'данные хранение конфиденциальность приватность');
   add(S.help.demo, S.help.label, UI.sparkle, { toggle: 'demo' }, 'демо тестовый пример');
   // Справочник: группы и их категории, расходы и доходы
   for (const [groups, tk, where] of [[meta?.categories ?? [], '', S.cats.expense], [meta?.income ?? [], 'in', S.cats.income]]) {
@@ -4914,6 +4935,23 @@ function settingsIndex() {
     }
   }
   return out;
+}
+
+/** Переключатель найденного пункта — тот же, что на его экране: работают те же обработчики. */
+function settingsToggle(kind, title) {
+  const budget = settingsData[1];
+  if (kind === 'theme') return toggle('data-theme-toggle', theme() === 'dark', title);
+  if (kind === 'demo') return toggle('data-demo-toggle', Boolean(meta?.demo), title);
+  if (kind === 'motion') return toggle('data-motion-toggle', document.documentElement.dataset.motion !== 'off', title);
+  if (kind.startsWith('kind:')) {
+    const k = kind.slice(5);
+    const all = document.documentElement.dataset.motion !== 'off';
+    return toggle(`data-motion-kind="${k}"${all ? '' : ' disabled'}`, motionPrefs()[k] !== false, title);
+  }
+  if (kind === 'notify') {
+    return toggle(`data-notify-members${budget?.telegram ? '' : ' disabled'}`, Boolean(budget?.notify_members && budget?.telegram), title);
+  }
+  return '';
 }
 
 /** Показать результаты поиска (или вернуть разделы, если поле пустое). */
@@ -4935,9 +4973,7 @@ function settingsSearch() {
   });
   const S = T.settings;
   const rows = found.slice(0, 40).map((e, i) => {
-    const end = e.how.toggle === 'theme' ? toggle('data-theme-toggle', theme() === 'dark', e.title)
-      : e.how.toggle === 'demo' ? toggle('data-demo-toggle', Boolean(meta?.demo), e.title)
-        : '';
+    const end = e.how.toggle ? settingsToggle(e.how.toggle, e.title) : '';
     return srow({
       icon: e.icon, bare: e.icon.startsWith('<span class="gic"'), title: esc(e.title), note: esc(e.where),
       attrs: e.how.toggle ? '' : `data-sjump="${i}"`, end: end || (e.how.toggle ? '' : GO),
