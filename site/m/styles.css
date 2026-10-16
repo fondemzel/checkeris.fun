@@ -2054,3 +2054,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Лента расходов и доходов появляется по строке (playList) — как группы в аналитике */
 .row-in { animation: ana-in 0.3s ease-out both; animation-delay: calc(var(--i, 0) * 35ms); }
 .row-wait { opacity: 0; } /* строка ждёт своей очереди проявиться */
+
+/* Поиск по настройкам: крупнее, чем поиск в шапке расходов, — он здесь главный элемент */
+.set-search { height: 42px; margin-bottom: 12px; padding: 0 6px 0 12px; border-radius: 21px; }
+.set-search .search-ic svg { width: 17px; height: 17px; }
+.set-search input { font-size: 16px; }

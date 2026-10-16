@@ -3648,7 +3648,7 @@ const SCREENS = {
     render: screenIncome,
   },
   stats: { title: 'Аналитика', render: screenAnalytics, after: () => animateAnalytics() },
-  settings: { title: 'Настройки', render: screenSettings },
+  settings: { title: 'Настройки', render: screenSettings, after: () => settingsSearch() },
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
@@ -4853,8 +4853,16 @@ async function screenSettings() {
   };
   const link = (id, icon, title, note) => srow({ icon, title, note: esc(note), attrs: `data-set="${id}"`, end: GO });
   // Разделы — строками: каждая ведёт на свой экран. Так в настройки помещаются новые
-  // разделы, а главный экран остаётся коротким
-  return section(S.menu.label, '',
+  // разделы, а главный экран остаётся коротким. Сверху — поиск по всем настройкам (settingsSearch)
+  return `
+    <label class="search set-search">
+      <span class="search-ic">${UI.search}</span>
+      <input id="sq" type="search" value="${esc(settingsQ)}" placeholder="Поиск по настройкам и категориям" enterkeyhint="search" autocomplete="off" />
+      <button class="search-x" type="button" data-sq-clear aria-label="Очистить"${settingsQ ? '' : ' hidden'}>${UI.close}</button>
+    </label>
+    <div id="set-results" hidden></div>
+    <div id="set-main">`
+    + section(S.menu.label, '',
     link('profile', UI.user, S.profile.label, me?.name || (me?.telegram ? S.profile.viaTelegram : S.profile.viaPassword))
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
     + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : ''))
@@ -4869,8 +4877,100 @@ async function screenSettings() {
     + section(S.help.label, S.help.note,
       // «Данные» — сразу страница о данных, без промежуточного экрана
       srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO })
-      + srow({ icon: UI.sparkle, title: S.help.demo, note: S.help.demoNote, end: toggle('data-demo-toggle', Boolean(meta?.demo), S.help.demo) }));
+      + srow({ icon: UI.sparkle, title: S.help.demo, note: S.help.demoNote, end: toggle('data-demo-toggle', Boolean(meta?.demo), S.help.demo) }))
+    + '</div>';
 }
+
+// ── поиск по настройкам ──────────────────────────────────
+// Ищет по всем пунктам и вложенным экранам, а главное — по справочнику: группы и категории
+// расходов и доходов спрятаны на втором-третьем уровне. Результат — строка с подписью, где он
+// («Категории расходов · Питание»); нажатие ведёт прямо туда. Переключатели (тема, анимации,
+// демо-режим) переключаются прямо в результатах. Запрос держится, пока не очистят: «назад»
+// со страницы результата возвращает к тем же результатам
+let settingsQ = '';
+
+function settingsIndex() {
+  const S = T.settings;
+  const L = S.look;
+  const out = [];
+  const add = (title, where, icon, how, words = '') => out.push({ title, where, icon, how, words });
+  add(S.profile.label, S.menu.label, UI.user, { screen: 'set_profile' }, 'имя выйти выход аккаунт телеграм удалить');
+  add(S.budget.label, S.menu.label, UI.wallet, { screen: 'set_budget' }, 'участники пригласить приглашение семья общий сообщения уведомления');
+  if (inApp()) add(S.banks.label, S.menu.label, UI.bank, { screen: 'set_banks' }, 'т-банк сбер сбербанк озон ozon wildberries вб подключить счета');
+  add(S.menu.dark, L.label, UI.moon, { toggle: 'theme' }, 'тема ночная темная оформление');
+  add(L.motion, L.label, groupIcon('zap'), { screen: 'set_motion' }, 'анимация движение');
+  for (const k of MOTION_KINDS) add(L.kinds[k], `${L.label} · ${L.motion}`, groupIcon('zap'), { screen: 'set_motion' }, L.kindNotes[k]);
+  add(S.cats.expense, S.cats.label, UI.wallet, { screen: 'set_cats', tk: '' }, 'группы категории расходов справочник');
+  add(S.cats.income, S.cats.label, UI.income, { screen: 'set_cats', tk: 'in' }, 'группы категории доходов справочник');
+  add(S.data.label, S.help.label, UI.shield, { privacy: true }, 'данные хранение конфиденциальность удалить приватность');
+  add(S.help.demo, S.help.label, UI.sparkle, { toggle: 'demo' }, 'демо тестовый пример');
+  // Справочник: группы и их категории, расходы и доходы
+  for (const [groups, tk, where] of [[meta?.categories ?? [], '', S.cats.expense], [meta?.income ?? [], 'in', S.cats.income]]) {
+    for (const g of groups) {
+      const color = g.color ?? 'var(--fill)';
+      const badge = (icon) => `<span class="gic" style="background:${color};color:${readableText(color)}">${groupIcon(icon || 'none')}</span>`;
+      add(g.name, `${S.cats.label} · ${where.toLowerCase()}`, badge(g.icon), { screen: 'set_group', tg: g.slug, tk }, 'группа');
+      for (const c of g.subcategories) add(c.name, `${where} · ${g.name}`, badge(c.icon || g.icon), { screen: 'set_cat', tc: c.slug, tk }, 'категория');
+    }
+  }
+  return out;
+}
+
+/** Показать результаты поиска (или вернуть разделы, если поле пустое). */
+function settingsSearch() {
+  const input = document.getElementById('sq');
+  if (!input) return;
+  const words = searchNorm(settingsQ).split(/\s+/).filter(Boolean);
+  const results = document.getElementById('set-results');
+  const main = document.getElementById('set-main');
+  input.nextElementSibling.hidden = !settingsQ;
+  if (!words.length) {
+    results.hidden = true;
+    main.hidden = false;
+    return;
+  }
+  const found = settingsIndex().filter((e) => {
+    const hay = searchNorm(`${e.title} ${e.where} ${e.words}`);
+    return words.every((w) => hay.includes(w));
+  });
+  const S = T.settings;
+  const rows = found.slice(0, 40).map((e, i) => {
+    const end = e.how.toggle === 'theme' ? toggle('data-theme-toggle', theme() === 'dark', e.title)
+      : e.how.toggle === 'demo' ? toggle('data-demo-toggle', Boolean(meta?.demo), e.title)
+        : '';
+    return srow({
+      icon: e.icon, bare: e.icon.startsWith('<span class="gic"'), title: esc(e.title), note: esc(e.where),
+      attrs: e.how.toggle ? '' : `data-sjump="${i}"`, end: end || (e.how.toggle ? '' : GO),
+    });
+  }).join('');
+  results.innerHTML = rows ? section('', '', rows) : `<p class="sec-foot">Ничего не нашлось</p>`;
+  results.dataset.found = JSON.stringify(found.slice(0, 40).map((e) => e.how));
+  results.hidden = false;
+  main.hidden = true;
+}
+
+$('screen').addEventListener('input', (e) => {
+  if (e.target.id !== 'sq') return;
+  settingsQ = e.target.value;
+  settingsSearch();
+});
+
+$('screen').addEventListener('click', (e) => {
+  if (state.screen !== 'settings') return null;
+  if (e.target.closest('[data-sq-clear]')) {
+    settingsQ = '';
+    const input = document.getElementById('sq');
+    input.value = '';
+    settingsSearch();
+    return input.focus();
+  }
+  const jump = e.target.closest('[data-sjump]');
+  if (!jump) return null;
+  const how = JSON.parse(document.getElementById('set-results').dataset.found || '[]')[Number(jump.dataset.sjump)];
+  if (!how) return null;
+  if (how.privacy) return go({ screen: 'privacy' });
+  return go(how);
+});
 
 async function screenSetProfile() {
   const me = await apiKept('/api/session').catch(() => null);
