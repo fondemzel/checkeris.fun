@@ -37,6 +37,18 @@ const shortName = (name) => {
   return short.charAt(0).toUpperCase() + short.slice(1);
 };
 
+/**
+ * Где куплено: место продажи из чека, а если там адрес («помещение 45Н, ул. …») — продавец,
+ * как его называет приложение: «ООО "ТАНДЕР"» → «ТАНДЕР».
+ */
+function placeName(r) {
+  const place = String(r.retail_place ?? '').replace(/\s+/g, ' ').trim();
+  const address = /\d|помещ|ул\.|улица|д\.|г\.|просп|пр-т|шоссе|корп|стр\./i;
+  if (place && !address.test(place)) return clean(place);
+  const quoted = /["«]([^"»]+)["»]/.exec(r.seller ?? '');
+  return clean(quoted?.[1] ?? r.seller ?? place);
+}
+
 /** Разослать участникам бюджета, кроме actorId: «значок Имя · заголовок», ниже — строки. */
 export function notifyMembers(db, budgetId, actorId, icon, title, lines = []) {
   if (!budgetId || !actorId || isDemo(db, budgetId)) return 0;
@@ -70,7 +82,7 @@ export function notifyManual(db, budgetId, actorId, itemId) {
 
 /** Скан чека: «🧾 Ольга · новый чек / Пятёрочка — 1 234 ₽ / Молоко, хлеб и ещё 9 позиций / ссылка». */
 export function notifyReceipt(db, receiptId, actorId) {
-  const r = db.prepare('SELECT budget_id, COALESCE(retail_place, seller) AS place, total_sum FROM receipts WHERE id = ?').get(receiptId);
+  const r = db.prepare('SELECT budget_id, retail_place, seller, total_sum FROM receipts WHERE id = ?').get(receiptId);
   if (!r) return 0;
   const items = db.prepare('SELECT name FROM items WHERE receipt_id = ? ORDER BY pos').all(receiptId);
   // Разные товары — повторы одного (два пива) не тратят место в строке
@@ -80,7 +92,7 @@ export function notifyReceipt(db, receiptId, actorId) {
   const goods = first.length
     ? `${first.join(', ')}${more > 0 ? ` и ещё ${more} ${plural(more, 'позиция', 'позиции', 'позиций')}` : ''}`
     : '';
-  const place = clean(r.place);
+  const place = placeName(r);
   return notifyMembers(db, r.budget_id, actorId, '🧾', 'новый чек', [
     `${place || 'Чек'} — ${rub(r.total_sum)}`,
     goods,
