@@ -94,7 +94,15 @@ async function onMessage(msg) {
   if (msg.chat?.type !== 'private') return; // в группах бот не участвует
   const chat_id = msg.chat.id;
   const nonce = /^\/start(?:@\w+)?\s+(\S+)/.exec(msg.text ?? '')?.[1];
-  if (!nonce || !NONCE.test(nonce)) return tg('sendMessage', { chat_id, text: HELP, disable_web_page_preview: true });
+  if (!nonce || !NONCE.test(nonce)) {
+    // Telegram уже привязан к Чекеру — человек получает от бота уведомления, и подсказка про
+    // вход в ответ на любое сообщение только сбивает с толку. Молчим. Не узнали — подсказываем
+    const linked = await checker('/api/telegram/known', { telegram_id: msg.from?.id })
+      .then((r) => r.linked)
+      .catch(() => false);
+    if (linked) return null;
+    return tg('sendMessage', { chat_id, text: HELP, disable_web_page_preview: true });
+  }
 
   let info;
   try {

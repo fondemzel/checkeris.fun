@@ -361,7 +361,7 @@ async function handleApi(req, res, url) {
 
   // Бот с зарубежного сервера. Открыто наружу, но без верной подписи не принимается
   if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm', '/api/telegram/outbox',
-       '/api/telegram/sent'].includes(pathname)) {
+       '/api/telegram/sent', '/api/telegram/known'].includes(pathname)) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     let raw;
     let body;
@@ -377,6 +377,11 @@ async function handleApi(req, res, url) {
     // Сообщения, которые Чекер хочет отправить людям: бот забирает их и отправляет сам
     if (pathname.endsWith('/outbox')) return sendJson(res, 200, { messages: takeOutbox(db) });
     if (pathname.endsWith('/sent')) return sendJson(res, 200, noteBotMessage(db, body));
+    // Привязан ли этот Telegram к аккаунту: привязанным бот на случайные сообщения не отвечает
+    if (pathname.endsWith('/known')) {
+      const id = Number(body.telegram_id);
+      return sendJson(res, 200, { linked: Boolean(id && db.prepare('SELECT 1 FROM users WHERE telegram_id = ?').get(id)) });
+    }
     return sendJson(
       res,
       200,
