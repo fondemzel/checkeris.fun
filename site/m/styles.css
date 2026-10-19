@@ -2047,6 +2047,43 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .limit-btns .btn { flex: 1; }
 .limit-edit .link { align-self: center; margin-top: 4px; }
 
+/* Лимит под кольцом расходов (limitCard): высота одна при любом периоде и состоянии */
+.lim-card { padding: 12px 14px; margin-top: 12px; }
+.lim-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lim-title { font-weight: 600; }
+.lim-edit { font-size: 14px; text-decoration: none; }
+.lim-bar { position: relative; height: 8px; margin: 10px 0 12px; border-radius: 4px; background: var(--fill); }
+/* Заливка — клипом по --w: зелёное до отсечки и красное после стоят на своих местах во всю полосу */
+.lim-run { position: absolute; inset: 0; border-radius: 4px; overflow: hidden; clip-path: inset(0 calc(100% - var(--w, 0%)) 0 0 round 4px); }
+.lim-run.lim-fill { transition: clip-path 0.9s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.lim-run i { position: absolute; top: 0; bottom: 0; left: 0; }
+.lim-run .ok { background: #1baf7a; }
+.lim-run .over { right: 0; background: var(--danger); }
+.lim-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--text); }
+.lim-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lim-num { display: flex; flex-direction: column; min-width: 0; }
+.lim-num:nth-child(2) { text-align: center; }
+.lim-num:nth-child(3) { text-align: right; }
+.lim-num small { font-size: 12px; color: var(--muted); }
+.lim-num b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lim-num.over b { color: var(--danger); }
+.lim-note { margin: 8px 0 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Лист «Лимит» группы */
+.lim-sheet { display: flex; flex-direction: column; gap: 12px; }
+.lim-set { display: flex; flex-direction: column; gap: 10px; }
+.lim-set[hidden] { display: none; }
+.lim-line { display: flex; align-items: center; gap: 12px; padding: 4px 2px; }
+.lim-line-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-weight: 500; }
+.lim-line-text small { font-weight: 400; font-size: 12px; }
+.lim-range { width: 100%; accent-color: var(--accent); }
+.lim-scale { display: flex; align-items: center; justify-content: space-between; margin-top: -6px; font-size: 12px; color: var(--muted); }
+.lim-scale .link { font-size: 12px; text-decoration: none; }
+/* Настройки → Лимиты: отмеченный период и строка группы, с которой пришли */
+.srow-check { display: inline-flex; padding: 0 14px; color: var(--accent); }
+.srow-check svg { width: 20px; height: 20px; }
+@keyframes lim-flash { 0%, 60% { background: color-mix(in srgb, var(--accent) 16%, transparent); } }
+.srow.lim-flash { animation: lim-flash 2.4s ease-out; }
+
 /* Аналитика: строки групп появляются по одной, полосы заполняются от нуля (animateAnalytics) */
 @keyframes ana-in { from { opacity: 0; transform: translateY(8px); } }
 .ana-row.ana-in { animation: ana-in 0.3s ease-out both; animation-delay: calc(var(--i, 0) * 45ms); }

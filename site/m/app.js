@@ -342,7 +342,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -559,7 +559,7 @@ function go(patch, replace = false) {
   if (state.category) params.set('category', state.category);
   if (state.item) params.set('item', state.item);
   if (state.bank) params.set('bank', state.bank);
-  if (state.screen === 'set_group' && state.tg) params.set('tg', state.tg);
+  if (['set_group', 'set_limits'].includes(state.screen) && state.tg) params.set('tg', state.tg);
   if (state.screen === 'set_cat' && state.tc) params.set('tc', state.tc);
   if (['set_cats', 'set_group', 'set_cat'].includes(state.screen) && state.tk) params.set('tk', state.tk);
   if (state.op) params.set('op', state.op);
@@ -804,11 +804,14 @@ async function screenSummary() {
   // Переводы себе — отдельным разделом в конце (только по категориям): видно, что туда ушло
   const withSelf = state.sort === 'category' && (!state.src || state.src === 'bank');
   const selfQuery = new URLSearchParams({ from: state.from, to: state.to, direction: 'debit', kind: 'transfer', per: '20000' });
-  const [data, ops, failed, self] = await Promise.all([
+  // Карточка лимита под кольцом — без отборов: иначе потрачено не сравнить с лимитом
+  const withLimit = state.mode === 'ring' && !state.src && !state.sg && !state.q.trim() && !state.ringRest;
+  const [data, ops, failed, self, limits] = await Promise.all([
     apiFeed(`/api/items?${params}`),
     apiFeed(`/api/bank/ops?${opsQuery}`).catch(() => null),
     api('/api/scan?state=failed').catch(() => null),
     withSelf ? apiFeed(`/api/bank/ops?${selfQuery}`).catch(() => null) : null,
+    withLimit ? apiFeed(`/api/limits/state?from=${state.from}&to=${state.to}`).catch(() => null) : null,
   ]);
   const bankRows = ops?.rows ?? [];
   if (failed) updateBadge(failed.counts.failed);
@@ -892,10 +895,10 @@ async function screenSummary() {
         key: c.slug, name: c.name, color: categoryColor(opened.slug, c.slug) ?? opened.color, icon: c.icon || opened.icon, sum: byCat.get(c.slug) ?? 0,
       }));
       const groupSum = cats.reduce((n, c) => n + c.sum, 0);
-      return `${head}${failedLink}${ringView(cats, groupSum, opened.name, 'summary-cat', total)}`;
+      return `${head}${failedLink}${ringView(cats, groupSum, opened.name, 'summary-cat', total, limitCard(limits, opened.slug))}`;
     }
     // Сколько непустых категорий в группе: одна — нажатие ведёт сразу в список, кольцо из
-    // одного сектора ничего не добавляет
+    // одного сектора ничего не добавляет. Кроме группы с лимитом: под её кольцом — карточка лимита
     const catsOf = new Map();
     const note = (slug, sum) => {
       const g = slug && sum > 0 ? findCategory(slug)?.group.slug : null;
@@ -904,10 +907,11 @@ async function screenSummary() {
     shownItems.forEach((r) => note(r.category_slug, r.sum));
     shownOps.forEach((op) => note(op.category_slug, op.amount));
     const parts = (meta?.categories ?? []).map((g) => ({
-      key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0, single: catsOf.get(g.slug)?.size === 1,
+      key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0,
+      single: catsOf.get(g.slug)?.size === 1 && !(meta?.limits?.[g.slug] > 0),
     }));
     parts.push({ key: NONE, name: 'Без категории', color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
-    return `${head}${failedLink}${ringView(parts, total, `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`, 'summary')}`;
+    return `${head}${failedLink}${ringView(parts, total, `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`, 'summary', null, limitCard(limits))}`;
   }
   return `${head}${failedLink}${await spendingFeed(shownItems, shownOps, selfRows)}`;
 }
@@ -1040,8 +1044,11 @@ function playRing(start = true) {
   // (сохранённый вид, свежие данные ещё в пути) — строки скрыты: иначе мелькнули бы и пропали
   const legend = ringPlayed.at == null && motion('sections') ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
   legend.forEach((el) => el.classList.add('row-wait'));
+  const fresh = ringPlayed.at == null;
+  if (fresh) fillLimitBars(true); // полоса лимита под кольцом — с нуля, вместе с заливкой
   if (!start) return;
   box.dataset.playing = '1';
+  if (fresh) fillLimitBars();
   legend.forEach((el, i) => {
     el.style.setProperty('--i', i);
     el.classList.remove('row-wait');
@@ -1071,7 +1078,7 @@ function playRing(start = true) {
  * overall — итог всего периода, когда кольцо вложенное (категории группы, «Остальное»): тогда
  * над значком — доля от всех расходов (доходов), а под ним рядом с суммой — доля в этом кольце.
  */
-function ringView(parts, total, countText, kind, overall = null) {
+function ringView(parts, total, countText, kind, overall = null, extra = '') {
   // Вложенное кольцо: категории группы или «Остальное». whole — итог, от которого доля над значком
   const nested = overall != null || Boolean(state.ringRest);
   const whole = overall ?? total;
@@ -1220,8 +1227,247 @@ function ringView(parts, total, countText, kind, overall = null) {
         ${icons}
       </div>
     </div>
+    ${extra}
     <div class="list ring-list">${rows}</div>`;
 }
+
+// ── лимит под кольцом ────────────────────────────────────
+// Карточка под кольцом расходов (всех групп или одной): полоса, лимит на выбранный период,
+// потрачено и сколько осталось, а ниже — сколько можно в день и прогноз (идущий период) или
+// итог (прошедший). Поля одни и те же при любом периоде — карточка не прыгает по высоте.
+// Лимит на период считает сервер (limits.mjs: по дням, так что «две недели» — доля месяца).
+//
+// Полоса: пока не превышен — вся полоса и есть лимит, заливка зелёная. Превышен — шкала
+// растягивается до 125% потраченного (заливка кончается на 80%), отсечка лимита смещается
+// влево: до неё зелёное, после — красное.
+const LIMIT_STEP = { month: 50000, week: 10000, day: 1000 };
+
+/** Лимит периода amount → на отрезок from…to (как limitForRange в limits.mjs). */
+function limitForRange(amount, period, from, to) {
+  if (!amount) return 0;
+  let sum = 0;
+  for (let d = parseDay(from), end = parseDay(to); d <= end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    sum += period === 'day' ? amount : period === 'week' ? amount / 7 : amount / new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  }
+  return Math.round(sum);
+}
+
+function limitCard(st, slug = '') {
+  if (!st) return '';
+  const P = T.settings.limits;
+  const today = isoDay(new Date());
+  const keys = slug ? [slug] : (meta?.categories ?? []).map((g) => g.slug).filter((k) => st.range[k] > 0);
+  const of = (map) => keys.reduce((n, k) => n + (map[k] ?? 0), 0);
+  const limit = keys.length ? of(st.range) : 0;
+  const spent = of(st.spent);
+  const left = limit - spent;
+  const over = limit > 0 && spent > limit;
+  // Полоса: w — докуда заливка, a — отсечка лимита (при перерасходе)
+  const w = !limit ? 0 : over ? 80 : Math.min(100, (spent / limit) * 100);
+  const a = over ? (80 * limit) / spent : 100;
+  const num = (label, value, cls = '') => `<span class="lim-num${cls}"><small>${label}</small><b>${value}</b></span>`;
+
+  let note;
+  if (!limit) {
+    const usual = slug ? st.usual[slug] ?? 0 : 0;
+    note = slug ? `${P.notSet}${usual ? ` · ${P.usually} ≈ ${money(Math.ceil(usual / 10000) * 10000)}` : ''}` : P.noneNote;
+  } else if (st.to < today) {
+    note = over ? `${P.result}: ${P.overBy} ${money(-left)}` : `${P.result}: ${P.fit}${left > 0 ? `, ${P.saved} ${money(left)}` : ''}`;
+  } else {
+    const from = st.from > today ? st.from : today;
+    const days = Math.round((parseDay(st.to) - parseDay(from)) / 86400000) + 1;
+    const forecast = spent + of(st.rest);
+    const perDay = left > 0 ? `≈ ${money(left / days)} ${P.perDay}` : P.exceeded;
+    note = st.from > today
+      ? `${P.notStarted} · ${perDay}`
+      : `${perDay}${forecast > spent ? ` · ${P.forecast} ${money(forecast)}` : ''}`;
+  }
+
+  const title = slug ? P.cardTitle : P.cardTitleAll;
+  return `
+    <div class="card lim-card${limit ? '' : ' empty'}">
+      <div class="lim-top">
+        <span class="lim-title">${title}</span>
+        <button class="link lim-edit" type="button" data-lim-edit="${esc(slug)}">${slug ? (limit ? P.edit : P.set) : P.setup}</button>
+      </div>
+      <div class="lim-bar">
+        <span class="lim-run" data-w="${w.toFixed(2)}" style="--w:${w.toFixed(2)}%">
+          <i class="ok" style="width:${a.toFixed(2)}%"></i>${over ? `<i class="over" style="left:${a.toFixed(2)}%"></i>` : ''}
+        </span>
+        ${over ? `<b class="lim-mark" style="left:${a.toFixed(2)}%"></b>` : ''}
+      </div>
+      <div class="lim-nums">
+        ${num(P.limit, limit ? money(limit) : '—')}
+        ${num(P.spent, money(spent))}
+        ${over ? num(P.overBy[0].toUpperCase() + P.overBy.slice(1), money(-left), ' over') : num(P.left, limit ? money(left) : '—')}
+      </div>
+      <p class="note lim-note">${note}</p>
+    </div>`;
+}
+
+/**
+ * Заливка полос лимита от нуля. hold — только обнулить (кольцо ждёт старта заливки), иначе —
+ * пустить. Без анимации колец полосы сразу на месте.
+ */
+function fillLimitBars(hold = false) {
+  const bars = [...document.querySelectorAll('#screen .lim-run')];
+  if (!bars.length || !motion('ring')) return;
+  bars.forEach((b) => {
+    b.classList.remove('lim-fill');
+    b.style.setProperty('--w', '0%');
+  });
+  if (hold) return;
+  void document.body.offsetWidth; // зафиксировать ноль, иначе заливки не будет видно
+  bars.forEach((b) => {
+    b.classList.add('lim-fill');
+    b.style.setProperty('--w', `${b.dataset.w}%`);
+  });
+}
+
+/** После правки лимитов: свежие meta и данные, экран заново, полосы заливаются. */
+async function limitsChanged() {
+  for (const k of [...feedData.keys()]) if (k.startsWith('/api/limits')) feedData.delete(k);
+  screenCache.clear();
+  meta = await api('/api/meta');
+  await render();
+  fillLimitBars();
+}
+
+/**
+ * Лист «Лимит» группы: переключатель, сумма на период лимитов (поле и ползунок до 2,5 обычных
+ * трат группы) и «Зафиксировать» — такой лимит не меняют, когда двигают другие.
+ */
+async function openLimitSheet(slug) {
+  const g = findGroup(slug);
+  if (!g) return;
+  const P = T.settings.limits;
+  let full;
+  try {
+    full = await api('/api/limits');
+  } catch (err) {
+    toast(`${T.common.failed}: ${err.message}`);
+    return;
+  }
+  const step = LIMIT_STEP[full.period] ?? LIMIT_STEP.month;
+  const cur = full.limits[slug] ?? 0;
+  const usual = full.suggest[slug] ?? 0;
+  const max = Math.max(step * 10, Math.ceil(Math.max(usual * 2.5, cur * 1.5) / step) * step);
+  const start = cur || usual || step * 4;
+  const per = P.per[full.period];
+  const rub = (k) => int.format(Math.round(k / 100));
+  const el = openChoice(g.name, `
+    <div class="lim-sheet">
+      <div class="lim-line">
+        <span class="lim-line-text">${P.toggle}<small class="note">${per}</small></span>
+        ${toggle('data-lim-on', cur > 0, P.toggle)}
+      </div>
+      <div class="lim-set"${cur > 0 ? '' : ' hidden'}>
+        <label class="limit-field"><input id="lim-input" type="text" inputmode="numeric" autocomplete="off" value="${rub(start)}" /><span>₽ ${per}</span></label>
+        <input class="lim-range" type="range" min="0" max="${max}" step="${step}" value="${Math.min(max, start)}" aria-label="${esc(P.toggle)}" />
+        <div class="lim-scale"><span>0</span>${usual ? `<button class="link" type="button" data-lim-usual>${P.usually} ≈ ${money(usual)}</button>` : ''}<span>${money(max)}</span></div>
+        <div class="lim-line">
+          <span class="lim-line-text">${P.fix}<small class="note">${P.fixNote}</small></span>
+          ${toggle('data-lim-fix', Boolean(full.fixed[slug]), P.fix)}
+        </div>
+      </div>
+      <button class="btn primary big" type="button" data-lim-save>${P.save}</button>
+    </div>`, async (ev, close) => {
+    const input = el.querySelector('#lim-input');
+    if (ev.target.closest('[data-lim-usual]')) {
+      input.value = rub(usual);
+      el.querySelector('.lim-range').value = usual;
+      return;
+    }
+    if (!ev.target.closest('[data-lim-save]')) return;
+    const on = el.querySelector('[data-lim-on]').checked;
+    const amount = on ? Number(input.value.replace(/[^\d]/g, '')) * 100 : 0;
+    const btn = ev.target.closest('[data-lim-save]');
+    btn.disabled = true;
+    try {
+      await api('/api/limits', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ limits: { [slug]: amount }, fixed: { [slug]: on && el.querySelector('[data-lim-fix]').checked } }),
+      });
+    } catch (err) {
+      btn.disabled = false;
+      toast(err.message);
+      return;
+    }
+    close();
+    limitsChanged();
+  });
+  el.addEventListener('change', (e) => {
+    if (e.target.matches('[data-lim-on]')) el.querySelector('.lim-set').hidden = !e.target.checked;
+  });
+  el.addEventListener('input', (e) => {
+    const input = el.querySelector('#lim-input');
+    if (e.target.matches('.lim-range')) input.value = rub(Number(e.target.value));
+    if (e.target === input) {
+      input.value = input.value.replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+      el.querySelector('.lim-range').value = Number(input.value.replace(/[^\d]/g, '')) * 100;
+    }
+  });
+}
+
+$('screen').addEventListener('click', (e) => {
+  const edit = e.target.closest('[data-lim-edit]');
+  if (!edit) return;
+  if (edit.dataset.limEdit) openLimitSheet(edit.dataset.limEdit);
+  else go({ screen: 'set_limits', tg: '' });
+});
+
+// ── настройки → лимиты ───────────────────────────────────
+// Период лимитов (месяц, неделя, день — смена пересчитывает заданные лимиты) и лимиты всех
+// групп расходов. С экрана группы («Управлять лимитами») — сюда же, её строка подсвечена.
+async function screenSetLimits() {
+  const P = T.settings.limits;
+  const full = await api('/api/limits');
+  const per = P.per[full.period];
+  const periods = ['month', 'week', 'day'].map((p) => srow({
+    title: P.periods[p], attrs: `data-lim-period="${p}"`, end: p === full.period ? `<span class="srow-check">${UI.check}</span>` : '',
+  })).join('');
+  const groups = (meta?.categories ?? []).map((g) => {
+    const amount = full.limits[g.slug] ?? 0;
+    const usual = full.suggest[g.slug] ?? 0;
+    return srow({
+      icon: groupBadge(g),
+      bare: true,
+      title: esc(g.name),
+      note: amount
+        ? `${money(amount)} ${per}${full.fixed[g.slug] ? ` · ${P.fixed}` : ''}`
+        : `${P.notSet}${usual ? ` · ${P.usually} ≈ ${money(usual)}` : ''}`,
+      attrs: `data-lim-group="${esc(g.slug)}"`,
+      end: GO,
+    });
+  }).join('');
+  const total = Object.values(full.limits).reduce((n, v) => n + v, 0);
+  return section(P.period, P.periodNote, periods)
+    + section(P.groups, total ? f(P.totalNote, { sum: money(total), per }) : P.groupsNote, groups);
+}
+
+/** Строка группы, с которой пришли («Управлять лимитами»), — на виду и подсвечена. */
+function limitsFocus() {
+  if (!state.tg) return;
+  const row = document.querySelector(`#screen [data-lim-group="${CSS.escape(state.tg)}"]`)?.closest('.srow');
+  if (!row) return;
+  row.scrollIntoView({ block: 'center' });
+  row.classList.add('lim-flash');
+}
+
+$('screen').addEventListener('click', async (e) => {
+  if (state.screen !== 'set_limits') return;
+  const group = e.target.closest('[data-lim-group]');
+  if (group) return openLimitSheet(group.dataset.limGroup);
+  const period = e.target.closest('[data-lim-period]');
+  if (!period || period.querySelector('.srow-check')) return null;
+  try {
+    await api('/api/limits/period', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ period: period.dataset.limPeriod }) });
+  } catch (err) {
+    return toast(`${T.common.failed}: ${err.message}`);
+  }
+  return limitsChanged();
+});
 
 async function screenGroup() {
   const data = await api(
@@ -3651,6 +3897,7 @@ const SCREENS = {
   settings: { title: 'Настройки', render: screenSettings, after: () => settingsSearch() },
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
+  set_limits: { title: T.settings.limits.label, render: screenSetLimits, after: limitsFocus },
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
   set_banks: { title: T.settings.banks.label, render: screenSetBanks },
   privacy: { title: T.settings.data.label, render: screenPrivacy },
@@ -3690,7 +3937,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary', autolabel: 'summary',
-  set_profile: 'settings', set_motion: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
+  set_profile: 'settings', set_motion: 'settings', set_limits: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
 };
 
 /**
@@ -4037,7 +4284,7 @@ function perDayNote(items, ops, part) {
   };
   items.forEach((r) => add(r.category_slug, r.sum));
   ops.forEach((op) => add(op.category_slug, op.amount));
-  const left = keys.reduce((n, k) => n + lim[k], 0) - spent;
+  const left = keys.reduce((n, k) => n + limitForRange(lim[k], meta.limit_period ?? 'month', month.from, month.to), 0) - spent;
   const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
   return part('day', left > 0 ? `≈ ${money(left / daysLeft)} в день` : 'лимиты превышены');
 }
@@ -4872,7 +5119,8 @@ async function screenSettings() {
       + link('motion', groupIcon('zap'), S.look.motion, motionNote()))
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
-      + link('incats', UI.income, S.cats.income, counts(meta?.income)))
+      + link('incats', UI.income, S.cats.income, counts(meta?.income))
+      + link('limits', UI.piggy, S.limits.label, limitsNote()))
     // Помощь: что хранится и как удалить; демо-режим — год трат вымышленного человека
     + section(S.help.label, S.help.note,
       // «Данные» — сразу страница о данных, без промежуточного экрана
@@ -4922,6 +5170,7 @@ function settingsIndex() {
   // Категории
   add(S.cats.expense, S.cats.label, UI.wallet, { screen: 'set_cats', tk: '' }, 'группы категории расходов справочник');
   add(S.cats.income, S.cats.label, UI.income, { screen: 'set_cats', tk: 'in' }, 'группы категории доходов справочник');
+  add(S.limits.label, S.cats.label, UI.piggy, { screen: 'set_limits', tg: '' }, 'лимит бюджет ограничение период месяц неделя день');
   // Помощь
   add(S.data.label, S.help.label, UI.shield, { privacy: true }, 'данные хранение конфиденциальность приватность');
   add(S.help.demo, S.help.label, UI.sparkle, { toggle: 'demo' }, 'демо тестовый пример');
@@ -5154,7 +5403,8 @@ async function screenSetGroup() {
     + srow({ icon: UI.grid, title: C.icon, attrs: 'data-tgroup-icon', end: GO })
     + bars)
     + section(C.catsBlock, '', cats.join('') + srow({ icon: UI.plus, title: C.addCat, attrs: `data-tcat-add="${esc(g.slug)}"` }))
-    + section(C.manage, '', srow({
+    + section(C.manage, '', (state.tk === 'in' ? '' : srow({ icon: UI.piggy, title: T.settings.limits.manage, attrs: `data-lim-manage="${esc(g.slug)}"`, end: GO }))
+    + srow({
       icon: UI.trash, title: C.deleteGroup, note: busy ? C.deleteGroupBusy : '', attrs: 'data-tgroup-delete', danger: !busy, off: busy,
     }));
 }
@@ -5333,6 +5583,7 @@ async function onCatsClick(e) {
   if (hit('[data-tlook]')) return openGroupLook(hit('[data-tlook]').dataset.tlook, 'both');
   if (hit('[data-tcat]')) return go({ screen: 'set_cat', tc: hit('[data-tcat]').dataset.tcat });
   if (hit('[data-tgroup]')) return go({ screen: 'set_group', tg: hit('[data-tgroup]').dataset.tgroup });
+  if (hit('[data-lim-manage]')) return go({ screen: 'set_limits', tg: hit('[data-lim-manage]').dataset.limManage });
 
   if (hit('[data-tcat-add]')) {
     try {
@@ -5680,6 +5931,13 @@ function screenSetMotion() {
       title: L.kinds[k], note: L.kindNotes[k], wrap: true, off: !all, // пояснение — целиком, в две строки
       end: toggle(`data-motion-kind="${k}"${all ? '' : ' disabled'}`, prefs[k] !== false, L.kinds[k]),
     })).join(''));
+}
+
+/** Подстрочник строки «Лимиты» в настройках: сколько групп с лимитом и на какой период. */
+function limitsNote() {
+  const P = T.settings.limits;
+  const n = Object.keys(meta?.limits ?? {}).length;
+  return n ? `${int.format(n)} ${pl(n, T.settings.cats.groupsW)} · ${P.per[meta.limit_period ?? 'month']}` : P.none;
 }
 
 /** Подстрочник строки «Анимации» в настройках: все, выключены или сколько из скольких. */
@@ -6822,7 +7080,7 @@ if (token.get()) {
 
 // Месяц аналитики — из общего периода приложения: месяц, в котором он заканчивается. Листается
 // свайпом (swipeTarget), в заголовке — его название (anaTitle)
-let anaData = null; // последний ответ /api/analytics — для правки лимита
+let anaData = null; // последний ответ /api/analytics
 // Объявления функций, а не стрелки в константах: первая отрисовка идёт раньше этого места файла
 function monthKey(iso) {
   return iso.slice(0, 7);
@@ -6965,72 +7223,17 @@ function animateAnalytics() {
   });
 }
 
-/** Правка лимита группы: сумма в месяц, подсказка «обычно», снять лимит, траты группы. */
-function openLimitEditor(slug) {
-  const g = findGroup(slug);
-  if (!g || !anaData) return;
-  const cur = anaData.limits[slug];
-  const sug = anaData.suggest[slug];
-  const save = async (amount) => {
-    await api('/api/limits', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ limits: { [slug]: amount } }),
-    });
-    meta = await api('/api/meta'); // лимиты нужны и шапке «Расходов»
-  };
-  const el = openChoice(g.name, `
-    <div class="limit-edit">
-      <label class="limit-field"><input id="limit-input" type="text" inputmode="numeric" autocomplete="off"
-        placeholder="Лимит в месяц" value="${cur ? Math.round(cur / 100) : ''}" /><span>₽ в месяц</span></label>
-      ${sug ? `<button class="chip" type="button" data-limit-sug="${sug}">обычно ${money(sug)}</button>` : ''}
-      <div class="limit-btns">
-        ${cur ? '<button class="btn" type="button" data-limit-clear>Убрать лимит</button>' : ''}
-        <button class="btn primary" type="button" data-limit-save>Сохранить</button>
-      </div>
-      <button class="link" type="button" data-limit-list>Траты группы за месяц</button>
-    </div>`, async (ev, close) => {
-    const input = el.querySelector('#limit-input');
-    const sugBtn = ev.target.closest('[data-limit-sug]');
-    if (sugBtn) {
-      input.value = Math.round(Number(sugBtn.dataset.limitSug) / 100);
-      return;
-    }
-    try {
-      if (ev.target.closest('[data-limit-save]')) {
-        const rub = Number(input.value.replace(/[^\d]/g, ''));
-        await save(rub * 100);
-        return close();
-      }
-      if (ev.target.closest('[data-limit-clear]')) {
-        await save(0);
-        return close();
-      }
-    } catch (err) {
-      return toast(`${T.common.failed}: ${err.message}`);
-    }
-    if (ev.target.closest('[data-limit-list]')) {
-      dropPopup(el);
-      const [yy, mm] = (anaData.month).split('-').map(Number);
-      return go({ screen: 'summary', ...monthPeriod(yy, mm - 1), mode: 'list', sg: slug, src: '', q: '', ringGroup: '', ringRest: '' });
-    }
-    return null;
-  });
-  el.querySelector('#limit-input').addEventListener('input', (e) => {
-    e.target.value = e.target.value.replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  });
-}
-
 $('screen').addEventListener('click', async (e) => {
   if (state.screen !== 'stats') return;
   const limit = e.target.closest('[data-limit]');
-  if (limit) return openLimitEditor(limit.dataset.limit);
+  if (limit) return openLimitSheet(limit.dataset.limit);
   if (e.target.closest('[data-limits-suggest]') && anaData) {
     if (!(await ask('Поставить лимиты по вашим обычным тратам? Каждый можно потом поменять.', { ok: 'Поставить' }))) return null;
     try {
-      await api('/api/limits', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limits: anaData.suggest }) });
-      meta = await api('/api/meta');
-      return render();
+      // Предложения — на период лимитов бюджета (в анализе они месячные)
+      const full = await api('/api/limits');
+      await api('/api/limits', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limits: full.suggest }) });
+      return limitsChanged();
     } catch (err) {
       return toast(`${T.common.failed}: ${err.message}`);
     }

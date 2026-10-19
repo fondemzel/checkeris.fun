@@ -24,7 +24,7 @@ import {
 } from './queries.mjs';
 import { flatten, loadCategories, syncCategories } from './categories.mjs';
 import { isDemo, enableDemo, disableDemo } from './demo.mjs';
-import { getAnalytics, getLimits, setLimits } from './limits.mjs';
+import { getAnalytics, getLimits, getLimitsFull, getLimitState, limitPeriod, setLimitPeriod, setLimits } from './limits.mjs';
 import { notifyManual } from './members.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
 import { addScan, getScan, listScans, retryScan, deleteScan, runScanQueue } from './scan.mjs';
@@ -790,6 +790,7 @@ async function handleApi(req, res, url) {
     const maps = process.env.YANDEX_JAVASCRIPT_API_KEY ? { key: process.env.YANDEX_JAVASCRIPT_API_KEY } : null;
     return sendJson(res, 200, {
       version: VERSION, ...getMeta(db, user.budget_id), maps, demo: isDemo(db, user.budget_id), limits: getLimits(db, user.budget_id),
+      limit_period: limitPeriod(db, user.budget_id),
     });
   }
 
@@ -797,14 +798,24 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/analytics' && req.method === 'GET') {
     return sendJson(res, 200, getAnalytics(db, user.budget_id, url.searchParams.get('month')));
   }
-  if (pathname === '/api/limits' && req.method === 'PUT') {
+  if (pathname === '/api/limits' && req.method === 'GET') {
+    return sendJson(res, 200, getLimitsFull(db, user.budget_id));
+  }
+  if (pathname === '/api/limits/state' && req.method === 'GET') {
+    const result = getLimitState(db, user.budget_id, url.searchParams.get('from'), url.searchParams.get('to'));
+    return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
+  }
+  if ((pathname === '/api/limits' || pathname === '/api/limits/period') && req.method === 'PUT') {
     let body;
     try {
       body = await readJson(req);
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    return sendJson(res, 200, setLimits(db, user.budget_id, body.limits));
+    const result = pathname === '/api/limits'
+      ? setLimits(db, user.budget_id, body.limits, body.fixed)
+      : setLimitPeriod(db, user.budget_id, String(body.period ?? ''));
+    return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
   }
 
   // ── сканирование чеков ──

@@ -44,6 +44,8 @@ export function migrate(db) {
   addColumn(db, 'budgets', 'demo', 'INTEGER NOT NULL DEFAULT 0'); // тестовая база (demo.mjs)
   addColumn(db, 'users', 'demo_return', 'INTEGER');
   addColumn(db, 'users', 'notify_members', 'INTEGER NOT NULL DEFAULT 1'); // сообщения о тратах участников
+  addColumn(db, 'budgets', 'limit_period', "TEXT NOT NULL DEFAULT 'month'"); // лимиты (limits.mjs)
+  addColumn(db, 'budgets', 'limit_total', 'INTEGER');
   // Значки категорий: пустая строка — «как у группы», NULL — ещё не проставлен (server.mjs)
   addColumn(db, 'sys_categories', 'icon', 'TEXT');
   addColumn(db, 'categories', 'icon', 'TEXT');
@@ -86,6 +88,7 @@ function addUserColumns(db) {
   addColumn(db, 'bank_ops', 'kind_source', 'TEXT');
   addColumn(db, 'bank_ops', 'orig_amount', 'INTEGER'); // покупка в валюте (fx.mjs): исходная сумма…
   addColumn(db, 'bank_ops', 'orig_currency', 'TEXT'); // …и её валюта; amount — уже в рублях
+  addColumn(db, 'budget_limits', 'fixed', 'INTEGER NOT NULL DEFAULT 0'); // лимиты (limits.mjs)
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');
   // Первый пользователь — владелец проекта: без квот и с правом на системный справочник
   db.exec(`UPDATE users SET role = 'admin'
