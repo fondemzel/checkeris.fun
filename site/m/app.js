@@ -4038,18 +4038,20 @@ function pulse(name) {
 // или слева (slideScreen)
 let navDir = '';
 // Свайп вкладок — лента страниц: старый и новый экран стоят вплотную и едут вместе, без
-// прозрачности. По отпусканию вкладка открывается сразу, старый экран ждёт там, где его
-// отпустили; когда новый готов, render переносит старый в отдельный слой (pagerDetach), ставит
-// новый и пускает оба (pagerPlay). { dx, done } — от свайпа
+// прозрачности. Старый уезжает в тот же кадр, что отпустили палец (pagerLeave), — в отдельном
+// слое, анимацией браузера: она идёт, даже пока телефон собирает новый экран. Новый встаёт в
+// ту же ленту по общим часам (pagerJoin из render): ровно там, где ему быть в эту минуту.
+// { dx, done, finished } — от свайпа
 let screenPager = null;
-const PAGER_MS = 300;
+const PAGER_MS = 320;
+const PAGER_EASE = 'cubic-bezier(0.25, 0.75, 0.35, 1)';
 
-function pagerDetach(p) {
+function pagerLeave(p) {
   const el = $('screen');
   const r = el.getBoundingClientRect();
   const box = document.createElement('div');
   box.className = 'pager-old';
-  Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, translate: `${p.dx}px 0` });
+  Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px` });
   // Шапка прилипала к верху — в отдельном слое прилипать не к чему: ставим её туда, где была
   const head = el.querySelector(':scope > .stuck-head');
   const headTop = head?.getBoundingClientRect().top;
@@ -4065,23 +4067,27 @@ function pagerDetach(p) {
     head.style.top = `${headTop - head.getBoundingClientRect().top}px`;
   }
   p.box = box;
+  p.side = p.dx < 0 ? 1 : -1; // новый — с той стороны, куда тянули
+  p.anim = box.animate([{ transform: `translateX(${p.dx}px)` }, { transform: `translateX(${-p.side * window.innerWidth}px)` }],
+    { duration: PAGER_MS, easing: PAGER_EASE, fill: 'forwards' });
+  p.moves = [p.anim];
 }
 
-// Движение — анимациями браузера (Web Animations, transform): их ведёт не скрипт, и они идут
-// ровно, даже пока скрипт занят. Время начинается с первого нарисованного кадра — тяжёлая
-// вставка нового экрана его не съедает. Кольцо, строки и свежие данные нового экрана ждут
-// остановки (p.finished — render)
-function pagerPlay(p) {
-  const w = window.innerWidth;
-  const side = p.dx < 0 ? 1 : -1; // новый — с той стороны, куда тянули
-  const start = side * w + p.dx; // вплотную к старому
-  const opts = { duration: PAGER_MS, easing: 'cubic-bezier(0.25, 0.75, 0.35, 1)' };
-  p.box.style.translate = '';
-  const moves = [
-    p.box.animate([{ transform: `translateX(${p.dx}px)` }, { transform: `translateX(${-side * w}px)` }], { ...opts, fill: 'forwards' }),
-    ...[...$('screen').children].map((c) => c.animate([{ transform: `translateX(${start}px)` }, { transform: 'translateX(0)' }], opts)),
-  ];
-  Promise.all(moves.map((m) => m.finished.catch(() => null))).then(() => {
+function pagerJoin(p) {
+  const start = p.side * window.innerWidth + p.dx; // вплотную к старому в начале пути
+  const t = p.anim.startTime;
+  for (const c of $('screen').children) {
+    const move = c.animate([{ transform: `translateX(${start}px)` }, { transform: 'translateX(0)' }], { duration: PAGER_MS, easing: PAGER_EASE });
+    if (t != null) move.startTime = t; // те же часы, что у старого: стоят вплотную
+    p.moves.push(move);
+    // Вставка могла опоздать к началу пути — короткое проявление прячет появление
+    c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'ease-out' });
+  }
+  pagerEnd(p);
+}
+
+function pagerEnd(p) {
+  Promise.all(p.moves.map((m) => m.finished.catch(() => null))).then(() => {
     p.box.remove();
     p.done?.();
   });
@@ -4142,17 +4148,16 @@ async function render() {
   screenPager = null;
   const slide = shown && !sameScreen && dir && !pager && motion('screens') ? dir : '';
   slideHead = Boolean(document.querySelector('#screen > .stuck-head .total'));
-  const sameKind = shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide || pager));
+  const sameKind = (shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide))) || Boolean(pager);
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
   const key = location.search;
   const cached = !sameScreen && CACHED.includes(state.screen) ? screenCache.get(key) : null;
   if (cached) {
-    if (pager) pagerDetach(pager);
     $('screen').innerHTML = cached;
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
     slideScreen(slide);
-    if (pager) pagerPlay(pager);
+    if (pager) pagerJoin(pager);
     shownScreen = state.screen;
     // Кольцо заливается сразу, а свежие данные — после заливки (ниже): их разбор занимает
     // телефон, и заливка, идущая в это время, запиналась. Ждать данных с пустым кольцом —
@@ -4194,12 +4199,11 @@ async function render() {
     if (sameScreen && document.activeElement?.id === 'q') patchKeepingSearch(html);
     // Ничего не изменилось — не трогаем: перерисовка сбросила бы нажатие и фокус
     else if (html !== cached) {
-      if (pager && !cached) pagerDetach(pager);
       $('screen').innerHTML = html;
       window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
       if (!cached) slideScreen(slide);
       if (pager && !cached) {
-        pagerPlay(pager);
+        pagerJoin(pager);
         playRing(false);
         listPlayed = sectionsKey();
         await pager.finished;
@@ -4818,9 +4822,15 @@ async function swipeEnd(e) {
     const finished = new Promise((r) => {
       finish = r;
     });
-    screenPager = { dx, done: finish, finished };
+    const pager = { dx, done: finish, finished };
+    pagerLeave(pager);
+    // Новый экран собирается после того, как уход старого уже пошёл: тяжёлая сборка его не
+    // задержит — анимацию ведёт браузер
+    await pager.anim.ready;
+    screenPager = pager;
     document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
     await Promise.race([finished, new Promise((r) => setTimeout(r, 4000))]);
+    pager.box.remove(); // новый экран так и не встал (ошибка) — старый слой всё равно убрать
     swipeBusy = false;
     return;
   }
