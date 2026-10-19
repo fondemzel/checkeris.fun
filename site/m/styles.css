@@ -836,20 +836,22 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
   position: fixed; top: 50%; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 8px;
   transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
 }
-.peek-name { font-size: 14px; font-weight: 600; color: var(--muted); white-space: nowrap; transition: color 0.15s; }
+.peek-name { font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; transition: color 0.15s; }
 .peek-bar { display: flex; width: 88px; height: 36px; border-radius: 18px; background: var(--fill); overflow: hidden; }
-/* Заполнение не короче кружка: он виден с первого сдвига и едет на растущем конце */
+/* Заполнение не короче кружка: он виден с первого сдвига и едет на растущем конце. Цвета
+   приглушённые — подсказка не должна перетягивать внимание с экрана */
 .peek-bar i {
   box-sizing: border-box; display: flex; align-items: center; justify-content: flex-end; padding: 3px;
-  width: max(36px, calc(var(--k, 0) * 100%)); height: 100%; border-radius: 18px; background: var(--muted); transition: background 0.15s;
+  width: max(36px, calc(var(--k, 0) * 100%)); height: 100%; border-radius: 18px;
+  background: color-mix(in srgb, var(--muted) 45%, var(--fill)); transition: background 0.15s;
 }
 .peek-knob { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: var(--surface); color: var(--muted); transition: color 0.15s; }
 .peek-knob svg { width: 18px; height: 18px; }
 .peek.prev .peek-bar { justify-content: flex-end; }
 .peek.prev .peek-bar i { justify-content: flex-start; }
 .peek.prev .peek-knob svg { transform: scaleX(-1); } /* назад — стрелка влево */
-.peek.full .peek-name, .peek.full .peek-knob { color: var(--accent); }
-.peek.full .peek-bar i { background: var(--accent); }
+.peek.full .peek-name, .peek.full .peek-knob { color: color-mix(in srgb, var(--accent) 75%, var(--muted)); }
+.peek.full .peek-bar i { background: color-mix(in srgb, var(--accent) 55%, var(--fill)); }
 .srow { transition: opacity 0.4s ease, filter 0.4s ease; }
 .srow.off .srow-main { pointer-events: none; }
 

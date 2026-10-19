@@ -4887,7 +4887,7 @@ addEventListener('touchmove', (e) => {
 // ровно там, где по отпусканию экран сменится (TAB_SWIPE), — тогда и название синеет
 let peekEl = null;
 function peekShow(dx, name, below = '') {
-  if (!name) return peekHide();
+  if (!name || !motion('peek')) return peekHide();
   if (!peekEl) {
     peekEl = document.createElement('div');
     peekEl.className = 'peek';
@@ -4906,7 +4906,8 @@ function peekShow(dx, name, below = '') {
   low.hidden = !below;
   peekEl.style.transition = 'none';
   peekEl.style.left = `${(dx < 0 ? w + dx / 2 : dx / 2).toFixed(1)}px`;
-  peekEl.style.opacity = Math.min(1, way / (w * TAB_SWIPE * 0.5)).toFixed(3);
+  // Не ярче 0,7: подсказка — на краю внимания, а не главное на экране
+  peekEl.style.opacity = (0.7 * Math.min(1, way / (w * TAB_SWIPE * 0.5))).toFixed(3);
   peekEl.style.setProperty('--k', k.toFixed(3));
   peekEl.classList.toggle('full', k >= 1);
   peekEl.classList.toggle('prev', dx > 0); // назад — полоска заполняется справа налево
@@ -6378,7 +6379,7 @@ function calm() {
   return document.documentElement.dataset.motion === 'off' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 // Отдельные виды анимации: выключенные — в localStorage (checker.motion.kinds)
-const MOTION_KINDS = ['ring', 'counter', 'sheets', 'sections', 'swipe', 'screens'];
+const MOTION_KINDS = ['ring', 'counter', 'sheets', 'sections', 'swipe', 'screens', 'peek'];
 function motionPrefs() {
   try {
     const v = JSON.parse(localStorage.getItem('checker.motion.kinds') || '{}');

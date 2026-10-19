@@ -193,6 +193,7 @@ export const en = {
         sections: 'Smooth opening of list categories',
         swipe: 'Smooth list slide on period change',
         screens: '', // Плавный сдвиг при переходе на другой экран или вкладку
+        peek: '', // Куда листаем и сколько осталось протянуть до смены периода или вкладки
       },
       kinds: {
         ring: 'Ring and bar fill',
@@ -201,6 +202,7 @@ export const en = {
         sections: 'Opening sections',
         swipe: 'Slide on period swipe',
         screens: '', // Переходы между экранами
+        peek: '', // Подсказка при свайпе
       },
     },
     limits: {
@@ -258,7 +260,7 @@ export const en = {
       label: 'Help',
       demo: 'Demo mode',
       demoNote: 'A year of a made-up person’s spending',
-      note: 'In demo mode a made-up person’s spending is shown instead of yours; your data stays in place. Nothing can be changed in it',
+      note: '', // В демо-режиме вместо ваших данных — траты вымышленной семьи. Изменить в нём ничего нельзя
       pill: 'demo mode',
       offConfirm: 'Turn off demo mode and return to your own data?',
       off: 'Turn off',

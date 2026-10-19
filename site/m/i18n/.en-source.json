@@ -214,7 +214,6 @@
  "settings.help.label": "Помощь",
  "settings.help.demo": "Демо-режим",
  "settings.help.demoNote": "Год трат вымышленного человека",
- "settings.help.note": "В демо-режиме вместо ваших данных — траты вымышленного человека; ваши остаются на месте. Изменить в нём ничего нельзя",
  "settings.help.pill": "демо-режим",
  "settings.help.offConfirm": "Выключить демо-режим и вернуться к своим данным?",
  "settings.help.off": "Выключить",
