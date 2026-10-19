@@ -4842,7 +4842,10 @@ function peekShow(dx, name, over = '') {
   if (!peekEl) {
     peekEl = document.createElement('div');
     peekEl.className = 'peek';
-    peekEl.innerHTML = '<span class="peek-over"></span><span class="peek-name"></span><span class="peek-bar"><i></i></span>';
+    // На растущем конце полоски — кружок со стрелкой туда, где стоит экран, который откроется
+    peekEl.innerHTML = '<span class="peek-over"></span><span class="peek-name"></span><span class="peek-bar"><i><b class="peek-knob">'
+      + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
+      + '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></b></i></span>';
     document.body.append(peekEl);
   }
   const w = window.innerWidth;
