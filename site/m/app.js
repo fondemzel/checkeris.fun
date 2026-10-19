@@ -4829,7 +4829,8 @@ addEventListener('touchmove', (e) => {
   if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
   swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
   const next = swipeTarget(dx < 0 ? 1 : -1);
-  peekShow(dx, next && humanPeriod(next.from, next.to), tabLabel(TAB_OF[state.screen])); // «Расход» над «Сентябрь 2026»
+  // Над полоской — раздел, под ней — период: «Расход», полоска, «Сентябрь 2026»
+  peekShow(dx, next && tabLabel(TAB_OF[state.screen]), next && humanPeriod(next.from, next.to));
 }, { passive: false });
 
 // Подсказка в полосе, которая освобождается при свайпе (периода или вкладки): куда листаем —
@@ -4837,24 +4838,24 @@ addEventListener('touchmove', (e) => {
 // пути до смены, держится посередине полосы (едет вместе с её краем) и заполнена целиком
 // ровно там, где по отпусканию экран сменится (TAB_SWIPE), — тогда и название синеет
 let peekEl = null;
-function peekShow(dx, name, over = '') {
+function peekShow(dx, name, below = '') {
   if (!name) return peekHide();
   if (!peekEl) {
     peekEl = document.createElement('div');
     peekEl.className = 'peek';
     // На растущем конце полоски — кружок со стрелкой туда, где стоит экран, который откроется
-    peekEl.innerHTML = '<span class="peek-over"></span><span class="peek-name"></span><span class="peek-bar"><i><b class="peek-knob">'
+    peekEl.innerHTML = '<span class="peek-name"></span><span class="peek-bar"><i><b class="peek-knob">'
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
-      + '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></b></i></span>';
+      + '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></b></i></span><span class="peek-name peek-below"></span>';
     document.body.append(peekEl);
   }
   const w = window.innerWidth;
   const way = Math.abs(dx);
   const k = Math.min(1, way / (w * TAB_SWIPE));
   peekEl.querySelector('.peek-name').textContent = name;
-  const top = peekEl.querySelector('.peek-over');
-  top.textContent = over;
-  top.hidden = !over;
+  const low = peekEl.querySelector('.peek-below');
+  low.textContent = below;
+  low.hidden = !below;
   peekEl.style.transition = 'none';
   peekEl.style.left = `${(dx < 0 ? w + dx / 2 : dx / 2).toFixed(1)}px`;
   peekEl.style.opacity = Math.min(1, way / (w * TAB_SWIPE * 0.5)).toFixed(3);

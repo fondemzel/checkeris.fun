@@ -836,8 +836,7 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
   position: fixed; top: 50%; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 8px;
   transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
 }
-.peek-over, .peek-name { font-size: 14px; font-weight: 600; color: var(--muted); white-space: nowrap; transition: color 0.15s; }
-.peek-over { margin-bottom: -6px; } /* раздел над периодом — одной подписью */
+.peek-name { font-size: 14px; font-weight: 600; color: var(--muted); white-space: nowrap; transition: color 0.15s; }
 .peek-bar { display: flex; width: 88px; height: 36px; border-radius: 18px; background: var(--fill); overflow: hidden; }
 /* Заполнение не короче кружка: он виден с первого сдвига и едет на растущем конце */
 .peek-bar i {
@@ -849,7 +848,7 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 .peek.prev .peek-bar { justify-content: flex-end; }
 .peek.prev .peek-bar i { justify-content: flex-start; }
 .peek.prev .peek-knob svg { transform: scaleX(-1); } /* назад — стрелка влево */
-.peek.full .peek-over, .peek.full .peek-name, .peek.full .peek-knob { color: var(--accent); }
+.peek.full .peek-name, .peek.full .peek-knob { color: var(--accent); }
 .peek.full .peek-bar i { background: var(--accent); }
 .srow { transition: opacity 0.4s ease, filter 0.4s ease; }
 .srow.off .srow-main { pointer-events: none; }
