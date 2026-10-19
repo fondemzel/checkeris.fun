@@ -4782,6 +4782,23 @@ function pillSettle(name, ms, done = true) {
   clearTimeout(pillSettle.timer);
   if (done) pillSettle.timer = setTimeout(pillDone, ms + 20);
 }
+/**
+ * Нажатие на вкладку — та же капсула, что при свайпе: растягивается от выбранной вкладки до
+ * нажатой и стягивается на неё; цвета вкладок переходят плавно (.pill-on)
+ */
+function pillTap(from, to) {
+  const cur = pillBox(from);
+  const next = pillBox(to);
+  if (!cur || !next || from === to || !motion('screens')) return;
+  document.querySelector('.tabs').classList.add('pill-on');
+  pillSet(cur.l, cur.r, cur, '');
+  void tabPill.offsetWidth; // исходное место — иначе растяжения не будет видно
+  const ease = 'cubic-bezier(0.3, 0, 0.2, 1)';
+  pillSet(Math.min(cur.l, next.l), Math.max(cur.r, next.r), cur, `left 140ms ${ease}, width 140ms ${ease}`);
+  clearTimeout(pillSettle.timer);
+  pillSettle.timer = setTimeout(() => pillSettle(to, 180), 140);
+}
+
 // Капсула уходит, фон вкладки появляется в том же кадре: без плавной смены фона вкладки
 // (.pill-swap), иначе он проявлялся бы за капсулой и в конце мигало
 function pillDone() {
@@ -5404,6 +5421,8 @@ $('fab').addEventListener('click', () => go({ screen: 'add' }));
 document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
   if (!tab) return;
+  // Нажал человек (свайп вкладок нажимает сам — у него капсула своя)
+  if (e.isTrusted) pillTap(TAB_OF[state.screen], tab.dataset.tab);
   const sort = defaultSort(tab.dataset.tab);
   go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '', sg: '' }, true);
 });
