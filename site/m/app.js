@@ -4695,7 +4695,7 @@ let swipeBusy = false;
 let swipeTab = false;
 const SWIPE_TABS = ['summary', 'income', 'settings', 'stats'];
 const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
-const TAB_SWIPE = 0.25; // доля ширины экрана: протянули дальше — по отпусканию вкладка сменится
+const TAB_SWIPE = 0.25; // доля ширины экрана: протянули дальше — по отпусканию сменится вкладка (или период)
 const swipeTabNext = (dx) => SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
 // Капсула выбранной вкладки на острове при свайпе: тянется к соседней вкладке вместе со сдвигом
 // экрана (дотянулась — когда экран сдвинут на полширины), по отпусканию стягивается на новую
@@ -4823,11 +4823,49 @@ addEventListener('touchmove', (e) => {
     const shift = swipeTabNext(dx) ? dx : dx * 0.25;
     tabSet(shift, '', '');
     pillDrag(dx, shift);
+    peekShow(dx, tabLabel(swipeTabNext(dx)));
     return;
   }
   if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
   swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
+  const next = swipeTarget(dx < 0 ? 1 : -1);
+  peekShow(dx, next && humanPeriod(next.from, next.to));
 }, { passive: false });
+
+// Подсказка в полосе, которая освобождается при свайпе (периода или вкладки): куда листаем —
+// название, и полоска, заполненная тем больше, чем дальше протянули. Проявляется к половине
+// пути до смены, держится посередине полосы (едет вместе с её краем) и заполнена целиком
+// ровно там, где по отпусканию экран сменится (TAB_SWIPE), — тогда и название синеет
+let peekEl = null;
+function peekShow(dx, name) {
+  if (!name) return peekHide();
+  if (!peekEl) {
+    peekEl = document.createElement('div');
+    peekEl.className = 'peek';
+    peekEl.innerHTML = '<span class="peek-name"></span><span class="peek-bar"><i></i></span>';
+    document.body.append(peekEl);
+  }
+  const w = window.innerWidth;
+  const way = Math.abs(dx);
+  const k = Math.min(1, way / (w * TAB_SWIPE));
+  peekEl.querySelector('.peek-name').textContent = name;
+  peekEl.style.transition = 'none';
+  peekEl.style.left = `${(dx < 0 ? w + dx / 2 : dx / 2).toFixed(1)}px`;
+  peekEl.style.opacity = Math.min(1, way / (w * TAB_SWIPE * 0.5)).toFixed(3);
+  peekEl.style.setProperty('--k', k.toFixed(3));
+  peekEl.classList.toggle('full', k >= 1);
+  peekEl.classList.toggle('prev', dx > 0); // назад — полоска заполняется справа налево
+}
+function peekHide() {
+  if (!peekEl) return;
+  peekEl.style.transition = 'opacity 0.15s ease-out';
+  peekEl.style.opacity = '0';
+}
+/** Подпись вкладки на острове — без счётчика на значке. */
+function tabLabel(name) {
+  const btn = name && document.querySelector(`.tabs [data-tab="${name}"]`);
+  return btn ? [...btn.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim() : '';
+}
 
 /** Куда листать свайпом: соседний период; в аналитике — соседний месяц, не позже текущего. */
 function swipeTarget(dir) {
@@ -4838,6 +4876,7 @@ function swipeTarget(dir) {
 }
 
 async function swipeEnd(e) {
+  peekHide();
   if (!swipeFrom || swipeLock !== 'x') {
     swipeFrom = null;
     return;
@@ -4883,7 +4922,7 @@ async function swipeEnd(e) {
     return;
   }
   const ease = 'translate 0.18s ease-out, opacity 0.18s ease-out';
-  if (e.type === 'touchcancel' || (Math.abs(dx) < window.innerWidth * 0.25 && !fast)) {
+  if (e.type === 'touchcancel' || (Math.abs(dx) < window.innerWidth * TAB_SWIPE && !fast)) {
     swipeSet(0, '', ease);
     return;
   }
