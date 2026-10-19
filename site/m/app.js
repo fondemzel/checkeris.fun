@@ -4695,7 +4695,7 @@ let swipeBusy = false;
 let swipeTab = false;
 const SWIPE_TABS = ['summary', 'income', 'settings', 'stats'];
 const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
-const TAB_SWIPE = 0.25; // доля ширины экрана: протянули дальше — по отпусканию сменится вкладка (или период)
+const TAB_SWIPE = 0.5; // доля ширины экрана: протянули дальше — по отпусканию сменится вкладка (или период)
 const swipeTabNext = (dx) => SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
 // Капсула выбранной вкладки на острове при свайпе: тянется к соседней вкладке вместе со сдвигом
 // экрана (дотянулась — когда экран сдвинут на полширины), по отпусканию стягивается на новую
