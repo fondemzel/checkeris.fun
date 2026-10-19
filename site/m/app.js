@@ -4613,22 +4613,28 @@ function pillDrag(dx, shift) {
   else l -= shift * 0.3;
   pillSet(l, r, cur, '');
 }
-/** Отпустили: капсула стягивается на вкладку name (новую или прежнюю) и прячется. */
-function pillSettle(name) {
+/**
+ * Отпустили: капсула стягивается на вкладку name (новую или прежнюю) за ms. Прячет её pillDone —
+ * сам по таймеру (вернулись) или после смены вкладки: успеть до отрисовки нового экрана, иначе
+ * её движение запиналось бы о разбор.
+ */
+function pillSettle(name, ms, done = true) {
   const to = pillBox(name);
   if (!tabPill || !to) return;
-  pillSet(to.l, to.r, to, 'left 0.22s cubic-bezier(0.2, 0.8, 0.3, 1), width 0.22s cubic-bezier(0.2, 0.8, 0.3, 1)');
+  const ease = `${ms / 1000}s cubic-bezier(0.2, 0.8, 0.3, 1)`;
+  pillSet(to.l, to.r, to, `left ${ease}, width ${ease}`);
   clearTimeout(pillSettle.timer);
-  // Капсула уходит, фон вкладки появляется в том же кадре: без плавной смены фона вкладки
-  // (.pill-swap), иначе он проявлялся бы за капсулой и в конце мигало
-  pillSettle.timer = setTimeout(() => {
-    const tabs = document.querySelector('.tabs');
-    tabs.classList.add('pill-swap');
-    tabs.classList.remove('pill-on');
-    tabPill?.remove();
-    tabPill = null;
-    requestAnimationFrame(() => requestAnimationFrame(() => tabs.classList.remove('pill-swap')));
-  }, 240);
+  if (done) pillSettle.timer = setTimeout(pillDone, ms + 20);
+}
+// Капсула уходит, фон вкладки появляется в том же кадре: без плавной смены фона вкладки
+// (.pill-swap), иначе он проявлялся бы за капсулой и в конце мигало
+function pillDone() {
+  const tabs = document.querySelector('.tabs');
+  tabs.classList.add('pill-swap');
+  tabs.classList.remove('pill-on');
+  tabPill?.remove();
+  tabPill = null;
+  requestAnimationFrame(() => requestAnimationFrame(() => tabs.classList.remove('pill-swap')));
 }
 
 // При смене вкладки за пальцем едет весь экран, с шапкой: меняется он целиком
@@ -4716,17 +4722,18 @@ async function swipeEnd(e) {
     const next = swipeTabNext(dx);
     if (e.type === 'touchcancel' || !next || (Math.abs(dx) < window.innerWidth * 0.25 && !fast)) {
       tabSet(0, '', back);
-      pillSettle(TAB_OF[state.screen]);
+      pillSettle(TAB_OF[state.screen], 220);
       return;
     }
     if (motion('screens')) {
-      pillSettle(next);
+      pillSettle(next, 140, false);
       swipeBusy = true;
       tabSet(Math.sign(dx) * window.innerWidth * 0.5, '0', 'translate 0.15s ease-in, opacity 0.15s ease-in');
       await new Promise((r) => setTimeout(r, 150));
       swipeBusy = false;
     }
-    document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
+    document.querySelector(`.tabs [data-tab="${next}"]`)?.click(); // выбранная вкладка — уже новая
+    if (tabPill) pillDone();
     return;
   }
   const ease = 'translate 0.18s ease-out, opacity 0.18s ease-out';
