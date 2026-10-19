@@ -808,6 +808,7 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 .srow.danger .srow-title { color: var(--danger); }
 .srow.danger .srow-ic { background: var(--danger-soft); color: var(--danger); }
 .srow.off { opacity: 0.55; }
+.srow { transition: opacity 0.25s ease; } /* гаснет и загорается плавно (лимиты) */
 .srow.off .srow-main { pointer-events: none; }
 
 /* Стрелка «дальше» — в сером кружке, как кнопки справа */

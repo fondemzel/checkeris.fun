@@ -1430,10 +1430,9 @@ async function screenSetLimits() {
   const P = T.settings.limits;
   const full = await api('/api/limits');
   const per = P.per[full.period];
-  const main = section(T.settings.menu.label, full.on ? P.periodNote : P.offFoot,
+  const main = section(T.settings.menu.label, `<span data-lim-foot>${full.on ? P.periodNote : P.offFoot}</span>`,
     srow({ icon: UI.piggy, title: P.on, end: toggle('data-limits-toggle', full.on, P.on) })
-    + (full.on ? srow({ icon: UI.calendar, title: P.period, note: P.periods[full.period], attrs: `data-lim-period-pick="${full.period}"`, end: GO }) : ''));
-  if (!full.on) return main;
+    + srow({ icon: UI.calendar, title: P.period, note: P.periods[full.period], attrs: `data-lim-period-pick="${full.period}"`, end: GO, off: !full.on }));
   const groups = (meta?.categories ?? []).map((g) => {
     const amount = full.limits[g.slug] ?? 0;
     const usual = full.suggest[g.slug] ?? 0;
@@ -1446,6 +1445,7 @@ async function screenSetLimits() {
         : `${P.notSet}${usual ? ` · ${P.usually} ≈ ${money(usual)}` : ''}`,
       attrs: `data-lim-group="${esc(g.slug)}"`,
       end: GO,
+      off: !full.on, // выключены — видно, что задано, но не правится
     });
   }).join('');
   const total = Object.values(full.limits).reduce((n, v) => n + v, 0);
@@ -1484,20 +1484,31 @@ $('screen').addEventListener('click', async (e) => {
   });
 });
 
+/** Строки экрана «Лимиты», которые без включённых лимитов неактивны. */
+function limitsDim(off) {
+  for (const el of document.querySelectorAll('#screen [data-lim-period-pick], #screen [data-lim-group]')) {
+    el.disabled = off;
+    el.closest('.srow').classList.toggle('off', off);
+  }
+  const foot = document.querySelector('#screen [data-lim-foot]');
+  if (foot) foot.textContent = off ? T.settings.limits.offFoot : T.settings.limits.periodNote;
+}
+
 /** Включить или выключить лимиты целиком — на экране «Лимиты» и в поиске по настройкам. */
 $('screen').addEventListener('change', async (e) => {
   if (!e.target.matches('[data-limits-toggle]')) return;
   const box = e.target;
   box.disabled = true;
   try {
+    // На экране «Лимиты» строки гаснут и загораются на месте, плавно — без перерисовки
+    if (state.screen === 'set_limits') limitsDim(!box.checked);
     await api('/api/limits/on', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: box.checked }) });
-    if (state.screen === 'set_limits') await limitsChanged();
-    else {
-      meta = await api('/api/meta');
-      screenCache.clear();
-    }
+    for (const k of [...feedData.keys()]) if (k.startsWith('/api/limits')) feedData.delete(k);
+    screenCache.clear();
+    meta = await api('/api/meta');
   } catch (err) {
     box.checked = !box.checked;
+    if (state.screen === 'set_limits') limitsDim(!box.checked);
     toast(`${T.common.failed}: ${err.message}`);
   }
   box.disabled = false;
