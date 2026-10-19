@@ -4831,13 +4831,14 @@ addEventListener('touchstart', (e) => {
   swipeLock = '';
   const t = e.touches[0];
   if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker')) return;
-  swipeTab = Boolean(e.target.closest(PINNED));
+  // В настройках свайпать вбок больше нечего — там свайп по любому месту листает вкладки
+  swipeTab = Boolean(e.target.closest(PINNED)) || (TAB_OF[state.screen] === 'settings' && !stretchEl.querySelector('[data-shift]'));
   if (!swipeTab && !stretchEl.querySelector('[data-shift]') && state.screen !== 'stats') return;
   // У краёв — системный жест «назад»; полосы, листающиеся вбок, и поля ввода — свои
   if (t.clientX < 24 || t.clientX > window.innerWidth - 24) return;
   // Поле в закреплённой шапке (поиск настроек) — свайп вкладок, пока в нём не пишут
   const field = e.target.closest('input, textarea');
-  if (field && (!swipeTab || field === document.activeElement)) return;
+  if (field && (!swipeTab || field === document.activeElement || field.type === 'range')) return; // ползунок — свой жест
   if (e.target.closest('.chips, .drop-menu') || (!swipeTab && e.target.closest('[data-shift]'))) return;
   swipeFrom = { x: t.clientX, y: t.clientY, t: Date.now() };
 }, { passive: true });

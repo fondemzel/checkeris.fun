@@ -193,7 +193,7 @@ export const en = {
         sections: 'Smooth opening of list categories',
         swipe: 'Smooth list slide on period change',
         screens: '', // Плавный сдвиг при переходе на другой экран или вкладку
-        peek: '', // Куда листаем и сколько осталось протянуть до смены периода или вкладки
+        peek: '', // Показывать стрелку при смене экранов и периодов
       },
       kinds: {
         ring: 'Ring and bar fill',
