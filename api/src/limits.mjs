@@ -1,14 +1,16 @@
 // Лимиты трат по группам. Общие для всех участников бюджета; остаток на следующий период
 // не переносится.
 //
-// Лимит задаётся на период бюджета (budgets.limit_period): месяц (по умолчанию), неделя или
-// день. На экране выбирают любой отрезок — лимит на него считается по дням: у месячного лимита
-// день стоит лимит ÷ число дней в этом месяце, у недельного — ÷ 7, у дневного — сам лимит.
+// Лимит задаётся на период бюджета (budgets.limit_period): месяц (по умолчанию), квартал,
+// неделя или день. На экране выбирают любой отрезок — лимит на него считается по дням: у
+// месячного лимита день стоит лимит ÷ число дней в этом месяце, у квартального — ÷ дней
+// в квартале, у недельного — ÷ 7, у дневного — сам лимит. Лимиты можно выключить целиком
+// (budgets.limits_on): заданные суммы сохраняются, но нигде не показываются.
 // Так целый месяц — ровно месячный лимит, а «Две недели» или год — пропорциональная доля.
 //
 // Предложение лимита — обычная трата группы: среднее за три последних полных месяца,
-// пересчитанное на период лимитов и округлённое вверх (500 ₽ у месяца, 100 ₽ у недели,
-// 10 ₽ у дня).
+// пересчитанное на период лимитов и округлённое вверх (1000 ₽ у квартала, 500 ₽ у месяца,
+// 100 ₽ у недели, 10 ₽ у дня).
 //
 // Перераспределение: если у бюджета задана общая сумма лимитов (budgets.limit_total — её задаст
 // мастер настройки лимитов), подъём лимита одной группы снимает разницу с остальных групп
@@ -17,9 +19,9 @@
 // Общая сумма не задана — лимиты меняются по одному.
 import { summary } from './queries.mjs';
 
-const PERIODS = ['month', 'week', 'day'];
-const STEP = { month: 50000, week: 10000, day: 1000 }; // шаг округления, копейки
-const PER_MONTH = { month: 1, week: 52 / 12, day: 365 / 12 }; // сколько таких периодов в среднем месяце
+const PERIODS = ['month', 'quarter', 'week', 'day'];
+const STEP = { quarter: 100000, month: 50000, week: 10000, day: 1000 }; // шаг округления, копейки
+const PER_MONTH = { quarter: 1 / 3, month: 1, week: 52 / 12, day: 365 / 12 }; // сколько таких периодов в среднем месяце
 const pad = (n) => String(n).padStart(2, '0');
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const day = (s) => new Date(`${s}T00:00:00`);
@@ -50,12 +52,32 @@ export function limitPeriod(db, budgetId) {
   return PERIODS.includes(p) ? p : 'month';
 }
 
+/** Дней в квартале, куда попадает день d. */
+const quarterDays = (d) => {
+  const q = Math.floor(d.getMonth() / 3) * 3;
+  return Math.round((new Date(d.getFullYear(), q + 3, 1) - new Date(d.getFullYear(), q, 1)) / 86400000);
+};
+
+/** Включены ли лимиты у бюджета. */
+export function limitsOn(db, budgetId) {
+  return (db.prepare('SELECT limits_on FROM budgets WHERE id = ?').get(budgetId)?.limits_on ?? 1) === 1;
+}
+
+/** Включить или выключить лимиты целиком: суммы остаются. */
+export function setLimitsOn(db, budgetId, on) {
+  db.prepare('UPDATE budgets SET limits_on = ? WHERE id = ?').run(on ? 1 : 0, budgetId);
+  return getLimitsFull(db, budgetId);
+}
+
 /** Лимит периода amount → на отрезок from…to: по дням, у месячного — доля своего месяца. */
 export function limitForRange(amount, period, from, to) {
   if (!amount || !isDay(from) || !isDay(to) || from > to) return 0;
   let sum = 0;
   for (let d = day(from), end = day(to); d <= end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
-    sum += period === 'day' ? amount : period === 'week' ? amount / 7 : amount / lastDay(d.getFullYear(), d.getMonth() + 1);
+    sum += period === 'day' ? amount
+      : period === 'week' ? amount / 7
+        : period === 'quarter' ? amount / quarterDays(d)
+          : amount / lastDay(d.getFullYear(), d.getMonth() + 1);
   }
   return Math.round(sum);
 }
@@ -93,6 +115,7 @@ export function suggestLimits(db, budgetId, month, period = 'month') {
 export function getLimitsFull(db, budgetId) {
   const period = limitPeriod(db, budgetId);
   return {
+    on: limitsOn(db, budgetId),
     period,
     limits: getLimits(db, budgetId),
     fixed: fixedOf(db, budgetId),
@@ -149,7 +172,7 @@ export function getLimitState(db, budgetId, from, to) {
   }
   const round = (map) => Object.fromEntries(Object.entries(map).map(([g, v]) => [g, Math.round(v)]));
   return {
-    period, from, to, today, current,
+    on: limitsOn(db, budgetId), period, from, to, today, current,
     limits, range,
     fixed: fixedOf(db, budgetId),
     spent: spentByGroup(db, budgetId, from, to),
@@ -167,6 +190,7 @@ export function getAnalytics(db, budgetId, month) {
   const state = getLimitState(db, budgetId, range.from, range.to);
   return {
     month: range.month,
+    off: !limitsOn(db, budgetId),
     from: range.from,
     to: range.to,
     spent: state.spent,

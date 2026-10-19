@@ -46,6 +46,7 @@ export function migrate(db) {
   addColumn(db, 'users', 'notify_members', 'INTEGER NOT NULL DEFAULT 1'); // сообщения о тратах участников
   addColumn(db, 'budgets', 'limit_period', "TEXT NOT NULL DEFAULT 'month'"); // лимиты (limits.mjs)
   addColumn(db, 'budgets', 'limit_total', 'INTEGER');
+  addColumn(db, 'budgets', 'limits_on', 'INTEGER NOT NULL DEFAULT 1');
   // Значки категорий: пустая строка — «как у группы», NULL — ещё не проставлен (server.mjs)
   addColumn(db, 'sys_categories', 'icon', 'TEXT');
   addColumn(db, 'categories', 'icon', 'TEXT');
