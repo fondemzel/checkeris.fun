@@ -4170,7 +4170,14 @@ function slideScreen(dir) {
   el.classList.remove('slide-fwd', 'slide-back');
   void el.offsetWidth; // перезапустить анимацию, если прошлая не кончилась
   el.classList.add(`slide-${dir}`);
-  el.addEventListener('animationend', () => el.classList.remove(`slide-${dir}`), { once: true });
+  document.documentElement.classList.add('sliding');
+  clearTimeout(slideScreen.timer);
+  const done = () => {
+    el.classList.remove(`slide-${dir}`);
+    document.documentElement.classList.remove('sliding');
+  };
+  el.addEventListener('animationend', done, { once: true });
+  slideScreen.timer = setTimeout(done, 600); // анимацию прервала перерисовка — всё равно вернуть как было
 }
 
 /**

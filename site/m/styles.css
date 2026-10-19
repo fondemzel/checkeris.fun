@@ -243,6 +243,7 @@ button, input, select { font: inherit; color: inherit; }
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   box-shadow: 0 6px 24px rgba(15, 20, 28, 0.14), 0 0 0 1px rgba(15, 20, 28, 0.06);
+  transform: translateZ(0); /* свой слой: перерисовка ленты под ним его не задевает */
 }
 
 .tab {
@@ -814,6 +815,10 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 @keyframes slide-back { from { transform: translateX(-32%); opacity: 0; } }
 #screen.slide-fwd { animation: slide-fwd 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }
 #screen.slide-back { animation: slide-back 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }
+/* Пока лента сдвигается, у острова меню нет размытия фона: Android WebView с ним иногда
+   теряет остров на время анимации. Фон — сплошной, разница за треть секунды не видна */
+:root.sliding .tabs { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface); }
+:root[data-theme="dark"].sliding .tabs { background: #24303d; }
 .srow { transition: opacity 0.4s ease, filter 0.4s ease; }
 .srow.off .srow-main { pointer-events: none; }
 
