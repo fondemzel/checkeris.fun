@@ -192,7 +192,7 @@ export const en = {
         sheets: 'Smooth display of menus and dialogs',
         sections: 'Smooth opening of list categories',
         swipe: 'Smooth list slide on period change',
-        screens: '', // Плавный сдвиг при переходе между экранами настроек
+        screens: '', // Плавный сдвиг при переходе на другой экран и назад
       },
       kinds: {
         ring: 'Ring and bar fill',

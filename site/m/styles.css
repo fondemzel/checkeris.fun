@@ -809,7 +809,7 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 .srow.danger .srow-ic { background: var(--danger-soft); color: var(--danger); }
 /* Неактивная строка — серая и светлее; гаснет и загорается плавно (лимиты) */
 .srow.off { opacity: 0.4; filter: grayscale(1); }
-/* Переход между экранами настроек (slideScreen): вглубь — справа, «назад» — слева */
+/* Переход между экранами (slideScreen): вглубь — справа, «назад» — слева */
 @keyframes slide-fwd { from { transform: translateX(32%); opacity: 0; } }
 @keyframes slide-back { from { transform: translateX(-32%); opacity: 0; } }
 #screen.slide-fwd { animation: slide-fwd 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }

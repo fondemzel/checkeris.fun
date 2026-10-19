@@ -4033,7 +4033,7 @@ function pulse(name) {
   // Снимаем по таймеру: событие конца анимации приходит не во всех браузерах
   setTimeout(() => el.classList.remove('pulse'), 1100);
 }
-// Куда шли к этому экрану: вглубь (go) или «назад» — по нему экраны настроек въезжают справа
+// Куда шли к этому экрану: вглубь (go) или «назад» — по нему экраны въезжают справа
 // или слева (slideScreen)
 let navDir = '';
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
@@ -4081,10 +4081,12 @@ async function render() {
   // (посреди прокрутки текст элемента — столбики цифр, поэтому показанное число — в data-sum)
   const prevEl = sameScreen ? document.querySelector('#screen .total-sum') : null;
   const prevSum = prevEl ? prevEl.dataset.sum ?? prevEl.textContent : null;
-  // Переход между экранами настроек — сдвигом: пока новый грузится, виден прежний, без «Загрузки»
+  // Переход на другой экран — сдвигом: пока новый грузится, виден прежний, без «Загрузки».
+  // Кроме смены вкладки: раздел меняется на месте, как в Telegram
   const dir = navDir;
   navDir = '';
-  const slide = shown && !sameScreen && dir && TAB_OF[state.screen] === 'settings' && TAB_OF[shownScreen] === 'settings' && motion('screens') ? dir : '';
+  const tabSwitch = TOP.includes(state.screen) && TAB_OF[state.screen] !== TAB_OF[shownScreen];
+  const slide = shown && !sameScreen && dir && !tabSwitch && motion('screens') ? dir : '';
   const sameKind = shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide));
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
@@ -4158,7 +4160,7 @@ async function render() {
   }
 }
 
-/** Экран въезжает: вглубь — справа, «назад» — слева. */
+/** Экран въезжает: вглубь — справа, «назад» — слева. Смена вкладки — без сдвига. */
 function slideScreen(dir) {
   if (!dir) return;
   const el = $('screen');
