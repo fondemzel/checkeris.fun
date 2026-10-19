@@ -1065,10 +1065,15 @@ function playRing(start = true) {
   // Время — performance.now(), а не метка кадра из requestAnimationFrame: та — когда кадр
   // запланировали. Если перед этим телефон разбирал данные, метка отстаёт на сотни мс, и
   // первый же кадр перескакивал далеко вперёд — это и был рывок в начале заливки
+  // Кадр задержался (телефон занят: убирал прежний экран, разбирал данные) — простой в счёт
+  // анимации не идёт: иначе следующий кадр показывал бы сразу полкольца
+  let last = null;
   const frame = () => {
     if (!box.isConnected) return; // экран перерисовали — продолжит новая отрисовка
     const now = performance.now();
     ringPlayed.at ??= now;
+    if (last != null && now - last > 50) ringPlayed.at += now - last - 16;
+    last = now;
     const elapsed = now - ringPlayed.at;
     paint(elapsed);
     if (elapsed < RING_ANIM) requestAnimationFrame(frame);
@@ -4102,7 +4107,9 @@ function pagerJoin(p) {
 function pagerEnd(p) {
   Promise.all(p.moves.map((m) => m.finished.catch(() => null))).then(() => {
     p.box.remove();
-    p.done?.();
+    // Готово — когда телефон перестроил страницу без старого экрана (два кадра): заливка
+    // кольца, которая ждёт этого, не начнётся посреди тяжёлого кадра
+    requestAnimationFrame(() => requestAnimationFrame(() => p.done?.()));
   });
 }
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
