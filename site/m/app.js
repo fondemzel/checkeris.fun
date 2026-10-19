@@ -4083,11 +4083,13 @@ async function render() {
   const prevEl = sameScreen ? document.querySelector('#screen .total-sum') : null;
   const prevSum = prevEl ? prevEl.dataset.sum ?? prevEl.textContent : null;
   // Переход на другой экран — сдвигом: пока новый грузится, виден прежний, без «Загрузки».
-  // Кроме смены вкладки: раздел меняется на месте, как в Telegram
-  const dir = navDir;
+  // Смена вкладки — тоже сдвигом, по порядку вкладок: правее — въезжает справа, левее — слева
+  const tabs = ['summary', 'income', 'settings', 'stats'];
+  const tabSwitch = TOP.includes(state.screen) && TAB_OF[state.screen] !== TAB_OF[shownScreen]
+    && tabs.includes(TAB_OF[state.screen]) && tabs.includes(TAB_OF[shownScreen]);
+  const dir = tabSwitch ? (tabs.indexOf(TAB_OF[state.screen]) > tabs.indexOf(TAB_OF[shownScreen]) ? 'fwd' : 'back') : navDir;
   navDir = '';
-  const tabSwitch = TOP.includes(state.screen) && TAB_OF[state.screen] !== TAB_OF[shownScreen];
-  const slide = shown && !sameScreen && dir && !tabSwitch && motion('screens') ? dir : '';
+  const slide = shown && !sameScreen && dir && motion('screens') ? dir : '';
   const sameKind = shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide));
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
@@ -4161,7 +4163,7 @@ async function render() {
   }
 }
 
-/** Экран въезжает: вглубь — справа, «назад» — слева. Смена вкладки — без сдвига. */
+/** Экран въезжает: вглубь и на вкладку правее — справа, «назад» и левее — слева. */
 function slideScreen(dir) {
   if (!dir) return;
   const el = $('screen');
