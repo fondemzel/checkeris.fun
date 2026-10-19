@@ -4728,7 +4728,7 @@ const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
 // Шкала свайпа экранов и периодов (доли ширины): до SWIPE_FROM — ещё ничего, к SWIPE_TO —
 // заполнено; протянули дальше SWIPE_TO — по отпусканию сменится вкладка (или период)
 const SWIPE_FROM = 0.05;
-const SWIPE_TO = 0.35;
+const SWIPE_TO = 0.3;
 /** Сколько протянули по шкале: 0 — до SWIPE_FROM, 1 — от SWIPE_TO. */
 const swipeProgress = (dx) => Math.min(1, Math.max(0, (Math.abs(dx) / window.innerWidth - SWIPE_FROM) / (SWIPE_TO - SWIPE_FROM)));
 const swipeTabNext = (dx) => SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
