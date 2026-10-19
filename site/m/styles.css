@@ -1002,6 +1002,12 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 .head-line .sorts { margin-left: auto; } /* сортировка прижата к правому краю строки периода */
 .total.compact .total-sum,
 .total.compact .total-note { display: block; }
+/* Подстрочник под итогом — всегда ровно две строки: шапка одной высоты на любом экране и при
+   любой подписи, при переходах между расходами и доходами ничего не прыгает */
+.stuck-head .total.compact .total-note {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  line-height: 1.35; height: 2.7em; overflow: hidden;
+}
 /* Фильтры — одной строкой: не помещаются, значит листаются вбок, а не растут вниз */
 .head-line .chips {
   flex: 0 1 auto;

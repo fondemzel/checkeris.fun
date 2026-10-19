@@ -1456,7 +1456,8 @@ async function screenSetLimits() {
     });
   }).join('');
   const total = Object.values(full.limits).reduce((n, v) => n + v, 0);
-  return main + section(P.groups, total ? f(P.totalNote, { sum: money(total), per }) : P.groupsNote, groups);
+  // «Основные» закреплены сверху: при прокрутке видно, почему группы серые (лимиты выключены)
+  return `<div class="stuck-head lim-stuck">${main}</div>` + section(P.groups, total ? f(P.totalNote, { sum: money(total), per }) : P.groupsNote, groups);
 }
 
 /** Строка группы, с которой пришли («Управлять лимитами»), — на виду и подсвечена. */
