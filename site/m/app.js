@@ -4277,6 +4277,7 @@ async function render() {
     shownScreen = state.screen;
     screen.after?.();
     arrived = false;
+    prefetchNeighbors();
     if (pendingReceipt) {
       const id = pendingReceipt;
       pendingReceipt = 0;
@@ -4904,6 +4905,22 @@ function prefetchPeriod(p) {
     : state.screen === 'income' && bankLinked ? Object.values(incomeFeeds(p.from, p.to))
       : state.screen === 'stats' ? [analyticsFeed(p.to)] : [];
   for (const path of paths) if (path) apiFeed(path).catch(() => {});
+}
+
+/**
+ * Соседние периоды — заранее, пока экран просто открыт: свайп туда не ждёт сети. Не сразу,
+ * а когда отыграли заливки (и человек, похоже, остался на экране), — чтобы загрузка с разбором
+ * ответа не легла на анимации
+ */
+function prefetchNeighbors() {
+  clearTimeout(prefetchNeighbors.timer);
+  if (!['summary', 'income', 'stats'].includes(state.screen)) return;
+  const at = viewKey();
+  prefetchNeighbors.timer = setTimeout(() => {
+    if (viewKey() !== at || swipeFrom) return; // ушли или уже листают
+    prefetchPeriod(swipeTarget(-1));
+    prefetchPeriod(swipeTarget(1));
+  }, RING_ANIM + 500);
 }
 
 /** Куда листать свайпом: соседний период; в аналитике — соседний месяц, не позже текущего. */
