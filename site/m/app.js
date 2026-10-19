@@ -1015,7 +1015,7 @@ function playList() {
   const key = sectionsKey();
   if (key === listPlayed) return;
   listPlayed = key;
-  if (!motion('sections')) return;
+  if (!motion('sections') || arrived) return; // приехало движением — строки приехали с ним
   [...document.querySelectorAll('#screen .list > *')].slice(0, 25).forEach((el, i) => {
     el.style.setProperty('--i', i);
     el.classList.add('row-in');
@@ -1024,6 +1024,7 @@ function playList() {
 }
 
 function playRing(start = true) {
+  if (holdFills) start = false; // содержимое ещё въезжает — заливка после остановки
   const box = document.querySelector('#screen .ring-box');
   // На экране нет кольца (список, карточка, пустой период) — забываем показанное: кольцо,
   // появившись снова (в том числе по «назад»), заливается заново. Пока кольцо на экране
@@ -1059,7 +1060,8 @@ function playRing(start = true) {
   // Таблица под кольцом проявляется по строке вместе с заливкой. Пока заливка ждёт старта
   // (сохранённый вид, свежие данные ещё в пути) — строки скрыты: иначе мелькнули бы и пропали
   // Приехал лентой страниц — расшифровка приехала с ним и не проявляется заново
-  const legend = ringPlayed.at == null && motion('sections') && !arrived ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
+  if (arrived) box.dataset.came = '1'; // запомнить и к старту заливки, который будет позже
+  const legend = ringPlayed.at == null && motion('sections') && !box.dataset.came ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
   legend.forEach((el) => el.classList.add('row-wait'));
   const fresh = ringPlayed.at == null;
   if (fresh) fillLimitBars(true); // полоса лимита под кольцом — с нуля, вместе с заливкой
@@ -4079,6 +4081,8 @@ let screenPager = null;
 // Экран приехал движением (сдвиг по нажатию или лента страниц): строки приехали с ним и
 // второй раз не проявляются, а заливки (кольцо, полосы, счётчик) ждут его остановки
 let arrived = false;
+// Заливки (кольцо, полосы лимита) пока ждут: новый период ещё въезжает (swipeEnd)
+let holdFills = false;
 const PAGER_MS = 320;
 const PAGER_EASE = 'cubic-bezier(0.25, 0.75, 0.35, 1)';
 
@@ -5004,12 +5008,20 @@ async function swipeEnd(e) {
   swipeSet(-dir * w, '0', ease);
   try {
     await new Promise((r) => setTimeout(r, 180));
+    // Новый период въезжает целиком, как экран при переходе: строки сразу видны (не проявляются
+    // по одной — на их месте была пустота), кольцо въезжает пустым и заливается на месте
+    arrived = true;
+    holdFills = true;
     await go(next, true);
     // Новый период — уже на экране: ставим его чуть в стороне и въезжаем на место
     swipeSet(dir * w * 0.35, '0', 'none');
     void stretchEl.offsetWidth; // зафиксировать исходное место, иначе въезда не будет видно
   } finally {
+    arrived = false;
     swipeSet(0, '', 'translate 0.22s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.22s ease-out');
+    await new Promise((r) => setTimeout(r, 220));
+    holdFills = false;
+    playRing();
     swipeBusy = false;
   }
 }
