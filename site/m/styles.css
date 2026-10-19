@@ -181,7 +181,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ── каркас ────────────────────────────────────────────── */
 
-.app { min-height: 100%; }
+.app { min-height: 100%; overflow-x: clip; } /* ничто сдвинутое вбок не расширяет страницу */
 .app[hidden] { display: none; }
 
 /* Шапка прилипает сверху: на телефоне «назад» должен быть под рукой всегда */
@@ -816,8 +816,8 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 /* Переход между экранами (slideScreen): вглубь — справа, «назад» — слева */
 @keyframes slide-fwd { from { transform: translateX(32%); opacity: 0; } }
 @keyframes slide-back { from { transform: translateX(-32%); opacity: 0; } }
-#screen.slide-fwd, #screen > .slide-fwd { animation: slide-fwd 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }
-#screen.slide-back, #screen > .slide-back { animation: slide-back 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }
+#screen > .slide-fwd { animation: slide-fwd 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }
+#screen > .slide-back { animation: slide-back 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }
 .srow { transition: opacity 0.4s ease, filter 0.4s ease; }
 .srow.off .srow-main { pointer-events: none; }
 

@@ -4173,10 +4173,13 @@ let slideHead = false; // на прежнем экране была шапка �
 function slideScreen(dir) {
   if (!dir) return;
   const el = $('screen');
+  // Сдвигается содержимое, а не сам #screen: его обрезка по краю (overflow-x: clip) ловит
+  // только содержимое. Сдвинутый целиком, он делал страницу шире окна, и Android WebView на
+  // время анимации перестраивал окно — остров меню пропадал
   const keep = slideHead && el.querySelector(':scope > .stuck-head .total');
-  const parts = keep ? [...el.children].filter((c) => !c.matches('.stuck-head')) : [el];
+  const parts = [...el.children].filter((c) => !(keep && c.matches('.stuck-head')));
   if (!parts.length) return;
-  for (const p of [el, ...el.children]) p.classList.remove('slide-fwd', 'slide-back');
+  for (const p of el.children) p.classList.remove('slide-fwd', 'slide-back');
   void el.offsetWidth; // перезапустить анимацию, если прошлая не кончилась
   parts.forEach((p) => p.classList.add(`slide-${dir}`));
   clearTimeout(slideScreen.timer);
