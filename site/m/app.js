@@ -4090,6 +4090,7 @@ async function render() {
   const dir = tabSwitch ? (tabs.indexOf(TAB_OF[state.screen]) > tabs.indexOf(TAB_OF[shownScreen]) ? 'fwd' : 'back') : navDir;
   navDir = '';
   const slide = shown && !sameScreen && dir && motion('screens') ? dir : '';
+  slideHead = Boolean(document.querySelector('#screen > .stuck-head .total'));
   const sameKind = shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide));
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
@@ -4163,21 +4164,31 @@ async function render() {
   }
 }
 
-/** Экран въезжает: вглубь и на вкладку правее — справа, «назад» и левее — слева. */
+/**
+ * Экран въезжает: вглубь и на вкладку правее — справа, «назад» и левее — слева. Шапка с итогом
+ * (Расход, Доход, списки) остаётся на месте, если она была и на прежнем экране, — сдвигается
+ * только содержимое под ней, как при свайпе периода: карточка с суммой не мигает.
+ */
+let slideHead = false; // на прежнем экране была шапка с итогом (render запоминает до перерисовки)
 function slideScreen(dir) {
   if (!dir) return;
   const el = $('screen');
-  el.classList.remove('slide-fwd', 'slide-back');
+  const keep = slideHead && el.querySelector(':scope > .stuck-head .total');
+  const parts = keep ? [...el.children].filter((c) => !c.matches('.stuck-head')) : [el];
+  if (!parts.length) return;
+  for (const p of [el, ...el.children]) p.classList.remove('slide-fwd', 'slide-back');
   void el.offsetWidth; // перезапустить анимацию, если прошлая не кончилась
-  el.classList.add(`slide-${dir}`);
-  document.documentElement.classList.add('sliding');
+  parts.forEach((p) => p.classList.add(`slide-${dir}`));
   clearTimeout(slideScreen.timer);
-  const done = () => {
-    el.classList.remove(`slide-${dir}`);
-    document.documentElement.classList.remove('sliding');
+  // Конец именно сдвига: анимации строк внутри экрана всплывают сюда же и обрывали бы его
+  const first = parts[0];
+  const done = (e) => {
+    if (e && e.target !== first) return;
+    first.removeEventListener('animationend', done);
+    parts.forEach((p) => p.classList.remove(`slide-${dir}`));
   };
-  el.addEventListener('animationend', done, { once: true });
-  slideScreen.timer = setTimeout(done, 600); // анимацию прервала перерисовка — всё равно вернуть как было
+  first.addEventListener('animationend', done);
+  slideScreen.timer = setTimeout(() => done(), 600); // анимацию прервала перерисовка — всё равно вернуть как было
 }
 
 /**
