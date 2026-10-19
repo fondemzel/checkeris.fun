@@ -4577,6 +4577,55 @@ let swipeTab = false;
 const SWIPE_TABS = ['summary', 'income', 'settings', 'stats'];
 const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
 const swipeTabNext = (dx) => SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
+// Капсула выбранной вкладки на острове при свайпе: тянется к соседней вкладке вместе со сдвигом
+// экрана (дотянулась — когда экран сдвинут на полширины), по отпусканию стягивается на новую
+// вкладку или возвращается. Пока она видна, собственный фон выбранной вкладки спрятан (.pill-on)
+let tabPill = null;
+function pillSet(l, r, cur, transition) {
+  if (!tabPill) {
+    tabPill = document.createElement('span');
+    tabPill.className = 'tab-pill';
+    document.querySelector('.tabs').prepend(tabPill);
+  }
+  Object.assign(tabPill.style, {
+    transition, left: `${l}px`, width: `${Math.max(0, r - l)}px`, top: `${cur.top}px`, height: `${cur.h}px`,
+  });
+}
+function pillBox(name) {
+  const tabs = document.querySelector('.tabs');
+  const el = name && tabs.querySelector(`[data-tab="${name}"]`);
+  if (!el) return null;
+  const t = el.getBoundingClientRect();
+  const box = tabs.getBoundingClientRect();
+  return { l: t.left - box.left, r: t.right - box.left, top: t.top - box.top, h: t.height };
+}
+function pillDrag(dx, shift) {
+  const cur = pillBox(TAB_OF[state.screen]);
+  if (!cur) return;
+  document.querySelector('.tabs').classList.add('pill-on');
+  const next = pillBox(swipeTabNext(dx));
+  let { l, r } = cur;
+  if (next) {
+    const p = Math.min(1, Math.abs(dx) / (window.innerWidth * 0.5));
+    if (next.l > cur.l) r += (next.r - cur.r) * p;
+    else l += (next.l - cur.l) * p;
+  } else if (shift < 0) r += -shift * 0.3; // крайняя вкладка — чуть тянется и вернётся
+  else l -= shift * 0.3;
+  pillSet(l, r, cur, '');
+}
+/** Отпустили: капсула стягивается на вкладку name (новую или прежнюю) и прячется. */
+function pillSettle(name) {
+  const to = pillBox(name);
+  if (!tabPill || !to) return;
+  pillSet(to.l, to.r, to, 'left 0.22s cubic-bezier(0.2, 0.8, 0.3, 1), width 0.22s cubic-bezier(0.2, 0.8, 0.3, 1)');
+  clearTimeout(pillSettle.timer);
+  pillSettle.timer = setTimeout(() => {
+    document.querySelector('.tabs').classList.remove('pill-on');
+    tabPill?.remove();
+    tabPill = null;
+  }, 240);
+}
+
 // При смене вкладки за пальцем едет весь экран, с шапкой: меняется он целиком
 const tabSet = (shift, opacity, transition) => [...stretchEl.children].forEach((el) => {
   el.style.transition = transition;
@@ -4631,6 +4680,7 @@ addEventListener('touchmove', (e) => {
     if (!motion('screens')) return;
     const shift = swipeTabNext(dx) ? dx : dx * 0.25;
     tabSet(shift, String(1 - Math.min(0.5, Math.abs(shift) / window.innerWidth)), '');
+    pillDrag(dx, shift);
     return;
   }
   if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
@@ -4661,9 +4711,11 @@ async function swipeEnd(e) {
     const next = swipeTabNext(dx);
     if (e.type === 'touchcancel' || !next || (Math.abs(dx) < window.innerWidth * 0.25 && !fast)) {
       tabSet(0, '', back);
+      pillSettle(TAB_OF[state.screen]);
       return;
     }
     if (motion('screens')) {
+      pillSettle(next);
       swipeBusy = true;
       tabSet(Math.sign(dx) * window.innerWidth * 0.5, '0', 'translate 0.15s ease-in, opacity 0.15s ease-in');
       await new Promise((r) => setTimeout(r, 150));
