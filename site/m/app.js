@@ -575,6 +575,7 @@ function go(patch, replace = false) {
     params.set('dir', state.dir);
   }
   history[replace ? 'replaceState' : 'pushState']({ ...state }, '', `?${params}`);
+  navDir = replace ? '' : 'fwd';
   return render();
 }
 
@@ -720,6 +721,7 @@ window.addEventListener('popstate', (e) => {
   // Закрыли попап над формой — форму не трогаем: иначе сумма и название сотрутся
   if (hadPopup && keepsForm()) return;
   // Вернулись к списку — туда же, где его оставили. Закрытие попапа экран не двигает
+  navDir = 'back';
   const back = render();
   if (scroll && !hadPopup) back.then(() => window.scrollTo(0, scroll));
   // Вернулись из карточки товара, открытой из попапа чека, — показываем чек снова
@@ -4031,6 +4033,9 @@ function pulse(name) {
   // Снимаем по таймеру: событие конца анимации приходит не во всех браузерах
   setTimeout(() => el.classList.remove('pulse'), 1100);
 }
+// Куда шли к этому экрану: вглубь (go) или «назад» — по нему экраны настроек въезжают справа
+// или слева (slideScreen)
+let navDir = '';
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
 
 // Готовые экраны — чтобы вернуться на знакомый мгновенно. Ключ — адрес экрана со всеми
@@ -4076,7 +4081,11 @@ async function render() {
   // (посреди прокрутки текст элемента — столбики цифр, поэтому показанное число — в data-sum)
   const prevEl = sameScreen ? document.querySelector('#screen .total-sum') : null;
   const prevSum = prevEl ? prevEl.dataset.sum ?? prevEl.textContent : null;
-  const sameKind = shown && EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen);
+  // Переход между экранами настроек — сдвигом: пока новый грузится, виден прежний, без «Загрузки»
+  const dir = navDir;
+  navDir = '';
+  const slide = shown && !sameScreen && dir && TAB_OF[state.screen] === 'settings' && TAB_OF[shownScreen] === 'settings' && motion('screens') ? dir : '';
+  const sameKind = shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide));
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
   const key = location.search;
@@ -4084,6 +4093,7 @@ async function render() {
   if (cached) {
     $('screen').innerHTML = cached;
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
+    slideScreen(slide);
     shownScreen = state.screen;
     // Кольцо заливается сразу, а свежие данные — после заливки (ниже): их разбор занимает
     // телефон, и заливка, идущая в это время, запиналась. Ждать данных с пустым кольцом —
@@ -4116,7 +4126,8 @@ async function render() {
     // Ничего не изменилось — не трогаем: перерисовка сбросила бы нажатие и фокус
     else if (html !== cached) {
       $('screen').innerHTML = html;
-      window.scrollTo(0, keepScroll);
+      window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
+      if (!cached) slideScreen(slide);
     }
     // Сумма прокручивается: впервые — от прежней; перерисовали посреди прокрутки — продолжаем её
     const sumEl = document.querySelector('#screen .total-sum');
@@ -4145,6 +4156,16 @@ async function render() {
     clearTimeout(dim);
     if (seq === renderSeq) $('screen').classList.remove('busy');
   }
+}
+
+/** Экран въезжает: вглубь — справа, «назад» — слева. */
+function slideScreen(dir) {
+  if (!dir) return;
+  const el = $('screen');
+  el.classList.remove('slide-fwd', 'slide-back');
+  void el.offsetWidth; // перезапустить анимацию, если прошлая не кончилась
+  el.classList.add(`slide-${dir}`);
+  el.addEventListener('animationend', () => el.classList.remove(`slide-${dir}`), { once: true });
 }
 
 /**
@@ -5948,7 +5969,7 @@ function calm() {
   return document.documentElement.dataset.motion === 'off' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 // Отдельные виды анимации: выключенные — в localStorage (checker.motion.kinds)
-const MOTION_KINDS = ['ring', 'counter', 'sheets', 'sections', 'swipe'];
+const MOTION_KINDS = ['ring', 'counter', 'sheets', 'sections', 'swipe', 'screens'];
 function motionPrefs() {
   try {
     const v = JSON.parse(localStorage.getItem('checker.motion.kinds') || '{}');
