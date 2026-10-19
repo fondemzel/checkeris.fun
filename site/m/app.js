@@ -4725,7 +4725,12 @@ let swipeBusy = false;
 let swipeTab = false;
 const SWIPE_TABS = ['summary', 'income', 'settings', 'stats'];
 const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
-const TAB_SWIPE = 0.5; // доля ширины экрана: протянули дальше — по отпусканию сменится вкладка (или период)
+// Шкала свайпа экранов и периодов (доли ширины): до SWIPE_FROM — ещё ничего, к SWIPE_TO —
+// заполнено; протянули дальше SWIPE_TO — по отпусканию сменится вкладка (или период)
+const SWIPE_FROM = 0.1;
+const SWIPE_TO = 0.6;
+/** Сколько протянули по шкале: 0 — до SWIPE_FROM, 1 — от SWIPE_TO. */
+const swipeProgress = (dx) => Math.min(1, Math.max(0, (Math.abs(dx) / window.innerWidth - SWIPE_FROM) / (SWIPE_TO - SWIPE_FROM)));
 const swipeTabNext = (dx) => SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
 // Капсула выбранной вкладки на острове при свайпе: тянется к соседней вкладке вместе со сдвигом
 // экрана (дотянулась — когда экран сдвинут на полширины), по отпусканию стягивается на новую
@@ -4758,11 +4763,11 @@ function pillDrag(dx, shift) {
   // сереет; не дотянули обратно — наоборот
   const name = swipeTabNext(dx);
   for (const t of tabs.querySelectorAll('[data-tab]')) t.classList.toggle('pill-next', t.dataset.tab === name);
-  tabs.classList.toggle('pill-over', Boolean(name) && Math.abs(dx) >= window.innerWidth * TAB_SWIPE);
+  tabs.classList.toggle('pill-over', Boolean(name) && swipeProgress(dx) >= 1);
   const next = pillBox(name);
   let { l, r } = cur;
   if (next) {
-    const p = Math.min(1, Math.abs(dx) / (window.innerWidth * 0.5));
+    const p = swipeProgress(dx);
     if (next.l > cur.l) r += (next.r - cur.r) * p;
     else l += (next.l - cur.l) * p;
   } else if (shift < 0) r += -shift * 0.3; // крайняя вкладка — чуть тянется и вернётся
@@ -4885,7 +4890,7 @@ addEventListener('touchmove', (e) => {
 // Подсказка в полосе, которая освобождается при свайпе (периода или вкладки): куда листаем —
 // название, и полоска, заполненная тем больше, чем дальше протянули. Проявляется к половине
 // пути до смены, держится посередине полосы (едет вместе с её краем) и заполнена целиком
-// ровно там, где по отпусканию экран сменится (TAB_SWIPE), — тогда и название синеет
+// ровно там, где по отпусканию экран сменится (SWIPE_TO), — тогда и название синеет
 let peekEl = null;
 function peekShow(dx, name, below = '') {
   if (!name || !motion('peek')) return peekHide();
@@ -4899,8 +4904,7 @@ function peekShow(dx, name, below = '') {
     document.body.append(peekEl);
   }
   const w = window.innerWidth;
-  const way = Math.abs(dx);
-  const k = Math.min(1, way / (w * TAB_SWIPE));
+  const k = swipeProgress(dx);
   peekEl.querySelector('.peek-name').textContent = name;
   const low = peekEl.querySelector('.peek-below');
   low.textContent = below;
@@ -4908,7 +4912,7 @@ function peekShow(dx, name, below = '') {
   peekEl.style.transition = 'none';
   peekEl.style.left = `${(dx < 0 ? w + dx / 2 : dx / 2).toFixed(1)}px`;
   // Не ярче 0,7: подсказка — на краю внимания, а не главное на экране
-  peekEl.style.opacity = (0.7 * Math.min(1, way / (w * TAB_SWIPE * 0.5))).toFixed(3);
+  peekEl.style.opacity = (0.7 * Math.min(1, k * 2)).toFixed(3);
   peekEl.style.setProperty('--k', k.toFixed(3));
   peekEl.classList.toggle('full', k >= 1);
   peekEl.classList.toggle('prev', dx > 0); // назад — полоска заполняется справа налево
@@ -4976,7 +4980,7 @@ async function swipeEnd(e) {
     // стороны (render, slideScreen)
     const back = 'translate 0.18s ease-out, opacity 0.18s ease-out';
     const next = swipeTabNext(dx);
-    if (e.type === 'touchcancel' || !next || (Math.abs(dx) < window.innerWidth * TAB_SWIPE && !fast)) {
+    if (e.type === 'touchcancel' || !next || (swipeProgress(dx) < 1 && !fast)) {
       tabSet(0, '', back);
       document.querySelector('.tabs').classList.remove('pill-over'); // цвета — плавно обратно
       pillSettle(TAB_OF[state.screen], 220);
@@ -5008,7 +5012,7 @@ async function swipeEnd(e) {
     return;
   }
   const ease = 'translate 0.18s ease-out, opacity 0.18s ease-out';
-  if (e.type === 'touchcancel' || (Math.abs(dx) < window.innerWidth * TAB_SWIPE && !fast)) {
+  if (e.type === 'touchcancel' || (swipeProgress(dx) < 1 && !fast)) {
     swipeSet(0, '', ease);
     return;
   }
