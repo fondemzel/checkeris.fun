@@ -1069,8 +1069,13 @@ function playRing(start = true) {
   // Кадр задержался (телефон занят: убирал прежний экран, разбирал данные) — простой в счёт
   // анимации не идёт: иначе следующий кадр показывал бы сразу полкольца
   let last = null;
+  // Цикл — только своего кольца: экран, уезжающий лентой страниц, ещё на странице, и его
+  // цикл переставлял бы часы нового кольца (ringPlayed общий) — новое заливалось бы во время
+  // сдвига и к остановке было уже наполовину залито
+  const key = box.dataset.ringKey;
   const frame = () => {
-    if (!box.isConnected) return; // экран перерисовали — продолжит новая отрисовка
+    // Экран перерисовали или кольцо уже не текущее — продолжит (или начнёт) новая отрисовка
+    if (!box.isConnected || ringPlayed.key !== key || !$('screen').contains(box)) return;
     const now = performance.now();
     ringPlayed.at ??= now;
     if (last != null && now - last > 50) ringPlayed.at += now - last - 16;
