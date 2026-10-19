@@ -4576,6 +4576,13 @@ let swipeBusy = false;
 let swipeTab = false;
 const SWIPE_TABS = ['summary', 'income', 'settings', 'stats'];
 const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
+const swipeTabNext = (dx) => SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
+// При смене вкладки за пальцем едет весь экран, с шапкой: меняется он целиком
+const tabSet = (shift, opacity, transition) => [...stretchEl.children].forEach((el) => {
+  el.style.transition = transition;
+  el.style.translate = shift ? `${shift}px 0` : '';
+  el.style.opacity = opacity;
+});
 // Что едет: всё на экране, кроме закреплённой шапки
 // Шапка расходов и карточка итога аналитики стоят на месте — меняется только их содержимое
 const swipeParts = () => [...stretchEl.children].filter((el) => !el.classList.contains('stuck-head') && !el.classList.contains('ana-hero'));
@@ -4619,7 +4626,14 @@ addEventListener('touchmove', (e) => {
     setStretch(0);
   }
   e.preventDefault(); // страница вверх-вниз не ездит, пока листаем вбок
-  if (swipeTab || !motion('swipe')) return; // вкладка сменится по отпусканию — со сдвигом экрана // сдвиг выключен: содержимое стоит, период сменится по отпусканию
+  if (swipeTab) {
+    // Экран тянется за пальцем; дальше крайней вкладки — туго, как резина
+    if (!motion('screens')) return;
+    const shift = swipeTabNext(dx) ? dx : dx * 0.25;
+    tabSet(shift, String(1 - Math.min(0.5, Math.abs(shift) / window.innerWidth)), '');
+    return;
+  }
+  if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
   swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
 }, { passive: false });
 
@@ -4640,10 +4654,22 @@ async function swipeEnd(e) {
   const fast = Math.abs(dx) > 30 && Math.abs(dx) / Math.max(1, Date.now() - swipeFrom.t) > 0.5;
   swipeFrom = null;
   if (swipeTab) {
-    // Соседняя вкладка — тем же нажатием на неё: сдвиг экрана по порядку вкладок (render)
-    if (e.type === 'touchcancel' || (Math.abs(dx) < 50 && !fast)) return;
-    const next = SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
-    if (next) document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
+    // Отпустили: мало протянули или дальше некуда — экран возвращается. Иначе уезжает вбок,
+    // и соседняя вкладка открывается тем же нажатием на неё — новый экран въезжает с другой
+    // стороны (render, slideScreen)
+    const back = 'translate 0.18s ease-out, opacity 0.18s ease-out';
+    const next = swipeTabNext(dx);
+    if (e.type === 'touchcancel' || !next || (Math.abs(dx) < window.innerWidth * 0.25 && !fast)) {
+      tabSet(0, '', back);
+      return;
+    }
+    if (motion('screens')) {
+      swipeBusy = true;
+      tabSet(Math.sign(dx) * window.innerWidth * 0.5, '0', 'translate 0.15s ease-in, opacity 0.15s ease-in');
+      await new Promise((r) => setTimeout(r, 150));
+      swipeBusy = false;
+    }
+    document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
     return;
   }
   const ease = 'translate 0.18s ease-out, opacity 0.18s ease-out';
