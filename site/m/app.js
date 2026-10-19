@@ -187,7 +187,7 @@ async function api(path, options = {}) {
  */
 const feedData = new Map(); // путь → { at, promise }
 const FEED_TTL = 2 * 60 * 1000;
-const FEED_KEEP = 8; // за всё время — десятки мегабайт в памяти; старые выбрасываем
+const FEED_KEEP = 12; // за всё время — десятки мегабайт в памяти; старые выбрасываем
 
 function apiFeed(path) {
   const hit = feedData.get(path);
@@ -793,27 +793,39 @@ function toast(text) {
 
 // ── расходы ──────────────────────────────────────────────
 
-async function screenSummary() {
+/**
+ * Запросы «Расхода» за период from…to — те же, что делает экран (screenSummary). Ими же
+ * данные соседнего периода загружаются заранее, пока его тянут свайпом (prefetchPeriod).
+ */
+function summaryFeeds(from, to) {
   // Все траты периода: товары из чеков и ручные записи — по названиям, траты из банка —
   // по операциям. Покупки, у которых нашёлся чек, приходят один раз — чеком
   const params = new URLSearchParams({
-    from: state.from, to: state.to, collapse: collapseMode(), per: '20000',
+    from, to, collapse: collapseMode(), per: '20000',
     sort: ['date', 'name', 'sum'].includes(state.sort) ? state.sort : 'date', dir: state.dir,
   });
-  const opsQuery = new URLSearchParams({
-    from: state.from, to: state.to, direction: 'debit', kind: 'expense', per: '20000',
-  });
+  const opsQuery = new URLSearchParams({ from, to, direction: 'debit', kind: 'expense', per: '20000' });
   // Переводы себе — отдельным разделом в конце (только по категориям): видно, что туда ушло
   const withSelf = state.sort === 'category' && (!state.src || state.src === 'bank');
-  const selfQuery = new URLSearchParams({ from: state.from, to: state.to, direction: 'debit', kind: 'transfer', per: '20000' });
+  const selfQuery = new URLSearchParams({ from, to, direction: 'debit', kind: 'transfer', per: '20000' });
   // Карточка лимита под кольцом — без отборов: иначе потрачено не сравнить с лимитом
   const withLimit = meta?.limits_on !== false && state.mode === 'ring' && !state.src && !state.sg && !state.q.trim() && !state.ringRest;
+  return {
+    items: `/api/items?${params}`,
+    ops: `/api/bank/ops?${opsQuery}`,
+    self: withSelf ? `/api/bank/ops?${selfQuery}` : null,
+    limits: withLimit ? `/api/limits/state?from=${from}&to=${to}` : null,
+  };
+}
+
+async function screenSummary() {
+  const feeds = summaryFeeds(state.from, state.to);
   const [data, ops, failed, self, limits] = await Promise.all([
-    apiFeed(`/api/items?${params}`),
-    apiFeed(`/api/bank/ops?${opsQuery}`).catch(() => null),
+    apiFeed(feeds.items),
+    apiFeed(feeds.ops).catch(() => null),
     api('/api/scan?state=failed').catch(() => null),
-    withSelf ? apiFeed(`/api/bank/ops?${selfQuery}`).catch(() => null) : null,
-    withLimit ? apiFeed(`/api/limits/state?from=${state.from}&to=${state.to}`).catch(() => null) : null,
+    feeds.self ? apiFeed(feeds.self).catch(() => null) : null,
+    feeds.limits ? apiFeed(feeds.limits).catch(() => null) : null,
   ]);
   const bankRows = ops?.rows ?? [];
   if (failed) updateBadge(failed.counts.failed);
@@ -1344,7 +1356,7 @@ function fillLimitBars(hold = false) {
 
 /** После правки лимитов: свежие meta и данные, экран заново, полосы заливаются. */
 async function limitsChanged() {
-  for (const k of [...feedData.keys()]) if (k.startsWith('/api/limits')) feedData.delete(k);
+  for (const k of [...feedData.keys()]) if (k.startsWith('/api/limits') || k.startsWith('/api/analytics')) feedData.delete(k);
   screenCache.clear();
   meta = await api('/api/meta');
   await render();
@@ -1522,7 +1534,7 @@ $('screen').addEventListener('change', async (e) => {
     // На экране «Лимиты» строки гаснут и загораются на месте, плавно — без перерисовки
     if (state.screen === 'set_limits') limitsDim(!box.checked);
     await api('/api/limits/on', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: box.checked }) });
-    for (const k of [...feedData.keys()]) if (k.startsWith('/api/limits')) feedData.delete(k);
+    for (const k of [...feedData.keys()]) if (k.startsWith('/api/limits') || k.startsWith('/api/analytics')) feedData.delete(k);
     screenCache.clear();
     meta = await api('/api/meta');
   } catch (err) {
@@ -1912,6 +1924,16 @@ async function screenBank() {
  * Доход — поступления из банка. Переводы между своими счетами сюда не попадают: деньги
  * не появились, а переложены. Без подключённого банка показывать нечего.
  */
+/** Запросы «Дохода» за период — как summaryFeeds у «Расхода». */
+function incomeFeeds(from, to) {
+  const q = new URLSearchParams({
+    from, to, direction: 'credit', kind: 'income',
+    // По категориям раскладываем здесь; внутри категории — свежие сверху
+    per: '5000', sort: state.sort === 'category' ? 'date' : state.sort, dir: state.sort === 'category' ? 'desc' : state.dir,
+  });
+  return { ops: `/api/bank/ops?${q}`, bank: `/api/bank?from=${from}&to=${to}` };
+}
+
 async function screenIncome() {
   if (!bankLinked) {
     return soon(UI.income, 'Доходы', inApp()
@@ -1919,14 +1941,10 @@ async function screenIncome() {
       : 'Поступления берутся из банка. Подключить его можно в приложении для Android.');
   }
 
-  const q = new URLSearchParams({
-    from: state.from, to: state.to, direction: 'credit', kind: 'income',
-    // По категориям раскладываем здесь; внутри категории — свежие сверху
-    per: '5000', sort: state.sort === 'category' ? 'date' : state.sort, dir: state.sort === 'category' ? 'desc' : state.dir,
-  });
+  const feeds = incomeFeeds(state.from, state.to);
   const [data, bank] = await Promise.all([
-    apiFeed(`/api/bank/ops?${q}`),
-    apiFeed(`/api/bank?from=${state.from}&to=${state.to}`).catch(() => null),
+    apiFeed(feeds.ops),
+    apiFeed(feeds.bank).catch(() => null),
   ]);
   const transfers = (bank?.totals ?? []).find((t) => t.kind === 'transfer');
 
@@ -4826,9 +4844,10 @@ addEventListener('touchmove', (e) => {
     peekShow(dx, tabLabel(swipeTabNext(dx)));
     return;
   }
+  const next = swipeTarget(dx < 0 ? 1 : -1);
+  prefetchPeriod(next); // данные периода, куда тянут, — уже сейчас, а не после отпускания
   if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
   swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
-  const next = swipeTarget(dx < 0 ? 1 : -1);
   // Над полоской — раздел, под ней — период: «Расход», полоска, «Сентябрь 2026»
   peekShow(dx, next && tabLabel(TAB_OF[state.screen]), next && humanPeriod(next.from, next.to));
 }, { passive: false });
@@ -4872,6 +4891,19 @@ function peekHide() {
 function tabLabel(name) {
   const btn = name && document.querySelector(`.tabs [data-tab="${name}"]`);
   return btn ? [...btn.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim() : '';
+}
+
+/**
+ * Данные периода, куда тянут свайпом, — заранее, теми же запросами, что сделает экран: к
+ * отпусканию они уже в памяти (apiFeed) или в пути, и новый период не ждёт сети. Повторно
+ * в том же жесте не запрашивается: память лент сама отдаёт уже начатый запрос.
+ */
+function prefetchPeriod(p) {
+  if (!p) return;
+  const paths = state.screen === 'summary' ? Object.values(summaryFeeds(p.from, p.to))
+    : state.screen === 'income' && bankLinked ? Object.values(incomeFeeds(p.from, p.to))
+      : state.screen === 'stats' ? [analyticsFeed(p.to)] : [];
+  for (const path of paths) if (path) apiFeed(path).catch(() => {});
 }
 
 /** Куда листать свайпом: соседний период; в аналитике — соседний месяц, не позже текущего. */
@@ -7487,9 +7519,16 @@ function currentMonthKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Запрос «Аналитики» за месяц, в котором кончается период (не позже текущего). */
+function analyticsFeed(to) {
+  const month = monthKey(to) > currentMonthKey() ? currentMonthKey() : monthKey(to);
+  return `/api/analytics?month=${month}`;
+}
+
 async function screenAnalytics() {
   const month = monthKey(state.to) > currentMonthKey() ? currentMonthKey() : monthKey(state.to);
-  const data = await api(`/api/analytics?month=${month}`);
+  // Через память лент: её загружает заранее и свайп месяца (prefetchPeriod)
+  const data = await apiFeed(analyticsFeed(state.to));
   anaData = data;
   const [y, m] = month.split('-').map(Number);
   const daysIn = new Date(y, m, 0).getDate();
