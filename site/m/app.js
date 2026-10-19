@@ -4043,22 +4043,28 @@ let navDir = '';
 // ту же ленту по общим часам (pagerJoin из render): ровно там, где ему быть в эту минуту.
 // { dx, done, finished } — от свайпа
 let screenPager = null;
+let pagerLanded = false; // экран только что приехал лентой: свои анимации появления ему не нужны
 const PAGER_MS = 320;
 const PAGER_EASE = 'cubic-bezier(0.25, 0.75, 0.35, 1)';
 
 function pagerLeave(p) {
   const el = $('screen');
   const r = el.getBoundingClientRect();
+  // Слой — высотой окна, содержимое сдвинуто на прокрутку: телефон растрирует только видимое,
+  // а не всю ленту в сотни строк (на этом и запинался первый кадр)
   const box = document.createElement('div');
   box.className = 'pager-old';
-  Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px` });
+  Object.assign(box.style, { left: `${r.left}px`, top: '0', width: `${r.width}px`, height: `${window.innerHeight}px` });
+  const inner = document.createElement('div');
+  inner.style.marginTop = `${r.top}px`;
+  box.append(inner);
   // Шапка прилипала к верху — в отдельном слое прилипать не к чему: ставим её туда, где была
   const head = el.querySelector(':scope > .stuck-head');
   const headTop = head?.getBoundingClientRect().top;
   for (const c of [...el.children]) {
     c.style.transition = 'none';
     c.style.translate = '';
-    box.append(c);
+    inner.append(c);
   }
   document.body.append(box);
   if (head) {
@@ -4081,7 +4087,7 @@ function pagerJoin(p) {
     if (t != null) move.startTime = t; // те же часы, что у старого: стоят вплотную
     p.moves.push(move);
     // Вставка могла опоздать к началу пути — короткое проявление прячет появление
-    c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'ease-out' });
+    c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
   }
   pagerEnd(p);
 }
@@ -4204,6 +4210,8 @@ async function render() {
       if (!cached) slideScreen(slide);
       if (pager && !cached) {
         pagerJoin(pager);
+        pagerLanded = true;
+        if (state.screen === 'stats') holdAnalytics();
         playRing(false);
         listPlayed = sectionsKey();
         await pager.finished;
@@ -4219,6 +4227,7 @@ async function render() {
     playList();
     shownScreen = state.screen;
     screen.after?.();
+    pagerLanded = false;
     if (pendingReceipt) {
       const id = pendingReceipt;
       pendingReceipt = 0;
@@ -4744,7 +4753,10 @@ addEventListener('touchstart', (e) => {
   if (!swipeTab && !stretchEl.querySelector('[data-shift]') && state.screen !== 'stats') return;
   // У краёв — системный жест «назад»; полосы, листающиеся вбок, и поля ввода — свои
   if (t.clientX < 24 || t.clientX > window.innerWidth - 24) return;
-  if (e.target.closest('input, textarea, .chips, .drop-menu') || (!swipeTab && e.target.closest('[data-shift]'))) return;
+  // Поле в закреплённой шапке (поиск настроек) — свайп вкладок, пока в нём не пишут
+  const field = e.target.closest('input, textarea');
+  if (field && (!swipeTab || field === document.activeElement)) return;
+  if (e.target.closest('.chips, .drop-menu') || (!swipeTab && e.target.closest('[data-shift]'))) return;
   swipeFrom = { x: t.clientX, y: t.clientY, t: Date.now() };
 }, { passive: true });
 
@@ -7511,9 +7523,20 @@ async function screenAnalytics() {
  * Появление аналитики: строки групп — по одной сверху вниз («Раскрытие разделов»), полосы
  * прогресса заполняются от нуля, каждая — когда появилась её строка («Заливка колец и полос»).
  */
+/** Экран приехал лентой страниц: полосы — пустыми до остановки (заливает animateAnalytics). */
+function holdAnalytics() {
+  if (!motion('ring')) return;
+  for (const b of document.querySelectorAll('#screen .ana-bar i')) {
+    b.dataset.w = b.style.width;
+    b.style.width = '0';
+  }
+}
+
 function animateAnalytics() {
   const rows = [...document.querySelectorAll('#screen .ana-row')];
-  const rowsOn = motion('sections');
+  // Приехал лентой страниц — строки приехали с ней, второй раз не проявляются
+  const rowsOn = motion('sections') && !pagerLanded;
+  pagerLanded = false;
   if (rowsOn) {
     rows.forEach((el, i) => {
       el.style.setProperty('--i', i);
@@ -7523,7 +7546,7 @@ function animateAnalytics() {
   }
   if (!motion('ring')) return;
   const bars = [...document.querySelectorAll('#screen .ana-bar i')];
-  const target = bars.map((b) => b.style.width);
+  const target = bars.map((b) => b.dataset.w ?? b.style.width);
   bars.forEach((b) => (b.style.width = '0'));
   void document.body.offsetWidth; // зафиксировать нулевую ширину, иначе заполнения не будет видно
   bars.forEach((b, k) => {
