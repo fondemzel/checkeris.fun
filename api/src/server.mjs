@@ -783,21 +783,6 @@ async function handleApi(req, res, url) {
       : sendJson(res, 200, result);
   }
 
-  // Временная запись кадров с телефона (отладка плавности анимаций) — в файл, только админу
-  if (pathname === '/api/debug/trace' && req.method === 'POST') {
-    if (user.role !== 'admin') return sendJson(res, 403, { error: 'forbidden' });
-    let body;
-    try {
-      body = await readJson(req, 256 * 1024);
-    } catch {
-      return sendJson(res, 400, { error: 'bad request body' });
-    }
-    const dir = join(API_ROOT, 'data', 'trace');
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    writeFileSync(join(dir, `${Date.now()}-${String(body.kind ?? '').replace(/\W/g, '')}.json`), JSON.stringify(body, null, 1), { mode: 0o600 });
-    return sendJson(res, 200, { ok: true });
-  }
-
   if (pathname === '/api/meta') {
     // Ключ карт — браузерный, он и так виден в запросах к Яндексу; ограничен адресом сайта
     // в кабинете разработчика Яндекса

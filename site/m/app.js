@@ -1051,7 +1051,6 @@ function playRing(start = true) {
   if (fresh) fillLimitBars(true); // полоса лимита под кольцом — с нуля, вместе с заливкой
   if (!start) return;
   box.dataset.playing = '1';
-  tr('заливка кольца: старт');
   if (fresh) fillLimitBars();
   legend.forEach((el, i) => {
     el.style.setProperty('--i', i);
@@ -1081,7 +1080,6 @@ function playRing(start = true) {
     if (last != null && now - last > 50) ringPlayed.at += now - last - 16;
     last = now;
     const elapsed = now - ringPlayed.at;
-    if (trace && elapsed < RING_SWEEP + 100) tr(`кольцо ${Math.round(elapsed)}`);
     paint(elapsed);
     if (elapsed < RING_ANIM) requestAnimationFrame(frame);
   };
@@ -4057,30 +4055,6 @@ let navDir = '';
 // { dx, done, finished } — от свайпа
 let screenPager = null;
 
-// ВРЕМЕННО: запись кадров перехода на телефоне — что и когда происходило, и какие кадры
-// задержались. Уходит на сервер (/api/debug/trace) через 3 с после свайпа или нажатия вкладки
-let trace = null;
-function traceStart(kind, ms = 3000) {
-  trace = { kind, t0: performance.now(), ev: [] };
-  let last = performance.now();
-  const t = trace;
-  const watch = () => {
-    if (trace !== t) return;
-    const now = performance.now();
-    if (now - last > 24) tr(`кадр ${Math.round(now - last)} мс`);
-    last = now;
-    requestAnimationFrame(watch);
-  };
-  requestAnimationFrame(watch);
-  setTimeout(() => {
-    if (trace !== t) return;
-    trace = null;
-    post('/api/debug/trace', { kind, ua: navigator.userAgent, w: window.innerWidth, ev: t.ev }).catch(() => {});
-  }, ms);
-}
-function tr(ev) {
-  trace?.ev.push(`${Math.round(performance.now() - trace.t0)} ${ev}`);
-}
 // Экран приехал движением (сдвиг по нажатию или лента страниц): строки приехали с ним и
 // второй раз не проявляются, а заливки (кольцо, полосы, счётчик) ждут его остановки
 let arrived = false;
@@ -4125,7 +4099,6 @@ function pagerJoin(p) {
   // Вставлен вовремя (почти у края) — просто едет; опоздал — короткое проявление прячет
   // появление посреди пути. Иначе полупрозрачный новый рядом с плотным старым мерцал
   const late = (p.anim.currentTime ?? 0) > PAGER_MS * 0.25;
-  tr(`новый встал в ленту, путь ${Math.round(p.anim.currentTime ?? -1)} мс`);
   const el = $('screen');
   el.classList.remove('busy'); // приглушение «идёт загрузка» — не новому экрану
   for (const c of el.children) {
@@ -4139,14 +4112,10 @@ function pagerJoin(p) {
 
 function pagerEnd(p) {
   Promise.all(p.moves.map((m) => m.finished.catch(() => null))).then(() => {
-    tr('лента доехала');
     p.box.remove();
     // Готово — когда телефон перестроил страницу без старого экрана (два кадра): заливка
     // кольца, которая ждёт этого, не начнётся посреди тяжёлого кадра
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      tr('старый слой убран');
-      p.done?.();
-    }));
+    requestAnimationFrame(() => requestAnimationFrame(() => p.done?.()));
   });
 }
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
@@ -4174,7 +4143,6 @@ const NONE = '-'; // «Без категории»: у неразмеченно�
 
 async function render() {
   const seq = ++renderSeq;
-  tr(`отрисовка ${state.screen}`);
   closeScanner(); // уходим с экрана (в том числе кнопкой «назад») — камера гаснет
   const screen = SCREENS[state.screen] ?? SCREENS.summary;
   const top = TOP.includes(state.screen);
@@ -4230,7 +4198,6 @@ async function render() {
     listPlayed = sectionsKey(); // строки въезжают вместе с экраном, отдельно не проявляются
   };
   if (cached) {
-    tr('вставка сохранённого');
     $('screen').innerHTML = cached;
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
     arrive();
@@ -4272,7 +4239,6 @@ async function render() {
     if (sameScreen && document.activeElement?.id === 'q') patchKeepingSearch(html);
     // Ничего не изменилось — не трогаем: перерисовка сбросила бы нажатие и фокус
     else if (html !== cached) {
-      tr('вставка свежего');
       $('screen').innerHTML = html;
       window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
       if (!cached) {
@@ -4331,7 +4297,6 @@ function slideScreen(dir) {
   for (const p of el.children) p.classList.remove('slide-fwd', 'slide-back');
   void el.offsetWidth; // перезапустить анимацию, если прошлая не кончилась
   parts.forEach((p) => p.classList.add(`slide-${dir}`));
-  tr('сдвиг пошёл');
   clearTimeout(slideScreen.timer);
   // Конец именно сдвига: анимации строк внутри экрана всплывают сюда же и обрывали бы его
   const first = parts[0];
@@ -4341,7 +4306,6 @@ function slideScreen(dir) {
       first.removeEventListener('animationend', done);
       clearTimeout(slideScreen.timer);
       parts.forEach((p) => p.classList.remove(`slide-${dir}`));
-      tr('сдвиг доехал');
       resolve();
     };
     first.addEventListener('animationend', done);
@@ -4907,14 +4871,10 @@ async function swipeEnd(e) {
       finish = r;
     });
     const pager = { dx, done: finish, finished };
-    traceStart(`swipe ${TAB_OF[state.screen]}→${next}`);
-    tr('отпустили');
     pagerLeave(pager);
-    tr('старый — в слой');
     // Новый экран собирается после того, как уход старого уже пошёл: тяжёлая сборка его не
     // задержит — анимацию ведёт браузер
     await pager.anim.ready;
-    tr('уход пошёл');
     screenPager = pager;
     document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
     await Promise.race([finished, new Promise((r) => setTimeout(r, 4000))]);
@@ -5330,7 +5290,6 @@ $('fab').addEventListener('click', () => go({ screen: 'add' }));
 document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
   if (!tab) return;
-  if (!trace) traceStart(`tap ${TAB_OF[state.screen]}→${tab.dataset.tab}`);
   const sort = defaultSort(tab.dataset.tab);
   go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '', sg: '' }, true);
 });
@@ -7303,14 +7262,12 @@ async function start() {
   $('tab-income-ic').innerHTML = UI.income;
   $('tab-settings-ic').innerHTML = UI.settings;
   $('tab-stats-ic').innerHTML = UI.stats;
-  traceStart('запуск', 6000);
   // Есть ли банк — вместе с остальным стартовым, до первой отрисовки: от него зависит вид
   // «Расхода», и ответ, пришедший позже, перерисовывал экран посреди заливки кольца
   const [m, bank] = await Promise.all([api('/api/meta'), api('/api/bank').catch(() => null)]);
   meta = m;
   // Банк в бюджете — у себя или у другого участника: операции из него видны всем
   if (bank) bankLinked = (bank.links ?? []).some((l) => l.ops > 0) || bank.budget_ops > 0;
-  tr('стартовые данные пришли');
 
   // Пустой месяц на старте — не повод показывать ноль: открываем последний с данными
   const p = new URLSearchParams(location.search);
