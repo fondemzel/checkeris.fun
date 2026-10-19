@@ -4846,12 +4846,19 @@ addEventListener('touchstart', (e) => {
   if (field && (!swipeTab || field === document.activeElement || field.type === 'range')) return; // ползунок — свой жест
   if (e.target.closest('.chips, .drop-menu') || (!swipeTab && e.target.closest('[data-shift]'))) return;
   swipeFrom = { x: t.clientX, y: t.clientY, t: Date.now() };
+  swipeSpeed = { x: t.clientX, at: performance.now(), v: 0 };
 }, { passive: true });
 
 addEventListener('touchmove', (e) => {
   if (!swipeFrom) return;
   const dx = e.touches[0].clientX - swipeFrom.x;
   const dy = e.touches[0].clientY - swipeFrom.y;
+  // Скорость пальца, сглаженная: по ней подсказка тише при быстром свайпе (peekShow)
+  const now = performance.now();
+  if (now > swipeSpeed.at) {
+    const v = Math.abs(e.touches[0].clientX - swipeSpeed.x) / (now - swipeSpeed.at); // пикселей за мс
+    swipeSpeed = { x: e.touches[0].clientX, at: now, v: swipeSpeed.v * 0.7 + v * 0.3 };
+  }
   if (!swipeLock) {
     if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
     swipeLock = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'x' : 'y';
@@ -4892,6 +4899,7 @@ addEventListener('touchmove', (e) => {
 // пути до смены, держится посередине полосы (едет вместе с её краем) и заполнена целиком
 // ровно там, где по отпусканию экран сменится (SWIPE_TO), — тогда и название синеет
 let peekEl = null;
+let swipeSpeed = { x: 0, at: 0, v: 0 }; // палец: где был, когда и сглаженная скорость
 function peekShow(dx, name, below = '') {
   if (!name || !motion('peek')) return peekHide();
   if (!peekEl) {
@@ -4912,7 +4920,10 @@ function peekShow(dx, name, below = '') {
   peekEl.style.transition = 'none';
   peekEl.style.left = `${(dx < 0 ? w + dx / 2 : dx / 2).toFixed(1)}px`;
   // Не ярче 0,7: подсказка — на краю внимания, а не главное на экране
-  peekEl.style.opacity = (0.7 * Math.min(1, k * 2)).toFixed(3);
+  // Быстрый свайп — подсказка почти не видна: человек и так знает, куда листает. Медленный
+  // (до 0,3 пк/мс) — видна целиком (0,7), быстрее 1,2 пк/мс — едва (0,15 от неё)
+  const quiet = 1 - 0.85 * Math.min(1, Math.max(0, (swipeSpeed.v - 0.3) / 0.9));
+  peekEl.style.opacity = (0.7 * Math.min(1, k * 2) * quiet).toFixed(3);
   peekEl.style.setProperty('--k', k.toFixed(3));
   peekEl.classList.toggle('full', k >= 1);
   peekEl.classList.toggle('prev', dx > 0); // назад — полоска заполняется справа налево
