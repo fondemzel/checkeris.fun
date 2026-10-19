@@ -4576,6 +4576,7 @@ let swipeBusy = false;
 let swipeTab = false;
 const SWIPE_TABS = ['summary', 'income', 'settings', 'stats'];
 const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
+const TAB_SWIPE = 0.25; // доля ширины экрана: протянули дальше — по отпусканию вкладка сменится
 const swipeTabNext = (dx) => SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
 // Капсула выбранной вкладки на острове при свайпе: тянется к соседней вкладке вместе со сдвигом
 // экрана (дотянулась — когда экран сдвинут на полширины), по отпусканию стягивается на новую
@@ -4602,8 +4603,14 @@ function pillBox(name) {
 function pillDrag(dx, shift) {
   const cur = pillBox(TAB_OF[state.screen]);
   if (!cur) return;
-  document.querySelector('.tabs').classList.add('pill-on');
-  const next = pillBox(swipeTabNext(dx));
+  const tabs = document.querySelector('.tabs');
+  tabs.classList.add('pill-on');
+  // Протянули до места, где по отпусканию вкладка сменится, — соседняя плавно синеет, прежняя
+  // сереет; не дотянули обратно — наоборот
+  const name = swipeTabNext(dx);
+  for (const t of tabs.querySelectorAll('[data-tab]')) t.classList.toggle('pill-next', t.dataset.tab === name);
+  tabs.classList.toggle('pill-over', Boolean(name) && Math.abs(dx) >= window.innerWidth * TAB_SWIPE);
+  const next = pillBox(name);
   let { l, r } = cur;
   if (next) {
     const p = Math.min(1, Math.abs(dx) / (window.innerWidth * 0.5));
@@ -4631,7 +4638,8 @@ function pillSettle(name, ms, done = true) {
 function pillDone() {
   const tabs = document.querySelector('.tabs');
   tabs.classList.add('pill-swap');
-  tabs.classList.remove('pill-on');
+  tabs.classList.remove('pill-on', 'pill-over');
+  for (const t of tabs.querySelectorAll('.pill-next')) t.classList.remove('pill-next');
   tabPill?.remove();
   tabPill = null;
   requestAnimationFrame(() => requestAnimationFrame(() => tabs.classList.remove('pill-swap')));
@@ -4720,13 +4728,15 @@ async function swipeEnd(e) {
     // стороны (render, slideScreen)
     const back = 'translate 0.18s ease-out, opacity 0.18s ease-out';
     const next = swipeTabNext(dx);
-    if (e.type === 'touchcancel' || !next || (Math.abs(dx) < window.innerWidth * 0.25 && !fast)) {
+    if (e.type === 'touchcancel' || !next || (Math.abs(dx) < window.innerWidth * TAB_SWIPE && !fast)) {
       tabSet(0, '', back);
+      document.querySelector('.tabs').classList.remove('pill-over'); // цвета — плавно обратно
       pillSettle(TAB_OF[state.screen], 220);
       return;
     }
     if (motion('screens')) {
       pillSettle(next, 140, false);
+      document.querySelector('.tabs').classList.add('pill-over'); // быстрый взмах — не дотянули, а вкладка меняется
       swipeBusy = true;
       tabSet(Math.sign(dx) * window.innerWidth * 0.5, '0', 'translate 0.15s ease-in, opacity 0.15s ease-in');
       await new Promise((r) => setTimeout(r, 150));
