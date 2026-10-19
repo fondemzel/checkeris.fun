@@ -13,6 +13,8 @@ export const en = {
     purchases: ['purchase', 'purchases', 'purchases'],
     years: ['year', 'years', 'years'],
     failed: 'Didn’t work',
+    unsaved: '', // Изменения не сохранены. Закрыть без сохранения?
+    discard: '', // Не сохранять
     cancel: 'Cancel',
     yes: 'Yes',
     delete: 'Delete',

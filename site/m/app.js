@@ -710,6 +710,16 @@ const dropPopup = (el) => removePopup(el);
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 window.addEventListener('popstate', (e) => {
+  // «Назад» над листом с несохранённым: лист остаётся (запись истории — обратно), а вопрос —
+  // как при нажатии мимо. Окна поверх листа (тот же вопрос) «назад» закрывает
+  const open = [...document.querySelectorAll(OPEN_POPUPS)];
+  const guarded = !closingPopup && open.find((p) => p.guard?.());
+  if (guarded) {
+    history.pushState({ ...state, popup: true }, '', location.href);
+    for (const p of open.slice(open.indexOf(guarded) + 1)) removePopup(p);
+    closeGuarded(guarded);
+    return;
+  }
   // popup, sheet и scroll — пометки самой записи истории, в состоянии экрана им делать нечего
   const { popup, sheet, scroll, ...screenState } = e.state ?? {};
   if (e.state) Object.assign(state, screenState);
@@ -1408,33 +1418,57 @@ async function openLimitSheet(slug) {
           ${toggle('data-lim-fix', Boolean(full.fixed[slug]), P.fix)}
         </div>
       </div>
-      <button class="btn primary big" type="button" data-lim-save>${P.save}</button>
     </div>`, async (ev, close) => {
     const input = el.querySelector('#lim-input');
     if (ev.target.closest('[data-lim-usual]')) {
       input.value = rub(usual);
       el.querySelector('.lim-range').value = usual;
+      mark();
       return;
     }
     if (!ev.target.closest('[data-lim-save]')) return;
-    const on = el.querySelector('[data-lim-on]').checked;
-    const amount = on ? Number(input.value.replace(/[^\d]/g, '')) * 100 : 0;
+    const { on, amount, fix } = chosen();
     const btn = ev.target.closest('[data-lim-save]');
     btn.disabled = true;
     try {
       await api('/api/limits', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ limits: { [slug]: amount }, fixed: { [slug]: on && el.querySelector('[data-lim-fix]').checked } }),
+        body: JSON.stringify({ limits: { [slug]: amount }, fixed: { [slug]: on && fix } }),
       });
     } catch (err) {
       btn.disabled = false;
       toast(err.message);
       return;
     }
+    el.guard = null;
     close();
     limitsChanged();
+  }, {
+    // «Сохранить» — на месте крестика: закрывают лист «назад» и нажатием мимо. Доступна, только
+    // когда есть что сохранять; с несохранённым закрытие спрашивает
+    action: `<button class="picker-action" type="button" data-lim-save disabled>${P.save}</button>`,
+    dirty: () => changed(),
   });
+  // Что выбрано сейчас — и отличается ли от того, что было
+  const chosen = () => {
+    const on = el.querySelector('[data-lim-on]').checked;
+    return {
+      on,
+      amount: on ? Number(el.querySelector('#lim-input').value.replace(/[^\d]/g, '')) * 100 : 0,
+      fix: el.querySelector('[data-lim-fix]').checked,
+    };
+  };
+  const was = { amount: cur, fix: Boolean(full.fixed[slug]) };
+  const changed = () => {
+    const now = chosen();
+    return now.amount !== was.amount || (now.on && now.fix !== was.fix);
+  };
+  const mark = () => {
+    el.querySelector('[data-lim-save]').disabled = !changed();
+  };
+  el.addEventListener('change', mark);
+  el.addEventListener('input', () => setTimeout(mark, 0));
   el.addEventListener('change', (e) => {
     if (!e.target.matches('[data-lim-on]')) return;
     // Выключили — поля гаснут, но остаются на месте (и не правятся)
@@ -5939,22 +5973,40 @@ function focusNew() {
   input.select();
 }
 
-/** Лист выбора поверх экрана: заголовок, содержимое, закрытие крестиком и нажатием мимо. */
-function openChoice(title, body, onClick) {
+/**
+ * Лист выбора поверх экрана: заголовок, содержимое, закрытие крестиком и нажатием мимо.
+ * action — кнопка справа в заголовке вместо крестика (лист закрывают «назад» и нажатием мимо);
+ * dirty — есть ли несохранённое: тогда закрытие сначала спрашивает (closeGuarded).
+ */
+function openChoice(title, body, onClick, { action = '', dirty = null } = {}) {
   const el = document.createElement('div');
   el.className = 'picker';
   el.innerHTML = `
     <div class="picker-box" role="dialog" aria-label="${esc(title)}">
       <div class="picker-top"><div class="picker-title">${esc(title)}</div>
-        <button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button></div>
+        ${action || `<button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button>`}</div>
       ${body}
     </div>`;
+  el.guard = dirty;
   openPopup(el);
   el.addEventListener('click', (e) => {
-    if (e.target === el || e.target.closest('[data-close]')) return closePopup(el);
+    if (e.target === el || e.target.closest('[data-close]')) return closeGuarded(el);
     onClick(e, () => closePopup(el));
   });
   return el;
+}
+
+/** Закрыть лист; осталось несохранённое — сначала спросить. */
+function closeGuarded(el) {
+  if (!el.guard?.()) return closePopup(el);
+  if (el.asking) return null;
+  el.asking = true;
+  return ask(T.common.unsaved, { ok: T.common.discard, danger: true }).then((yes) => {
+    el.asking = false;
+    if (!yes) return;
+    el.guard = null;
+    closePopup(el);
+  });
 }
 
 const NEW_GROUP_COLOR = '#3b7bce';

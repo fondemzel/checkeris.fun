@@ -1661,6 +1661,9 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 
 .picker-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-weight: 600; }
 .picker-title { flex: 1; min-width: 0; }
+/* Действие в заголовке листа вместо крестика («Сохранить»): словом, без заливки */
+.picker-action { padding: 8px 4px 8px 12px; border: none; background: none; color: var(--accent); font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
+.picker-action:disabled { color: var(--muted); opacity: 0.6; cursor: default; }
 /* Названия в чеках длинные — до двух строк, дальше многоточие */
 .picker-for {
   display: -webkit-box;
