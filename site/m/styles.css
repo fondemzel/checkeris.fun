@@ -225,8 +225,10 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ── вкладки ───────────────────────────────────────────── */
 
-/* Нижнее меню — плавающий остров, как в Telegram: оторван от краёв, скруглён, с тенью;
-   лента просвечивает под ним. Выбранная вкладка — светлая капсула цвета акцента */
+/* Нижнее меню — плавающий остров, как в Telegram: оторван от краёв, скруглён, с тенью.
+   Фон сплошной, без размытия ленты под ним: Android WebView пересчитывает размытие, пока лента
+   анимируется (сдвиг экрана, заливка кольца), и остров моргал. Выбранная вкладка — светлая
+   капсула цвета акцента */
 .tabs {
   position: fixed;
   left: 10px;
@@ -239,11 +241,8 @@ button, input, select { font: inherit; color: inherit; }
   height: 52px; /* своя высота: иначе остров вырос бы до кнопки «+», а она должна выступать */
   padding: 4px;
   border-radius: 26px;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: var(--surface);
   box-shadow: 0 6px 24px rgba(15, 20, 28, 0.14), 0 0 0 1px rgba(15, 20, 28, 0.06);
-  transform: translateZ(0); /* свой слой: перерисовка ленты под ним его не задевает */
 }
 
 .tab {
@@ -1916,7 +1915,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
    сливался с лентой; тень плотнее (тёмная на тёмном почти не видна). Всё статичное — без
    пересчётов при прокрутке. Кольцо вокруг «+» — цвета острова: кнопка как бы вырезана в нём */
 :root[data-theme="dark"] .tabs {
-  background: color-mix(in srgb, #24303d 92%, transparent);
+  background: #24303d;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 :root[data-theme="dark"] .tab-add { border-color: #24303d; }
