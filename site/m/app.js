@@ -1432,7 +1432,7 @@ async function screenSetLimits() {
   const per = P.per[full.period];
   const main = section(T.settings.menu.label, full.on ? P.periodNote : P.offFoot,
     srow({ icon: UI.piggy, title: P.on, end: toggle('data-limits-toggle', full.on, P.on) })
-    + (full.on ? srow({ title: P.period, note: P.periods[full.period], attrs: `data-lim-period-pick="${full.period}"`, end: GO }) : ''));
+    + (full.on ? srow({ icon: UI.calendar, title: P.period, note: P.periods[full.period], attrs: `data-lim-period-pick="${full.period}"`, end: GO }) : ''));
   if (!full.on) return main;
   const groups = (meta?.categories ?? []).map((g) => {
     const amount = full.limits[g.slug] ?? 0;

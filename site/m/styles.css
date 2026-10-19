@@ -2080,6 +2080,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .lim-scale .link { font-size: 12px; text-decoration: none; }
 /* Настройки → Лимиты: отмеченный период и строка группы, с которой пришли */
 .lim-choice-note { margin: 10px 4px 0; font-size: 13px; }
+.choice-list .drop-ic:empty { display: none; }
 @keyframes lim-flash { 0%, 60% { background: color-mix(in srgb, var(--accent) 16%, transparent); } }
 .srow.lim-flash { animation: lim-flash 2.4s ease-out; }
 
