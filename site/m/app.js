@@ -4037,10 +4037,56 @@ function pulse(name) {
 // Куда шли к этому экрану: вглубь (go) или «назад» — по нему экраны въезжают справа
 // или слева (slideScreen)
 let navDir = '';
-// Въезд экрана (slideScreen, @keyframes slide-*): с какой доли ширины и за сколько мс
-const SLIDE_IN = { from: 0.3, ms: 320 };
-// Пока не исполнится — новый экран не ставится на место: свайп вкладок ждёт конца ухода старого
-let screenGate = null;
+// Свайп вкладок — лента страниц: старый и новый экран стоят вплотную и едут вместе, без
+// прозрачности. По отпусканию вкладка открывается сразу, старый экран ждёт там, где его
+// отпустили; когда новый готов, render переносит старый в отдельный слой (pagerDetach), ставит
+// новый и пускает оба (pagerPlay). { dx, done } — от свайпа
+let screenPager = null;
+const PAGER_MS = 300;
+
+function pagerDetach(p) {
+  const el = $('screen');
+  const r = el.getBoundingClientRect();
+  const box = document.createElement('div');
+  box.className = 'pager-old';
+  Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, translate: `${p.dx}px 0` });
+  // Шапка прилипала к верху — в отдельном слое прилипать не к чему: ставим её туда, где была
+  const head = el.querySelector(':scope > .stuck-head');
+  const headTop = head?.getBoundingClientRect().top;
+  for (const c of [...el.children]) {
+    c.style.transition = 'none';
+    c.style.translate = '';
+    box.append(c);
+  }
+  document.body.append(box);
+  if (head) {
+    head.style.position = 'relative';
+    head.style.top = '0';
+    head.style.top = `${headTop - head.getBoundingClientRect().top}px`;
+  }
+  p.box = box;
+}
+
+function pagerPlay(p) {
+  const el = $('screen');
+  const w = window.innerWidth;
+  const side = p.dx < 0 ? 1 : -1; // новый — с той стороны, куда тянули
+  const start = side * w + p.dx; // вплотную к старому
+  el.classList.add('paging');
+  const t0 = performance.now();
+  const frame = () => {
+    const k = Math.min(1, (performance.now() - t0) / PAGER_MS);
+    const x = start * (1 - k) ** 3; // с разгона — к плавной остановке
+    el.style.setProperty('--px', `${x.toFixed(1)}px`);
+    p.box.style.translate = `${(x - side * w).toFixed(1)}px 0`;
+    if (k < 1) return requestAnimationFrame(frame);
+    el.classList.remove('paging');
+    el.style.removeProperty('--px');
+    p.box.remove();
+    return p.done?.();
+  };
+  frame();
+}
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
 
 // Готовые экраны — чтобы вернуться на знакомый мгновенно. Ключ — адрес экрана со всеми
@@ -4093,24 +4139,21 @@ async function render() {
     && tabs.includes(TAB_OF[state.screen]) && tabs.includes(TAB_OF[shownScreen]);
   const dir = tabSwitch ? (tabs.indexOf(TAB_OF[state.screen]) > tabs.indexOf(TAB_OF[shownScreen]) ? 'fwd' : 'back') : navDir;
   navDir = '';
-  const slide = shown && !sameScreen && dir && motion('screens') ? dir : '';
-  // Шапка стоит на месте — если не уехала за пальцем (свайп вкладок: тогда въезжает и она)
-  slideHead = !screenGate && Boolean(document.querySelector('#screen > .stuck-head .total'));
-  const sameKind = shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide));
+  const pager = screenPager;
+  screenPager = null;
+  const slide = shown && !sameScreen && dir && !pager && motion('screens') ? dir : '';
+  slideHead = Boolean(document.querySelector('#screen > .stuck-head .total'));
+  const sameKind = shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide || pager));
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
   const key = location.search;
   const cached = !sameScreen && CACHED.includes(state.screen) ? screenCache.get(key) : null;
-  const gate = screenGate;
-  screenGate = null;
-  if (cached && gate) {
-    await gate;
-    if (seq !== renderSeq) return;
-  }
   if (cached) {
+    if (pager) pagerDetach(pager);
     $('screen').innerHTML = cached;
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
     slideScreen(slide);
+    if (pager) pagerPlay(pager);
     shownScreen = state.screen;
     // Кольцо заливается сразу, а свежие данные — после заливки (ниже): их разбор занимает
     // телефон, и заливка, идущая в это время, запиналась. Ждать данных с пустым кольцом —
@@ -4135,8 +4178,6 @@ async function render() {
     }
     const html = await screen.render();
     if (seq !== renderSeq) return;
-    if (gate) await gate; // разметка готова раньше, чем старый экран уехал, — ждём его
-    if (seq !== renderSeq) return;
     if (CACHED.includes(state.screen)) remember(key, html);
     // Тот же список — остаёмся там же, где листали; другой — смотрим с начала
     const keepScroll = sameScreen || cached ? window.scrollY : 0;
@@ -4144,10 +4185,12 @@ async function render() {
     if (sameScreen && document.activeElement?.id === 'q') patchKeepingSearch(html);
     // Ничего не изменилось — не трогаем: перерисовка сбросила бы нажатие и фокус
     else if (html !== cached) {
+      if (pager && !cached) pagerDetach(pager);
       $('screen').innerHTML = html;
       window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
       if (!cached) slideScreen(slide);
-    }
+      if (pager && !cached) pagerPlay(pager);
+    } else if (pager && !cached) pager.done?.(); // экран не сменился — ждать нечего
     // Сумма прокручивается: впервые — от прежней; перерисовали посреди прокрутки — продолжаем её
     const sumEl = document.querySelector('#screen .total-sum');
     const rolling = rolled && sumEl?.textContent === rolled.to && performance.now() - rolled.at < ROLL_MS;
@@ -4751,23 +4794,16 @@ async function swipeEnd(e) {
       document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
       return;
     }
-    // Уход и въезд — одним движением. Новая вкладка открывается сразу (данные и разметка
-    // готовятся, пока старый экран уезжает), а на место встаёт ровно в конце ухода (screenGate).
-    // Уход разгоняется до той же скорости, с которой начинается въезд (SLIDE_IN): уход
-    // кончается наклоном 4 (cubic-bezier 0.5, 0, 0.75, 0), въезд начинается с того же наклона
-    // (0.2, 0.8, …) — подбираем длительность ухода под его путь
-    const w = window.innerWidth;
-    const way = w * 0.2; // ещё столько уезжает старый экран после пальца
-    const ms = Math.round((way * SLIDE_IN.ms) / (SLIDE_IN.from * w));
-    pillSettle(next, ms);
+    // Лента страниц (screenPager): вкладка открывается сразу, старый экран ждёт на месте
+    // отпускания, пока новый не готов, — и дальше оба едут вместе
+    pillSettle(next, PAGER_MS);
     document.querySelector('.tabs').classList.add('pill-over'); // быстрый взмах — не дотянули, а вкладка меняется
-    const curve = `${ms}ms cubic-bezier(0.5, 0, 0.75, 0)`;
-    tabSet(dx + Math.sign(dx) * way, '0', `translate ${curve}, opacity ${curve}`);
     swipeBusy = true;
-    const gate = new Promise((r) => setTimeout(r, ms));
-    screenGate = gate;
+    const done = new Promise((r) => {
+      screenPager = { dx, done: r };
+    });
     document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
-    await gate;
+    await Promise.race([done, new Promise((r) => setTimeout(r, 4000))]);
     swipeBusy = false;
     return;
   }
