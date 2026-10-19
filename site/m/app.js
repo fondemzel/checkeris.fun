@@ -4619,10 +4619,15 @@ function pillSettle(name) {
   if (!tabPill || !to) return;
   pillSet(to.l, to.r, to, 'left 0.22s cubic-bezier(0.2, 0.8, 0.3, 1), width 0.22s cubic-bezier(0.2, 0.8, 0.3, 1)');
   clearTimeout(pillSettle.timer);
+  // Капсула уходит, фон вкладки появляется в том же кадре: без плавной смены фона вкладки
+  // (.pill-swap), иначе он проявлялся бы за капсулой и в конце мигало
   pillSettle.timer = setTimeout(() => {
-    document.querySelector('.tabs').classList.remove('pill-on');
+    const tabs = document.querySelector('.tabs');
+    tabs.classList.add('pill-swap');
+    tabs.classList.remove('pill-on');
     tabPill?.remove();
     tabPill = null;
+    requestAnimationFrame(() => requestAnimationFrame(() => tabs.classList.remove('pill-swap')));
   }, 240);
 }
 

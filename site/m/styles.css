@@ -273,7 +273,8 @@ button, input, select { font: inherit; color: inherit; }
 /* Капсула, которая при свайпе вкладок тянется к соседней (pillDrag): того же цвета, что фон
    выбранной вкладки, под значками; свой фон выбранной на это время спрятан */
 .tab-pill { position: absolute; border-radius: 22px; background: var(--accent-faint); pointer-events: none; }
-.tabs.pill-on .tab.on { background: none; transition: color 0.15s; }
+.tabs.pill-on .tab, .tabs.pill-swap .tab { transition: none; }
+.tabs.pill-on .tab.on { background: none; }
 
 /* Главное действие — посередине острова, крупнее его: выступает над верхним краем,
    а белое кольцо будто вырезает место в острове */
