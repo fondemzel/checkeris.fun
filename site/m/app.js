@@ -4829,7 +4829,7 @@ addEventListener('touchmove', (e) => {
   if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
   swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
   const next = swipeTarget(dx < 0 ? 1 : -1);
-  peekShow(dx, next && humanPeriod(next.from, next.to));
+  peekShow(dx, next && humanPeriod(next.from, next.to), tabLabel(TAB_OF[state.screen])); // «Расход» над «Сентябрь 2026»
 }, { passive: false });
 
 // Подсказка в полосе, которая освобождается при свайпе (периода или вкладки): куда листаем —
@@ -4837,18 +4837,21 @@ addEventListener('touchmove', (e) => {
 // пути до смены, держится посередине полосы (едет вместе с её краем) и заполнена целиком
 // ровно там, где по отпусканию экран сменится (TAB_SWIPE), — тогда и название синеет
 let peekEl = null;
-function peekShow(dx, name) {
+function peekShow(dx, name, over = '') {
   if (!name) return peekHide();
   if (!peekEl) {
     peekEl = document.createElement('div');
     peekEl.className = 'peek';
-    peekEl.innerHTML = '<span class="peek-name"></span><span class="peek-bar"><i></i></span>';
+    peekEl.innerHTML = '<span class="peek-over"></span><span class="peek-name"></span><span class="peek-bar"><i></i></span>';
     document.body.append(peekEl);
   }
   const w = window.innerWidth;
   const way = Math.abs(dx);
   const k = Math.min(1, way / (w * TAB_SWIPE));
   peekEl.querySelector('.peek-name').textContent = name;
+  const top = peekEl.querySelector('.peek-over');
+  top.textContent = over;
+  top.hidden = !over;
   peekEl.style.transition = 'none';
   peekEl.style.left = `${(dx < 0 ? w + dx / 2 : dx / 2).toFixed(1)}px`;
   peekEl.style.opacity = Math.min(1, way / (w * TAB_SWIPE * 0.5)).toFixed(3);
