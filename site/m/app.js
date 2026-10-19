@@ -823,7 +823,9 @@ async function screenSummary() {
   const [data, ops, failed, self, limits] = await Promise.all([
     apiFeed(feeds.items),
     apiFeed(feeds.ops).catch(() => null),
-    api('/api/scan?state=failed').catch(() => null),
+    // Сканы с ошибкой — из памяти лент: свежим запросом на каждую смену периода экран ждал
+    // сервер, и свайп периода запинался пустотой. Правка и новый скан память сбрасывают
+    apiFeed('/api/scan?state=failed').catch(() => null),
     feeds.self ? apiFeed(feeds.self).catch(() => null) : null,
     feeds.limits ? apiFeed(feeds.limits).catch(() => null) : null,
   ]);
@@ -2920,7 +2922,8 @@ async function submitScan(current, qr) {
     closeScanner();
     go({ screen: 'added', added: String(job.receipt_id) });
   } else if (job.status === 'failed') {
-    api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
+    feedData.delete('/api/scan?state=failed');
+    apiFeed('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
     scannerSay(
       current,
       `${esc(jobIsSync(job) ? 'ФНС пока не получила этот чек от кассы.' : `Не вышло: ${job.error ?? ''}`)}
