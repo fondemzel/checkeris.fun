@@ -1045,7 +1045,7 @@ function playRing(start = true) {
   // Таблица под кольцом проявляется по строке вместе с заливкой. Пока заливка ждёт старта
   // (сохранённый вид, свежие данные ещё в пути) — строки скрыты: иначе мелькнули бы и пропали
   // Приехал лентой страниц — расшифровка приехала с ним и не проявляется заново
-  const legend = ringPlayed.at == null && motion('sections') && !pagerLanded ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
+  const legend = ringPlayed.at == null && motion('sections') && !arrived ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
   legend.forEach((el) => el.classList.add('row-wait'));
   const fresh = ringPlayed.at == null;
   if (fresh) fillLimitBars(true); // полоса лимита под кольцом — с нуля, вместе с заливкой
@@ -4044,7 +4044,9 @@ let navDir = '';
 // ту же ленту по общим часам (pagerJoin из render): ровно там, где ему быть в эту минуту.
 // { dx, done, finished } — от свайпа
 let screenPager = null;
-let pagerLanded = false; // экран только что приехал лентой: свои анимации появления ему не нужны
+// Экран приехал движением (сдвиг по нажатию или лента страниц): строки приехали с ним и
+// второй раз не проявляются, а заливки (кольцо, полосы, счётчик) ждут его остановки
+let arrived = false;
 const PAGER_MS = 320;
 const PAGER_EASE = 'cubic-bezier(0.25, 0.75, 0.35, 1)';
 
@@ -4111,6 +4113,13 @@ let shownScreen = null; // что сейчас на экране: по нему 
 // Живут до перезагрузки страницы; свежий вид всё равно приходит следом и заменяет прошлый
 const CACHED = ['summary', 'group', 'category', 'receipts', 'bank', 'income', 'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'privacy', 'bank_card', 'bank_add', 'bank_safety'];
 const screenCache = new Map();
+/**
+ * Ключ сохранённого вида экрана: адрес и то, что меняет вид, но в адрес не входит, — режим
+ * «кольцо / список», раскрытая группа и «Остальное» кольца, поиск. Без них, вернувшись,
+ * человек видел прошлый режим, а потом его подменял нужный.
+ */
+const viewKey = () => [location.search, state.mode, state.ringGroup, state.ringRest, state.q, state.same].join('|');
+
 function remember(key, html) {
   screenCache.delete(key); // свежий — в конец очереди
   screenCache.set(key, html);
@@ -4162,39 +4171,45 @@ async function render() {
   const sameKind = (shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide))) || Boolean(pager);
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
-  const key = location.search;
+  const key = viewKey();
   const cached = !sameScreen && CACHED.includes(state.screen) ? screenCache.get(key) : null;
+  // Экран въезжает (сдвиг или лента) — landed: когда он встанет на место
+  let landed = null;
+  const arrive = () => {
+    $('screen').classList.remove('busy'); // приглушение было прежнему экрану, не новому
+    landed = pager ? (pagerJoin(pager), pager.finished) : slideScreen(slide);
+    if (!landed) return;
+    arrived = true;
+    if (state.screen === 'stats') holdAnalytics();
+    playRing(false); // кольцо въезжает пустым
+    listPlayed = sectionsKey(); // строки въезжают вместе с экраном, отдельно не проявляются
+  };
   if (cached) {
     $('screen').innerHTML = cached;
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
-    slideScreen(slide);
-    if (pager) pagerJoin(pager);
+    arrive();
     shownScreen = state.screen;
-    // Кольцо заливается сразу, а свежие данные — после заливки (ниже): их разбор занимает
-    // телефон, и заливка, идущая в это время, запиналась. Ждать данных с пустым кольцом —
-    // тоже нехорошо: видна одна сумма в центре и затык. Листание вкладок — заливка после
-    // остановки страниц (ниже), пока они едут — пустое кольцо
-    if (pager) {
-      pagerLanded = true;
-      playRing(false);
-      listPlayed = sectionsKey(); // строки въезжают вместе со страницей, отдельно не проявляются
-    } else ringNow = playRing() === true;
-    // Лента проявляется сразу с сохранённым видом: иначе строки были бы видны, потом пропадали
-    // и проявлялись заново, когда придёт свежий вид
-    if (!pager) playList();
+    // Без въезда кольцо заливается сразу, а свежие данные — после заливки (ниже): их разбор
+    // занимает телефон, и заливка, идущая в это время, запиналась. Лента проявляется сразу
+    // с сохранённым видом: иначе строки мелькнули бы и проявились заново со свежим
+    if (!landed) {
+      ringNow = playRing() === true;
+      playList();
+    }
   } else if (!sameScreen && !sameKind) {
     $('screen').innerHTML = loading();
     window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
   }
   // Ответ задерживается — показываем это не пустотой, а приглушением списка. Если на экране
   // уже прошлый вид, не гасим: он почти наверняка верный, свежий тихо его заменит
-  const dim = setTimeout(() => seq === renderSeq && !cached && !pager && $('screen').classList.add('busy'), 250);
+  // Приглушается прежний экран, пока ждём; новый, уже въезжающий (landed), — никогда
+  const dim = setTimeout(() => seq === renderSeq && !cached && !pager && !landed && $('screen').classList.add('busy'), 250);
   // (ringNow — с сохранённым видом пошла заливка кольца: свежие данные ждут её конца)
 
   try {
-    // Страницы едут — ничего тяжёлого: свежие данные и заливка кольца — после остановки
-    if (pager && cached) {
-      await pager.finished;
+    // Экран едет — ничего тяжёлого: заливка кольца и свежие данные — после остановки
+    if (landed) {
+      await landed;
       if (seq !== renderSeq) return;
       ringNow = playRing() === true;
     }
@@ -4213,15 +4228,12 @@ async function render() {
     else if (html !== cached) {
       $('screen').innerHTML = html;
       window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
-      if (!cached) slideScreen(slide);
-      if (pager && !cached) {
-        pagerLanded = true;
-        pagerJoin(pager);
-        if (state.screen === 'stats') holdAnalytics();
-        playRing(false);
-        listPlayed = sectionsKey();
-        await pager.finished;
-        if (seq !== renderSeq) return;
+      if (!cached) {
+        arrive();
+        if (landed) {
+          await landed;
+          if (seq !== renderSeq) return;
+        }
       }
     } else if (pager && !cached) pager.done?.(); // экран не сменился — ждать нечего
     // Сумма прокручивается: впервые — от прежней; перерисовали посреди прокрутки — продолжаем её
@@ -4233,7 +4245,7 @@ async function render() {
     playList();
     shownScreen = state.screen;
     screen.after?.();
-    pagerLanded = false;
+    arrived = false;
     if (pendingReceipt) {
       const id = pendingReceipt;
       pendingReceipt = 0;
@@ -4261,27 +4273,31 @@ async function render() {
  */
 let slideHead = false; // на прежнем экране была шапка с итогом (render запоминает до перерисовки)
 function slideScreen(dir) {
-  if (!dir) return;
+  if (!dir) return null;
   const el = $('screen');
   // Сдвигается содержимое, а не сам #screen: его обрезка по краю (overflow-x: clip) ловит
   // только содержимое. Сдвинутый целиком, он делал страницу шире окна, и Android WebView на
   // время анимации перестраивал окно — остров меню пропадал
   const keep = slideHead && el.querySelector(':scope > .stuck-head .total');
   const parts = [...el.children].filter((c) => !(keep && c.matches('.stuck-head')));
-  if (!parts.length) return;
+  if (!parts.length) return null;
   for (const p of el.children) p.classList.remove('slide-fwd', 'slide-back');
   void el.offsetWidth; // перезапустить анимацию, если прошлая не кончилась
   parts.forEach((p) => p.classList.add(`slide-${dir}`));
   clearTimeout(slideScreen.timer);
   // Конец именно сдвига: анимации строк внутри экрана всплывают сюда же и обрывали бы его
   const first = parts[0];
-  const done = (e) => {
-    if (e && e.target !== first) return;
-    first.removeEventListener('animationend', done);
-    parts.forEach((p) => p.classList.remove(`slide-${dir}`));
-  };
-  first.addEventListener('animationend', done);
-  slideScreen.timer = setTimeout(() => done(), 600); // анимацию прервала перерисовка — всё равно вернуть как было
+  return new Promise((resolve) => {
+    const done = (e) => {
+      if (e && e.target !== first) return;
+      first.removeEventListener('animationend', done);
+      clearTimeout(slideScreen.timer);
+      parts.forEach((p) => p.classList.remove(`slide-${dir}`));
+      resolve();
+    };
+    first.addEventListener('animationend', done);
+    slideScreen.timer = setTimeout(() => done(), 600); // анимацию прервала перерисовка — всё равно вернуть как было
+  });
 }
 
 /**
@@ -4580,7 +4596,7 @@ addEventListener('touchend', async () => {
   puller.style.transform = `translateY(${PULL_AT}px)`;
   try {
     // Свежие данные и справочники; кружок крутится хотя бы мгновение — иначе не видно, что было
-    screenCache.delete(location.search);
+    screenCache.delete(viewKey());
     feedData.clear();
     kept.clear();
     reloadIfUpdated();
@@ -7542,8 +7558,8 @@ function holdAnalytics() {
 function animateAnalytics() {
   const rows = [...document.querySelectorAll('#screen .ana-row')];
   // Приехал лентой страниц — строки приехали с ней, второй раз не проявляются
-  const rowsOn = motion('sections') && !pagerLanded;
-  pagerLanded = false;
+  const rowsOn = motion('sections') && !arrived;
+  arrived = false;
   if (rowsOn) {
     rows.forEach((el, i) => {
       el.style.setProperty('--i', i);
