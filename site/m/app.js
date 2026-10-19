@@ -1336,7 +1336,7 @@ function limitCard(st, slug = '') {
     <div class="card lim-card${limit ? '' : ' empty'}">
       <div class="lim-top">
         <span class="lim-title">${title}</span>
-        <button class="link lim-edit" type="button" data-lim-edit="${esc(slug)}">${slug ? (limit ? P.edit : P.set) : P.setup}</button>
+        <button class="icon-btn soft lim-edit" type="button" data-lim-edit="${esc(slug)}" aria-label="${esc(slug ? (limit ? P.edit : P.set) : P.setup)}" title="${esc(slug ? (limit ? P.edit : P.set) : P.setup)}">${slug ? UI.pen : UI.settings}</button>
       </div>
       <div class="lim-bar">
         <span class="lim-run" data-w="${w.toFixed(2)}" style="--w:${w.toFixed(2)}%">
@@ -1445,10 +1445,11 @@ async function openLimitSheet(slug) {
     close();
     limitsChanged();
   }, {
-    // «Сохранить» — на месте крестика: закрывают лист «назад» и нажатием мимо. Доступна, только
+    // «Сохранить» (галочка) — на месте крестика: закрывают лист «назад» и нажатием мимо. Доступна, только
     // когда есть что сохранять; с несохранённым закрытие спрашивает
-    action: `<button class="picker-action" type="button" data-lim-save disabled>${P.save}</button>`,
+    action: `<button class="icon-btn primary picker-save" type="button" data-lim-save disabled aria-label="${esc(P.save)}" title="${esc(P.save)}">${UI.ok}</button>`,
     dirty: () => changed(),
+    note: P.sheetNote,
   });
   // Что выбрано сейчас — и отличается ли от того, что было
   const chosen = () => {
@@ -5976,14 +5977,15 @@ function focusNew() {
 /**
  * Лист выбора поверх экрана: заголовок, содержимое, закрытие крестиком и нажатием мимо.
  * action — кнопка справа в заголовке вместо крестика (лист закрывают «назад» и нажатием мимо);
+ * note — пояснение мелким под заголовком;
  * dirty — есть ли несохранённое: тогда закрытие сначала спрашивает (closeGuarded).
  */
-function openChoice(title, body, onClick, { action = '', dirty = null } = {}) {
+function openChoice(title, body, onClick, { action = '', dirty = null, note = '' } = {}) {
   const el = document.createElement('div');
   el.className = 'picker';
   el.innerHTML = `
     <div class="picker-box" role="dialog" aria-label="${esc(title)}">
-      <div class="picker-top"><div class="picker-title">${esc(title)}</div>
+      <div class="picker-top"><div class="picker-title">${esc(title)}${note ? `<small class="note picker-note">${esc(note)}</small>` : ''}</div>
         ${action || `<button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button>`}</div>
       ${body}
     </div>`;
