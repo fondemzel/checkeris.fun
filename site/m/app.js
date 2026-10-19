@@ -1044,7 +1044,8 @@ function playRing(start = true) {
   paint(ringPlayed.at == null ? 0 : performance.now() - ringPlayed.at);
   // Таблица под кольцом проявляется по строке вместе с заливкой. Пока заливка ждёт старта
   // (сохранённый вид, свежие данные ещё в пути) — строки скрыты: иначе мелькнули бы и пропали
-  const legend = ringPlayed.at == null && motion('sections') ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
+  // Приехал лентой страниц — расшифровка приехала с ним и не проявляется заново
+  const legend = ringPlayed.at == null && motion('sections') && !pagerLanded ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
   legend.forEach((el) => el.classList.add('row-wait'));
   const fresh = ringPlayed.at == null;
   if (fresh) fillLimitBars(true); // полоса лимита под кольцом — с нуля, вместе с заливкой
@@ -4082,12 +4083,16 @@ function pagerLeave(p) {
 function pagerJoin(p) {
   const start = p.side * window.innerWidth + p.dx; // вплотную к старому в начале пути
   const t = p.anim.startTime;
-  for (const c of $('screen').children) {
+  // Вставлен вовремя (почти у края) — просто едет; опоздал — короткое проявление прячет
+  // появление посреди пути. Иначе полупрозрачный новый рядом с плотным старым мерцал
+  const late = (p.anim.currentTime ?? 0) > PAGER_MS * 0.25;
+  const el = $('screen');
+  el.classList.remove('busy'); // приглушение «идёт загрузка» — не новому экрану
+  for (const c of el.children) {
     const move = c.animate([{ transform: `translateX(${start}px)` }, { transform: 'translateX(0)' }], { duration: PAGER_MS, easing: PAGER_EASE });
     if (t != null) move.startTime = t; // те же часы, что у старого: стоят вплотную
     p.moves.push(move);
-    // Вставка могла опоздать к началу пути — короткое проявление прячет появление
-    c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+    if (late) c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
   }
   pagerEnd(p);
 }
@@ -4170,6 +4175,7 @@ async function render() {
     // тоже нехорошо: видна одна сумма в центре и затык. Листание вкладок — заливка после
     // остановки страниц (ниже), пока они едут — пустое кольцо
     if (pager) {
+      pagerLanded = true;
       playRing(false);
       listPlayed = sectionsKey(); // строки въезжают вместе со страницей, отдельно не проявляются
     } else ringNow = playRing() === true;
@@ -4182,7 +4188,7 @@ async function render() {
   }
   // Ответ задерживается — показываем это не пустотой, а приглушением списка. Если на экране
   // уже прошлый вид, не гасим: он почти наверняка верный, свежий тихо его заменит
-  const dim = setTimeout(() => seq === renderSeq && !cached && $('screen').classList.add('busy'), 250);
+  const dim = setTimeout(() => seq === renderSeq && !cached && !pager && $('screen').classList.add('busy'), 250);
   // (ringNow — с сохранённым видом пошла заливка кольца: свежие данные ждут её конца)
 
   try {
@@ -4209,8 +4215,8 @@ async function render() {
       window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
       if (!cached) slideScreen(slide);
       if (pager && !cached) {
-        pagerJoin(pager);
         pagerLanded = true;
+        pagerJoin(pager);
         if (state.screen === 'stats') holdAnalytics();
         playRing(false);
         listPlayed = sectionsKey();
@@ -4784,8 +4790,9 @@ addEventListener('touchmove', (e) => {
   if (swipeTab) {
     // Экран тянется за пальцем; дальше крайней вкладки — туго, как резина
     if (!motion('screens')) return;
+    // Лента страниц — без прозрачности: бледный старый рядом с ярким новым мерцал
     const shift = swipeTabNext(dx) ? dx : dx * 0.25;
-    tabSet(shift, String(1 - Math.min(0.5, Math.abs(shift) / window.innerWidth)), '');
+    tabSet(shift, '', '');
     pillDrag(dx, shift);
     return;
   }
