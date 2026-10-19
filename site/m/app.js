@@ -4037,6 +4037,10 @@ function pulse(name) {
 // Куда шли к этому экрану: вглубь (go) или «назад» — по нему экраны въезжают справа
 // или слева (slideScreen)
 let navDir = '';
+// Въезд экрана (slideScreen, @keyframes slide-*): с какой доли ширины и за сколько мс
+const SLIDE_IN = { from: 0.3, ms: 320 };
+// Пока не исполнится — новый экран не ставится на место: свайп вкладок ждёт конца ухода старого
+let screenGate = null;
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
 
 // Готовые экраны — чтобы вернуться на знакомый мгновенно. Ключ — адрес экрана со всеми
@@ -4090,12 +4094,19 @@ async function render() {
   const dir = tabSwitch ? (tabs.indexOf(TAB_OF[state.screen]) > tabs.indexOf(TAB_OF[shownScreen]) ? 'fwd' : 'back') : navDir;
   navDir = '';
   const slide = shown && !sameScreen && dir && motion('screens') ? dir : '';
-  slideHead = Boolean(document.querySelector('#screen > .stuck-head .total'));
+  // Шапка стоит на месте — если не уехала за пальцем (свайп вкладок: тогда въезжает и она)
+  slideHead = !screenGate && Boolean(document.querySelector('#screen > .stuck-head .total'));
   const sameKind = shown && ((EXPENSE.includes(state.screen) && EXPENSE.includes(shownScreen)) || Boolean(slide));
   // Экран уже открывали — сразу показываем, каким он был, а свежий вид подставим, когда
   // придут данные. Иначе «назад» каждый раз упирается в «Загрузку»
   const key = location.search;
   const cached = !sameScreen && CACHED.includes(state.screen) ? screenCache.get(key) : null;
+  const gate = screenGate;
+  screenGate = null;
+  if (cached && gate) {
+    await gate;
+    if (seq !== renderSeq) return;
+  }
   if (cached) {
     $('screen').innerHTML = cached;
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
@@ -4123,6 +4134,8 @@ async function render() {
       if (seq !== renderSeq) return;
     }
     const html = await screen.render();
+    if (seq !== renderSeq) return;
+    if (gate) await gate; // разметка готова раньше, чем старый экран уехал, — ждём его
     if (seq !== renderSeq) return;
     if (CACHED.includes(state.screen)) remember(key, html);
     // Тот же список — остаёмся там же, где листали; другой — смотрим с начала
@@ -4734,16 +4747,28 @@ async function swipeEnd(e) {
       pillSettle(TAB_OF[state.screen], 220);
       return;
     }
-    if (motion('screens')) {
-      pillSettle(next, 140, false);
-      document.querySelector('.tabs').classList.add('pill-over'); // быстрый взмах — не дотянули, а вкладка меняется
-      swipeBusy = true;
-      tabSet(Math.sign(dx) * window.innerWidth * 0.5, '0', 'translate 0.15s ease-in, opacity 0.15s ease-in');
-      await new Promise((r) => setTimeout(r, 150));
-      swipeBusy = false;
+    if (!motion('screens')) {
+      document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
+      return;
     }
-    document.querySelector(`.tabs [data-tab="${next}"]`)?.click(); // выбранная вкладка — уже новая
-    if (tabPill) pillDone();
+    // Уход и въезд — одним движением. Новая вкладка открывается сразу (данные и разметка
+    // готовятся, пока старый экран уезжает), а на место встаёт ровно в конце ухода (screenGate).
+    // Уход разгоняется до той же скорости, с которой начинается въезд (SLIDE_IN): уход
+    // кончается наклоном 4 (cubic-bezier 0.5, 0, 0.75, 0), въезд начинается с того же наклона
+    // (0.2, 0.8, …) — подбираем длительность ухода под его путь
+    const w = window.innerWidth;
+    const way = w * 0.2; // ещё столько уезжает старый экран после пальца
+    const ms = Math.round((way * SLIDE_IN.ms) / (SLIDE_IN.from * w));
+    pillSettle(next, ms);
+    document.querySelector('.tabs').classList.add('pill-over'); // быстрый взмах — не дотянули, а вкладка меняется
+    const curve = `${ms}ms cubic-bezier(0.5, 0, 0.75, 0)`;
+    tabSet(dx + Math.sign(dx) * way, '0', `translate ${curve}, opacity ${curve}`);
+    swipeBusy = true;
+    const gate = new Promise((r) => setTimeout(r, ms));
+    screenGate = gate;
+    document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
+    await gate;
+    swipeBusy = false;
     return;
   }
   const ease = 'translate 0.18s ease-out, opacity 0.18s ease-out';
