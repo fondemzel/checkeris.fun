@@ -1159,7 +1159,7 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
   const arrange = (items) => {
     const [first, ...rest] = items;
     for (const k of [0.5, 0, 1, 0.25, 0.75]) {
-      let budget = 20000;
+      let budget = 500; // удачный порядок находится быстро; дольше — почти всегда впустую (тогда слияние)
       const order = [first];
       const left = new Set(rest);
       place(first, -k * first.ang + first.ang / 2);
