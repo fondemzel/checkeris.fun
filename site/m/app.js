@@ -4067,28 +4067,24 @@ function pagerDetach(p) {
   p.box = box;
 }
 
+// Движение — анимациями браузера (Web Animations, transform): их ведёт не скрипт, и они идут
+// ровно, даже пока скрипт занят. Время начинается с первого нарисованного кадра — тяжёлая
+// вставка нового экрана его не съедает. Кольцо, строки и свежие данные нового экрана ждут
+// остановки (p.finished — render)
 function pagerPlay(p) {
-  const el = $('screen');
   const w = window.innerWidth;
   const side = p.dx < 0 ? 1 : -1; // новый — с той стороны, куда тянули
   const start = side * w + p.dx; // вплотную к старому
-  el.classList.add('paging');
-  // Отсчёт — с первого нарисованного кадра, а не с вставки: вставка нового экрана — тяжёлый
-  // кадр (разметка, раскладка), и при отсчёте от неё первый видимый кадр перескакивал вперёд
-  let t0 = null;
-  const frame = (first) => {
-    if (!first) t0 ??= performance.now();
-    const k = t0 == null ? 0 : Math.min(1, (performance.now() - t0) / PAGER_MS);
-    const x = start * (1 - k) ** 3; // с разгона — к плавной остановке
-    el.style.setProperty('--px', `${x.toFixed(1)}px`);
-    p.box.style.translate = `${(x - side * w).toFixed(1)}px 0`;
-    if (k < 1) return requestAnimationFrame(frame);
-    el.classList.remove('paging');
-    el.style.removeProperty('--px');
+  const opts = { duration: PAGER_MS, easing: 'cubic-bezier(0.25, 0.75, 0.35, 1)' };
+  p.box.style.translate = '';
+  const moves = [
+    p.box.animate([{ transform: `translateX(${p.dx}px)` }, { transform: `translateX(${-side * w}px)` }], { ...opts, fill: 'forwards' }),
+    ...[...$('screen').children].map((c) => c.animate([{ transform: `translateX(${start}px)` }, { transform: 'translateX(0)' }], opts)),
+  ];
+  Promise.all(moves.map((m) => m.finished.catch(() => null))).then(() => {
     p.box.remove();
-    return p.done?.();
-  };
-  frame(true); // исходное место — сразу, до тяжёлого кадра
+    p.done?.();
+  });
 }
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
 
@@ -4160,11 +4156,15 @@ async function render() {
     shownScreen = state.screen;
     // Кольцо заливается сразу, а свежие данные — после заливки (ниже): их разбор занимает
     // телефон, и заливка, идущая в это время, запиналась. Ждать данных с пустым кольцом —
-    // тоже нехорошо: видна одна сумма в центре и затык
-    ringNow = playRing() === true;
+    // тоже нехорошо: видна одна сумма в центре и затык. Листание вкладок — заливка после
+    // остановки страниц (ниже), пока они едут — пустое кольцо
+    if (pager) {
+      playRing(false);
+      listPlayed = sectionsKey(); // строки въезжают вместе со страницей, отдельно не проявляются
+    } else ringNow = playRing() === true;
     // Лента проявляется сразу с сохранённым видом: иначе строки были бы видны, потом пропадали
     // и проявлялись заново, когда придёт свежий вид
-    playList();
+    if (!pager) playList();
   } else if (!sameScreen && !sameKind) {
     $('screen').innerHTML = loading();
     window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
@@ -4175,6 +4175,12 @@ async function render() {
   // (ringNow — с сохранённым видом пошла заливка кольца: свежие данные ждут её конца)
 
   try {
+    // Страницы едут — ничего тяжёлого: свежие данные и заливка кольца — после остановки
+    if (pager && cached) {
+      await pager.finished;
+      if (seq !== renderSeq) return;
+      ringNow = playRing() === true;
+    }
     if (ringNow) {
       await new Promise((r) => setTimeout(r, RING_ANIM));
       if (seq !== renderSeq) return;
@@ -4192,7 +4198,13 @@ async function render() {
       $('screen').innerHTML = html;
       window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
       if (!cached) slideScreen(slide);
-      if (pager && !cached) pagerPlay(pager);
+      if (pager && !cached) {
+        pagerPlay(pager);
+        playRing(false);
+        listPlayed = sectionsKey();
+        await pager.finished;
+        if (seq !== renderSeq) return;
+      }
     } else if (pager && !cached) pager.done?.(); // экран не сменился — ждать нечего
     // Сумма прокручивается: впервые — от прежней; перерисовали посреди прокрутки — продолжаем её
     const sumEl = document.querySelector('#screen .total-sum');
@@ -4802,11 +4814,13 @@ async function swipeEnd(e) {
     pillSettle(next, PAGER_MS);
     document.querySelector('.tabs').classList.add('pill-over'); // быстрый взмах — не дотянули, а вкладка меняется
     swipeBusy = true;
-    const done = new Promise((r) => {
-      screenPager = { dx, done: r };
+    let finish;
+    const finished = new Promise((r) => {
+      finish = r;
     });
+    screenPager = { dx, done: finish, finished };
     document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
-    await Promise.race([done, new Promise((r) => setTimeout(r, 4000))]);
+    await Promise.race([finished, new Promise((r) => setTimeout(r, 4000))]);
     swipeBusy = false;
     return;
   }

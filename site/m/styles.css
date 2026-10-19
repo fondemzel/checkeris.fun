@@ -828,9 +828,8 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 @keyframes slide-back { from { transform: translateX(-30%); opacity: 0; } }
 #screen > .slide-fwd { animation: slide-fwd 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }
 #screen > .slide-back { animation: slide-back 0.32s cubic-bezier(0.2, 0.8, 0.3, 1); }
-/* Свайп вкладок — лента страниц (pagerPlay): новый экран едет по --px, старый — в своём слое
-   рядом. Слой — под верхней панелью и островом */
-#screen.paging > * { translate: var(--px, 0) 0; }
+/* Свайп вкладок — лента страниц (pagerPlay): старый экран уезжает в своём слое — под верхней
+   панелью и островом */
 .pager-old { position: fixed; z-index: 4; pointer-events: none; }
 .srow { transition: opacity 0.4s ease, filter 0.4s ease; }
 .srow.off .srow-main { pointer-events: none; }
