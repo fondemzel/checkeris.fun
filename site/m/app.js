@@ -4073,9 +4073,12 @@ function pagerPlay(p) {
   const side = p.dx < 0 ? 1 : -1; // новый — с той стороны, куда тянули
   const start = side * w + p.dx; // вплотную к старому
   el.classList.add('paging');
-  const t0 = performance.now();
-  const frame = () => {
-    const k = Math.min(1, (performance.now() - t0) / PAGER_MS);
+  // Отсчёт — с первого нарисованного кадра, а не с вставки: вставка нового экрана — тяжёлый
+  // кадр (разметка, раскладка), и при отсчёте от неё первый видимый кадр перескакивал вперёд
+  let t0 = null;
+  const frame = (first) => {
+    if (!first) t0 ??= performance.now();
+    const k = t0 == null ? 0 : Math.min(1, (performance.now() - t0) / PAGER_MS);
     const x = start * (1 - k) ** 3; // с разгона — к плавной остановке
     el.style.setProperty('--px', `${x.toFixed(1)}px`);
     p.box.style.translate = `${(x - side * w).toFixed(1)}px 0`;
@@ -4085,7 +4088,7 @@ function pagerPlay(p) {
     p.box.remove();
     return p.done?.();
   };
-  frame();
+  frame(true); // исходное место — сразу, до тяжёлого кадра
 }
 let shownScreen = null; // что сейчас на экране: по нему решаем, мигать «Загрузкой» или нет
 
