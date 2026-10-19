@@ -4566,10 +4566,16 @@ addEventListener('touchcancel', stretchBack);
 // ── листание периодов свайпом ────────────────────────────
 // На экранах с периодом (стрелки ‹ ›) горизонтальный свайп — то же, что стрелка: влево — позже,
 // вправо — раньше. Содержимое едет за пальцем; отпустили далеко или резко — уезжает, а новый
-// период въезжает с другой стороны. Шапка с суммой и периодом стоит на месте, остров меню — тоже
+// период въезжает с другой стороны. Шапка с суммой и периодом стоит на месте, остров меню — тоже.
+// Свайп по самой шапке или по острову меняет вкладку (swipeTab)
 let swipeFrom = null; // { x, y, t } касания
 let swipeLock = ''; // '' — ещё не ясно, 'x' — листаем периоды, 'y' — обычная прокрутка
 let swipeBusy = false;
+// Свайп по закреплённому — шапке, карточке итога аналитики, верхней панели или острову меню —
+// меняет не период, а вкладку: влево — вкладка правее, вправо — левее
+let swipeTab = false;
+const SWIPE_TABS = ['summary', 'income', 'settings', 'stats'];
+const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
 // Что едет: всё на экране, кроме закреплённой шапки
 // Шапка расходов и карточка итога аналитики стоят на месте — меняется только их содержимое
 const swipeParts = () => [...stretchEl.children].filter((el) => !el.classList.contains('stuck-head') && !el.classList.contains('ana-hero'));
@@ -4584,10 +4590,11 @@ addEventListener('touchstart', (e) => {
   swipeLock = '';
   const t = e.touches[0];
   if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker')) return;
-  if (!stretchEl.querySelector('[data-shift]') && state.screen !== 'stats') return;
+  swipeTab = Boolean(e.target.closest(PINNED));
+  if (!swipeTab && !stretchEl.querySelector('[data-shift]') && state.screen !== 'stats') return;
   // У краёв — системный жест «назад»; полосы, листающиеся вбок, и поля ввода — свои
   if (t.clientX < 24 || t.clientX > window.innerWidth - 24) return;
-  if (e.target.closest('input, textarea, .chips, [data-shift], .drop-menu')) return;
+  if (e.target.closest('input, textarea, .chips, .drop-menu') || (!swipeTab && e.target.closest('[data-shift]'))) return;
   swipeFrom = { x: t.clientX, y: t.clientY, t: Date.now() };
 }, { passive: true });
 
@@ -4612,7 +4619,7 @@ addEventListener('touchmove', (e) => {
     setStretch(0);
   }
   e.preventDefault(); // страница вверх-вниз не ездит, пока листаем вбок
-  if (!motion('swipe')) return; // сдвиг выключен: содержимое стоит, период сменится по отпусканию
+  if (swipeTab || !motion('swipe')) return; // вкладка сменится по отпусканию — со сдвигом экрана // сдвиг выключен: содержимое стоит, период сменится по отпусканию
   swipeSet(dx, String(1 - Math.min(0.5, Math.abs(dx) / window.innerWidth)), '');
 }, { passive: false });
 
@@ -4632,6 +4639,13 @@ async function swipeEnd(e) {
   const dx = (e.changedTouches?.[0]?.clientX ?? swipeFrom.x) - swipeFrom.x;
   const fast = Math.abs(dx) > 30 && Math.abs(dx) / Math.max(1, Date.now() - swipeFrom.t) > 0.5;
   swipeFrom = null;
+  if (swipeTab) {
+    // Соседняя вкладка — тем же нажатием на неё: сдвиг экрана по порядку вкладок (render)
+    if (e.type === 'touchcancel' || (Math.abs(dx) < 50 && !fast)) return;
+    const next = SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
+    if (next) document.querySelector(`.tabs [data-tab="${next}"]`)?.click();
+    return;
+  }
   const ease = 'translate 0.18s ease-out, opacity 0.18s ease-out';
   if (e.type === 'touchcancel' || (Math.abs(dx) < window.innerWidth * 0.25 && !fast)) {
     swipeSet(0, '', ease);
