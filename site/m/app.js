@@ -4060,7 +4060,7 @@ let screenPager = null;
 // ВРЕМЕННО: запись кадров перехода на телефоне — что и когда происходило, и какие кадры
 // задержались. Уходит на сервер (/api/debug/trace) через 3 с после свайпа или нажатия вкладки
 let trace = null;
-function traceStart(kind) {
+function traceStart(kind, ms = 3000) {
   trace = { kind, t0: performance.now(), ev: [] };
   let last = performance.now();
   const t = trace;
@@ -4076,7 +4076,7 @@ function traceStart(kind) {
     if (trace !== t) return;
     trace = null;
     post('/api/debug/trace', { kind, ua: navigator.userAgent, w: window.innerWidth, ev: t.ev }).catch(() => {});
-  }, 3000);
+  }, ms);
 }
 function tr(ev) {
   trace?.ev.push(`${Math.round(performance.now() - trace.t0)} ${ev}`);
@@ -4174,6 +4174,7 @@ const NONE = '-'; // «Без категории»: у неразмеченно�
 
 async function render() {
   const seq = ++renderSeq;
+  tr(`отрисовка ${state.screen}`);
   closeScanner(); // уходим с экрана (в том числе кнопкой «назад») — камера гаснет
   const screen = SCREENS[state.screen] ?? SCREENS.summary;
   const top = TOP.includes(state.screen);
@@ -7302,7 +7303,14 @@ async function start() {
   $('tab-income-ic').innerHTML = UI.income;
   $('tab-settings-ic').innerHTML = UI.settings;
   $('tab-stats-ic').innerHTML = UI.stats;
-  meta = await api('/api/meta');
+  traceStart('запуск', 6000);
+  // Есть ли банк — вместе с остальным стартовым, до первой отрисовки: от него зависит вид
+  // «Расхода», и ответ, пришедший позже, перерисовывал экран посреди заливки кольца
+  const [m, bank] = await Promise.all([api('/api/meta'), api('/api/bank').catch(() => null)]);
+  meta = m;
+  // Банк в бюджете — у себя или у другого участника: операции из него видны всем
+  if (bank) bankLinked = (bank.links ?? []).some((l) => l.ops > 0) || bank.budget_ops > 0;
+  tr('стартовые данные пришли');
 
   // Пустой месяц на старте — не повод показывать ноль: открываем последний с данными
   const p = new URLSearchParams(location.search);
@@ -7315,15 +7323,6 @@ async function start() {
 
   // Бейдж ошибок виден с любого экрана — застрявший скан не должен теряться
   api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
-  // Есть ли банк: от этого зависит третья вкладка в «Расходе»
-  api('/api/bank')
-    .then((d) => {
-      const had = bankLinked;
-      // Банк в бюджете — у себя или у другого участника: операции из него видны всем
-      bankLinked = (d.links ?? []).some((l) => l.ops > 0) || d.budget_ops > 0;
-      if (bankLinked !== had) render();
-    })
-    .catch(() => {});
 }
 
 $('login-form').addEventListener('submit', async (e) => {
