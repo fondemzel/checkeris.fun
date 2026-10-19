@@ -1405,18 +1405,16 @@ async function openLimitSheet(slug) {
   const rub = (k) => int.format(Math.round(k / 100));
   const el = openChoice(g.name, `
     <div class="lim-sheet">
-      <div class="lim-line">
-        <span class="lim-line-text">${P.toggle}<small class="note">${per}</small></span>
-        ${toggle('data-lim-on', cur > 0, P.toggle)}
-      </div>
+      <div class="lim-rows">${srow({
+        icon: UI.piggy, title: P.toggle, note: f(P.toggleNote, { per }), wrap: true, end: toggle('data-lim-on', cur > 0, P.toggle),
+      })}</div>
       <div class="lim-set${cur > 0 ? '' : ' off'}">
         <label class="limit-field"><input id="lim-input" type="text" inputmode="numeric" autocomplete="off" value="${rub(start)}" /><span>₽ ${per}</span></label>
         <input class="lim-range" type="range" min="0" max="${max}" step="${step}" value="${Math.min(max, start)}" aria-label="${esc(P.toggle)}" />
         <div class="lim-scale"><span>0</span>${usual ? `<button class="link" type="button" data-lim-usual>${P.usually} ≈ ${money(usual)}</button>` : ''}<span>${money(max)}</span></div>
-        <div class="lim-line">
-          <span class="lim-line-text">${P.fix}<small class="note">${P.fixNote}</small></span>
-          ${toggle('data-lim-fix', Boolean(full.fixed[slug]), P.fix)}
-        </div>
+        <div class="lim-rows">${srow({
+          icon: UI.lock, title: P.fix, note: P.fixNote, wrap: true, end: toggle('data-lim-fix', Boolean(full.fixed[slug]), P.fix),
+        })}</div>
       </div>
     </div>`, async (ev, close) => {
     const input = el.querySelector('#lim-input');
