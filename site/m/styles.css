@@ -807,8 +807,9 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 
 .srow.danger .srow-title { color: var(--danger); }
 .srow.danger .srow-ic { background: var(--danger-soft); color: var(--danger); }
-.srow.off { opacity: 0.55; }
-.srow { transition: opacity 0.25s ease; } /* гаснет и загорается плавно (лимиты) */
+/* Неактивная строка — серая и светлее; гаснет и загорается плавно (лимиты) */
+.srow.off { opacity: 0.4; filter: grayscale(1); }
+.srow { transition: opacity 0.4s ease, filter 0.4s ease; }
 .srow.off .srow-main { pointer-events: none; }
 
 /* Стрелка «дальше» — в сером кружке, как кнопки справа */
@@ -2072,7 +2073,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Лист «Лимит» группы */
 .lim-sheet { display: flex; flex-direction: column; gap: 12px; }
 .lim-set { display: flex; flex-direction: column; gap: 10px; }
-.lim-set[hidden] { display: none; }
+.lim-set { transition: opacity 0.4s ease, filter 0.4s ease; }
+.lim-set.off { opacity: 0.4; filter: grayscale(1); pointer-events: none; } /* лимит выключен — видно, но не правится */
 .lim-line { display: flex; align-items: center; gap: 12px; padding: 4px 2px; }
 .lim-line-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-weight: 500; }
 .lim-line-text small { font-weight: 400; font-size: 12px; }

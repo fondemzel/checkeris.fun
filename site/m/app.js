@@ -1366,7 +1366,7 @@ async function openLimitSheet(slug) {
         <span class="lim-line-text">${P.toggle}<small class="note">${per}</small></span>
         ${toggle('data-lim-on', cur > 0, P.toggle)}
       </div>
-      <div class="lim-set"${cur > 0 ? '' : ' hidden'}>
+      <div class="lim-set${cur > 0 ? '' : ' off'}">
         <label class="limit-field"><input id="lim-input" type="text" inputmode="numeric" autocomplete="off" value="${rub(start)}" /><span>₽ ${per}</span></label>
         <input class="lim-range" type="range" min="0" max="${max}" step="${step}" value="${Math.min(max, start)}" aria-label="${esc(P.toggle)}" />
         <div class="lim-scale"><span>0</span>${usual ? `<button class="link" type="button" data-lim-usual>${P.usually} ≈ ${money(usual)}</button>` : ''}<span>${money(max)}</span></div>
@@ -1403,8 +1403,13 @@ async function openLimitSheet(slug) {
     limitsChanged();
   });
   el.addEventListener('change', (e) => {
-    if (e.target.matches('[data-lim-on]')) el.querySelector('.lim-set').hidden = !e.target.checked;
+    if (!e.target.matches('[data-lim-on]')) return;
+    // Выключили — поля гаснут, но остаются на месте (и не правятся)
+    const set = el.querySelector('.lim-set');
+    set.classList.toggle('off', !e.target.checked);
+    for (const input of set.querySelectorAll('input, button')) input.disabled = !e.target.checked;
   });
+  if (!cur) for (const input of el.querySelectorAll('.lim-set input, .lim-set button')) input.disabled = true;
   el.addEventListener('input', (e) => {
     const input = el.querySelector('#lim-input');
     if (e.target.matches('.lim-range')) input.value = rub(Number(e.target.value));
