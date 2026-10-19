@@ -1145,11 +1145,15 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
     p.h = (60 / side) * 100; // доля над значком 32px, сумма под ним
     return p;
   };
-  const apart = (a, b) => {
-    const [x1, y1] = point(a.mid, R);
-    const [x2, y2] = point(b.mid, R);
-    return Math.abs(x1 - x2) >= (a.w + b.w) / 2 + 0.3 || Math.abs(y1 - y2) >= (a.h + b.h) / 2;
+  // Место значка считается один раз, когда его ставят (place), а не при каждой сверке: перебор
+  // сверяет пары десятки тысяч раз, и синусы с косинусами на каждой занимали полсекунды —
+  // столько стоял пустым новый период при свайпе
+  const place = (p, mid) => {
+    p.mid = mid;
+    p.x = 50 + Math.sin(mid) * R;
+    p.y = 50 - Math.cos(mid) * R;
   };
+  const apart = (a, b) => Math.abs(a.x - b.x) >= (a.w + b.w) / 2 + 0.3 || Math.abs(a.y - b.y) >= (a.h + b.h) / 2;
   // Перебор с отсечением: самый крупный — первым, дальше крупные и мелкие вперемежку
   // (этот порядок пробуется первым). Каждый новый значок сверяется со всеми поставленными
   const arrange = (items) => {
@@ -1158,14 +1162,14 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
       let budget = 20000;
       const order = [first];
       const left = new Set(rest);
-      first.mid = -k * first.ang + first.ang / 2;
+      place(first, -k * first.ang + first.ang / 2);
       const dfs = (at) => {
         if (!left.size) return true;
         if ((budget -= 1) < 0) return false;
         const cand = [...left];
         if (order.length % 2) cand.reverse(); // после крупного — мелкий, после мелкого — крупный
         for (const c of cand) {
-          c.mid = at + c.ang / 2;
+          place(c, at + c.ang / 2);
           if (!order.every((o) => apart(o, c))) continue;
           order.push(c);
           left.delete(c);
