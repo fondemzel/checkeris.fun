@@ -390,7 +390,31 @@ export function reportLink(db, userId, { bank, state, detail = null, background 
        status = CASE WHEN :state = 'off' THEN 'off' WHEN status = 'off' AND :state = 'ok' THEN 'device' ELSE status END
      WHERE user_id = :user AND bank = :bank`,
   ).run({ state, detail: detail == null ? null : String(detail).slice(0, 300), at, bg: background ? 1 : 0, perms: perms == null ? null : String(perms).slice(0, 80), was, user: userId, bank });
+  if (perms != null) warnPerms(db, userId, String(perms));
   return { ok: true };
+}
+
+/**
+ * Телефон сообщил, что Чекеру не хватает разрешений (Perms.summary: «фон да, автозапуск нет»):
+ * без них система будит фоновое обновление редко, и банки молча отстают. Бот пишет один раз,
+ * как только разрешение пропало; снова — только если его выдали и опять отозвали.
+ */
+function warnPerms(db, userId, perms) {
+  const missing = [];
+  if (/фон нет/.test(perms)) missing.push('работа в фоне без ограничений');
+  if (/автозапуск нет/.test(perms)) missing.push('автозапуск');
+  const warned = db.prepare('SELECT perm_warned FROM users WHERE id = ?').get(userId)?.perm_warned ?? null;
+  if (!missing.length) {
+    if (warned) db.prepare('UPDATE users SET perm_warned = NULL WHERE id = ?').run(userId);
+    return;
+  }
+  const key = missing.join(', ');
+  if (warned === key) return;
+  const what = missing.length > 1 ? `выключены ${key}` : `выключен${missing[0] === 'автозапуск' ? '' : 'а'} ${key}`;
+  const text = `На телефоне у Чекера ${what}, поэтому банки и магазины обновляются в фоне редко или не обновляются совсем.`
+    + `
+Включите в <a href="${SITE}/m/?screen=set_banks">Настройки → Банки → Разрешения</a>`;
+  if (notify(db, userId, text, { html: true })) db.prepare('UPDATE users SET perm_warned = ? WHERE id = ?').run(key, userId);
 }
 
 const SITE = (process.env.SITE_ORIGIN || 'https://checkeris.fun').replace(/\/$/, '');
