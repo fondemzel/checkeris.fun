@@ -299,6 +299,20 @@ button, input, select { font: inherit; color: inherit; }
   cursor: pointer;
 }
 .tab-add:active { transform: scale(0.95); }
+/* «+» тянут вверх (fabShow): полоса над кнопкой заполняется снизу, на её конце — кружок со
+   значком чека; заполнилась — синеет, и по отпусканию откроется сканер. Цвета — как у
+   подсказки при листании (.peek) */
+.fab-pull { position: fixed; z-index: 11; transform: translateX(-50%); opacity: 0; pointer-events: none; }
+.fab-pull-bar { display: flex; flex-direction: column; justify-content: flex-end; width: 44px; height: 132px; border-radius: 22px; background: var(--fill); overflow: hidden; box-shadow: 0 4px 16px rgba(15, 20, 28, 0.12); }
+.fab-pull-bar i {
+  box-sizing: border-box; display: flex; justify-content: center; align-items: flex-start; padding: 4px;
+  height: max(44px, calc(var(--k, 0) * 100%)); border-radius: 22px;
+  background: color-mix(in srgb, var(--muted) 45%, var(--fill)); transition: background 0.15s;
+}
+.fab-pull-knob { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--surface); color: var(--muted); transition: color 0.15s; }
+.fab-pull-knob svg { width: 20px; height: 20px; }
+.fab-pull.full .fab-pull-bar i { background: var(--accent); }
+.fab-pull.full .fab-pull-knob { color: var(--accent); }
 .tab-ic svg { display: block; width: 20px; height: 20px; }
 
 .badge {

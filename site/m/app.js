@@ -5555,7 +5555,82 @@ async function saveItemCategory(itemId, slug, { only = false, seller = false } =
 }
 
 $('back').addEventListener('click', () => history.back());
-$('fab').addEventListener('click', () => go({ screen: 'add' }));
+$('fab').addEventListener('click', () => {
+  if (fabPulled) {
+    fabPulled = false; // это был жест вверх, а не нажатие
+    return;
+  }
+  go({ screen: 'add' });
+});
+
+// «+» потянули вверх — сразу сканер чеков. Над кнопкой проявляется полоса со значком чека,
+// которая заполняется снизу по мере того, как тянут (как подсказка при листании, peekShow);
+// заполнилась — синеет, отпустили — сканер. Не дотянули — гаснет. Свайп вбок по «+» листает
+// вкладки, как по всему острову (swipeTab)
+const FAB_PULL = 110; // столько протянуть вверх — и по отпусканию откроется сканер
+let fabFrom = null; // { x, y, t } касания «+»
+let fabLock = ''; // '' — ещё неясно, 'y' — тянем вверх, 'x' — это свайп вбок, не наш
+let fabPulled = false; // жест вверх был — click после него не открывает «Добавить»
+let fabEl = null;
+
+function fabShow(k) {
+  if (!fabEl) {
+    fabEl = document.createElement('div');
+    fabEl.className = 'fab-pull';
+    fabEl.innerHTML = `<span class="fab-pull-bar"><i><b class="fab-pull-knob">${UI.receipt}</b></i></span>`;
+    document.body.append(fabEl);
+  }
+  const r = $('fab').getBoundingClientRect();
+  Object.assign(fabEl.style, {
+    transition: 'none',
+    left: `${(r.left + r.width / 2).toFixed(1)}px`,
+    bottom: `${(window.innerHeight - r.top + 8).toFixed(1)}px`,
+    opacity: Math.min(1, k * 3).toFixed(3),
+  });
+  fabEl.style.setProperty('--k', k.toFixed(3));
+  fabEl.classList.toggle('full', k >= 1);
+}
+
+function fabHide() {
+  if (!fabEl) return;
+  fabEl.style.transition = 'opacity 0.15s ease-out';
+  fabEl.style.opacity = '0';
+}
+
+$('fab').addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  fabFrom = e.touches.length === 1 ? { x: t.clientX, y: t.clientY, t: Date.now() } : null;
+  fabLock = '';
+}, { passive: true });
+
+$('fab').addEventListener('touchmove', (e) => {
+  if (!fabFrom) return;
+  const dx = e.touches[0].clientX - fabFrom.x;
+  const up = fabFrom.y - e.touches[0].clientY;
+  if (!fabLock) {
+    if (Math.abs(dx) < 8 && Math.abs(up) < 8) return;
+    fabLock = up > Math.abs(dx) ? 'y' : 'x';
+  }
+  if (fabLock !== 'y') return;
+  e.preventDefault();
+  fabShow(Math.min(1, Math.max(0, up) / FAB_PULL));
+}, { passive: false });
+
+function fabEnd(e) {
+  if (!fabFrom || fabLock !== 'y') {
+    fabFrom = null;
+    return;
+  }
+  const up = fabFrom.y - (e.changedTouches?.[0]?.clientY ?? fabFrom.y);
+  const fast = up > 30 && up / Math.max(1, Date.now() - fabFrom.t) > 0.6;
+  fabFrom = null;
+  fabPulled = true;
+  setTimeout(() => (fabPulled = false), 400); // click, если и придёт, — сразу за касанием
+  fabHide();
+  if (e.type !== 'touchcancel' && (up >= FAB_PULL || fast)) openScanner();
+}
+$('fab').addEventListener('touchend', fabEnd);
+$('fab').addEventListener('touchcancel', fabEnd);
 
 // Вкладка сбрасывает глубину, но не период: переключение не должно терять выбор дат.
 // В историю переходы по вкладкам не пишем: иначе «назад» из карточки товара возвращает
