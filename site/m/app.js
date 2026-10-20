@@ -5563,38 +5563,44 @@ $('fab').addEventListener('click', () => {
   go({ screen: 'add' });
 });
 
-// «+» потянули вверх — сразу сканер чеков. Над кнопкой проявляется полоса со значком чека,
-// которая заполняется снизу по мере того, как тянут (как подсказка при листании, peekShow);
-// заполнилась — синеет, отпустили — сканер. Не дотянули — гаснет. Свайп вбок по «+» листает
-// вкладки, как по всему острову (swipeTab)
+// «+» потянули вверх — сразу сканер чеков. Из-за кнопки вырастает её продолжение — полоса той
+// же ширины со значком чека на конце; растёт вместе с пальцем. Дотянули — она цвета кнопки и
+// сливается с ней, отпустили — сканер. Не дотянули — втягивается обратно. Свайп вбок по «+»
+// листает вкладки, как по всему острову (swipeTab)
 const FAB_PULL = 110; // столько протянуть вверх — и по отпусканию откроется сканер
 let fabFrom = null; // { x, y, t } касания «+»
 let fabLock = ''; // '' — ещё неясно, 'y' — тянем вверх, 'x' — это свайп вбок, не наш
 let fabPulled = false; // жест вверх был — click после него не открывает «Добавить»
 let fabEl = null;
 
-function fabShow(k) {
+function fabShow(up) {
+  const fab = $('fab');
+  const tabs = document.querySelector('.tabs');
   if (!fabEl) {
     fabEl = document.createElement('div');
     fabEl.className = 'fab-pull';
-    fabEl.innerHTML = `<span class="fab-pull-bar"><i><b class="fab-pull-knob">${UI.receipt}</b></i></span>`;
-    document.body.append(fabEl);
+    fabEl.innerHTML = `<b class="fab-pull-knob">${UI.receipt}</b>`;
+    tabs.insertBefore(fabEl, fab); // раньше кнопки — она рисуется поверх и прячет низ полосы
   }
-  const r = $('fab').getBoundingClientRect();
+  const t = tabs.getBoundingClientRect();
+  const r = fab.getBoundingClientRect();
+  const pull = Math.min(FAB_PULL * 1.15, Math.max(0, up)); // дальше порога — туго
+  // Низ полосы — в середине кнопки, за ней: видно, будто кнопка вытягивается вверх
   Object.assign(fabEl.style, {
     transition: 'none',
-    left: `${(r.left + r.width / 2).toFixed(1)}px`,
-    bottom: `${(window.innerHeight - r.top + 8).toFixed(1)}px`,
-    opacity: Math.min(1, k * 3).toFixed(3),
+    left: `${(r.left - t.left + r.width / 2).toFixed(1)}px`,
+    bottom: `${(t.bottom - r.top - r.height / 2).toFixed(1)}px`,
+    height: `${(r.height / 2 + pull).toFixed(1)}px`,
   });
-  fabEl.style.setProperty('--k', k.toFixed(3));
-  fabEl.classList.toggle('full', k >= 1);
+  fabEl.classList.toggle('full', up >= FAB_PULL);
 }
 
 function fabHide() {
   if (!fabEl) return;
-  fabEl.style.transition = 'opacity 0.15s ease-out';
-  fabEl.style.opacity = '0';
+  // Втягивается обратно за кнопку
+  fabEl.style.transition = 'height 0.2s cubic-bezier(0.3, 0, 0.2, 1)';
+  fabEl.style.height = '0px';
+  fabEl.classList.remove('full');
 }
 
 $('fab').addEventListener('touchstart', (e) => {
@@ -5613,7 +5619,7 @@ $('fab').addEventListener('touchmove', (e) => {
   }
   if (fabLock !== 'y') return;
   e.preventDefault();
-  fabShow(Math.min(1, Math.max(0, up) / FAB_PULL));
+  fabShow(up);
 }, { passive: false });
 
 function fabEnd(e) {
