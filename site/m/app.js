@@ -5784,6 +5784,10 @@ const quickRelease = (e) => {
   if (quick.moved) quickClose();
 };
 tabsEl.addEventListener('pointerup', quickRelease);
+// Касание, начатое на острове, никогда не прокручивает страницу: остров сам не листается, а
+// жесты на нём (тянуть «+», вести палец по попапу периода) иначе тащили за собой ленту.
+// Запрещать надо с первого движения: начав прокрутку, браузер отказ уже не принимает
+tabsEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 tabsEl.addEventListener('pointercancel', quickRelease);
 // Долгое нажатие на кнопке не должно вызывать меню телефона
 tabsEl.addEventListener('contextmenu', (e) => {

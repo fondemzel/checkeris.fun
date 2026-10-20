@@ -316,7 +316,8 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Долгое нажатие на «Расход» / «Доход» (quickOpen): над кнопкой — список периодов, как
    контекстное меню. Растёт из кнопки; пункт под пальцем подсвечен, выбранный — с галочкой */
-.tab[data-tab="summary"], .tab[data-tab="income"] { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.tabs { touch-action: none; }
+.tab[data-tab="summary"], .tab[data-tab="income"] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .quick {
   position: fixed; z-index: 30; min-width: 168px; padding: 6px;
   border-radius: 18px; background: var(--surface);
