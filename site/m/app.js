@@ -83,6 +83,7 @@ const UI = {
   filter: svg('<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>'),
   layers: svg('<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>'
     + '<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'),
+  telegram: svg('<path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4"/>'),
   mail: svg('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>'),
   card: svg('<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>'),
   grid: svg('<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>'),
@@ -6066,7 +6067,7 @@ function syncSection(bankId = '', budget = null) {
     // Напоминание войти — шлёт сервер (бот), поэтому это настройка человека, а не телефона;
     // без Telegram слать некуда
     + (bankId || !budget ? '' : srow({
-      icon: UI.mail,
+      icon: UI.telegram,
       title: S.remind,
       note: budget.telegram ? S.remindNote : S.remindNoTg,
       wrap: true,
