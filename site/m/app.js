@@ -1033,7 +1033,7 @@ function playList() {
   const key = sectionsKey();
   if (key === listPlayed) return;
   listPlayed = key;
-  if (!motion('sections') || arrived) return; // приехало движением — строки приехали с ним
+  if (!motion('sections')) return; // и при въезде экрана — одновременно с ним
   [...document.querySelectorAll('#screen .list > *')].slice(0, 25).forEach((el, i) => {
     el.style.setProperty('--i', i);
     el.classList.add('row-in');
@@ -1078,7 +1078,17 @@ function playRing(start = true) {
   // Таблица под кольцом проявляется по строке вместе с заливкой. Пока заливка ждёт старта
   // (сохранённый вид, свежие данные ещё в пути) — строки скрыты: иначе мелькнули бы и пропали
   // Приехал лентой страниц — расшифровка приехала с ним и не проявляется заново
-  if (arrived) box.dataset.came = '1'; // запомнить и к старту заливки, который будет позже
+  // Экран въезжает — расшифровка проявляется по строке сразу, вместе с въездом (не ждёт заливки)
+  if (arrived && !box.dataset.came) {
+    box.dataset.came = '1';
+    if (motion('sections')) {
+      document.querySelectorAll('#screen .ring-list > .ring-row').forEach((el, i) => {
+        el.style.setProperty('--i', i);
+        el.classList.add('row-in');
+        el.addEventListener('animationend', () => el.classList.remove('row-in'), { once: true });
+      });
+    }
+  }
   const legend = ringPlayed.at == null && motion('sections') && !box.dataset.came ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
   legend.forEach((el) => el.classList.add('row-wait'));
   const fresh = ringPlayed.at == null;
@@ -4317,9 +4327,12 @@ async function render() {
     landed = pager ? (pagerJoin(pager), pager.finished) : slideScreen(slide);
     if (!landed) return;
     arrived = true;
-    if (state.screen === 'stats') holdAnalytics();
+    if (state.screen === 'stats') {
+      holdAnalytics();
+      anaRowsIn(); // строки групп — во время въезда; полосы заливаются после остановки
+    }
     playRing(false); // кольцо въезжает пустым
-    listPlayed = sectionsKey(); // строки въезжают вместе с экраном, отдельно не проявляются
+    playList(); // строки проявляются по одной прямо во время въезда
   };
   if (cached) {
     $('screen').innerHTML = cached;
@@ -7837,18 +7850,22 @@ function holdAnalytics() {
   }
 }
 
+/** Строки групп аналитики — по одной сверху вниз; один раз на показ (въезд мог уже пустить). */
+function anaRowsIn() {
+  const rows = [...document.querySelectorAll('#screen .ana-row')];
+  if (!motion('sections') || rows[0]?.dataset.shown) return;
+  rows.forEach((el, i) => {
+    el.dataset.shown = '1';
+    el.style.setProperty('--i', i);
+    el.classList.add('ana-in');
+    el.addEventListener('animationend', () => el.classList.remove('ana-in'), { once: true });
+  });
+}
+
 function animateAnalytics() {
   const rows = [...document.querySelectorAll('#screen .ana-row')];
-  // Приехал лентой страниц — строки приехали с ней, второй раз не проявляются
-  const rowsOn = motion('sections') && !arrived;
-  arrived = false;
-  if (rowsOn) {
-    rows.forEach((el, i) => {
-      el.style.setProperty('--i', i);
-      el.classList.add('ana-in');
-      el.addEventListener('animationend', () => el.classList.remove('ana-in'), { once: true });
-    });
-  }
+  const rowsOn = motion('sections');
+  anaRowsIn();
   if (!motion('ring')) return;
   const bars = [...document.querySelectorAll('#screen .ana-bar i')];
   const target = bars.map((b) => b.dataset.w ?? b.style.width);
