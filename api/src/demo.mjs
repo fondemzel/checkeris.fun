@@ -27,7 +27,7 @@ import { setLimits, suggestLimits } from './limits.mjs';
 const DEMO_LOGIN = '__demo__';
 const DEMO_NAME = 'Демо-режим';
 // Версия генератора: поправили его — поднять, и база пересоздастся при следующем включении
-const DEMO_VERSION = 2;
+const DEMO_VERSION = 3;
 const now = () => new Date().toISOString();
 
 /** Бюджет — тестовый? */
@@ -263,7 +263,9 @@ function generate(db, budgetId) {
   let doc = 1;
   // Чек: позиции [название, цена от, цена до, категория, единица]
   const bought = new Set(); // разовые вещи (ONCE), уже купленные
-  const receipt = (when, seller, place, inn, all, { manual = false } = {}) => {
+  const insNote = db.prepare('INSERT INTO item_notes (receipt_id, pos, note, updated_at) VALUES (?, ?, ?, ?)');
+  // notes — комментарии человека к позициям: { 'Название позиции': 'текст' }
+  const receipt = (when, seller, place, inn, all, { manual = false, notes = {} } = {}) => {
     const lines = all.filter(([name]) => !ONCE.has(name) || (!bought.has(name) && bought.add(name)));
     if (!lines.length) return; // в чеке были только уже купленные разовые вещи — покупки не было
     const items = lines.map(([name, lo, hi, cat, unit]) => {
@@ -282,6 +284,7 @@ function generate(db, budgetId) {
       const itemId = Number(insItem.run(id, k + 1, i.name, normalizeName(i.name), i.quantity, i.unit, i.price, i.sum).lastInsertRowid);
       // Большую часть разложил «Чекер» (зелёная точка), ручные записи — человек
       insLabel.run(itemId, budgetId, i.cat, manual ? 'pinned' : chance(0.8) ? 'dictionary' : 'manual', 0.9, stamp);
+      if (notes[i.name]) insNote.run(id, k + 1, notes[i.name], stamp);
     });
   };
 
@@ -290,16 +293,16 @@ function generate(db, budgetId) {
   const insOp = db.prepare(
     `INSERT INTO bank_ops (link_id, budget_id, ext_id, account, account_name, at, debited_at, direction, amount, currency,
        account_amount, status, op_group, description, merchant, card, kind, kind_source, category_slug, category_source,
-       raw, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUB', ?, 'OK', ?, ?, ?, ?, ?, 'manual', ?, 'manual', '{}', ?, ?)`,
+       raw, created_at, updated_at, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUB', ?, 'OK', ?, ?, ?, ?, ?, 'manual', ?, 'manual', '{}', ?, ?, ?)`,
   );
   let ext = 1;
   // Операция банка: траты без чека, поступления, переводы себе
-  const op = (when, { amount, merchant, description = merchant, cat = null, kind = 'expense', group = 'PAY', direction = 'debit', bank = 'tbank' }) => {
+  const op = (when, { amount, merchant, description = merchant, cat = null, kind = 'expense', group = 'PAY', direction = 'debit', bank = 'tbank', note = null }) => {
     const link = bank === 'sber' ? sber : tbank;
     const card = bank === 'sber' ? '4417' : '9315';
     insOp.run(link, budgetId, `demo-${budgetId}-${ext++}`, bank === 'sber' ? 'demo-sber' : 'demo-tbank', bank === 'sber' ? 'СберКарта' : 'Black',
-      when, when, direction, amount, amount, group, description, merchant, card, kind, cat, stamp, stamp);
+      when, when, direction, amount, amount, group, description, merchant, card, kind, cat, stamp, stamp, note);
   };
 
   // Свои группы семьи: «Дети» и «Путешествия» (в общем справочнике их нет), «Пособия» в доходах
@@ -315,33 +318,57 @@ function generate(db, budgetId) {
   const trips = group('Путешествия', 'luggage', '#1aa3a3');
   const TRIP = { tickets: cat(trips, 'Билеты', 'plane'), stay: cat(trips, 'Жильё', 'hotel'), fun: cat(trips, 'Экскурсии и развлечения', 'map') };
   const benefits = createIncomeCat(db, budgetId, { name: 'Пособия', group_slug: 'other', icon: 'baby' }).category.slug;
-  const income = (when, amount, merchant, description, slug, group = 'INCOME') =>
-    op(when, { amount, merchant, description, cat: slug, kind: 'income', direction: 'credit', group });
-  const market = (when, lines) => {
+  const income = (when, amount, merchant, description, slug, group = 'INCOME', note = null) =>
+    op(when, { amount, merchant, description, cat: slug, kind: 'income', direction: 'credit', group, note });
+  const market = (when, lines, notes) => {
     const ozon = chance(0.5);
-    receipt(when, ozon ? 'ООО "Интернет Решения"' : 'ООО "Вайлдберриз"', ozon ? 'Ozon' : 'Wildberries', ozon ? OZON : WB, lines);
+    receipt(when, ozon ? 'ООО "Интернет Решения"' : 'ООО "Вайлдберриз"', ozon ? 'Ozon' : 'Wildberries', ozon ? OZON : WB, lines, { notes });
+  };
+  // Комментарии семьи к подаркам и памятным покупкам — как пишут себе люди
+  const NOTES = {
+    'Парфюмерная вода Lanvin Éclat 50 мл': 'Маме на Новый год. Спрятана в шкафу за полотенцами',
+    'Умная колонка Яндекс Станция Лайт': 'Папе — пусть слушает своё радио',
+    'Плед флисовый 150×200': 'Тёще, она всегда мёрзнет',
+    'Набор чая подарочный': 'Коллегам в отдел',
+    'Конструктор LEGO DUPLO «Мой первый поезд»': 'От Деда Мороза. Пока рано, но пусть будет',
+    'Новогодний костюм для малыша «Мишка»': 'Для фото под ёлкой',
+    'Коляска 2 в 1 Happy Baby': 'Выбирали три выходных подряд',
+    'Автокресло 0+ Chicco': 'Взяли по акции заранее',
+    'Фотограф на выписке': 'Фото — в семейный альбом и бабушкам',
+    'Живая ёлка 1,8 м': 'Поторговались — скинули 500 ₽',
+    'Тюльпаны 25 шт': 'Жене и тёще',
+    'Икра красная горбуши 140 г': 'Не открывать до 31-го!',
+    'Телевизор Xiaomi TV A Pro 55"': 'Чёрная пятница, −30%',
+    'Подъёмник Роза Хутор, 2 взрослых': 'Наверху туман, ничего не видно — но красиво',
+    'Сувениры и магниты': 'Магнит на холодильник и чурчхела коллегам',
+    'Вино Кьянти бутылка': 'Отметили вдевятером',
+    'Шея свиная для шашлыка': 'Шашлыки на даче у Серёжи',
+    'Рассада томатов 6 шт': 'В этом году — черри',
   };
 
   // ── то, что делает год этой семьи особенным ──
   // Ребёнок (беременность → рождение → первые месяцы), праздники, машина, дача, день рождения
+  let firstBarbecue = false;
+  let firstVisit = false; // первый приём в истории — с комментарием
   function family(d, { dom, mon, md, weekend, age, trip }) {
     // Беременность: врач раз в месяц, витамины; за месяц-полтора до родов — коляска, кроватка
     if (age < 0 && age > -270) {
-      if (dom === 8) op(at(d, 10, 18), { amount: rub(3500, 6500), merchant: 'Мать и дитя', description: 'Ведение беременности', cat: 'health.services' });
+      if (dom === 8) op(at(d, 10, 18), { amount: rub(3500, 6500), merchant: 'Мать и дитя', description: 'Ведение беременности', cat: 'health.services', note: firstVisit ? null : 'УЗИ! Распечатали снимок для бабушек' });
+      if (dom === 8) firstVisit = true;
       if (dom === 21) receipt(at(d, 10, 20), 'ООО "Аптека-А.в.е-1"', 'Аптека Ригла', null, [['Элевит Пронаталь 30 таб', 1290, 1590, 'health.pharmacy']]);
       if (age === -45) {
         receipt(at(d, 11, 19), 'АО "Детский мир"', 'Детский мир', null, [
           ['Коляска 2 в 1 Happy Baby', 29990, 36990, KID.things],
           ['Кроватка-трансформер', 11990, 15990, KID.things],
           ['Матрас детский', 3490, 4990, KID.things],
-        ]);
+        ], { notes: NOTES });
       }
       if (age === -30) {
         receipt(at(d, 10, 22), 'ООО "Интернет Решения"', 'Ozon', OZON, [
           ['Автокресло 0+ Chicco', 12990, 16990, KID.things],
           ['Боди хлопок 5 шт', 1290, 1790, KID.things],
           ['Пелёнки муслиновые 3 шт', 990, 1490, KID.care],
-        ]);
+        ], { notes: NOTES });
       }
       if (age === -12) {
         receipt(at(d, 12, 19), 'ООО "Интернет Решения"', 'Ozon', OZON, [
@@ -351,7 +378,7 @@ function generate(db, budgetId) {
         ]);
       }
     }
-    if (age === 3) receipt(at(d, 11, 16), '', '', null, [['Цветы на выписку', 3500, 5500, 'gifts.gifts'], ['Фотограф на выписке', 6000, 9000, 'leisure.events']], { manual: true });
+    if (age === 3) receipt(at(d, 11, 16), '', '', null, [['Цветы на выписку', 3500, 5500, 'gifts.gifts'], ['Фотограф на выписке', 6000, 9000, 'leisure.events']], { manual: true, notes: NOTES });
     if (age === 12) income(at(d, 9, 12), 2698000, 'Социальный фонд России', 'Единовременное пособие при рождении ребёнка', benefits);
     if (age > 20 && dom === 15) income(at(d, 9, 12), 4920000, 'Социальный фонд России', 'Пособие по уходу за ребёнком', benefits);
     if (age >= 0 && !trip) {
@@ -374,7 +401,9 @@ function generate(db, budgetId) {
       }
       // Педиатр каждый месяц, прививки по календарю
       if (age % 30 === 7) op(at(d, 9, 13), { amount: rub(2600, 3400), merchant: 'Медси', description: 'Приём педиатра', cat: KID.health });
-      if ([45, 90, 135, 180].includes(age)) op(at(d, 9, 13), { amount: rub(3900, 6900), merchant: 'Медси', description: 'Вакцинация', cat: KID.health });
+      if ([45, 90, 135, 180].includes(age)) {
+        op(at(d, 9, 13), { amount: rub(3900, 6900), merchant: 'Медси', description: 'Вакцинация', cat: KID.health, note: age === 90 ? 'Почти не плакал. Следующая — через полтора месяца' : null });
+      }
       if (chance(0.025)) {
         receipt(at(d, 9, 21), 'ООО "Аптека-А.в.е-1"', 'Аптека Ригла', null, [pick([
           ['Аквамарис беби капли', 290, 390, KID.health], ['Нурофен для детей суспензия', 290, 390, KID.health], ['Бепантен крем 30 г', 590, 790, KID.care],
@@ -389,25 +418,26 @@ function generate(db, budgetId) {
     }
 
     // Перед отпуском: билеты и жильё бронируют заранее
-    if (md === '08-03') op(at(d, 20, 23), { amount: rub(36000, 42000), merchant: 'Аэрофлот', description: 'Авиабилеты Москва — Сочи — Москва', cat: TRIP.tickets });
-    if (md === '08-05') op(at(d, 20, 23), { amount: rub(68000, 79000), merchant: 'Островок', description: 'Апартаменты в Сочи, 9 ночей', cat: TRIP.stay });
+    if (md === '08-03') op(at(d, 20, 23), { amount: rub(36000, 42000), merchant: 'Аэрофлот', description: 'Авиабилеты Москва — Сочи — Москва', cat: TRIP.tickets, note: 'Первый перелёт малыша — взяли места у перегородки' });
+    if (md === '08-05') op(at(d, 20, 23), { amount: rub(68000, 79000), merchant: 'Островок', description: 'Апартаменты в Сочи, 9 ночей', cat: TRIP.stay, note: 'Вид на море, детская кроватка по запросу' });
 
     // Новый год: подарки весь декабрь, украшения, ёлка, большой стол
     if (mon === 11 && dom <= 22 && chance(0.18)) {
       market(at(d, 10, 23), [pick([
         ['Парфюмерная вода Lanvin Éclat 50 мл', 3990, 5490, 'gifts.gifts'], ['Умная колонка Яндекс Станция Лайт', 5990, 7490, 'gifts.gifts'],
         ['Плед флисовый 150×200', 1290, 1990, 'gifts.gifts'], ['Набор чая подарочный', 990, 1690, 'gifts.gifts'],
-        ['Конструктор LEGO DUPLO «Мой первый поезд»', 2990, 3990, KID.things], ['Новогодний костюм для малыша «Мишка»', 1490, 2290, KID.things],
-      ])]);
+        // Детские подарки — только когда ребёнок уже есть
+        ...(age >= 0 ? [['Конструктор LEGO DUPLO «Мой первый поезд»', 2990, 3990, KID.things], ['Новогодний костюм для малыша «Мишка»', 1490, 2290, KID.things]] : []),
+      ])], NOTES);
     }
     if (md === '12-14') {
       receipt(at(d, 11, 19), 'ООО "Лемана ПРО"', 'Лемана ПРО', null, [
         ['Гирлянда светодиодная 10 м', 690, 1290, 'home.goods'], ['Ёлочные шары 12 шт', 590, 990, 'home.goods'], ['Мишура', 149, 249, 'home.goods'],
       ]);
     }
-    if (md === '12-20') op(at(d, 18, 22), { amount: rub(6000, 9000), merchant: 'Сандуны', description: 'Подарочный сертификат', cat: 'gifts.gifts' });
-    if (md === '12-24') income(at(d, 9, 12), rub(90000, 130000), 'ООО "Северный ветер"', 'Годовая премия', 'in.bonus');
-    if (md === '12-27') receipt(at(d, 11, 17), '', '', null, [['Живая ёлка 1,8 м', 3000, 4500, 'home.goods']], { manual: true });
+    if (md === '12-20') op(at(d, 18, 22), { amount: rub(6000, 9000), merchant: 'Сандуны', description: 'Подарочный сертификат', cat: 'gifts.gifts', note: 'Серёже на Новый год. Никому не говорить!' });
+    if (md === '12-24') income(at(d, 9, 12), rub(90000, 130000), 'ООО "Северный ветер"', 'Годовая премия', 'in.bonus', 'INCOME', 'Половину — на накопительный, на лето');
+    if (md === '12-27') receipt(at(d, 11, 17), '', '', null, [['Живая ёлка 1,8 м', 3000, 4500, 'home.goods']], { manual: true, notes: NOTES });
     if (md === '12-30') {
       receipt(at(d, 11, 15), 'АО "Торговый дом "Перекрёсток"', 'Перекрёсток', null, [
         ['Икра красная горбуши 140 г', 1290, 1690, 'food.groceries'], ['Мандарины Абхазия', 199, 299, 'food.groceries', 'кг'],
@@ -415,10 +445,10 @@ function generate(db, budgetId) {
         ['Майонез Махеевъ 380 г', 129, 169, 'food.groceries'], ['Колбаса Докторская 400 г', 279, 359, 'food.groceries'],
         ['Торт Наполеон 1 кг', 899, 1290, 'food.groceries'], ['Буженина 300 г', 449, 599, 'food.groceries'],
         ['Ананас', 299, 449, 'food.groceries'], ['Сок вишнёвый 1 л', 169, 229, 'food.groceries'],
-      ]);
+      ], { notes: NOTES });
     }
     if (md === '12-31') op(at(d, 21, 23), { amount: rub(1800, 3200), merchant: 'Яндекс Go', description: 'Яндекс Такси', cat: 'transport.public' });
-    if (md === '01-04') op(at(d, 12, 20), { amount: rub(6500, 9500), merchant: 'Яндекс Афиша', description: 'Билеты на «Щелкунчика»', cat: 'leisure.events' });
+    if (md === '01-04') op(at(d, 12, 20), { amount: rub(6500, 9500), merchant: 'Яндекс Афиша', description: 'Билеты на «Щелкунчика»', cat: 'leisure.events', note: age >= 0 ? 'Бабушка посидит с малышом' : 'Взяли третий билет — для мамы' });
     if (md === '01-06') {
       receipt(at(d, 13, 18), 'ГАУК «Парк Горького»', 'Каток в Парке Горького', null, [
         ['Вход на каток', 700, 900, 'leisure.events'], ['Прокат коньков', 500, 700, 'leisure.events'], ['Глинтвейн б/а', 290, 390, 'food.dining'],
@@ -432,28 +462,29 @@ function generate(db, budgetId) {
         ['Вино Саперави бокал', 490, 590, 'food.alcohol'], ['Десерт', 390, 490, 'food.dining'],
       ]);
     }
-    if (md === '03-08') receipt(at(d, 9, 12), '', '', null, [['Тюльпаны 25 шт', 3000, 4500, 'gifts.gifts']], { manual: true });
+    if (md === '03-08') receipt(at(d, 9, 12), '', '', null, [['Тюльпаны 25 шт', 3000, 4500, 'gifts.gifts']], { manual: true, notes: NOTES });
 
     // Машина: ОСАГО весной, ТО, переобувка дважды в год
-    if (md === '03-20') op(at(d, 12, 18), { amount: rub(10500, 12800), merchant: 'Ингосстрах', description: 'ОСАГО', cat: 'transport.service' });
+    if (md === '03-20') op(at(d, 12, 18), { amount: rub(10500, 12800), merchant: 'Ингосстрах', description: 'ОСАГО', cat: 'transport.service', note: 'Продлевать каждый март' });
     if (md === '04-12' || md === '10-18') op(at(d, 10, 17), { amount: rub(2900, 3800), merchant: 'Шиномонтаж Колесо', description: 'Сезонная замена шин', cat: 'transport.service' });
-    if (md === '05-16') op(at(d, 10, 17), { amount: rub(19000, 27000), merchant: 'Major Авто', description: 'Плановое ТО', cat: 'transport.service' });
+    if (md === '05-16') op(at(d, 10, 17), { amount: rub(19000, 27000), merchant: 'Major Авто', description: 'Плановое ТО', cat: 'transport.service', note: 'Заменили передние колодки' });
 
     // Весна: возврат налога (вычет за лечение), концерт
-    if (md === '05-22') income(at(d, 9, 12), rub(12000, 19500), 'УФК по г. Москве (ИФНС)', 'Возврат НДФЛ: налоговый вычет', 'in.other');
-    if (md === '04-05') op(at(d, 18, 22), { amount: rub(7000, 9800), merchant: 'Яндекс Афиша', description: 'Билеты на концерт', cat: 'leisure.events' });
+    if (md === '05-22') income(at(d, 9, 12), rub(12000, 19500), 'УФК по г. Москве (ИФНС)', 'Возврат НДФЛ: налоговый вычет', 'in.other', 'INCOME', 'Вычет за лечение зубов — подавали в феврале');
+    if (md === '04-05') op(at(d, 18, 22), { amount: rub(7000, 9800), merchant: 'Яндекс Афиша', description: 'Билеты на концерт', cat: 'leisure.events', note: 'Сплин, танцпол' });
 
     // Лето: дача и шашлыки по выходным, рассада
     if (md === '05-09') {
       receipt(at(d, 10, 14), 'ООО "Лемана ПРО"', 'Лемана ПРО', null, [
         ['Рассада томатов 6 шт', 390, 590, 'home.hobby'], ['Грунт универсальный 50 л', 390, 590, 'home.hobby'], ['Шланг садовый 20 м', 990, 1590, 'home.goods'],
-      ]);
+      ], { notes: NOTES });
     }
     if (weekend && mon >= 5 && mon <= 7 && chance(0.3)) {
       receipt(at(d, 10, 14), 'ООО "Агроторг"', 'Пятёрочка', null, [
         ['Шея свиная для шашлыка', 549, 699, 'food.groceries', 'кг'], ['Уголь берёзовый 3 кг', 249, 349, 'home.household'],
         ['Лаваш армянский', 49, 69, 'food.groceries'], ['Кетчуп Хайнц 320 г', 129, 169, 'food.groceries'], ['Квас Очаковский 1,5 л', 109, 139, 'food.groceries'],
-      ]);
+      ], { notes: firstBarbecue ? {} : NOTES });
+      firstBarbecue = true;
     }
 
     // День рождения: ужин с друзьями, друзья скинулись на подарок
@@ -462,15 +493,15 @@ function generate(db, budgetId) {
         ['Паста карбонара', 790, 890, 'food.dining'], ['Пицца Маргарита', 690, 790, 'food.dining'], ['Стейк рибай', 2490, 2990, 'food.dining'],
         ['Салат Цезарь', 690, 790, 'food.dining'], ['Тирамису', 490, 590, 'food.dining'], ['Вино Кьянти бутылка', 3490, 4490, 'food.alcohol'],
         ['Лимонад домашний 1 л', 590, 690, 'food.dining'],
-      ]);
-      income(at(d, 12, 20), 1500000, 'Друзья', 'Перевод: с днём рождения!', 'in.gifts', 'TRANSFER');
+      ], { notes: NOTES });
+      income(at(d, 12, 20), 1500000, 'Друзья', 'Перевод: с днём рождения!', 'in.gifts', 'TRANSFER', 'Скинулись на новый объектив');
     }
 
     // Чёрная пятница: телевизор
     if (md === '11-28') {
       receipt(at(d, 0, 2), 'ООО "Интернет Решения"', 'Ozon', OZON, [
         ['Телевизор Xiaomi TV A Pro 55"', 34990, 41990, 'home.electronics'], ['Кронштейн настенный', 990, 1490, 'home.goods'],
-      ]);
+      ], { notes: NOTES });
     }
   }
 
@@ -489,10 +520,10 @@ function generate(db, budgetId) {
         ['Йогурт Даниссимо 130 г', 69, 89, 'food.groceries'], ['Чурчхела', 190, 290, 'food.groceries'],
       ]);
     }
-    if (dom === 14) receipt(at(d, 10, 12), 'НАО "Красная поляна"', 'Роза Хутор', null, [['Подъёмник Роза Хутор, 2 взрослых', 3800, 4600, TRIP.fun]]);
+    if (dom === 14) receipt(at(d, 10, 12), 'НАО "Красная поляна"', 'Роза Хутор', null, [['Подъёмник Роза Хутор, 2 взрослых', 3800, 4600, TRIP.fun]], { notes: NOTES });
     if (dom === 16) receipt(at(d, 11, 13), 'ООО "Аквапарк Маяк"', 'Аквапарк Маяк', null, [['Билеты в аквапарк, 2 взрослых', 3800, 4600, TRIP.fun]]);
-    if (dom === 18) op(at(d, 9, 11), { amount: rub(5500, 7500), merchant: 'Экскурсии Сочи', description: 'Экскурсия в Абхазию', cat: TRIP.fun });
-    if (dom === 20) receipt(at(d, 17, 20), '', '', null, [['Сувениры и магниты', 1200, 2500, 'gifts.gifts']], { manual: true });
+    if (dom === 18) op(at(d, 9, 11), { amount: rub(5500, 7500), merchant: 'Экскурсии Сочи', description: 'Экскурсия в Абхазию', cat: TRIP.fun, note: 'Озеро Рица — обязательно ещё раз' });
+    if (dom === 20) receipt(at(d, 17, 20), '', '', null, [['Сувениры и магниты', 1200, 2500, 'gifts.gifts']], { manual: true, notes: NOTES });
     if (chance(0.4)) op(at(d, 10, 22), { amount: rub(290, 690), merchant: 'Яндекс Go', description: 'Яндекс Такси', cat: 'transport.public' });
   }
 
