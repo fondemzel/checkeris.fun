@@ -26,6 +26,8 @@ import { setLimits, suggestLimits } from './limits.mjs';
 
 const DEMO_LOGIN = '__demo__';
 const DEMO_NAME = 'Демо-режим';
+// Версия генератора: поправили его — поднять, и база пересоздастся при следующем включении
+const DEMO_VERSION = 2;
 const now = () => new Date().toISOString();
 
 /** Бюджет — тестовый? */
@@ -37,7 +39,8 @@ function demoBudget(db) {
   let id = db.prepare('SELECT id FROM budgets WHERE demo = 1 ORDER BY id LIMIT 1').get()?.id;
   const last = id && db.prepare('SELECT MAX(purchased_date) AS d FROM receipts WHERE budget_id = ?').get(id).d;
   // Расписана до конца этого года — свежая (последние траты — под Новый год)
-  const fresh = last && last >= `${new Date().getFullYear()}-12-20`;
+  const version = id && db.prepare('SELECT demo_version FROM budgets WHERE id = ?').get(id).demo_version;
+  const fresh = last && last >= `${new Date().getFullYear()}-12-20` && version === DEMO_VERSION;
   if (fresh) {
     db.prepare('UPDATE budgets SET name = ? WHERE id = ?').run(DEMO_NAME, id); // название могло смениться
     return id;
@@ -51,6 +54,7 @@ function demoBudget(db) {
     provisionTaxonomy(db, id);
     provisionIncome(db, id);
     generate(db, id);
+    db.prepare('UPDATE budgets SET demo_version = ? WHERE id = ?').run(DEMO_VERSION, id);
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');

@@ -93,6 +93,7 @@ function addUserColumns(db) {
   addColumn(db, 'bank_ops', 'orig_currency', 'TEXT'); // …и её валюта; amount — уже в рублях
   addColumn(db, 'budget_limits', 'fixed', 'INTEGER NOT NULL DEFAULT 0'); // лимиты (limits.mjs)
   // Состояние подключения со слов телефона (banks.mjs reportLink)
+  addColumn(db, 'budgets', 'demo_version', 'INTEGER'); // версия генератора демо-базы (demo.mjs)
   addColumn(db, 'bank_links', 'dev_state', 'TEXT');
   addColumn(db, 'bank_links', 'dev_detail', 'TEXT');
   addColumn(db, 'bank_links', 'dev_at', 'TEXT');
