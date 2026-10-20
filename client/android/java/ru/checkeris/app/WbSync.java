@@ -43,6 +43,24 @@ final class WbSync {
         String token = secrets.get(SESSION);
         if (token == null) return new BankSync.Result(false, 0, 0, "Wildberries не подключён");
 
+        // Токен WB живёт недолго; страница при открытии сама обновляет его по долгому входу —
+        // берём свежий из её памяти (localStorage), как при входе
+        if (WbApi.check(token) == WbApi.EXPIRED) {
+            String[] fresh = new String[1];
+            boolean ok = PageRefresh.run(context, "wb", WbApi.LOGIN_URL, (web) -> {
+                String raw = PageRefresh.js(web, "localStorage.getItem('" + WbApi.TOKEN_KEY + "')");
+                if (raw == null || raw.equals("null") || raw.length() < 100) return false;
+                String t = raw.replace("\"", "");
+                if (WbApi.check(t) != WbApi.ALIVE) return false;
+                fresh[0] = t;
+                return true;
+            });
+            if (ok && fresh[0] != null) {
+                token = fresh[0];
+                secrets.put(SESSION, token);
+            }
+        }
+
         int added = 0;
         int seen = 0;
         int failed = 0;

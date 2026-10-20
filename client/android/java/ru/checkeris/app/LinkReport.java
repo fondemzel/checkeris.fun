@@ -33,7 +33,8 @@ final class LinkReport {
                 : "error";
         // Серверу — и дословный ответ банка: человеку он ни к чему, а по нему видно, правда ли
         // банк просит войти заново или отказал по другой причине
-        String raw = "tbank".equals(bank) ? TBank.lastDetail : "sber".equals(bank) ? SberBank.lastDetail : null;
+        String raw = "tbank".equals(bank) ? TBank.lastDetail : "sber".equals(bank) ? SberBank.lastDetail
+                : "ozon".equals(bank) ? OzonApi.lastDetail : null;
         String detail = result.ok ? null : result.error + (raw == null ? "" : " · " + raw);
         post(token, bank, state, detail, result.added, background);
     }

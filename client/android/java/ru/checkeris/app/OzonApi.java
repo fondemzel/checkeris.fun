@@ -36,6 +36,7 @@ final class OzonApi {
     static final int ALIVE = 1;
     static final int EXPIRED = 0;
     static final int OFFLINE = -1;
+    static volatile String lastDetail; // последний отказ Озона: код и начало ответа
 
     private static volatile String agent;
 
@@ -48,13 +49,32 @@ final class OzonApi {
         return CookieManager.getInstance().getCookie(HOST);
     }
 
+    /** Названия кук Озона, без значений: для журнала — какие куки входа остались. */
+    static String cookieNames() {
+        String cookies = cookies();
+        if (cookies == null) return "нет";
+        StringBuilder out = new StringBuilder();
+        for (String part : cookies.split(";")) out.append(part.trim().split("=", 2)[0]).append(' ');
+        return out.toString().trim();
+    }
+
     /** Страница кабинета данными: как её запрашивает сама веб-версия. */
     static JSONObject page(String url) throws Exception {
-        HttpURLConnection http = open(PAGE + URLEncoder.encode(url, "UTF-8"));
-        http.setRequestProperty("Accept", "application/json");
+        HttpURLConnection http = open(PAGE + URLEncoder.encode(url, "UTF-8"), "application/json");
         int code = http.getResponseCode();
         String body = TBank.read(code >= 400 ? http.getErrorStream() : http.getInputStream());
         http.disconnect();
+        if (!body.trim().startsWith("{")) {
+            // Вместо данных — страница: начало её — в журнал (по ней видно, что это)
+            String head = body.replaceAll("[\\s]+", " ");
+            Trace.log("ozon ответ не данные: " + code + " " + (head.length() > 300 ? head.substring(0, 300) + "…" : head));
+        }
+        if (code >= 300) {
+            // Отказ дословно — в журнал и в отчёт серверу: вход ли истёк или это защита от роботов
+            String head = body == null ? "" : body.replaceAll("[\\s]+", " ");
+            lastDetail = code + " " + (head.length() > 160 ? head.substring(0, 160) + "…" : head);
+            Trace.log("ozon отказ: " + lastDetail);
+        }
         if (code == 401 || code == 403) throw new IllegalStateException("Озон просит войти заново");
         if (code >= 400) throw new java.io.IOException("Озон ответил " + code);
         return new JSONObject(body);
@@ -69,6 +89,10 @@ final class OzonApi {
         } catch (IllegalStateException e) {
             return EXPIRED;
         } catch (Exception e) {
+            // Не ошибка Озона, а что-то другое: сеть или вместо данных — страница (проверка
+            // «я не робот»). Дословно — в журнал и в отчёт
+            lastDetail = e.getClass().getSimpleName() + ": " + e.getMessage();
+            Trace.log("ozon проверка: " + lastDetail);
             return OFFLINE;
         }
     }
@@ -130,8 +154,8 @@ final class OzonApi {
 
     /** Файл чека — PDF как есть. */
     static byte[] download(String id) throws Exception {
-        HttpURLConnection http = open("/_action/downloadCheque?id=" + URLEncoder.encode(id, "UTF-8") + "&rawdata=1&download=1&docType=ozon");
-        http.setRequestProperty("Accept", "application/json"); // так запрос проходил в разведке
+        // Accept — как в разведке: так запрос проходил
+        HttpURLConnection http = open("/_action/downloadCheque?id=" + URLEncoder.encode(id, "UTF-8") + "&rawdata=1&download=1&docType=ozon", "application/json");
         int code = http.getResponseCode();
         if (code >= 400) {
             http.disconnect();
@@ -148,15 +172,54 @@ final class OzonApi {
         return out.toByteArray();
     }
 
-    private static HttpURLConnection open(String path) throws Exception {
-        HttpURLConnection http = (HttpURLConnection) new URL(HOST + path).openConnection();
-        if (agent != null) http.setRequestProperty("User-Agent", agent);
-        http.setRequestProperty("Referer", LOGIN_URL);
-        String cookies = cookies();
-        if (cookies != null) http.setRequestProperty("Cookie", cookies);
-        http.setConnectTimeout(15000);
-        http.setReadTimeout(30000);
-        return http;
+    /**
+     * Запрос как из браузера: перенаправления проходим сами и куки из каждого ответа сохраняем.
+     * Короткий пропуск Озона (__Secure-access-token) живёт ~полчаса; истёк — Озон отвечает
+     * перенаправлением и в нём же выдаёт новый пропуск (и новый долгий — refresh). Раньше
+     * HttpURLConnection шёл по перенаправлениям сам, но новые куки не сохранял: ходил со старым
+     * пропуском по кругу («Too many follow-up requests: 21», записано 20.10.2026), а долгий
+     * пропуск сгорал — и вход терялся. Ответ возвращаем уже конечный.
+     */
+    private static HttpURLConnection open(String path, String accept) throws Exception {
+        String url = HOST + path;
+        for (int hop = 0; hop < 10; hop++) {
+            HttpURLConnection http = (HttpURLConnection) new URL(url).openConnection();
+            http.setInstanceFollowRedirects(false);
+            if (agent != null) http.setRequestProperty("User-Agent", agent);
+            http.setRequestProperty("Referer", LOGIN_URL);
+            if (accept != null) http.setRequestProperty("Accept", accept);
+            String cookies = cookies();
+            if (cookies != null) http.setRequestProperty("Cookie", cookies);
+            http.setConnectTimeout(15000);
+            http.setReadTimeout(30000);
+            int code = http.getResponseCode();
+            keepCookies(http);
+            String next = http.getHeaderField("Location");
+            if (code >= 300 && code < 400 && next != null) {
+                url = new URL(new URL(url), next).toString();
+                http.disconnect();
+                continue;
+            }
+            return http;
+        }
+        throw new java.io.IOException("Озон зациклил перенаправления");
+    }
+
+    /**
+     * Куки из ответа — в хранилище окна, как сделал бы браузер. Без домена кука легла бы
+     * отдельно от куки окна с тем же именем (так раньше появлялись дубли): ставим домен Озона.
+     */
+    private static void keepCookies(HttpURLConnection http) {
+        CookieManager cm = CookieManager.getInstance();
+        boolean any = false;
+        for (java.util.Map.Entry<String, List<String>> h : http.getHeaderFields().entrySet()) {
+            if (h.getKey() == null || !h.getKey().equalsIgnoreCase("Set-Cookie")) continue;
+            for (String c : h.getValue()) {
+                cm.setCookie(HOST, c.toLowerCase().contains("domain=") ? c : c + "; Domain=.ozon.ru");
+                any = true;
+            }
+        }
+        if (any) cm.flush();
     }
 
     /**

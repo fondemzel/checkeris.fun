@@ -47,6 +47,18 @@ final class OzonSync {
         OzonApi.dropDuplicateCookies();
         int state = OzonApi.check();
         Trace.log("ozon обновление: вход → " + state);
+        if (state != OzonApi.ALIVE) Trace.log("ozon куки: " + OzonApi.cookieNames());
+        // Пропуск Озона живёт ~полчаса; страница при открытии сама меняет долгий вход на свежий
+        // «Не отвечает» — тоже: это может быть защита от роботов, а её страница в окне проходит
+        if (state != OzonApi.ALIVE
+                && PageRefresh.run(context, "ozon", OzonApi.LOGIN_URL, (web) -> {
+                    int st = OzonApi.check();
+                    Trace.log("ozon тихий вход: страница " + PageRefresh.js(web, "location.pathname") + " → " + st
+                            + " · куки " + OzonApi.cookieNames());
+                    return st == OzonApi.ALIVE;
+                })) {
+            state = OzonApi.ALIVE;
+        }
         if (state == OzonApi.OFFLINE) return new BankSync.Result(false, 0, 0, "Озон не отвечает — попробуйте позже");
         if (state == OzonApi.EXPIRED) {
             secrets.put(EXPIRED, "1");
