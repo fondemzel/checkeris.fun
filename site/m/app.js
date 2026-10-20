@@ -5704,7 +5704,8 @@ function quickOpen(btn) {
   const w = el.offsetWidth;
   const left = Math.min(Math.max(10, r.left + r.width / 2 - w / 2), innerWidth - 10 - w);
   el.style.left = `${left}px`;
-  el.style.bottom = `${innerHeight - island.top + 8}px`;
+  // Выше и острова, и выступающего над ним «+»
+  el.style.bottom = `${innerHeight - Math.min(island.top, $('fab').getBoundingClientRect().top) + 8}px`;
   el.style.transformOrigin = `${r.left + r.width / 2 - left}px 100%`;
   if (motion('sheets')) {
     el.animate([{ opacity: 0, transform: 'scale(0.5)' }, { opacity: 1, transform: 'none' }],

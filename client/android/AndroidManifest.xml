@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Камера: сканирование QR с чеков идёт в WebView -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Короткий отклик при долгом нажатии (navigator.vibrate): без разрешения WebView молчит -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Фоновая загрузка операций банка: задание переживает перезагрузку телефона -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Попросить снять ограничение батареи: без него система будит фоновое обновление редко,
