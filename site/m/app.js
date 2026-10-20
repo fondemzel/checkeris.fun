@@ -5976,7 +5976,7 @@ $('screen').addEventListener('click', (e) => {
 async function screenSetProfile() {
   const me = await apiKept('/api/session').catch(() => null);
   const P = T.settings.profile;
-  return section(P.block, me?.telegram ? P.viaTelegram : P.viaPassword,
+  return section(P.block, me?.telegram ? P.footTelegram : P.footPassword,
     srow({
       icon: UI.user,
       title: inlineEdit('name', me?.name ?? '', { cls: 'srow-input', label: P.nameLabel, placeholder: P.namePlaceholder, max: 60 }),

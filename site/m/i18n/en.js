@@ -80,7 +80,7 @@ export const en = {
       catsW: ['category', 'categories', 'categories'],
       spendsW: ['expense', 'expenses', 'expenses'],
       unused: 'empty so far',
-      listNote: 'Categories are shared by all budget members',
+      listNote: '', // Категории общие: их видят и меняют все участники бюджета
       groupsBlock: 'Groups',
       manage: 'Manage',
       addGroup: 'Add a new group',
@@ -123,6 +123,8 @@ export const en = {
       block: 'Account',
       viaTelegram: 'Signed in with Telegram',
       viaPassword: 'Signed in with a password',
+      footTelegram: '', // Вы входите в Чекер через Telegram
+      footPassword: '', // Вы входите в Чекер по паролю
       nameLabel: 'Name',
       namePlaceholder: 'Your name',
       nameNote: 'how budget members see you',
@@ -133,8 +135,8 @@ export const en = {
       label: 'Budget',
       main: 'General',
       members: 'Members',
-      noteShared: 'All members see and add expenses in this budget',
-      noteAlone: 'Invite your family to keep one budget together',
+      noteShared: '', // Все участники видят траты этого бюджета и могут добавлять свои
+      noteAlone: '', // Пригласите семью, чтобы вести один бюджет на всех
       nameLabel: 'Budget name',
       nameNote: 'budget name',
       nameSaved: 'Name saved',
@@ -148,14 +150,14 @@ export const en = {
       leave: 'Leave shared budget',
       leaveNote: 'you return to your own; your expenses stay here',
       notify: 'Notify about members’ spending',
-      notifyNote: 'In Telegram, when another member adds spending or income: manually, by scan or from a bank',
+      notifyNote: '', // Бот сообщит в Telegram, когда другой участник внесёт трату или доход
       notifyNoTelegram: 'Link Telegram in your profile to get messages about other members’ spending',
       leaveConfirm: 'Leave the shared budget? You will return to your own. Your expenses stay in the shared one.',
     },
     banks: {
       label: 'Banks',
       block: 'Connected',
-      note: 'Operations come through this phone; Checker never sees your bank password',
+      note: '', // Операции приходят через этот телефон, а пароль банка Чекер не видит
       add: 'Connect a bank',
       addNote: 'available: {names}',
       addNoteSoon: 'coming soon: {names}',
@@ -190,9 +192,9 @@ export const en = {
       },
       wifi: '', // Только по Wi-Fi
       allNote: '', // Единые настройки синхронизации на все банки и магазины
-      allOffNote: '', // У каждого банка свои настройки — в его карточке
-      lockedNote: '', // Сейчас вместо них действуют общие: в Настройки → Банки включено «Для всех банков». Эти заработают, когда его выключить
-      ownNote: '', // Настройки только этого банка
+      allOffNote: '', // Сейчас у каждого банка свои настройки, их можно поменять в его карточке
+      lockedNote: '', // Сейчас действуют общие настройки, а эти заработают, если выключить «Для всех банков»
+      ownNote: '', // Эти настройки действуют только для этого банка
       remind: '', // Напоминать о входе
       remindNote: '', // Если сессия банка устарела, пришлем напоминание в бот.
       remindNoTg: '', // Нужен вход через Telegram: напоминания приходят в бот
@@ -216,8 +218,8 @@ export const en = {
       allOff: 'off',
       some: '{n} of {total}',
       kindsLabel: 'What to animate',
-      kindsNote: 'Turned off items appear at once, without motion',
-      systemNote: 'Reduce motion is on in the phone settings — no animations until it is turned off',
+      kindsNote: '', // Без анимации элементы появляются сразу, без движения
+      systemNote: '', // Анимаций не будет, пока в настройках телефона включено «Уменьшить движение»
       kindNotes: {
         ring: 'Smooth fill of rings and progress bars',
         counter: 'Smooth change of the total',
@@ -245,9 +247,9 @@ export const en = {
       off: '', // выключены
       offTitle: '', // Лимиты выключены
       offNote: '', // Заданные лимиты сохранены — включите их снова в настройках
-      offFoot: '', // Выключенные лимиты нигде не показываются, заданные суммы сохраняются
+      offFoot: '', // Пока лимиты выключены, они нигде не показываются, но суммы сохраняются
       period: '', // Период
-      periodNote: '', // При смене периода заданные лимиты пересчитаются пропорционально
+      periodNote: '', // Если сменить период, заданные лимиты пересчитаются пропорционально
       periods: {
         month: '', // Месяц
         quarter: '', // Квартал
@@ -261,8 +263,8 @@ export const en = {
         day: '', // в день
       },
       groups: '', // Группы
-      groupsNote: '', // Нажмите на группу, чтобы задать её лимит
-      totalNote: '', // Всего {sum} {per}
+      groupsNote: '', // Чтобы задать лимит, нажмите на группу
+      totalNote: '', // Всего на лимиты отведено {sum} {per}
       fixed: '', // зафиксирован
       cardTitle: '', // Лимит
       cardTitleAll: '', // Лимиты всех групп
@@ -297,7 +299,7 @@ export const en = {
       label: 'Help',
       demo: 'Demo mode',
       demoNote: 'A year of a made-up person’s spending',
-      note: '', // В демо-режиме вместо ваших данных — траты вымышленной семьи. Изменить в нём ничего нельзя
+      note: '', // В демо-режиме показаны траты вымышленной семьи, и менять их нельзя
       pill: 'demo mode',
       offConfirm: 'Turn off demo mode and return to your own data?',
       off: 'Turn off',
@@ -309,7 +311,7 @@ export const en = {
     ready: 'ready to connect',
     soon: 'coming soon',
     allConnected: 'All banks are already connected.',
-    hint: 'You sign in to the bank on your phone, in the bank’s own window. Checker never sees your password.',
+    hint: '', // Вход проходит в окне банка на вашем телефоне, и пароль Чекер не видит
   },
   bankCard: {
     main: '', // Основные
@@ -325,7 +327,7 @@ export const en = {
       label: 'Data safety',
       rowNote: 'how sign-in works and what Checker sees',
       block: 'How it works',
-      note: 'The same for every bank',
+      note: '', // Так устроено одинаково для всех банков
       loginBold: 'You sign in on your own phone',
       loginText: 'The app opens the bank’s window; you type the phone number, the SMS code and the password yourself',
       passwordBold: 'The password is never stored',
@@ -337,7 +339,7 @@ export const en = {
     },
     accounts: {
       label: 'Accounts',
-      hint: 'Operations are taken only from accounts that are on. Turning an account off removes its operations from the totals; turning it back on returns them.',
+      hint: '', // Чекер берёт операции только с включённых счетов, выключенные в учёт не идут
       toggle: 'Count this account’s operations',
       kind: 'account',
       kinds: {
