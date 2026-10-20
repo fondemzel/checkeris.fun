@@ -50,6 +50,7 @@ public class BankJobService extends JobService {
     public boolean onStartJob(JobParameters params) {
         new Thread(() -> {
             String token = new Secrets(this).get(BankSync.TOKEN);
+            LinkReport.perms = Perms.summary(this);
             if (token != null) {
                 // Каждый — когда подошёл его срок и сеть подходящая (SyncPrefs: как часто, только Wi-Fi)
                 if (BankSync.connected(this) && SyncPrefs.due(this, "tbank")) {

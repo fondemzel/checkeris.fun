@@ -23,6 +23,9 @@ final class LinkReport {
 
     private static final String URL_REPORT = "https://checkeris.fun/api/bank/report";
 
+    /** Разрешения телефона коротко (Perms.summary): ставит фоновое задание перед обращениями. */
+    static volatile String perms;
+
     private LinkReport() {}
 
     /** Отчёт об обновлении. expired — подключение после попытки помечено «войти заново». */
@@ -54,7 +57,8 @@ final class LinkReport {
                     .put("state", state)
                     .put("detail", detail == null ? JSONObject.NULL : detail)
                     .put("added", added)
-                    .put("background", background);
+                    .put("background", background)
+                    .put("perms", perms == null ? JSONObject.NULL : perms);
             HttpURLConnection http = (HttpURLConnection) new URL(URL_REPORT).openConnection();
             http.setRequestMethod("POST");
             http.setRequestProperty("Content-Type", "application/json");

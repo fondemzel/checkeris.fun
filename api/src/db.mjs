@@ -97,6 +97,7 @@ function addUserColumns(db) {
   addColumn(db, 'bank_links', 'dev_at', 'TEXT');
   addColumn(db, 'bank_links', 'bg_at', 'TEXT');
   addColumn(db, 'bank_links', 'session_at', 'TEXT');
+  addColumn(db, 'bank_links', 'dev_perms', 'TEXT'); // разрешения телефона: фон, автозапуск Xiaomi
   addColumn(db, 'bank_links', 'remind_at', 'TEXT'); // когда бот последний раз напоминал войти
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');
   // Первый пользователь — владелец проекта: без квот и с правом на системный справочник

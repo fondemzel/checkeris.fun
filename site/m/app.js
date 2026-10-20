@@ -6029,7 +6029,14 @@ function permSection() {
       attrs: 'data-perm-bg',
       end: GO,
     })
-    + (isXiaomi(bg.maker) ? srow({ icon: groupIcon('zap'), title: P.autostart, note: P.autostartNote, attrs: 'data-perm-auto', end: GO }) : ''));
+    + (isXiaomi(bg.maker) ? srow({
+      icon: groupIcon('zap'),
+      title: P.autostart,
+      // Состояние знает приложение 0.7.10+; старое — только подсказка
+      note: bg.autostart === true ? P.autostartOk : bg.autostart === false ? `<span class="perm-bad">${P.autostartNo}</span>` : P.autostartNote,
+      attrs: 'data-perm-auto',
+      end: GO,
+    }) : ''));
 }
 
 /** Настройки синхронизации (SyncPrefs на телефоне); null — приложение не умеет. */

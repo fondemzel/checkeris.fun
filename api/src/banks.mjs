@@ -368,7 +368,7 @@ const REPORT_STATES = new Set(['ok', 'expired', 'offline', 'error', 'off']);
  * система приложение. session_at — с какого момента жива нынешняя сессия (первый успех после
  * «войти заново»): вместе с expired_at даёт, сколько сессия банка живёт на деле.
  */
-export function reportLink(db, userId, { bank, state, detail = null, background = false } = {}) {
+export function reportLink(db, userId, { bank, state, detail = null, background = false, perms = null } = {}) {
   if (!/^[a-z]{2,10}$/.test(String(bank ?? '')) || !REPORT_STATES.has(state)) return { error: 'неверный отчёт', status: 400 };
   const at = now();
   const link = db.prepare('SELECT id, dev_state, status FROM bank_links WHERE user_id = ? AND bank = ?').get(userId, bank);
@@ -381,6 +381,7 @@ export function reportLink(db, userId, { bank, state, detail = null, background 
     `UPDATE bank_links SET
        dev_state = :state, dev_detail = :detail, dev_at = :at,
        bg_at = CASE WHEN :bg THEN :at ELSE bg_at END,
+       dev_perms = COALESCE(:perms, dev_perms),
        last_ok_at = CASE WHEN :state = 'ok' THEN :at ELSE last_ok_at END,
        -- новая сессия: первый успех после «войти заново», выхода или впервые
        session_at = CASE WHEN :state = 'ok' AND (:was IS NULL OR :was IN ('expired', 'off')) THEN :at ELSE session_at END,
@@ -388,7 +389,7 @@ export function reportLink(db, userId, { bank, state, detail = null, background 
                          WHEN :state = 'ok' THEN NULL ELSE expired_at END,
        status = CASE WHEN :state = 'off' THEN 'off' WHEN status = 'off' AND :state = 'ok' THEN 'device' ELSE status END
      WHERE user_id = :user AND bank = :bank`,
-  ).run({ state, detail: detail == null ? null : String(detail).slice(0, 300), at, bg: background ? 1 : 0, was, user: userId, bank });
+  ).run({ state, detail: detail == null ? null : String(detail).slice(0, 300), at, bg: background ? 1 : 0, perms: perms == null ? null : String(perms).slice(0, 80), was, user: userId, bank });
   return { ok: true };
 }
 

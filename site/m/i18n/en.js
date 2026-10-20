@@ -177,6 +177,8 @@ export const en = {
       bgNo: '', // не разрешено
       autostart: '', // Автозапуск
       autostartNote: '', // на Xiaomi включите его для Чекера
+      autostartOk: '', // включён
+      autostartNo: '', // выключен
     },
     sync: {
       label: '', // Синхронизация

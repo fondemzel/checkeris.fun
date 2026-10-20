@@ -119,10 +119,11 @@ public class MainActivity extends android.app.Activity {
         @JavascriptInterface
         public String background() {
             try {
-                PowerManager pm = getSystemService(PowerManager.class);
-                boolean free = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
-                return new JSONObject().put("unrestricted", free)
-                        .put("maker", String.valueOf(Build.MANUFACTURER).toLowerCase()).toString();
+                Boolean auto = Perms.autostart(MainActivity.this);
+                JSONObject out = new JSONObject().put("unrestricted", Perms.unrestricted(MainActivity.this))
+                        .put("maker", String.valueOf(Build.MANUFACTURER).toLowerCase());
+                if (auto != null) out.put("autostart", auto.booleanValue()); // нет — узнать не вышло
+                return out.toString();
             } catch (Exception e) {
                 return "{}";
             }
