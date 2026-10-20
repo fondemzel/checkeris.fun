@@ -1413,15 +1413,15 @@ async function openLimitSheet(slug) {
   const el = openChoice(g.name, `
     <div class="lim-sheet">
       <div class="lim-rows">${srow({
-        title: P.turnOn, end: toggle('data-lim-on', cur > 0, P.turnOn),
+        icon: UI.piggy, title: P.turnOn, end: toggle('data-lim-on', cur > 0, P.turnOn),
+      })}${srow({
+        // Фиксация — сразу под включением; без лимита фиксировать нечего — гаснет вместе с полями
+        icon: UI.lock, title: P.fixShort, off: !cur, end: toggle(`data-lim-fix${cur ? '' : ' disabled'}`, Boolean(full.fixed[slug]), P.fixShort),
       })}</div>
       <div class="lim-set${cur > 0 ? '' : ' off'}">
         <label class="limit-field"><input id="lim-input" type="text" inputmode="numeric" autocomplete="off" value="${rub(start)}" /><span>₽ ${per}</span></label>
         <input class="lim-range" type="range" min="0" max="${max}" step="${step}" value="${Math.min(max, start)}" aria-label="${esc(P.toggle)}" />
         <div class="lim-scale"><span>0</span>${usual ? `<button class="link" type="button" data-lim-usual>${P.usually} ≈ ${money(usual)}</button>` : ''}<span>${money(max)}</span></div>
-        <div class="lim-rows">${srow({
-          title: P.fixShort, end: toggle('data-lim-fix', Boolean(full.fixed[slug]), P.fixShort),
-        })}</div>
       </div>
     </div>`, async (ev, close) => {
     const input = el.querySelector('#lim-input');
@@ -1481,6 +1481,9 @@ async function openLimitSheet(slug) {
     const set = el.querySelector('.lim-set');
     set.classList.toggle('off', !e.target.checked);
     for (const input of set.querySelectorAll('input, button')) input.disabled = !e.target.checked;
+    const fix = el.querySelector('[data-lim-fix]');
+    fix.disabled = !e.target.checked;
+    fix.closest('.srow').classList.toggle('off', !e.target.checked);
   });
   if (!cur) for (const input of el.querySelectorAll('.lim-set input, .lim-set button')) input.disabled = true;
   el.addEventListener('input', (e) => {
