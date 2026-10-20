@@ -31,7 +31,11 @@ final class LinkReport {
                 : expired ? "expired"
                 : result.error != null && result.error.contains("не отвечает") ? "offline"
                 : "error";
-        post(token, bank, state, result.ok ? null : result.error, result.added, background);
+        // Серверу — и дословный ответ банка: человеку он ни к чему, а по нему видно, правда ли
+        // банк просит войти заново или отказал по другой причине
+        String raw = "tbank".equals(bank) ? TBank.lastDetail : "sber".equals(bank) ? SberBank.lastDetail : null;
+        String detail = result.ok ? null : result.error + (raw == null ? "" : " · " + raw);
+        post(token, bank, state, detail, result.added, background);
     }
 
     /** Человек вышел из банка или магазина на телефоне. */

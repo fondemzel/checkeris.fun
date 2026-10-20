@@ -25,8 +25,16 @@ final class TBank {
     private static final String API = "https://www.tbank.ru/api/common/v1/";
 
     /** Ответ банка: { resultCode, payload }. Payload возвращаем как есть. */
+    // Последний отказ банка дословно (код и текст): уходит серверу в отчёте — по нему видно,
+    // правда ли банк просит войти заново или отказал по другой причине
+    static volatile String lastDetail;
+
     private static Object call(String session, String method, String query) throws Exception {
         JSONObject body = new JSONObject(body(session, method, query));
+        if (!"OK".equals(body.optString("resultCode"))) {
+            lastDetail = method + ": " + body.optString("resultCode")
+                    + (body.has("errorMessage") ? " «" + body.optString("errorMessage") + "»" : "");
+        }
         Trace.log("tbank api " + method + " " + Trace.mark(session) + " → " + body.optString("resultCode")
                 + (body.has("errorMessage") ? " «" + body.optString("errorMessage") + "»" : ""));
         if ("REQUEST_RATE_LIMIT_EXCEEDED".equals(body.optString("resultCode"))) throw new IllegalStateException(RATE_LIMIT);
