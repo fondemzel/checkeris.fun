@@ -5651,11 +5651,152 @@ $('fab').addEventListener('touchcancel', fabEnd);
 document.querySelector('.tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
   if (!tab) return;
+  // Нажатие закончило долгое — оно уже открыло выбор периода, вкладку не переключает
+  if (quick.ate) {
+    quick.ate = false;
+    return;
+  }
   // Нажал человек (свайп вкладок нажимает сам — у него капсула своя)
-  if (e.isTrusted) pillTap(TAB_OF[state.screen], tab.dataset.tab);
-  const sort = defaultSort(tab.dataset.tab);
-  go({ screen: tab.dataset.tab, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '', sg: '' }, true);
+  openTab(tab.dataset.tab, {}, e.isTrusted);
 });
+
+function openTab(name, extra = {}, tapped = true) {
+  if (tapped) pillTap(TAB_OF[state.screen], name);
+  const sort = defaultSort(name);
+  go({ screen: name, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '', sg: '', ...extra }, true);
+}
+
+// ── долгое нажатие на «Расход» / «Доход»: быстрый период ─────
+// Палец задержали на кнопке — над ней вырастает «Сегодня / Неделя / Месяц / Год». Можно, не
+// отпуская, провести до пункта и отпустить, а можно отпустить и нажать пункт. Выбор — как
+// смена периода в шапке: открывает этот экран и остаётся. Обычное нажатие — как было.
+// Периоды календарные, с начала: неделя с понедельника, месяц с 1-го, год с 1 января.
+const QUICK_TABS = ['summary', 'income'];
+const QUICK_HOLD = 450; // мс — как долгое нажатие на строках ленты
+const quick = { press: null, el: null, tab: '', held: false, moved: false, ate: false };
+
+function quickPeriods() {
+  const now = new Date();
+  const monday = addDays(now, -((now.getDay() + 6) % 7));
+  const span = (a, b) => ({ from: isoDay(a), to: isoDay(b) });
+  const Q = T.island.periods;
+  return [
+    [Q.today, span(now, now)],
+    [Q.week, span(monday, addDays(monday, 6))],
+    [Q.month, monthPeriod(now.getFullYear(), now.getMonth())],
+    [Q.year, monthPeriod(now.getFullYear(), 0, 12)],
+  ];
+}
+
+function quickOpen(btn) {
+  quickClose(true);
+  const periods = quickPeriods();
+  const el = document.createElement('div');
+  el.className = 'quick';
+  el.innerHTML = periods.map(([label, p], i) => {
+    const on = p.from === state.from && p.to === state.to;
+    return `<button class="quick-item${on ? ' on' : ''}" type="button" data-quick="${i}"><span>${esc(label)}</span>${on ? UI.ok : ''}</button>`;
+  }).join('');
+  document.body.appendChild(el);
+  // Над кнопкой, по её центру, не вылезая за края экрана
+  const r = btn.getBoundingClientRect();
+  const island = document.querySelector('.tabs').getBoundingClientRect();
+  const w = el.offsetWidth;
+  const left = Math.min(Math.max(10, r.left + r.width / 2 - w / 2), innerWidth - 10 - w);
+  el.style.left = `${left}px`;
+  el.style.bottom = `${innerHeight - island.top + 8}px`;
+  el.style.transformOrigin = `${r.left + r.width / 2 - left}px 100%`;
+  if (motion('sheets')) {
+    el.animate([{ opacity: 0, transform: 'scale(0.5)' }, { opacity: 1, transform: 'none' }],
+      { duration: 200, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.15)' });
+  }
+  quick.el = el;
+  quick.tab = btn.dataset.tab;
+  quick.held = true;
+  quick.moved = false;
+  navigator.vibrate?.(15);
+}
+
+function quickClose(now = false) {
+  const el = quick.el;
+  if (!el) return;
+  quick.el = null;
+  quick.held = false;
+  if (now || !motion('sheets')) return el.remove();
+  el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.8)' }], { duration: 120, easing: 'ease-in' })
+    .finished.then(() => el.remove(), () => el.remove());
+}
+
+function quickPick(i) {
+  const tab = quick.tab;
+  const p = quickPeriods()[i]?.[1];
+  quickClose();
+  if (p) openTab(tab, p, TAB_OF[state.screen] !== tab);
+}
+
+/** Пункт под пальцем — подсвечиваем, пока ведут. */
+function quickHot(x, y) {
+  const item = document.elementFromPoint(x, y)?.closest('.quick-item');
+  for (const b of quick.el.querySelectorAll('.quick-item')) b.classList.toggle('hot', b === item);
+  return item;
+}
+
+const tabsEl = document.querySelector('.tabs');
+tabsEl.addEventListener('pointerdown', (e) => {
+  quick.ate = false;
+  const btn = e.target.closest('[data-tab]');
+  if (!btn || !QUICK_TABS.includes(btn.dataset.tab)) return;
+  quick.press = {
+    x: e.clientX,
+    y: e.clientY,
+    timer: setTimeout(() => {
+      quick.press = null;
+      quick.ate = true; // click, который придёт за отпусканием, — не переключение вкладки
+      quickOpen(btn);
+    }, QUICK_HOLD),
+  };
+});
+tabsEl.addEventListener('pointermove', (e) => {
+  if (quick.press) {
+    // Палец поехал до срока — это не долгое нажатие
+    if (Math.hypot(e.clientX - quick.press.x, e.clientY - quick.press.y) > 10) {
+      clearTimeout(quick.press.timer);
+      quick.press = null;
+    }
+    return;
+  }
+  if (quick.el && quick.held) {
+    quick.moved = true;
+    quickHot(e.clientX, e.clientY);
+  }
+});
+const quickRelease = (e) => {
+  if (quick.press) {
+    clearTimeout(quick.press.timer);
+    quick.press = null;
+  }
+  if (!quick.el || !quick.held) return;
+  quick.held = false;
+  const item = e.type === 'pointerup' && quickHot(e.clientX, e.clientY);
+  if (item) return quickPick(Number(item.dataset.quick));
+  // Отпустили, не уводя палец, — попап остаётся: пункт можно нажать
+  if (quick.moved) quickClose();
+};
+tabsEl.addEventListener('pointerup', quickRelease);
+tabsEl.addEventListener('pointercancel', quickRelease);
+// Долгое нажатие на кнопке не должно вызывать меню телефона
+tabsEl.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('[data-tab]')) e.preventDefault();
+});
+// Попап открыт и палец отпущен: нажали пункт — выбор, мимо — закрыть
+document.addEventListener('click', (e) => {
+  if (!quick.el || quick.held) return;
+  if (quick.ate && e.target.closest('.tabs')) return; // click самого долгого нажатия
+  const item = e.target.closest('.quick-item');
+  if (item) return quickPick(Number(item.dataset.quick));
+  if (!e.target.closest('.quick')) quickClose();
+}, true);
+window.addEventListener('popstate', () => quickClose(true));
 
 /**
  * Аккаунт: кто вошёл, выход и удаление. Удаление — насовсем и со всеми данными,

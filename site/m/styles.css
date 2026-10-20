@@ -314,6 +314,23 @@ button, input, select { font: inherit; color: inherit; }
 .fab-pull.full .fab-pull-knob { color: var(--accent); }
 .tab-ic svg { display: block; width: 20px; height: 20px; }
 
+/* Долгое нажатие на «Расход» / «Доход» (quickOpen): над кнопкой — список периодов, как
+   контекстное меню. Растёт из кнопки; пункт под пальцем подсвечен, выбранный — с галочкой */
+.tab[data-tab="summary"], .tab[data-tab="income"] { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.quick {
+  position: fixed; z-index: 30; min-width: 168px; padding: 6px;
+  border-radius: 18px; background: var(--surface);
+  box-shadow: 0 10px 32px rgba(15, 20, 28, 0.22), 0 0 0 1px rgba(15, 20, 28, 0.06);
+}
+.quick-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+  padding: 11px 12px; border: none; border-radius: 12px; background: none;
+  font: inherit; font-size: 15px; color: var(--text); text-align: left; cursor: pointer;
+}
+.quick-item.hot, .quick-item:active { background: var(--fill); }
+.quick-item.on { color: var(--accent); font-weight: 600; }
+.quick-item svg { flex: none; width: 18px; height: 18px; }
+
 .badge {
   position: absolute;
   top: 4px;
