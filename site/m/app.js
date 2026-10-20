@@ -8319,21 +8319,18 @@ const film = {
     const r = film.find(target)?.getBoundingClientRect();
     return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, top: r.top, left: r.left } : null;
   },
-  // Переезд к новой цели — своей траекторией (FILM_MOVE мс, с замедлением), а не переходом CSS:
-  // цель может двигаться (экран выезжает, лента листается), и рамка должна прийти туда, где
-  // цель будет, а дальше ехать вместе с ней без отставания
-  spot(target, { pad = 6, radius = null, dim = 0.62 } = {}) {
-    const node = film.find(target);
+  // Переезд к новой цели — своей траекторией (FILM_MOVE мс, с замедлением): цель может
+  // двигаться (экран выезжает, лента листается), и рамка должна прийти туда, где цель будет,
+  // а дальше ехать вместе с ней без отставания. Цель пропала со страницы — затемнение гаснет
+  // up — выделить весь блок вокруг найденного (строку, карточку): 'text:…' находит только текст
+  spot(target, { pad = 6, radius = null, dim = 0.62, up = null } = {}) {
+    const found = film.find(target);
+    const node = up ? found?.closest(up) : found;
     if (!node) return false;
-    const first = !film.el;
-    if (first) {
-      film.el = document.createElement('div');
-      film.el.className = 'film-spot';
-      document.body.appendChild(film.el);
-    }
+    if (!film.el) film.build();
     const own = parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0;
-    // Откуда едем: где рамка сейчас (первое выделение — сразу на месте, только проявляется)
-    film.from = first || !film.el.classList.contains('on') ? null : film.shown;
+    // Откуда едем: где вырез сейчас (было погашено — сразу на месте, только проявляется)
+    film.from = film.el.classList.contains('on') ? film.shown : null;
     film.at = performance.now();
     film.node = node;
     film.pad = pad;
@@ -8343,23 +8340,51 @@ const film = {
     if (!film.raf) film.follow();
     return true;
   },
+  // Затемнение — из восьми кусков: четыре полосы вокруг выреза и четыре скругления в его углах.
+  // Все двигаются только сдвигом и масштабом: видеокарта делает это без перерисовки. Прежняя
+  // огромная тень, меняя размер, перерисовывала весь экран каждый кадр (замер 20.10.2026:
+  // 46 кадров вместо 60 в эмуляторе — и рывки в записи)
+  build() {
+    film.el = document.createElement('div');
+    film.el.className = 'film-spot';
+    film.el.innerHTML = '<i></i><i></i><i></i><i></i><b></b><b></b><b></b><b></b>';
+    document.body.appendChild(film.el);
+    film.parts = [...film.el.children];
+  },
+  draw({ x, y, w, h, r }) {
+    const W = innerWidth;
+    const H = innerHeight;
+    const R = Math.max(0, Math.min(r, w / 2, h / 2));
+    const box = (el, bx, by, bw, bh) => {
+      el.style.transform = `translate(${bx.toFixed(2)}px, ${by.toFixed(2)}px) scale(${(Math.max(0, bw) / 100).toFixed(4)}, ${(Math.max(0, bh) / 100).toFixed(4)})`;
+    };
+    const [top, bottom, left, right, ...corners] = film.parts;
+    // Полосы заходят друг на друга на пиксель: швов не видно (непрозрачность — у всего слоя)
+    box(top, -1, -1, W + 2, y + 1.5);
+    box(bottom, -1, y + h - 0.5, W + 2, H - y - h + 1.5);
+    box(left, -1, y - 0.5, x + 1.5, h + 1);
+    box(right, x + w - 0.5, y - 0.5, W - x - w + 1.5, h + 1);
+    // Уголки: квадрат FILM_CORNER с прозрачной четвертью круга, масштаб — под радиус
+    const k = (R / FILM_CORNER).toFixed(4);
+    const at = [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]];
+    corners.forEach((el, i) => {
+      const [cx, cy, sx, sy] = at[i];
+      el.style.transform = `translate(${cx.toFixed(2)}px, ${cy.toFixed(2)}px) scale(${sx * k}, ${sy * k})`;
+    });
+  },
   follow() {
-    if (film.node?.isConnected) {
+    const alive = film.node?.isConnected && film.node.getClientRects().length;
+    if (film.node && !alive) film.clear(); // элемент исчез — не держать рамку на пустом месте
+    if (alive) {
       const r = film.node.getBoundingClientRect();
       const p = film.pad;
       const goal = { x: r.left - p, y: r.top - p, w: r.width + p * 2, h: r.height + p * 2, r: film.radius };
       const t = film.from ? Math.min(1, (performance.now() - film.at) / FILM_MOVE) : 1;
-      const k = 1 - (1 - t) ** 3;
-      const mix = (a, b) => a + (b - a) * k;
+      const e = 1 - (1 - t) ** 3;
+      const mix = (a, b) => a + (b - a) * e;
       const f = film.from;
       film.shown = t < 1 ? { x: mix(f.x, goal.x), y: mix(f.y, goal.y), w: mix(f.w, goal.w), h: mix(f.h, goal.h), r: mix(f.r, goal.r) } : goal;
-      const s = film.shown;
-      Object.assign(film.el.style, {
-        transform: `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px)`,
-        width: `${s.w.toFixed(1)}px`,
-        height: `${s.h.toFixed(1)}px`,
-        borderRadius: `${s.r.toFixed(1)}px`,
-      });
+      film.draw(film.shown);
     }
     film.raf = requestAnimationFrame(film.follow);
   },
@@ -8369,4 +8394,5 @@ const film = {
   },
 };
 const FILM_MOVE = 550;
+const FILM_CORNER = 64;
 window.film = film;
