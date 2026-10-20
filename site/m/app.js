@@ -494,7 +494,13 @@ document.addEventListener('click', (e) => {
     const row = ev.target.closest('.drop-row');
     if (!row) return;
     const i = [...sheet.querySelectorAll('.drop-row')].indexOf(row);
-    const pick = () => menu.querySelectorAll('.drop-row')[i]?.click();
+    // Строку ищем в меню, которое на экране сейчас: экран мог уже перерисоваться (данные из
+    // памяти — мгновенно), и прежнее меню отцеплено — нажатие на него никуда не доходило
+    const title = btn.title;
+    const pick = () => {
+      const now = [...document.querySelectorAll('[data-drop]')].find((b) => b.title === title)?.nextElementSibling ?? menu;
+      now.querySelectorAll('.drop-row')[i]?.click();
+    };
     if (history.state?.popup) addEventListener('popstate', () => setTimeout(pick, 0), { once: true });
     else setTimeout(pick, 0);
     close();
