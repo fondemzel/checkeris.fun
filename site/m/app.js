@@ -5955,22 +5955,24 @@ function saveSyncPrefs(prefs) {
 const SYNC_EVERY = [15, 30, 60, 180, 0]; // минуты; 0 — только вручную
 
 /**
- * «Синхронизация»: как часто фоновое задание обходит банк и только ли по Wi-Fi. bankId — блок
- * в карточке банка: свои настройки, пока в общих выключено «Для всех банков»; иначе — общие,
- * неактивно. Без bankId — общий блок в «Настройки → Банки» с переключателем «Для всех банков».
+ * «Синхронизация»: как часто фоновое задание обходит банк и только ли по Wi-Fi.
+ * Без bankId — общий блок в «Настройки → Банки»: «Для всех банков» включён — его настройки
+ * действуют на все; выключен — у каждого свои, а общие неактивны.
+ * С bankId — блок в карточке банка: свои настройки банка, правятся всегда; пока в общих
+ * включено «Для всех банков», подпись говорит, что сейчас действуют общие.
  */
 function syncSection(bankId = '') {
   const prefs = syncPrefs();
   if (!prefs) return '';
   const S = T.settings.sync;
-  const locked = Boolean(bankId) && prefs.all;
-  const own = bankId && !prefs.all ? prefs.banks?.[bankId] ?? {} : {};
+  const own = bankId ? prefs.banks?.[bankId] ?? {} : {};
   const every = own.every ?? prefs.every;
   const wifi = own.wifi ?? prefs.wifi;
+  const off = !bankId && !prefs.all; // общие при выключенном «Для всех банков» ни на что не влияют
   const rows = (bankId ? '' : srow({ icon: UI.layers, title: S.all, end: toggle('data-sync-all', prefs.all, S.all) }))
-    + srow({ icon: UI.refresh, title: S.every, note: S.everyOpts[every] ?? S.everyOpts[15], attrs: `data-sync-every="${esc(bankId)}"`, end: GO, off: locked })
-    + srow({ icon: groupIcon('wifi'), title: S.wifi, off: locked, end: toggle(`data-sync-wifi="${esc(bankId)}"${locked ? ' disabled' : ''}`, wifi, S.wifi) });
-  const foot = bankId ? (locked ? S.lockedNote : S.ownNote) : prefs.all ? S.allNote : S.allOffNote;
+    + srow({ icon: UI.refresh, title: S.every, note: S.everyOpts[every] ?? S.everyOpts[15], attrs: `data-sync-every="${esc(bankId)}"`, end: GO, off })
+    + srow({ icon: groupIcon('wifi'), title: S.wifi, off, end: toggle(`data-sync-wifi="${esc(bankId)}"${off ? ' disabled' : ''}`, wifi, S.wifi) });
+  const foot = bankId ? (prefs.all ? S.lockedNote : S.ownNote) : prefs.all ? S.allNote : S.allOffNote;
   return section(S.label, foot, rows);
 }
 
@@ -5994,7 +5996,7 @@ $('screen').addEventListener('click', (e) => {
   const bankId = pick.dataset.syncEvery;
   const S = T.settings.sync;
   const prefs = syncPrefs();
-  const current = (bankId && !prefs.all ? prefs.banks?.[bankId]?.every : undefined) ?? prefs.every;
+  const current = (bankId ? prefs.banks?.[bankId]?.every : undefined) ?? prefs.every;
   const rows = SYNC_EVERY.map((m) => dropRow(`data-every="${m}"`, '', S.everyOpts[m], m === current)).join('');
   return openChoice(S.every, `<div class="choice-list">${rows}</div><p class="note lim-choice-note">${S.everyNote}</p>`, (ev, close) => {
     const row = ev.target.closest('[data-every]');
