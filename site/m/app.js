@@ -427,7 +427,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
       <div class="head-btns">
         ${sorts && !(mode && state.mode === 'ring') ? sortDrop(sorts === true ? undefined : sorts) : ''}
         ${filters}
-        ${mode ? `<button class="drop-btn${state.mode === 'ring' ? ' on' : ''}" type="button" data-mode-toggle
+        ${mode ? `<button class="drop-btn" type="button" data-mode-toggle
           aria-label="${state.mode === 'ring' ? 'Показать списком' : 'Показать кольцом'}" title="${state.mode === 'ring' ? 'Списком' : 'Кольцом'}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
       </div>
     </div>
