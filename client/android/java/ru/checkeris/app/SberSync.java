@@ -51,6 +51,7 @@ final class SberSync {
         String cookies = secrets.get(BankLoginActivity.SBER_SESSION);
         if (cookies == null) return;
         int state = SberBank.check(cookies);
+        if (state == SberBank.ALIVE) SberBank.warmUp(cookies);
         if (state == SberBank.ALIVE) secrets.put(EXPIRED, null);
         else if (state == SberBank.EXPIRED && !fresh(secrets)) secrets.put(EXPIRED, "1");
     }
@@ -88,6 +89,7 @@ final class SberSync {
             return new BankSync.Result(false, 0, 0, "Сбер просит войти заново");
         }
         secrets.put(EXPIRED, null);
+        SberBank.warmUp(cookies);
 
         long now = System.currentTimeMillis();
         try {
