@@ -4740,9 +4740,13 @@ function pullReset() {
   setTimeout(() => puller.classList.remove('back'), 220);
 }
 
+// Касание на острове (тянут «+», ведут по попапу периода) — его жест: ни обновление, ни
+// «резина», ни свайп периода и вкладок его не подхватывают
+const onIsland = (e) => Boolean(e.target.closest?.('.tabs, .quick'));
+
 addEventListener('touchstart', (e) => {
   const allowed = window.scrollY <= 0 && e.touches.length === 1 && !pulling && !$('app').hidden
-    && PULLABLE.includes(state.screen) && !document.querySelector('.sheet, .picker') && !e.target.closest('.drop-menu');
+    && PULLABLE.includes(state.screen) && !document.querySelector('.sheet, .picker') && !e.target.closest('.drop-menu') && !onIsland(e);
   pullFrom = allowed ? e.touches[0].clientY : null;
   pullBy = 0;
 }, { passive: true });
@@ -4794,7 +4798,7 @@ addEventListener('touchstart', (e) => {
   stretchEdge = null;
   if (e.touches.length !== 1 || $('app').hidden || document.querySelector('.sheet, .picker')) return;
   // Выпадающее меню листается само: «резина» перехватила бы жест, и меню бы не сдвинулось
-  if (e.target.closest('.drop-menu')) return;
+  if (e.target.closest('.drop-menu') || onIsland(e)) return;
   stretchFrom = e.touches[0].clientY;
   swipeParts().forEach((el) => (el.style.transition = ''));
 }, { passive: true });
@@ -4961,7 +4965,7 @@ addEventListener('touchstart', (e) => {
   swipeFrom = null;
   swipeLock = '';
   const t = e.touches[0];
-  if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker')) return;
+  if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker') || onIsland(e)) return;
   // В настройках свайпать вбок больше нечего — там свайп по любому месту листает вкладки
   swipeTab = Boolean(e.target.closest(PINNED)) || (TAB_OF[state.screen] === 'settings' && !stretchEl.querySelector('[data-shift]'));
   if (!swipeTab && !stretchEl.querySelector('[data-shift]') && state.screen !== 'stats') return;
