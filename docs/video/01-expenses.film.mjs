@@ -24,7 +24,7 @@ export default async (f) => {
   await f.eval(`localStorage.setItem('checker.mode', 'ring'), true`);
 
   // 0–3 с. «Куда уходят деньги? Чекер показывает это одним кольцом.»
-  await f.go('?screen=summary'); // экран открывается заново — кольцо заливается в кадре
+  await f.eval(`film.tab('summary', { mode: 'ring' })`); // экран рисуется заново — кольцо заливается в кадре
   await f.at(1.4);
   await f.spot('.ring-box', { pad: 4 });
 
@@ -94,7 +94,7 @@ export default async (f) => {
   await f.at(30.0);
   await f.clear();
   await f.eval(`localStorage.setItem('checker.mode', 'ring'), true`);
-  await f.go('?screen=summary'); // снова декабрь, кольцо
+  await f.eval(`film.tab('summary', { mode: 'ring', from: '2026-12-01', to: '2026-12-31' })`); // снова декабрь, кольцо
   await f.at(31.6);
   await f.tap(FOOD);
   await f.wait(150);

@@ -8329,8 +8329,10 @@ const film = {
     if (!node) return false;
     if (!film.el) film.build();
     const own = parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0;
-    // Откуда едем: где вырез сейчас (было погашено — сразу на месте, только проявляется)
-    film.from = film.el.classList.contains('on') ? film.shown : null;
+    // Откуда едем: где вырез сейчас. Было погашено — «наезд»: вырез сжимается к цели от краёв
+    // экрана, пока проступает затемнение. Внезапно выделение не появляется никогда
+    film.from = film.el.classList.contains('on') && film.shown ? film.shown : film.full();
+    film.leaving = null;
     film.at = performance.now();
     film.node = node;
     film.pad = pad;
@@ -8372,23 +8374,37 @@ const film = {
       el.style.transform = `translate(${cx.toFixed(2)}px, ${cy.toFixed(2)}px) scale(${sx * k}, ${sy * k})`;
     });
   },
+  /** Перейти на вкладку без перезагрузки страницы (та остаётся во весь экран): как нажатие. */
+  tab: (name, extra = {}) => (openTab(name, extra, false), true),
+  /** Вырез во весь экран (чуть шире краёв): с него начинается наезд и им кончается отъезд. */
+  full: () => ({ x: -4, y: -4, w: innerWidth + 8, h: innerHeight + 8, r: 0 }),
+  /** Промежуточный вырез: от from к goal, доля t (с замедлением к концу). */
+  blend(from, goal, t) {
+    const e = 1 - (1 - t) ** 3;
+    const mix = (a, b) => a + (b - a) * e;
+    return t < 1 ? { x: mix(from.x, goal.x), y: mix(from.y, goal.y), w: mix(from.w, goal.w), h: mix(from.h, goal.h), r: mix(from.r, goal.r) } : goal;
+  },
   follow() {
+    const now = performance.now();
     const alive = film.node?.isConnected && film.node.getClientRects().length;
     if (film.node && !alive) film.clear(); // элемент исчез — не держать рамку на пустом месте
-    if (alive) {
+    if (film.leaving) {
+      // Отъезд: вырез расходится к краям экрана, затемнение тем временем растворяется
+      const t = Math.min(1, (now - film.leaving.at) / FILM_MOVE);
+      film.shown = film.blend(film.leaving.from, film.full(), t);
+      film.draw(film.shown);
+      if (t >= 1) film.leaving = null;
+    } else if (alive) {
       const r = film.node.getBoundingClientRect();
       const p = film.pad;
       const goal = { x: r.left - p, y: r.top - p, w: r.width + p * 2, h: r.height + p * 2, r: film.radius };
-      const t = film.from ? Math.min(1, (performance.now() - film.at) / FILM_MOVE) : 1;
-      const e = 1 - (1 - t) ** 3;
-      const mix = (a, b) => a + (b - a) * e;
-      const f = film.from;
-      film.shown = t < 1 ? { x: mix(f.x, goal.x), y: mix(f.y, goal.y), w: mix(f.w, goal.w), h: mix(f.h, goal.h), r: mix(f.r, goal.r) } : goal;
+      film.shown = film.blend(film.from, goal, Math.min(1, (now - film.at) / FILM_MOVE));
       film.draw(film.shown);
     }
     film.raf = requestAnimationFrame(film.follow);
   },
   clear() {
+    if (film.el?.classList.contains('on') && film.shown) film.leaving = { from: film.shown, at: performance.now() };
     film.el?.classList.remove('on');
     film.node = null;
   },
