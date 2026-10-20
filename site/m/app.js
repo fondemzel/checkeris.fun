@@ -5694,7 +5694,7 @@ function budgetSection(budget) {
   // Сообщения в Telegram о тратах и доходах других участников — только в общем бюджете
   const notifyRow = budget.members.length > 1
     ? section('', budget.telegram ? B.notifyNote : B.notifyNoTelegram, srow({
-      icon: UI.mail, title: B.notify, end: toggle(`data-notify-members${budget.telegram ? '' : ' disabled'}`, budget.notify_members && budget.telegram, B.notify),
+      icon: UI.telegram, title: B.notify, end: toggle(`data-notify-members${budget.telegram ? '' : ' disabled'}`, budget.notify_members && budget.telegram, B.notify),
     }))
     : '';
   return section(B.main, '', name + leave)
@@ -5867,7 +5867,7 @@ function settingsIndex() {
   add(B.members, B.label, UI.user, { screen: 'set_budget' }, 'семья участник');
   if (budget?.is_owner) add(B.invite, B.label, UI.userPlus, { screen: 'set_budget' }, 'приглашение семья ссылка');
   if (budget && !budget.is_home) add(B.leave, B.label, UI.logout, { screen: 'set_budget' });
-  if (budget?.members.length > 1) add(B.notify, B.label, UI.mail, { toggle: 'notify' }, 'уведомления сообщения бот телеграм');
+  if (budget?.members.length > 1) add(B.notify, B.label, UI.telegram, { toggle: 'notify' }, 'уведомления сообщения бот телеграм');
   if (inApp()) {
     add(S.banks.label, S.menu.label, UI.bank, { screen: 'set_banks' });
     add(S.banks.add, S.banks.label, UI.bank, { screen: 'set_banks' }, 'т-банк тинькофф сбер сбербанк озон ozon wildberries вб подключить');
