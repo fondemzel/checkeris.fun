@@ -5599,10 +5599,14 @@ function fabShow(up) {
 
 function fabHide() {
   if (!fabEl) return;
-  // Втягивается обратно за кнопку
-  fabEl.style.transition = 'height 0.2s cubic-bezier(0.3, 0, 0.2, 1)';
-  fabEl.style.height = '0px';
-  fabEl.classList.remove('full');
+  // Втягивается обратно в круг кнопки (там её не видно) и убирается совсем: иначе от неё
+  // оставалась полоска под «+»
+  const el = fabEl;
+  fabEl = null;
+  el.style.transition = 'height 0.2s cubic-bezier(0.3, 0, 0.2, 1)';
+  el.style.height = `${FAB_R * 2}px`;
+  el.classList.remove('full');
+  setTimeout(() => el.remove(), 220);
 }
 
 $('fab').addEventListener('touchstart', (e) => {
