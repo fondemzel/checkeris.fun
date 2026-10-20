@@ -97,6 +97,10 @@ public class BankLoginActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String host = request.getUrl().getHost();
+                String path = String.valueOf(request.getUrl().getPath());
+                if (WATCH && !path.matches("(?i).*[.](js|css|png|jpe?g|gif|svg|webp|woff2?|ttf|ico|map)$")) {
+                    android.util.Log.i("CheckerWatch", bank + " " + request.getMethod() + " " + host + path);
+                }
                 if (bank.equals("sber") && host != null && host.endsWith("sberbank.ru") && seenHosts.add(host)) {
                     Trace.log("sber узел страницы: " + host + request.getUrl().getPath());
                 }
@@ -129,6 +133,11 @@ public class BankLoginActivity extends Activity {
     }
 
     private static final long POLL_MS = 1500;
+
+    // ВРЕМЕННО (разведка продления сессий): после входа окно не закрывается, а пишет в журнал
+    // (тег CheckerWatch) адреса всех запросов страницы банка — без параметров и тел. По ним
+    // ищем запрос, которым веб-версия сама продлевает сессию, пока вкладка открыта
+    static final boolean WATCH = false;
     private boolean checking; // одна проверка за раз, чтобы запросы не наслаивались
     private long lastNet; // когда последний раз ходили к банку — чтобы не частить впустую
     private String lastChecked; // куки, с которыми уже спрашивали: те же — спрашивать нечего
@@ -315,8 +324,14 @@ public class BankLoginActivity extends Activity {
                 : bank.equals("wb") ? WbSync.EXPIRED : BankSync.EXPIRED, null);
         // Первые секунды после входа Сбер выписку ещё не отдаёт — это не повод хоронить сессию
         if (sber) secrets.putLong(SberSync.SINCE, System.currentTimeMillis());
-        Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
         setResult(RESULT_OK);
+        if (WATCH) {
+            // Разведка: окно остаётся открытым, страница банка живёт как вкладка браузера
+            Toast.makeText(this, toast + " — идёт запись, не закрывайте окно 30 минут", Toast.LENGTH_LONG).show();
+            android.util.Log.i("CheckerWatch", bank + " ВХОД ПРИНЯТ, окно остаётся открытым");
+            return;
+        }
+        Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
         finish();
     }
 

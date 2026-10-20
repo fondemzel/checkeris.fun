@@ -71,8 +71,20 @@ final class BankSync {
         String session = secrets.get(BankLoginActivity.SESSION);
         if (session == null) return;
         int state = TBank.check(session);
+        if (state == TBank.EXPIRED) state = renew(context, secrets);
         if (state == TBank.ALIVE) secrets.put(EXPIRED, null);
         else if (state == TBank.EXPIRED) secrets.put(EXPIRED, "1");
+    }
+
+    /**
+     * Сессия истекла (живёт ~10 минут) — новая без пароля, как это делает страница банка
+     * (TBankRefresh). Получилось — сохраняем её; нет — нужен человек.
+     */
+    private static int renew(Context context, Secrets secrets) {
+        String fresh = TBankRefresh.run(context);
+        if (fresh == null) return TBank.EXPIRED;
+        secrets.put(BankLoginActivity.SESSION, fresh);
+        return TBank.ALIVE;
     }
 
     /** Забрать новые операции и отдать их Чекеру. Вызывать только в фоновом потоке. */
@@ -83,6 +95,10 @@ final class BankSync {
 
         int state = TBank.check(session);
         Trace.log("tbank обновление: сессия " + Trace.mark(session) + " → " + state);
+        if (state == TBank.EXPIRED && renew(context, secrets) == TBank.ALIVE) {
+            session = secrets.get(BankLoginActivity.SESSION);
+            state = TBank.ALIVE;
+        }
         if (state == TBank.OFFLINE) return new Result(false, 0, 0, "Банк не отвечает — попробуйте позже");
         if (state == TBank.EXPIRED) {
             // Подключение остаётся, но нужен новый вход: стирать сессию и показывать
