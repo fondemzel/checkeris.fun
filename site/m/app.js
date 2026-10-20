@@ -459,11 +459,13 @@ const SOURCE_FILTERS = [
   ['market', 'Только маркетплейсы'],
   ['bank', 'Только банк'],
   ['manual', 'Только вручную'],
+  ['failed', 'Чеки с ошибкой'], // в фильтре — только когда такие есть (sourceChips)
 ];
 
 const sourceChips = () => drop(UI.filter, 'Фильтр',
   dropRow('data-src=""', UI.layers, 'Все источники', !state.src)
-  + SOURCE_FILTERS.map(([key, label]) => dropRow(`data-src="${key}"`, SOURCES[key].icon, label, state.src === key)).join('')
+  + SOURCE_FILTERS.filter(([key]) => key !== 'failed' || failedCount > 0 || state.src === 'failed')
+    .map(([key, label]) => dropRow(`data-src="${key}"`, SOURCES[key].icon, label, state.src === key)).join('')
   // Группа: все покупки только её категорий. Повторное нажатие снимает. Внутри кольца группы
   // (и раскрытого «Остального») групп не предлагаем: другая группа дала бы пустое кольцо
   + (state.mode === 'ring' && (state.ringGroup || state.ringRest) ? '' : '<div class="drop-sep"></div>'
@@ -781,7 +783,7 @@ const expenseSwitch = () => `
 // вкладка «Расхода» и вкладка «Доход» не нужны
 let bankLinked = false;
 
-let failedCount = 0; // сканы с ошибкой: значок на вкладке «Расход» и на «Чеках»
+let failedCount = 0; // сканы с ошибкой: показывать ли «Чеки с ошибкой» в фильтре источников
 
 /** Строка списка: иконка или кружок цвета, название, сумма и доля от итога. */
 function row({ href, color, icon, title, note, sum, share }) {
@@ -873,6 +875,12 @@ async function screenSummary() {
     shownItems = shownItems.filter((r) => inGroup(r.category_slug));
     shownOps = shownOps.filter((op) => inGroup(op.category_slug));
   }
+  // Сканы с ошибкой — строками в «Без категории», «вне суммы»: за ту же покупку может быть
+  // операция из банка, и трата посчиталась бы дважды. Сумма и дата — из QR-кода
+  const scanRows = (!state.src || state.src === 'failed') && (!state.sg || picked.has(NONE) || picked.has(''))
+    ? (failed?.jobs ?? []).filter((j) => j.purchased_at.slice(0, 10) >= state.from && j.purchased_at.slice(0, 10) <= state.to)
+      .filter((j) => matchesQ([SOURCES.failed.title, 'без категории'], [j.total_sum]))
+    : [];
   const total = shownItems.reduce((s, r) => s + r.sum, 0) + shownOps.reduce((s, op) => s + op.amount, 0);
   const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
 
@@ -900,11 +908,6 @@ async function screenSummary() {
       })}
     </div>`;
 
-  // Сканы с ошибкой не должны теряться: переключателя с «Чеками» больше нет — ведём ссылкой
-  const failedCount = failed?.counts.failed ?? 0;
-  const failedLink = failedCount
-    ? `<p class="note list-hint"><button class="link" type="button" data-to-failed>Сканы с ошибкой: ${int.format(failedCount)}</button></p>`
-    : '';
 
   const selfRows = (state.sg ? [] : self?.rows ?? []).filter((op) => state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
     T.sources.bank, bankById(op.bank)?.name, 'перевод себе'], [op.amount, op.orig_amount]));
@@ -929,7 +932,7 @@ async function screenSummary() {
         key: c.slug, name: c.name, color: categoryColor(opened.slug, c.slug) ?? opened.color, icon: c.icon || opened.icon, sum: byCat.get(c.slug) ?? 0,
       }));
       const groupSum = cats.reduce((n, c) => n + c.sum, 0);
-      return `${head}${failedLink}${ringView(cats, groupSum, opened.name, 'summary-cat', total, limitCard(limits, opened.slug))}`;
+      return `${head}${ringView(cats, groupSum, opened.name, 'summary-cat', total, limitCard(limits, opened.slug))}`;
     }
     // Сколько непустых категорий в группе: одна — нажатие ведёт сразу в список, кольцо из
     // одного сектора ничего не добавляет. Кроме группы с лимитом: под её кольцом — карточка лимита
@@ -945,9 +948,9 @@ async function screenSummary() {
       single: catsOf.get(g.slug)?.size === 1 && !(meta?.limits?.[g.slug] > 0),
     }));
     parts.push({ key: NONE, name: 'Без категории', color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
-    return `${head}${failedLink}${ringView(parts, total, `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`, 'summary', null, limitCard(limits))}`;
+    return `${head}${ringView(parts, total, `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`, 'summary', null, limitCard(limits))}`;
   }
-  return `${head}${failedLink}${await spendingFeed(shownItems, shownOps, selfRows)}`;
+  return `${head}${await spendingFeed(shownItems, shownOps, selfRows, scanRows)}`;
 }
 
 /**
@@ -1666,7 +1669,7 @@ let feedLimit = { key: '', n: FEED_STEP };
 /** Раздел «Перевод себе» в расходах: не категория, а вид операции — в итог не входит. */
 const SELF = '#transfer';
 
-async function spendingFeed(itemRows, bankRows, selfRows = []) {
+async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
   const spendings = [
     ...itemRows.map((r) => ({
       name: r.name,
@@ -1696,6 +1699,19 @@ async function spendingFeed(itemRows, bankRows, selfRows = []) {
       orig: foreign(op),
       group: null,
       noted: Boolean(op.has_note),
+    })),
+    ...scanRows.map((j) => ({
+      name: SOURCES.failed.title,
+      at: j.purchased_at,
+      sum: j.total_sum,
+      source: 'failed',
+      category: null, // «Без категории»
+      scan: true, // вне суммы, но сумма видна (серая); нажатие — к скану
+      positions: 1,
+      outside: true,
+      action: 'data-to-failed',
+      group: null,
+      noted: false,
     })),
     ...selfRows.map((op) => ({
       name: opWho(op) ?? 'Перевод',
@@ -1845,7 +1861,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = []) {
           <span class="row-note">${note}${toggle}</span>
         </span>
         ${r.noted ? '<span class="noted" title="Есть комментарий"></span>' : ''}
-        <span class="row-sum${r.outside || r.self ? ' muted' : ''}">${r.outside ? 'вне суммы' : money(r.sum)}</span>
+        <span class="row-sum${r.outside || r.self ? ' muted' : ''}">${r.outside && !r.scan ? 'вне суммы' : money(r.sum)}</span>
         <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
       </button>`;
       if (!isOpen) return row;
@@ -2203,6 +2219,7 @@ const SOURCES = {
   market: { title: 'С маркетплейса', icon: UI.bag },
   manual: { title: 'Вручную', icon: UI.keyboard }, // карандаш путали с кнопкой «редактировать»
   bank: { title: 'Из банка', icon: UI.bank },
+  failed: { title: 'Чек с ошибкой', icon: UI.receipt }, // скан, который ФНС не отдала: сумма и дата — из QR
 };
 
 // Какие разделы ленты (дни, категории) открыты. Ключ — всё, что меняет состав ленты:
@@ -2683,10 +2700,8 @@ async function loadMoreReceipts(button) {
 }
 
 function updateBadge(count) {
+  // Сканы с ошибкой — строками в ленте и пунктом фильтра, а не счётчиком на вкладке
   failedCount = count ?? 0;
-  const badge = $('tab-badge');
-  badge.hidden = !count;
-  badge.textContent = count > 99 ? '99+' : String(count ?? '');
   // Число пришло после отрисовки шапки — обновляем и переключатель «Категории | Чеки»
   const segment = document.querySelector('[data-segment="receipts"]');
   if (segment) {
