@@ -25,7 +25,7 @@ import android.webkit.WebViewClient;
  */
 final class TBankRefresh {
 
-    private static final long WAIT_MS = 30_000;
+    private static final long WAIT_MS = 45_000;
     private static final long STEP_MS = 1500;
     private static final long MIN_GAP_MS = 60_000; // не чаще раза в минуту: «назад» и фон могут прийти разом
 
@@ -81,14 +81,26 @@ final class TBankRefresh {
 
         String fresh = null;
         long until = now + WAIT_MS;
+        String candidate = null; // кука, которая уже ответила; рабочей считаем, когда ответит снова
+        int good = 0;
         try {
             while (System.currentTimeMillis() < until) {
                 Thread.sleep(STEP_MS);
                 // Пока страница на входе, сессия в куке ещё не рабочая (см. окно входа)
                 String p = path[0];
                 if (p == null || p.startsWith("/auth") || p.startsWith("/login")) continue;
+                // Пока страница не закончила вход, банк даёт промежуточную сессию: она миг
+                // отвечает, а через секунду — «недостаточно привилегий» (записано 20.10.2026).
+                // Рабочая — та, что не меняется и отвечает три проверки подряд
                 String psid = value(CookieManager.getInstance().getCookie("https://" + TBank.HOST), "psid");
-                if (psid != null && TBank.check(psid) == TBank.ALIVE) {
+                if (psid == null || !psid.equals(candidate)) {
+                    candidate = psid;
+                    good = 0;
+                }
+                if (psid == null) continue;
+                if (TBank.check(psid) == TBank.ALIVE) good++;
+                else good = 0;
+                if (good >= 3) {
                     fresh = psid;
                     break;
                 }
