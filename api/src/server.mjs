@@ -34,7 +34,7 @@ import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
 import {
   banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank, getBankOp,
-  setBankOpNote, mergeSettledTwins, reportLink,
+  setBankOpNote, mergeSettledTwins, reportLink, remindLogins,
 } from './banks.mjs';
 import { bankTotals, matchBank, setOpCategory, setOpKind } from './bankmatch.mjs';
 import { linkPrepaid } from './prepaid.mjs';
@@ -429,6 +429,10 @@ async function handleApi(req, res, url) {
         return sendJson(res, 400, { error: 'bad request body' });
       }
       // Сообщения о тратах других участников бюджета: включить или выключить у себя
+      if (body.remind_login !== undefined) {
+        db.prepare('UPDATE users SET remind_login = ? WHERE id = ?').run(body.remind_login ? 1 : 0, user.id);
+        return sendJson(res, 200, { remind_login: Boolean(body.remind_login) });
+      }
       if (body.notify_members !== undefined) {
         db.prepare('UPDATE users SET notify_members = ? WHERE id = ?').run(body.notify_members ? 1 : 0, user.id);
         return sendJson(res, 200, { notify_members: Boolean(body.notify_members) });
@@ -1101,6 +1105,16 @@ setTimeout(() => {
     console.error('банк, разбор:', err.message);
   }
 }, 3000).unref();
+
+// Вечером — напоминание в Telegram войти в банки, которые просят вход заново (раз в сутки)
+setInterval(() => {
+  try {
+    const n = remindLogins(db);
+    if (n) console.log(`банк: напоминаний войти — ${n}`);
+  } catch (err) {
+    console.error('банк, напоминания:', err.message);
+  }
+}, 10 * 60_000).unref();
 
 // Банки: сессию пингуем раз в минуту — иначе банк её сбросит, операции забираем раз в 15 минут
 if (banksReady()) {

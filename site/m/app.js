@@ -5992,7 +5992,11 @@ async function screenSetBudget() {
 }
 
 async function screenSetBanks() {
-  return bankSection(inApp() ? await apiKept('/api/bank').catch(() => null) : null) + permSection() + syncSection();
+  const [bank, budget] = await Promise.all([
+    inApp() ? apiKept('/api/bank').catch(() => null) : null,
+    apiKept('/api/budget').catch(() => null),
+  ]);
+  return bankSection(bank) + permSection() + syncSection('', budget);
 }
 
 // ── фоновая синхронизация: разрешения и настройки ────────
@@ -6048,7 +6052,7 @@ const SYNC_EVERY = [15, 30, 60, 180, 0]; // минуты; 0 — только в�
  * С bankId — блок в карточке банка: свои настройки банка, правятся всегда; пока в общих
  * включено «Для всех банков», подпись говорит, что сейчас действуют общие.
  */
-function syncSection(bankId = '') {
+function syncSection(bankId = '', budget = null) {
   const prefs = syncPrefs();
   if (!prefs) return '';
   const S = T.settings.sync;
@@ -6058,7 +6062,16 @@ function syncSection(bankId = '') {
   const off = !bankId && !prefs.all; // общие при выключенном «Для всех банков» ни на что не влияют
   const rows = (bankId ? '' : srow({ icon: UI.layers, title: S.all, end: toggle('data-sync-all', prefs.all, S.all) }))
     + srow({ icon: UI.refresh, title: S.every, note: S.everyOpts[every] ?? S.everyOpts[15], attrs: `data-sync-every="${esc(bankId)}"`, end: GO, off })
-    + srow({ icon: groupIcon('wifi'), title: S.wifi, off, end: toggle(`data-sync-wifi="${esc(bankId)}"${off ? ' disabled' : ''}`, wifi, S.wifi) });
+    + srow({ icon: groupIcon('wifi'), title: S.wifi, off, end: toggle(`data-sync-wifi="${esc(bankId)}"${off ? ' disabled' : ''}`, wifi, S.wifi) })
+    // Напоминание войти — шлёт сервер (бот), поэтому это настройка человека, а не телефона;
+    // без Telegram слать некуда
+    + (bankId || !budget ? '' : srow({
+      icon: UI.mail,
+      title: S.remind,
+      note: budget.telegram ? S.remindNote : S.remindNoTg,
+      wrap: true,
+      end: toggle(`data-remind-login${budget.telegram ? '' : ' disabled'}`, Boolean(budget.remind_login && budget.telegram), S.remind),
+    }));
   const foot = bankId ? (prefs.all ? S.lockedNote : S.ownNote) : prefs.all ? S.allNote : S.allOffNote;
   return section(S.label, foot, rows);
 }
@@ -6100,6 +6113,15 @@ $('screen').addEventListener('change', (e) => {
     render();
   }
   if (e.target.matches('[data-sync-wifi]')) setSyncPref(e.target.dataset.syncWifi, 'wifi', e.target.checked);
+  if (e.target.matches('[data-remind-login]')) {
+    const box = e.target;
+    api('/api/session', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ remind_login: box.checked }) })
+      .then(() => kept.delete('/api/budget'))
+      .catch((err) => {
+        box.checked = !box.checked;
+        toast(`${T.common.failed}: ${err.message}`);
+      });
+  }
 });
 
 /** Стрелка «дальше» в сером кружке: строка ведёт на другой экран. */
@@ -6884,6 +6906,7 @@ async function screenBankCard() {
       </div>
       ${srow({ icon: UI.shield, title: T.bankCard.safety.label, note: T.bankCard.safety.rowNote, attrs: `data-bank-safety="${b.id}"`, end: GO })}
     </section>
+    ${T.bankCard.limits[b.id] ? `<p class="sec-foot">${T.bankCard.limits[b.id]}</p>` : ''}
 
     ${accounts.length ? section(T.bankCard.accounts.label, T.bankCard.accounts.hint, accounts.map((a) => srow({
       ...accountIcon(a),

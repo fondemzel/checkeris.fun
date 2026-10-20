@@ -392,6 +392,44 @@ export function reportLink(db, userId, { bank, state, detail = null, background 
   return { ok: true };
 }
 
+const SITE = (process.env.SITE_ORIGIN || 'https://checkeris.fun').replace(/\/$/, '');
+const LINK_NAMES = { tbank: 'Т-Банк', sber: 'Сбербанк', ozon: 'Озон', wb: 'Wildberries' };
+const REMIND_HOUR = 20; // вечером по Москве
+const mskDay = (iso) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
+
+/**
+ * Напоминание в Telegram: банк или магазин просит войти заново (по отчёту телефона, reportLink).
+ * Раз в сутки, вечером, одним сообщением на человека — со ссылкой на экран каждого в Чекере.
+ * Сбер, например, держит сессию только час: без входа его операции не обновляются.
+ * Выключается у себя: users.remind_login («Настройки → Банки → Синхронизация»).
+ */
+export function remindLogins(db, at = new Date()) {
+  const hour = Number(at.toLocaleString('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false }));
+  if (hour !== REMIND_HOUR) return 0;
+  const today = mskDay(at.toISOString());
+  const links = db.prepare(
+    `SELECT l.id, l.user_id, l.bank, l.remind_at FROM bank_links l JOIN users u ON u.id = l.user_id
+      WHERE l.dev_state = 'expired' AND l.status <> 'off' AND u.telegram_id IS NOT NULL AND COALESCE(u.remind_login, 1) = 1`,
+  ).all().filter((l) => !l.remind_at || mskDay(l.remind_at) !== today);
+  const byUser = new Map();
+  for (const l of links) byUser.set(l.user_id, [...(byUser.get(l.user_id) ?? []), l]);
+  const mark = db.prepare('UPDATE bank_links SET remind_at = ? WHERE id = ?');
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let sent = 0;
+  for (const [userId, list] of byUser) {
+    const lines = list.map((l) => {
+      const name = LINK_NAMES[l.bank] ?? l.bank;
+      return `• ${esc(name)} — <a href="${SITE}/m/?screen=bank_card&amp;bank=${encodeURIComponent(l.bank)}">войти</a>`;
+    });
+    const text = `Просят войти заново — без этого их операции не обновляются:\n${lines.join('\n')}`;
+    if (notify(db, userId, text, { html: true })) {
+      for (const l of list) mark.run(at.toISOString(), l.id);
+      sent += 1;
+    }
+  }
+  return sent;
+}
+
 /** Отключить банк: операции остаются, связь с источником обрывается. */
 export function unlink(db, userId, bank) {
   db.prepare("UPDATE bank_links SET session_enc = NULL, status = 'off' WHERE user_id = ? AND bank = ?")
