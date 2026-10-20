@@ -90,6 +90,12 @@ function addUserColumns(db) {
   addColumn(db, 'bank_ops', 'orig_amount', 'INTEGER'); // покупка в валюте (fx.mjs): исходная сумма…
   addColumn(db, 'bank_ops', 'orig_currency', 'TEXT'); // …и её валюта; amount — уже в рублях
   addColumn(db, 'budget_limits', 'fixed', 'INTEGER NOT NULL DEFAULT 0'); // лимиты (limits.mjs)
+  // Состояние подключения со слов телефона (banks.mjs reportLink)
+  addColumn(db, 'bank_links', 'dev_state', 'TEXT');
+  addColumn(db, 'bank_links', 'dev_detail', 'TEXT');
+  addColumn(db, 'bank_links', 'dev_at', 'TEXT');
+  addColumn(db, 'bank_links', 'bg_at', 'TEXT');
+  addColumn(db, 'bank_links', 'session_at', 'TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram ON users (telegram_id)');
   // Первый пользователь — владелец проекта: без квот и с правом на системный справочник
   db.exec(`UPDATE users SET role = 'admin'

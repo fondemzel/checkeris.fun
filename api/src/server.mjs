@@ -34,7 +34,7 @@ import { fnsReady, fnsUsage } from './fns.mjs';
 import { geocoderReady, runGeocoder } from './geocoder.mjs';
 import {
   banksReady, keepAlive, syncAll, takeOutbox, importOps, listLinks, unlink, listBankOps, forgetBank, getBankOp,
-  setBankOpNote, mergeSettledTwins,
+  setBankOpNote, mergeSettledTwins, reportLink,
 } from './banks.mjs';
 import { bankTotals, matchBank, setOpCategory, setOpKind } from './bankmatch.mjs';
 import { linkPrepaid } from './prepaid.mjs';
@@ -575,6 +575,18 @@ async function handleApi(req, res, url) {
         return sendJson(res, 500, { error: err.message });
       }
       return sendJson(res, 405, { error: 'method not allowed' });
+    }
+
+    // Итог обращения телефона к банку или магазину (фоновое задание или «Обновить»)
+    if (pathname === '/api/bank/report' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const result = reportLink(db, user.id, body);
+      return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
     }
 
     // Разведка нового банка: отчёт телефона — в файл для разбора, не в базу.

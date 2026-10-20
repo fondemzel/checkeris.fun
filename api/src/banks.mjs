@@ -343,6 +343,7 @@ export function listLinks(db, userId) {
   return db
     .prepare(
       `SELECT l.bank, l.status, l.login_at, l.last_ok_at, l.expired_at, l.synced_at, l.last_error,
+              l.dev_state, l.dev_detail, l.dev_at, l.bg_at, l.session_at,
               (SELECT COUNT(*) FROM bank_ops o WHERE o.link_id = l.id)
                 + (SELECT COUNT(*) FROM shop_cheques c WHERE c.link_id = l.id) AS ops,
               -- За сегодня: столько новых операций видно в строке банка. Выключенные счета не в счёт.
@@ -354,6 +355,41 @@ export function listLinks(db, userId) {
          FROM bank_links l WHERE l.user_id = :user`,
     )
     .all({ today, user: userId });
+}
+
+const REPORT_STATES = new Set(['ok', 'expired', 'offline', 'error', 'off']);
+
+/**
+ * Итог обращения телефона к банку или магазину (LinkReport в приложении): ok — загрузили,
+ * expired — просит войти заново, offline — не отвечает, error — другое, off — вышли на
+ * телефоне. Без этого сервер считал подключение живым, пока телефон молча не мог войти.
+ *
+ * bg_at — когда фоновое задание телефона приходило в последний раз: по нему видно, будит ли
+ * система приложение. session_at — с какого момента жива нынешняя сессия (первый успех после
+ * «войти заново»): вместе с expired_at даёт, сколько сессия банка живёт на деле.
+ */
+export function reportLink(db, userId, { bank, state, detail = null, background = false } = {}) {
+  if (!/^[a-z]{2,10}$/.test(String(bank ?? '')) || !REPORT_STATES.has(state)) return { error: 'неверный отчёт', status: 400 };
+  const at = now();
+  const link = db.prepare('SELECT id, dev_state, status FROM bank_links WHERE user_id = ? AND bank = ?').get(userId, bank);
+  if (!link) {
+    if (state === 'off') return { ok: true };
+    db.prepare(`INSERT INTO bank_links (user_id, bank, session_enc, status, login_at) VALUES (?, ?, NULL, 'device', ?)`).run(userId, bank, at);
+  }
+  const was = link?.dev_state ?? null;
+  db.prepare(
+    `UPDATE bank_links SET
+       dev_state = :state, dev_detail = :detail, dev_at = :at,
+       bg_at = CASE WHEN :bg THEN :at ELSE bg_at END,
+       last_ok_at = CASE WHEN :state = 'ok' THEN :at ELSE last_ok_at END,
+       -- новая сессия: первый успех после «войти заново», выхода или впервые
+       session_at = CASE WHEN :state = 'ok' AND (:was IS NULL OR :was IN ('expired', 'off')) THEN :at ELSE session_at END,
+       expired_at = CASE WHEN :state = 'expired' AND COALESCE(:was, '') <> 'expired' THEN :at
+                         WHEN :state = 'ok' THEN NULL ELSE expired_at END,
+       status = CASE WHEN :state = 'off' THEN 'off' WHEN status = 'off' AND :state = 'ok' THEN 'device' ELSE status END
+     WHERE user_id = :user AND bank = :bank`,
+  ).run({ state, detail: detail == null ? null : String(detail).slice(0, 300), at, bg: background ? 1 : 0, was, user: userId, bank });
+  return { ok: true };
 }
 
 /** Отключить банк: операции остаются, связь с источником обрывается. */

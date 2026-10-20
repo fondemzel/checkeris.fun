@@ -140,6 +140,7 @@ public class MainActivity extends android.app.Activity {
         public void wbSync(String checkerToken) {
             new Thread(() -> {
                 BankSync.Result result = WbSync.run(MainActivity.this, checkerToken);
+                LinkReport.send(checkerToken, "wb", result, WbSync.expired(MainActivity.this), false);
                 String json;
                 try {
                     json = result.json().put("bank", "wb").toString();
@@ -155,6 +156,7 @@ public class MainActivity extends android.app.Activity {
         @JavascriptInterface
         public void wbForget() {
             WbSync.forget(MainActivity.this);
+            LinkReport.off(MainActivity.this, "wb");
         }
 
         /** Окно входа в Сбербанк Онлайн. */
@@ -168,6 +170,7 @@ public class MainActivity extends android.app.Activity {
         public void sberSync(String checkerToken) {
             new Thread(() -> {
                 BankSync.Result result = SberSync.run(MainActivity.this, checkerToken);
+                LinkReport.send(checkerToken, "sber", result, SberSync.expired(MainActivity.this), false);
                 String json;
                 try {
                     json = result.json().toString();
@@ -191,6 +194,7 @@ public class MainActivity extends android.app.Activity {
         public void ozonSync(String checkerToken) {
             new Thread(() -> {
                 BankSync.Result result = OzonSync.run(MainActivity.this, checkerToken);
+                LinkReport.send(checkerToken, "ozon", result, OzonSync.expired(MainActivity.this), false);
                 String json;
                 try {
                     json = result.json().put("bank", "ozon").toString();
@@ -206,17 +210,21 @@ public class MainActivity extends android.app.Activity {
         @JavascriptInterface
         public void ozonForget() {
             OzonSync.forget(MainActivity.this);
+            LinkReport.off(MainActivity.this, "ozon");
         }
 
         @JavascriptInterface
         public void sberForget() {
             SberSync.forget(MainActivity.this);
+            LinkReport.off(MainActivity.this, "sber");
         }
 
         @JavascriptInterface
         public void bankForget() {
             BankSync.forget(MainActivity.this);
-            BankJobService.cancel(MainActivity.this);
+            LinkReport.off(MainActivity.this, "tbank");
+            // Фоновое задание — общее: Сбер и магазины могут оставаться подключены
+            if (!BankJobService.anyConnected(MainActivity.this)) BankJobService.cancel(MainActivity.this);
         }
 
         /**
@@ -235,6 +243,7 @@ public class MainActivity extends android.app.Activity {
         public void bankSync(String checkerToken) {
             new Thread(() -> {
                 BankSync.Result result = BankSync.run(MainActivity.this, checkerToken);
+                LinkReport.send(checkerToken, "tbank", result, BankSync.expired(MainActivity.this), false);
                 String json;
                 try {
                     json = result.json().toString();

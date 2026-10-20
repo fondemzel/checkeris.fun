@@ -8,7 +8,9 @@ import android.content.ComponentName;
 import android.content.Context;
 
 /**
- * Фоновая работа: телефон сам поддерживает сессию банка живой и забирает новые операции.
+ * Фоновая работа: телефон сам поддерживает сессии банков и магазинов живыми и забирает новые
+ * операции и чеки. Итог каждого обращения уходит на сервер (LinkReport): так видно, что банк
+ * просит войти заново или что система давно не будила приложение.
  *
  * Сессия интернет-банка живёт, пока к банку обращаются. Пока приложение закрыто, обращаться
  * некому — поэтому система будит нас примерно раз в 15 минут (чаще она не разрешает).
@@ -34,6 +36,11 @@ public class BankJobService extends JobService {
         if (scheduler != null) scheduler.schedule(job);
     }
 
+    /** Подключено ли хоть что-то: без подключений будить телефон незачем. */
+    static boolean anyConnected(Context context) {
+        return BankSync.connected(context) || SberSync.connected(context) || WbSync.connected(context) || OzonSync.connected(context);
+    }
+
     static void cancel(Context context) {
         JobScheduler scheduler = context.getSystemService(JobScheduler.class);
         if (scheduler != null) scheduler.cancel(JOB_ID);
@@ -43,8 +50,13 @@ public class BankJobService extends JobService {
     public boolean onStartJob(JobParameters params) {
         new Thread(() -> {
             String token = new Secrets(this).get(BankSync.TOKEN);
-            if (token != null && BankSync.connected(this)) BankSync.run(this, token);
-            if (token != null && SberSync.connected(this)) SberSync.run(this, token);
+            if (token != null) {
+                if (BankSync.connected(this)) LinkReport.send(token, "tbank", BankSync.run(this, token), BankSync.expired(this), true);
+                if (SberSync.connected(this)) LinkReport.send(token, "sber", SberSync.run(this, token), SberSync.expired(this), true);
+                // Магазины — тем же заданием: иначе они обновлялись, только пока открыто приложение
+                if (WbSync.connected(this)) LinkReport.send(token, "wb", WbSync.run(this, token), WbSync.expired(this), true);
+                if (OzonSync.connected(this)) LinkReport.send(token, "ozon", OzonSync.run(this, token), OzonSync.expired(this), true);
+            }
             jobFinished(params, false);
         }).start();
         return true; // работа продолжается в потоке
