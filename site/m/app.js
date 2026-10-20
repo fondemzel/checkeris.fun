@@ -8289,3 +8289,66 @@ $('screen').addEventListener('click', async (e) => {
   }
   return null;
 });
+
+// ── съёмка роликов: выделение ────────────────────────────
+// Сценарий ролика (scripts/film.mjs — с компьютера, через отладку WebView в эмуляторе) зовёт
+// film.spot(…): всё вокруг элемента плавно темнеет, вырез повторяет его форму и едет за ним —
+// кольцо заливается, экран листается, а выделение остаётся на месте. Касания проходят насквозь.
+// Без вызова ничего не создаётся: люди этого не видят.
+// Цель — селектор, элемент или 'text:Питание' (видимый элемент с этим текстом, самый вложенный).
+const film = {
+  el: null,
+  node: null,
+  raf: 0,
+  find(target) {
+    if (target instanceof Element) return target;
+    if (typeof target !== 'string') return null;
+    if (!target.startsWith('text:')) return document.querySelector(target);
+    const text = target.slice(5).trim();
+    const all = [...document.querySelectorAll('#screen *, .tabs *, .quick *, .sheet *')]
+      .filter((el) => el.textContent.trim() === text && el.getClientRects().length);
+    return all.find((el) => ![...el.children].some((c) => all.includes(c))) ?? null;
+  },
+  /** Где элемент: центр — для касаний сценария, в пикселях страницы. */
+  rect(target) {
+    const r = film.find(target)?.getBoundingClientRect();
+    return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, top: r.top, left: r.left } : null;
+  },
+  spot(target, { pad = 6, radius = null, dim = 0.62 } = {}) {
+    const node = film.find(target);
+    if (!node) return false;
+    if (!film.el) {
+      film.el = document.createElement('div');
+      film.el.className = 'film-spot';
+      document.body.appendChild(film.el);
+      film.place(node, pad); // первое выделение — сразу на месте, только проявляется
+    }
+    const own = parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0;
+    film.node = node;
+    film.pad = pad;
+    film.radius = radius ?? Math.max(10, own + pad);
+    film.el.style.setProperty('--film-dim', String(dim));
+    film.el.classList.add('on');
+    if (!film.raf) film.follow();
+    return true;
+  },
+  place(node, pad) {
+    const r = node.getBoundingClientRect();
+    Object.assign(film.el.style, {
+      left: `${(r.left - pad).toFixed(1)}px`,
+      top: `${(r.top - pad).toFixed(1)}px`,
+      width: `${(r.width + pad * 2).toFixed(1)}px`,
+      height: `${(r.height + pad * 2).toFixed(1)}px`,
+      borderRadius: `${film.radius ?? 12}px`,
+    });
+  },
+  follow() {
+    if (film.node?.isConnected) film.place(film.node, film.pad);
+    film.raf = requestAnimationFrame(film.follow);
+  },
+  clear() {
+    film.el?.classList.remove('on');
+    film.node = null;
+  },
+};
+window.film = film;

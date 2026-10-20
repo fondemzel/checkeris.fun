@@ -2186,3 +2186,14 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .set-search { height: 42px; padding: 0 6px 0 12px; border-radius: 21px; } /* в закреплённой полосе (stuck-head) — видно при прокрутке */
 .set-search .search-ic svg { width: 17px; height: 17px; }
 .set-search input { font-size: 16px; }
+
+/* Съёмка роликов (film.spot): всё вокруг выделенного элемента темнеет — огромной тенью
+   рамки, повторяющей его форму. Рамка переезжает к следующему элементу плавно */
+.film-spot {
+  position: fixed; z-index: 1000; pointer-events: none; opacity: 0;
+  box-shadow: 0 0 0 200vmax rgba(10, 14, 20, var(--film-dim, 0.62));
+  transition: left 0.45s cubic-bezier(0.3, 0, 0.2, 1), top 0.45s cubic-bezier(0.3, 0, 0.2, 1),
+    width 0.45s cubic-bezier(0.3, 0, 0.2, 1), height 0.45s cubic-bezier(0.3, 0, 0.2, 1),
+    border-radius 0.45s, opacity 0.4s ease;
+}
+.film-spot.on { opacity: 1; }

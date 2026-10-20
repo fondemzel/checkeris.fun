@@ -44,6 +44,11 @@ public class MainActivity extends android.app.Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        // Отладка страницы — только на эмуляторе: через неё сценарий ролика (scripts/film.mjs)
+        // нажимает и выделяет элементы. На настоящих телефонах она выключена
+        if (Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.startsWith("generic") || Build.PRODUCT.startsWith("sdk_")) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
         Trace.init(this);
         // Строка состояния — в цвет шапки сайта, чтобы приложение выглядело цельным
         getWindow().setStatusBarColor(Color.parseColor("#131a26"));
