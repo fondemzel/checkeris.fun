@@ -2093,12 +2093,34 @@ async function screenIncome() {
     catSums.set(op.category_slug ?? '', (catSums.get(op.category_slug ?? '') ?? 0) + op.amount);
     catCounts.set(op.category_slug ?? '', (catCounts.get(op.category_slug ?? '') ?? 0) + 1);
   }
+  // Одинаковые поступления (то же название) — одной строкой в своём разделе (дне, категории),
+  // как одинаковые товары в расходах: общая сумма и число, стрелка раскрывает их по одному
+  const norm = (op) => (op.description ?? op.merchant ?? '').trim().toLowerCase();
+  const secOf = (op) => (byDate ? op.at.slice(0, 10) : byCat ? op.category_slug ?? '' : '');
+  const entries = [];
+  const byKey = new Map();
+  for (const op of list) {
+    const gk = `in|${secOf(op)}|${norm(op)}`;
+    const found = byKey.get(gk);
+    if (found) {
+      found.ops.push(op);
+      found.sum += op.amount;
+      continue;
+    }
+    const entry = { gk, ops: [op], sum: op.amount };
+    byKey.set(gk, entry);
+    entries.push(entry);
+  }
+  // По сумме — по сумме строки, а не первого поступления в ней
+  if (state.sort === 'sum') entries.sort((a, b) => (b.sum - a.sum) * (state.dir === 'asc' ? -1 : 1));
+
   let day = '';
   let cat = null;
   const opened = openSections(null, byCat && fewRows(list.length) ? [...new Set(list.map((op) => op.category_slug || NONE))] : null);
   feedSections = { order: [], single: false };
-  const html = list
-    .map((op) => {
+  const html = entries
+    .map(({ gk, ops, sum: groupSum }) => {
+      const op = ops[0]; // последнее: список идёт от свежих
       const opDay = op.at.slice(0, 10);
       let header = '';
       if (byDate && opDay !== day) header = dayHead(opDay, daySum(rows, opDay, (x) => x.at, (x) => x.amount));
@@ -2116,19 +2138,35 @@ async function screenIncome() {
       cat = op.category_slug ?? '';
       if (byCat && !opened.has(cat || NONE)) return header; // раздел свёрнут — строк не рисуем
       const opCat = incomeCat(op.category_slug);
+      const many = ops.length > 1;
+      const isOpen = many && expanded.has(expandKey(gk));
       const note = [
         `<span class="op-cat" style="background:${opCat?.color ?? '#d7dbe2'}"></span>${esc(opCat?.name ?? T.income.noCategory)}`,
         byDate ? esc(timeRu(op.at)) : `${dateRu(opDay)} ${esc(timeRu(op.at))}`,
-        esc(op.account_name ?? ''),
+        many ? `${int.format(ops.length)} ${pl(ops.length, T.income.many)}` : esc(op.account_name ?? ''),
       ].filter(Boolean).join(' · ');
-      return `${header}
-        <button class="row item bank-op" type="button" data-op="${op.id}">
+      const toggle = many
+        ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(gk)}" role="button" aria-label="${isOpen ? 'Свернуть' : 'Показать поступления'}">${UI.chevron}</span>`
+        : '';
+      const row = `${header}
+        <button class="row item bank-op" type="button" data-op="${op.id}"${many ? ` data-long="${esc(gk)}"` : ''}>
           <span class="row-main">
             <span class="row-title">${esc(op.description ?? op.merchant ?? T.income.one)}</span>
-            <span class="row-note">${note}</span>
+            <span class="row-note">${note}${toggle}</span>
           </span>
-          <span class="row-sum income">+${money(op.amount)}</span>
+          <span class="row-sum income">+${money(groupSum)}</span>
         </button>`;
+      if (!isOpen) return row;
+      // Поступления строки — со сдвигом, «шторкой», как покупки группы в расходах
+      const subs = ops.map((x) => `
+          <button class="row item sub-row" type="button" data-op="${x.id}">
+            <span class="row-main">
+              <span class="row-title">${dateRu(x.at.slice(0, 10))} · ${esc(timeRu(x.at))}</span>
+              <span class="row-note">${esc(x.account_name ?? '')}</span>
+            </span>
+            <span class="row-sum income">+${money(x.amount)}</span>
+          </button>`).join('');
+      return `${row}<div class="sub-wrap">${subs}</div>`;
     })
     .join('');
 
@@ -4593,7 +4631,9 @@ function secTop() {
   return (parseFloat(getComputedStyle(head).top) || 0) + head.offsetHeight;
 }
 function updateSecTop() {
-  document.documentElement.style.setProperty('--sec-top', `${Math.round(secTop())}px`);
+  // Вниз и ещё на пиксель — под шапку: верх шапки на телефоне дробный (вырез под камеру), и при
+  // округлении вверх между ней и прилипшим заголовком просвечивала строка ленты
+  document.documentElement.style.setProperty('--sec-top', `${Math.floor(secTop()) - 1}px`);
 }
 addEventListener('resize', updateSecTop);
 
