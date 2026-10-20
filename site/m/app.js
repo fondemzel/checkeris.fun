@@ -124,6 +124,8 @@ const UI = {
       '<path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/>' +
       '<path d="m2 2 20 20"/>',
   ),
+  // Лимит: стрелка упирается в черту — «до предела» (Lucide arrow-right-to-line)
+  limit: svg('<path d="M17 12H3"/><path d="m11 18 6-6-6-6"/><path d="M21 5v14"/>'),
   piggy: svg(
     '<path d="M11 17h3v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-3a3.16 3.16 0 0 0 2-2h1a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-1a5 5 0 0 0-2-4V3a4 4 0 0 0-3.2 1.6l-.3.4H11a6 6 0 0 0-6 6v1a5 5 0 0 0 2 4v3a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1z"/>' +
       '<path d="M16 10h.01"/><path d="M2 8v1a2 2 0 0 0 2 2h1"/>',
@@ -1413,7 +1415,7 @@ async function openLimitSheet(slug) {
   const el = openChoice(g.name, `
     <div class="lim-sheet">
       <div class="lim-rows">${srow({
-        icon: UI.piggy, title: P.turnOn, end: toggle('data-lim-on', cur > 0, P.turnOn),
+        icon: UI.limit, title: P.turnOn, end: toggle('data-lim-on', cur > 0, P.turnOn),
       })}${srow({
         // Фиксация — сразу под включением; без лимита фиксировать нечего — гаснет вместе с полями
         icon: UI.lock, title: P.fixShort, off: !cur, end: toggle(`data-lim-fix${cur ? '' : ' disabled'}`, Boolean(full.fixed[slug]), P.fixShort),
@@ -1512,7 +1514,7 @@ async function screenSetLimits() {
   const full = await api('/api/limits');
   const per = P.per[full.period];
   const main = section(T.settings.menu.label, `<span data-lim-foot>${full.on ? P.periodNote : P.offFoot}</span>`,
-    srow({ icon: UI.piggy, title: P.on, end: toggle('data-limits-toggle', full.on, P.on) })
+    srow({ icon: UI.limit, title: P.on, end: toggle('data-limits-toggle', full.on, P.on) })
     + srow({ icon: UI.calendar, title: P.period, note: P.periods[full.period], attrs: `data-lim-period-pick="${full.period}"`, end: GO, off: !full.on }));
   const groups = (meta?.categories ?? []).map((g) => {
     const amount = full.limits[g.slug] ?? 0;
@@ -5653,7 +5655,7 @@ async function screenSettings() {
     link('profile', UI.user, S.profile.label, me?.name || (me?.telegram ? S.profile.viaTelegram : S.profile.viaPassword))
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
     + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
-    + link('limits', UI.piggy, S.limits.label, limitsNote()))
+    + link('limits', UI.limit, S.limits.label, limitsNote()))
     // Внешний вид: тема и анимации — выбор хранится на телефоне (index.html ставит их до отрисовки)
     + section(S.look.label, '',
       srow({ icon: UI.moon, title: S.menu.dark, end: toggle('data-theme-toggle', theme() === 'dark', S.menu.dark) })
@@ -5710,9 +5712,9 @@ function settingsIndex() {
   // Категории
   add(S.cats.expense, S.cats.label, UI.wallet, { screen: 'set_cats', tk: '' }, 'группы категории расходов справочник');
   add(S.cats.income, S.cats.label, UI.income, { screen: 'set_cats', tk: 'in' }, 'группы категории доходов справочник');
-  add(S.limits.label, S.menu.label, UI.piggy, { screen: 'set_limits', tg: '' }, 'лимит бюджет ограничение');
-  add(S.limits.on, S.limits.label, UI.piggy, { toggle: 'limits' }, 'лимит включить выключить');
-  add(S.limits.period, S.limits.label, UI.piggy, { screen: 'set_limits', tg: '' }, 'лимит период месяц квартал неделя день');
+  add(S.limits.label, S.menu.label, UI.limit, { screen: 'set_limits', tg: '' }, 'лимит бюджет ограничение');
+  add(S.limits.on, S.limits.label, UI.limit, { toggle: 'limits' }, 'лимит включить выключить');
+  add(S.limits.period, S.limits.label, UI.limit, { screen: 'set_limits', tg: '' }, 'лимит период месяц квартал неделя день');
   // Помощь
   add(S.data.label, S.help.label, UI.shield, { privacy: true }, 'данные хранение конфиденциальность приватность');
   add(S.help.demo, S.help.label, UI.sparkle, { toggle: 'demo' }, 'демо тестовый пример');
@@ -5946,7 +5948,7 @@ async function screenSetGroup() {
     + srow({ icon: UI.grid, title: C.icon, attrs: 'data-tgroup-icon', end: GO })
     + bars)
     + section(C.catsBlock, '', cats.join('') + srow({ icon: UI.plus, title: C.addCat, attrs: `data-tcat-add="${esc(g.slug)}"` }))
-    + section(C.manage, '', (state.tk === 'in' ? '' : srow({ icon: UI.piggy, title: T.settings.limits.manage, attrs: `data-lim-manage="${esc(g.slug)}"`, end: GO }))
+    + section(C.manage, '', (state.tk === 'in' ? '' : srow({ icon: UI.limit, title: T.settings.limits.manage, attrs: `data-lim-manage="${esc(g.slug)}"`, end: GO }))
     + srow({
       icon: UI.trash, title: C.deleteGroup, note: busy ? C.deleteGroupBusy : '', attrs: 'data-tgroup-delete', danger: !busy, off: busy,
     }));
