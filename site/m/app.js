@@ -4174,6 +4174,10 @@ let screenPager = null;
 // Экран приехал движением (сдвиг по нажатию или лента страниц): строки приехали с ним и
 // второй раз не проявляются, а заливки (кольцо, полосы, счётчик) ждут его остановки
 let arrived = false;
+// Следующая отрисовка — приехавшего движением (свайп периода ставит до go). Метка живёт одну
+// отрисовку: render ставит её в начале — перебитая отрисовка больше не оставляет её висеть,
+// а с ней — выключенными анимации списков
+let arriveNext = false;
 // Заливки (кольцо, полосы лимита) пока ждут: новый период ещё въезжает (swipeEnd)
 let holdFills = false;
 const PAGER_MS = 320;
@@ -4261,6 +4265,8 @@ const NONE = '-'; // «Без категории»: у неразмеченно�
 
 async function render() {
   const seq = ++renderSeq;
+  arrived = arriveNext;
+  arriveNext = false;
   closeScanner(); // уходим с экрана (в том числе кнопкой «назад») — камера гаснет
   const screen = SCREENS[state.screen] ?? SCREENS.summary;
   const top = TOP.includes(state.screen);
@@ -5139,14 +5145,14 @@ async function swipeEnd(e) {
     await new Promise((r) => setTimeout(r, 180));
     // Новый период въезжает целиком, как экран при переходе: строки сразу видны (не проявляются
     // по одной — на их месте была пустота), кольцо въезжает пустым и заливается на месте
-    arrived = true;
+    arriveNext = true;
     holdFills = true;
     await go(next, true);
     // Новый период — уже на экране: ставим его чуть в стороне и въезжаем на место
     swipeSet(dir * w * 0.35, '0', 'none');
     void stretchEl.offsetWidth; // зафиксировать исходное место, иначе въезда не будет видно
   } finally {
-    arrived = false;
+    arriveNext = false;
     swipeSet(0, '', 'translate 0.22s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.22s ease-out');
     await new Promise((r) => setTimeout(r, 220));
     holdFills = false;
