@@ -254,22 +254,6 @@ final class SberBank {
     }
 
     /**
-     * «Разогреть сессию» — запрос, который страница Сбера шлёт сразу после входа (записано
-     * 20.10.2026). Проверяем, продлевает ли он сессию: шлём вместе с каждым обращением.
-     * Ответ — только в журнал: на разбор операций он не влияет.
-     */
-    static void warmUp(String cookies) {
-        try {
-            String host = "web2.online.sberbank.ru";
-            Answer a = post(cookiesFor(host, cookies), "https://" + host + "/api/warmUpSession", "{}");
-            String body = a.body == null ? "" : a.body.replace((char) 10, ' ');
-            Trace.log("sber warmUpSession → " + a.code + " " + (body.length() > 120 ? body.substring(0, 120) + "…" : body));
-        } catch (Exception e) {
-            Trace.log("sber warmUpSession: " + e.getMessage());
-        }
-    }
-
-    /**
      * Жива ли сессия. Три ответа, как у Т-Банка: пустила, не пустила, не достучались.
      * Проверяем самой лёгкой операцией — одной строкой истории.
      */
