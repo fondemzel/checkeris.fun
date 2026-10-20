@@ -223,7 +223,6 @@
  "bankAdd.soon": "скоро",
  "bankAdd.allConnected": "Все банки уже подключены.",
  "bankAdd.hint": "Вход в банк проходит на вашем телефоне, в окне банка. Пароль Чекер не видит.",
- "bankCard.expired": "Банк просит войти заново — сессия живёт несколько часов",
  "bankCard.notConnected": "Не подключён",
  "bankCard.soon": "Подключение появится позже",
  "bankCard.connected": "Подключён · {ops} {opsWord}",
