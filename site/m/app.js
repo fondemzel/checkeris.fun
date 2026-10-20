@@ -5568,6 +5568,7 @@ $('fab').addEventListener('click', () => {
 // сливается с ней, отпустили — сканер. Не дотянули — втягивается обратно. Свайп вбок по «+»
 // листает вкладки, как по всему острову (swipeTab)
 const FAB_PULL = 110; // столько протянуть вверх — и по отпусканию откроется сканер
+const FAB_R = 25; // радиус синего круга «+» (58 − рамка 4 × 2) / 2 — и полосы, что из него растёт
 let fabFrom = null; // { x, y, t } касания «+»
 let fabLock = ''; // '' — ещё неясно, 'y' — тянем вверх, 'x' — это свайп вбок, не наш
 let fabPulled = false; // жест вверх был — click после него не открывает «Добавить»
@@ -5585,12 +5586,13 @@ function fabShow(up) {
   const t = tabs.getBoundingClientRect();
   const r = fab.getBoundingClientRect();
   const pull = Math.min(FAB_PULL * 1.15, Math.max(0, up)); // дальше порога — туго
-  // Низ полосы — в середине кнопки, за ней: видно, будто кнопка вытягивается вверх
+  // Нижний полукруг полосы — ровно синий круг кнопки (тот же центр и радиус, FAB_R): в начале
+  // жеста полоса целиком за кнопкой, дальше растёт только вверх, со скруглением в полный радиус
   Object.assign(fabEl.style, {
     transition: 'none',
     left: `${(r.left - t.left + r.width / 2).toFixed(1)}px`,
-    bottom: `${(t.bottom - r.top - r.height / 2).toFixed(1)}px`,
-    height: `${(r.height / 2 + pull).toFixed(1)}px`,
+    bottom: `${(t.bottom - r.top - r.height / 2 - FAB_R).toFixed(1)}px`,
+    height: `${(FAB_R * 2 + pull).toFixed(1)}px`,
   });
   fabEl.classList.toggle('full', up >= FAB_PULL);
 }
