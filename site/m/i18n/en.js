@@ -236,6 +236,8 @@ export const en = {
       fixed: '', // зафиксирован
       cardTitle: '', // Лимит
       cardTitleAll: '', // Лимиты всех групп
+      notSetShort: '', // не задан
+      groupsWith: '', // с лимитом: {n} {w}
       edit: '', // Изменить
       set: '', // Задать
       setup: '', // Настроить

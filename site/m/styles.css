@@ -2107,8 +2107,9 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .lim-card { padding: 12px 14px; margin-top: 12px; }
 .lim-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .lim-title { font-weight: 600; }
-.lim-edit { width: 34px; height: 34px; margin: -4px -4px -4px 0; color: var(--accent); } /* значок: карандаш у группы, шестерёнка у общей */
-.lim-edit svg { width: 18px; height: 18px; stroke-width: 2.2; }
+.lim-edit { flex: none; } /* та же круглая кнопка, что в шапке экрана: карандаш у группы, шестерёнка у общей */
+.lim-head { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lim-sub { font-size: 13px; }
 .lim-bar { position: relative; height: 8px; margin: 10px 0 12px; border-radius: 4px; background: var(--fill); }
 /* Заливка — клипом по --w: зелёное до отсечки и красное после стоят на своих местах во всю полосу */
 .lim-run { position: absolute; inset: 0; border-radius: 4px; overflow: hidden; clip-path: inset(0 calc(100% - var(--w, 0%)) 0 0 round 4px); }

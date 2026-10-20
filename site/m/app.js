@@ -1332,11 +1332,18 @@ function limitCard(st, slug = '') {
   }
 
   const title = slug ? P.cardTitle : P.cardTitleAll;
+  // Подстрочник: у группы — её лимит на период лимитов («60 000 ₽ в месяц»; карточка — на
+  // выбранный отрезок), у общей — сколько групп с лимитом
+  const per = P.per[st.period] ?? P.per.month;
+  const base = slug ? st.limits[slug] ?? 0 : 0;
+  const sub = slug
+    ? (base ? `${money(base)} ${per}` : P.notSetShort)
+    : keys.length ? f(P.groupsWith, { n: int.format(keys.length), w: pl(keys.length, T.settings.cats.groupsW) }) : P.none;
   return `
     <div class="card lim-card${limit ? '' : ' empty'}">
       <div class="lim-top">
-        <span class="lim-title">${title}</span>
-        <button class="icon-btn soft lim-edit" type="button" data-lim-edit="${esc(slug)}" aria-label="${esc(slug ? (limit ? P.edit : P.set) : P.setup)}" title="${esc(slug ? (limit ? P.edit : P.set) : P.setup)}">${slug ? UI.pen : UI.settings}</button>
+        <span class="lim-head"><span class="lim-title">${title}</span><small class="note lim-sub">${sub}</small></span>
+        <button class="drop-btn lim-edit" type="button" data-lim-edit="${esc(slug)}" aria-label="${esc(slug ? (limit ? P.edit : P.set) : P.setup)}" title="${esc(slug ? (limit ? P.edit : P.set) : P.setup)}">${slug ? UI.pen : UI.settings}</button>
       </div>
       <div class="lim-bar">
         <span class="lim-run" data-w="${w.toFixed(2)}" style="--w:${w.toFixed(2)}%">
