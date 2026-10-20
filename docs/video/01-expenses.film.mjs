@@ -65,9 +65,8 @@ export default async (f) => {
   await f.spot(TAB, { pad: 2 });
   await f.at(19.1);
   await f.down(TAB);
-  await f.wait(650); // попап вырос
-  await f.spot('.quick', { pad: 2 });
-  await f.wait(400);
+  await spotSoon(f, '.quick', { pad: 2 }); // попап только начал расти — рамка растёт с ним
+  await f.wait(700);
   await f.move('text:Год', 520);
   await f.wait(250);
   await f.up();

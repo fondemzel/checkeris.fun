@@ -231,14 +231,16 @@ function commands(cdp) {
   // Плавное движение пальца: кадр раз в 16 мс, с замедлением к концу, как у человека. Шаги
   // идут по часам, ответа страницы на каждый не ждём: под нагрузкой записи ответ приходит
   // через ~60 мс, и жест в 0,36 с растягивался до 1,4 с (замер 20.10.2026)
-  const glide = async (from, to, ms) => {
+  // flick — смахивание: палец разгоняется и отрывается на ходу, как у человека. С торможением
+  // к концу (обычное ведение) свайп выглядел «сдвинулся — замер — появился новый экран»
+  const glide = async (from, to, ms, flick = false) => {
     ms *= PACE;
     const steps = Math.max(2, Math.round(ms / 16));
     const t0 = Date.now();
     const sent = [];
     for (let i = 1; i <= steps; i += 1) {
       const t = i / steps;
-      const k = 1 - (1 - t) ** 2;
+      const k = flick ? t ** 1.6 : 1 - (1 - t) ** 2;
       sent.push(touch('touchMove', [{ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k }]));
       const next = t0 + (i * ms) / steps - Date.now();
       if (next > 0) await sleep(next);
@@ -277,7 +279,7 @@ function commands(cdp) {
       const a = await where(from);
       const b = typeof to === 'object' && 'dx' in to ? { x: a.x + to.dx, y: a.y + (to.dy ?? 0) } : await where(to);
       await touch('touchStart', [a]);
-      await glide(a, b, ms);
+      await glide(a, b, ms, true);
       await touch('touchEnd', []);
     },
     // Палец по частям: опустить, провести, отпустить — между ними можно переводить выделение
@@ -338,14 +340,14 @@ try {
         window.Date = FilmDate; })();`);
     }
     if (PACE !== 1) {
-      // Замедление: часы страницы (performance.now, метки кадров) идут в PACE раз медленнее, таймеры —
-      // во столько же раз дольше. Так замедляется и то, что приложение анимирует само (заливка
-      // кольца, счётчик суммы, выделение). CSS-анимации и переходы — ниже, скоростью анимаций
+      // Замедление: часы страницы (performance.now, метки кадров) идут в PACE раз медленнее — так
+      // замедляется то, что приложение анимирует само (заливка кольца, счётчик суммы, выделение).
+      // CSS-анимации и переходы — ниже, скоростью анимаций. Таймеры НЕ трогаем: новый экран
+      // встаёт в ленту листания по таймеру, и растянутый таймер ставил его, когда старый уже
+      // уехал, — экран замирал на 8 кадров (замер 21.10.2026)
       early.push(`(() => { const P = ${PACE}; const pn = performance.now.bind(performance); const t0 = pn();
         performance.now = () => t0 + (pn() - t0) / P;
-        const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (cb) => raf((t) => cb(t0 + (t - t0) / P));
-        const st = window.setTimeout.bind(window); window.setTimeout = (fn, ms = 0, ...a) => st(fn, ms * P, ...a);
-        const si = window.setInterval.bind(window); window.setInterval = (fn, ms = 0, ...a) => si(fn, ms * P, ...a); })();`);
+        const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (cb) => raf((t) => cb(t0 + (t - t0) / P)); })();`);
     }
     if (early.length) {
       await cdp.send('Page.enable');
