@@ -167,6 +167,33 @@ export const en = {
       refresh: 'Update operations',
       connect: 'Connect',
     },
+    perm: {
+      label: '', // Разрешения
+      note: '', // Без них телефон будит Чекер редко — банки обновляются с опозданием, а их сессии успевают истечь
+      bg: '', // Работа в фоне без ограничений
+      bgOk: '', // разрешено
+      bgNo: '', // не разрешено — нажмите, чтобы разрешить
+      autostart: '', // Автозапуск
+      autostartNote: '', // на Xiaomi включите его для Чекера
+    },
+    sync: {
+      label: '', // Синхронизация
+      all: '', // Для всех банков
+      every: '', // Как часто обновлять
+      everyNote: '', // Чаще, чем раз в 15 минут, Android фоновые задания не будит
+      everyOpts: {
+        0: '', // только вручную
+        15: '', // каждые 15 минут
+        30: '', // каждые 30 минут
+        60: '', // раз в час
+        180: '', // раз в 3 часа
+      },
+      wifi: '', // Только по Wi-Fi
+      allNote: '', // Одни настройки на все банки и магазины
+      allOffNote: '', // У каждого банка свои настройки — в его карточке
+      lockedNote: '', // Действуют общие настройки — Настройки → Банки → «Для всех банков»
+      ownNote: '', // Настройки только этого банка
+    },
     data: {
       label: 'Data',
       note: 'What Checker stores and how to delete it all',
@@ -282,6 +309,7 @@ export const en = {
     hint: 'You sign in to the bank on your phone, in the bank’s own window. Checker never sees your password.',
   },
   bankCard: {
+    main: '', // Основные
     expired: 'The bank asks you to sign in again — a session lasts a few hours',
     notConnected: 'Not connected',
     soon: 'Connection coming later',

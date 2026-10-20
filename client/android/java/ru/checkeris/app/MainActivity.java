@@ -6,7 +6,11 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
+import android.content.ComponentName;
 import android.view.View;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
@@ -95,6 +99,67 @@ public class MainActivity extends android.app.Activity {
      * Ответы возвращаются на страницу событием «checker-bank».
      */
     private class Bridge {
+
+        /** Настройки синхронизации (SyncPrefs) — странице: JSON. */
+        @JavascriptInterface
+        public String syncPrefs() {
+            return SyncPrefs.read(MainActivity.this).toString();
+        }
+
+        @JavascriptInterface
+        public boolean setSyncPrefs(String json) {
+            return SyncPrefs.write(MainActivity.this, json);
+        }
+
+        /**
+         * Можно ли приложению работать в фоне без ограничений батареи и кто производитель
+         * телефона: у Xiaomi нужен ещё «Автозапуск». Без этого система будит фоновое задание
+         * редко — сессии банков успевают истечь.
+         */
+        @JavascriptInterface
+        public String background() {
+            try {
+                PowerManager pm = getSystemService(PowerManager.class);
+                boolean free = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+                return new JSONObject().put("unrestricted", free)
+                        .put("maker", String.valueOf(Build.MANUFACTURER).toLowerCase()).toString();
+            } catch (Exception e) {
+                return "{}";
+            }
+        }
+
+        /** Системный запрос «Разрешить работу в фоне?»; уже разрешено — экран настройки. */
+        @JavascriptInterface
+        public void askBackground() {
+            try {
+                PowerManager pm = getSystemService(PowerManager.class);
+                Intent intent = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())
+                        ? new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                        : new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            } catch (Exception e) {
+                openAppSettings();
+            }
+        }
+
+        /** «Автозапуск» Xiaomi; нет такого экрана — настройки приложения. */
+        @JavascriptInterface
+        public void openAutostart() {
+            try {
+                startActivity(new Intent().setComponent(new ComponentName(
+                        "com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")));
+            } catch (Exception e) {
+                openAppSettings();
+            }
+        }
+
+        private void openAppSettings() {
+            try {
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) {
+                // некуда — ничего не делаем
+            }
+        }
 
         @JavascriptInterface
         public String info() {

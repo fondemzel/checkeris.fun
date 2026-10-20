@@ -51,11 +51,24 @@ public class BankJobService extends JobService {
         new Thread(() -> {
             String token = new Secrets(this).get(BankSync.TOKEN);
             if (token != null) {
-                if (BankSync.connected(this)) LinkReport.send(token, "tbank", BankSync.run(this, token), BankSync.expired(this), true);
-                if (SberSync.connected(this)) LinkReport.send(token, "sber", SberSync.run(this, token), SberSync.expired(this), true);
+                // Каждый — когда подошёл его срок и сеть подходящая (SyncPrefs: как часто, только Wi-Fi)
+                if (BankSync.connected(this) && SyncPrefs.due(this, "tbank")) {
+                    SyncPrefs.ran(this, "tbank");
+                    LinkReport.send(token, "tbank", BankSync.run(this, token), BankSync.expired(this), true);
+                }
+                if (SberSync.connected(this) && SyncPrefs.due(this, "sber")) {
+                    SyncPrefs.ran(this, "sber");
+                    LinkReport.send(token, "sber", SberSync.run(this, token), SberSync.expired(this), true);
+                }
                 // Магазины — тем же заданием: иначе они обновлялись, только пока открыто приложение
-                if (WbSync.connected(this)) LinkReport.send(token, "wb", WbSync.run(this, token), WbSync.expired(this), true);
-                if (OzonSync.connected(this)) LinkReport.send(token, "ozon", OzonSync.run(this, token), OzonSync.expired(this), true);
+                if (WbSync.connected(this) && SyncPrefs.due(this, "wb")) {
+                    SyncPrefs.ran(this, "wb");
+                    LinkReport.send(token, "wb", WbSync.run(this, token), WbSync.expired(this), true);
+                }
+                if (OzonSync.connected(this) && SyncPrefs.due(this, "ozon")) {
+                    SyncPrefs.ran(this, "ozon");
+                    LinkReport.send(token, "ozon", OzonSync.run(this, token), OzonSync.expired(this), true);
+                }
             }
             jobFinished(params, false);
         }).start();

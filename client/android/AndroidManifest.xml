@@ -16,6 +16,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Фоновая загрузка операций банка: задание переживает перезагрузку телефона -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Попросить снять ограничение батареи: без него система будит фоновое обновление редко,
+         и сессии банков успевают истечь (Настройки → Банки → Разрешения) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Куда приложение умеет отправлять приглашения: мессенджеры и почта -->

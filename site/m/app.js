@@ -5905,8 +5905,113 @@ async function screenSetBudget() {
 }
 
 async function screenSetBanks() {
-  return bankSection(inApp() ? await apiKept('/api/bank').catch(() => null) : null);
+  return bankSection(inApp() ? await apiKept('/api/bank').catch(() => null) : null) + permSection() + syncSection();
 }
+
+// ── фоновая синхронизация: разрешения и настройки ────────
+// Синхронизация идёт на телефоне, поэтому и настройки, и разрешения — там (мост Checker:
+// background / askBackground / openAutostart, syncPrefs / setSyncPrefs). Старое приложение
+// этого не умеет — тогда блоков нет.
+
+/** Можно ли работать в фоне без ограничений и чей телефон; null — приложение не умеет. */
+function bgInfo() {
+  if (!window.Checker?.background) return null;
+  try {
+    return JSON.parse(window.Checker.background());
+  } catch {
+    return null;
+  }
+}
+const isXiaomi = (maker) => ['xiaomi', 'redmi', 'poco'].includes(maker);
+
+/** «Разрешения»: без них система будит фоновое обновление редко — сессии банков истекают. */
+function permSection() {
+  const bg = bgInfo();
+  if (!bg) return '';
+  const P = T.settings.perm;
+  return section(P.label, P.note,
+    srow({
+      icon: groupIcon('battery'),
+      title: P.bg,
+      note: bg.unrestricted ? P.bgOk : `<span class="perm-bad">${P.bgNo}</span>`,
+      attrs: 'data-perm-bg',
+      end: GO,
+    })
+    + (isXiaomi(bg.maker) ? srow({ icon: groupIcon('zap'), title: P.autostart, note: P.autostartNote, attrs: 'data-perm-auto', end: GO }) : ''));
+}
+
+/** Настройки синхронизации (SyncPrefs на телефоне); null — приложение не умеет. */
+function syncPrefs() {
+  if (!window.Checker?.syncPrefs) return null;
+  try {
+    return { all: true, every: 15, wifi: false, banks: {}, ...JSON.parse(window.Checker.syncPrefs()) };
+  } catch {
+    return null;
+  }
+}
+function saveSyncPrefs(prefs) {
+  window.Checker?.setSyncPrefs?.(JSON.stringify(prefs));
+}
+const SYNC_EVERY = [15, 30, 60, 180, 0]; // минуты; 0 — только вручную
+
+/**
+ * «Синхронизация»: как часто фоновое задание обходит банк и только ли по Wi-Fi. bankId — блок
+ * в карточке банка: свои настройки, пока в общих выключено «Для всех банков»; иначе — общие,
+ * неактивно. Без bankId — общий блок в «Настройки → Банки» с переключателем «Для всех банков».
+ */
+function syncSection(bankId = '') {
+  const prefs = syncPrefs();
+  if (!prefs) return '';
+  const S = T.settings.sync;
+  const locked = Boolean(bankId) && prefs.all;
+  const own = bankId && !prefs.all ? prefs.banks?.[bankId] ?? {} : {};
+  const every = own.every ?? prefs.every;
+  const wifi = own.wifi ?? prefs.wifi;
+  const rows = (bankId ? '' : srow({ icon: UI.layers, title: S.all, end: toggle('data-sync-all', prefs.all, S.all) }))
+    + srow({ icon: UI.refresh, title: S.every, note: S.everyOpts[every] ?? S.everyOpts[15], attrs: `data-sync-every="${esc(bankId)}"`, end: GO, off: locked })
+    + srow({ icon: groupIcon('wifi'), title: S.wifi, off: locked, end: toggle(`data-sync-wifi="${esc(bankId)}"${locked ? ' disabled' : ''}`, wifi, S.wifi) });
+  const foot = bankId ? (locked ? S.lockedNote : S.ownNote) : prefs.all ? S.allNote : S.allOffNote;
+  return section(S.label, foot, rows);
+}
+
+/** Поменять настройку синхронизации: общую (bankId пустой) или банка. */
+function setSyncPref(bankId, key, value) {
+  const prefs = syncPrefs();
+  if (!prefs) return;
+  if (bankId) {
+    prefs.banks = { ...(prefs.banks ?? {}) };
+    prefs.banks[bankId] = { ...(prefs.banks[bankId] ?? {}), [key]: value };
+  } else prefs[key] = value;
+  saveSyncPrefs(prefs);
+}
+
+$('screen').addEventListener('click', (e) => {
+  if (!['set_banks', 'bank_card'].includes(state.screen)) return;
+  if (e.target.closest('[data-perm-bg]')) return window.Checker?.askBackground?.();
+  if (e.target.closest('[data-perm-auto]')) return window.Checker?.openAutostart?.();
+  const pick = e.target.closest('[data-sync-every]');
+  if (!pick) return null;
+  const bankId = pick.dataset.syncEvery;
+  const S = T.settings.sync;
+  const prefs = syncPrefs();
+  const current = (bankId && !prefs.all ? prefs.banks?.[bankId]?.every : undefined) ?? prefs.every;
+  const rows = SYNC_EVERY.map((m) => dropRow(`data-every="${m}"`, '', S.everyOpts[m], m === current)).join('');
+  return openChoice(S.every, `<div class="choice-list">${rows}</div><p class="note lim-choice-note">${S.everyNote}</p>`, (ev, close) => {
+    const row = ev.target.closest('[data-every]');
+    if (!row) return;
+    setSyncPref(bankId, 'every', Number(row.dataset.every));
+    close();
+    render();
+  });
+});
+
+$('screen').addEventListener('change', (e) => {
+  if (e.target.matches('[data-sync-all]')) {
+    setSyncPref('', 'all', e.target.checked);
+    render();
+  }
+  if (e.target.matches('[data-sync-wifi]')) setSyncPref(e.target.dataset.syncWifi, 'wifi', e.target.checked);
+});
 
 /** Стрелка «дальше» в сером кружке: строка ведёт на другой экран. */
 const GO = `<span class="srow-go">${UI.chevron}</span>`;
@@ -6673,6 +6778,7 @@ async function screenBankCard() {
 
   return `
     <section class="card sec bank-card">
+      <div class="sec-title">${T.bankCard.main}</div>
       <div class="bank-head">
         ${bankLogo(b, connected)}
         <div>
@@ -6698,6 +6804,8 @@ async function screenBankCard() {
       note: `${esc(T.accountTypes[a.type] ?? T.bankCard.accounts.kinds[a.kind] ?? a.type ?? T.bankCard.accounts.kind)}${a.currency && a.currency !== 'RUB' ? ` · ${esc(a.currency)}` : ''} · ${int.format(a.ops)} ${pl(a.ops, T.common.ops)}`,
       end: toggle(`data-bank-acc="${esc(a.id)}" data-ops="${a.ops}"`, a.enabled, T.bankCard.accounts.toggle),
     })).join('')) : ''}
+
+    ${connected ? syncSection(b.id) : ''}
 
     ${!b.ready
       ? `<div class="settings-actions"><button class="btn big" type="button" disabled>${T.bankCard.soon}</button></div>`
