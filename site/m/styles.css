@@ -2190,8 +2190,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Съёмка роликов (film.spot): всё вокруг выделенного элемента темнеет. Затемнение — восемь
    кусков (film.draw): полосы вокруг выреза и скругления в его углах; двигаются только сдвигом
    и масштабом, без перерисовки. Куски непрозрачные, полупрозрачен весь слой — на стыках
-   не темнеет. Проявление и угасание — прозрачностью слоя */
-.film-spot { position: fixed; inset: 0; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.4s ease; }
+   не темнеет. Проявление и уход — прозрачностью слоя: уход — плавное растворение */
+.film-spot { position: fixed; inset: 0; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.6s ease; }
 .film-spot.on { opacity: var(--film-dim, 0.62); }
 .film-spot > * { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 .film-spot > i { width: 100px; height: 100px; background: #0a0e14; }

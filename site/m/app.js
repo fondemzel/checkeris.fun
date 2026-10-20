@@ -8332,7 +8332,6 @@ const film = {
     // Откуда едем: где вырез сейчас. Было погашено — «наезд»: вырез сжимается к цели от краёв
     // экрана, пока проступает затемнение. Внезапно выделение не появляется никогда
     film.from = film.el.classList.contains('on') && film.shown ? film.shown : film.full();
-    film.leaving = null;
     film.at = performance.now();
     film.node = node;
     film.pad = pad;
@@ -8376,7 +8375,7 @@ const film = {
   },
   /** Перейти на вкладку без перезагрузки страницы (та остаётся во весь экран): как нажатие. */
   tab: (name, extra = {}) => (openTab(name, extra, false), true),
-  /** Вырез во весь экран (чуть шире краёв): с него начинается наезд и им кончается отъезд. */
+  /** Вырез во весь экран (чуть шире краёв): с него начинается наезд. */
   full: () => ({ x: -4, y: -4, w: innerWidth + 8, h: innerHeight + 8, r: 0 }),
   /** Промежуточный вырез: от from к goal, доля t (с замедлением к концу). */
   blend(from, goal, t) {
@@ -8388,13 +8387,7 @@ const film = {
     const now = performance.now();
     const alive = film.node?.isConnected && film.node.getClientRects().length;
     if (film.node && !alive) film.clear(); // элемент исчез — не держать рамку на пустом месте
-    if (film.leaving) {
-      // Отъезд: вырез расходится к краям экрана, затемнение тем временем растворяется
-      const t = Math.min(1, (now - film.leaving.at) / FILM_MOVE);
-      film.shown = film.blend(film.leaving.from, film.full(), t);
-      film.draw(film.shown);
-      if (t >= 1) film.leaving = null;
-    } else if (alive) {
+    if (alive) {
       const r = film.node.getBoundingClientRect();
       const p = film.pad;
       const goal = { x: r.left - p, y: r.top - p, w: r.width + p * 2, h: r.height + p * 2, r: film.radius };
@@ -8403,8 +8396,8 @@ const film = {
     }
     film.raf = requestAnimationFrame(film.follow);
   },
+  // Уход — плавное растворение затемнения: вырез остаётся где был, не расходится к краям
   clear() {
-    if (film.el?.classList.contains('on') && film.shown) film.leaving = { from: film.shown, at: performance.now() };
     film.el?.classList.remove('on');
     film.node = null;
   },

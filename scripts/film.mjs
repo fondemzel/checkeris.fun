@@ -194,7 +194,7 @@ async function fullscreen(f) {
   await f.tap({ x: 4, y: Math.round(await f.eval('innerHeight / 2')) });
   // Chrome несколько секунд показывает подсказку «чтобы выйти из полноэкранного режима…» —
   // ждём, пока уйдёт, чтобы не попала в кадр
-  await sleep(6500);
+  await sleep(11000); // замер 21.10.2026: подсказка держится ~9 с
   return f.eval('!!document.fullscreenElement');
 }
 
