@@ -4,13 +4,13 @@
 //
 //   node scripts/film.mjs eval "<js>"            — выполнить на странице и напечатать результат
 //   node scripts/film.mjs login <токен>           — войти учётной записью для съёмки
-//   node scripts/film.mjs run <сценарий.mjs> [--rec out.mp4] [--today 2026-12-18]
+//   node scripts/film.mjs run <сценарий.mjs> [--rec out.webm] [--today 2026-12-18]
 //       — прогнать сценарий (и записать). --today — «сегодня» для страницы на время съёмки: так
 //       нужный месяц демо-семьи — текущий (лимиты показывают «можно в день», а не «не начался»)
 //
 // Сценарий — модуль с export default async (f) => { … }, где f — команды ниже. Координаты —
 // пиксели страницы; цель — селектор, 'text:Питание' или элемент (см. film.find в app.js).
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -65,15 +65,21 @@ function commands(cdp) {
   const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', {
     type, touchPoints: points.map(({ x, y }) => ({ x, y, radiusX: 8, radiusY: 8, force: 1, id: 0 })),
   });
-  // Плавное движение пальца: кадр раз в 16 мс, с замедлением к концу, как у человека
+  // Плавное движение пальца: кадр раз в 16 мс, с замедлением к концу, как у человека. Шаги
+  // идут по часам, ответа страницы на каждый не ждём: под нагрузкой записи ответ приходит
+  // через ~60 мс, и жест в 0,36 с растягивался до 1,4 с (замер 20.10.2026)
   const glide = async (from, to, ms) => {
     const steps = Math.max(2, Math.round(ms / 16));
+    const t0 = Date.now();
+    const sent = [];
     for (let i = 1; i <= steps; i += 1) {
       const t = i / steps;
       const k = 1 - (1 - t) ** 2;
-      await touch('touchMove', [{ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k }]);
-      await sleep(16);
+      sent.push(touch('touchMove', [{ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k }]));
+      const next = t0 + (i * ms) / steps - Date.now();
+      if (next > 0) await sleep(next);
     }
+    await Promise.all(sent);
   };
   return {
     eval: evaluate,
@@ -172,18 +178,20 @@ try {
     const out = recAt >= 0 ? rest[recAt + 1] : null;
     let rec = null;
     if (out) {
-      // Запись экрана телефона: та же частота кадров, что у экрана, 16 Мбит/с
-      rec = spawn(ADB, ['-s', DEVICE, 'shell', 'screenrecord', '--bit-rate', '16000000', '/sdcard/film.mp4']);
-      await sleep(800);
+      // Запись — средствами эмулятора, со стороны компьютера: 60 кадров в секунду. Запись
+      // внутри Android (screenrecord) на эмуляторе кодирует программно и успевает ~10–14
+      // кадров (замер 20.10.2026). Файл — WebM, путь — на компьютере
+      adb('emu', 'screenrecord', 'start', '--fps', '60', '--bit-rate', '24000000', resolve(out));
+      rec = true;
+      await sleep(600);
     }
     f.start = Date.now();
     await scenario(f);
     if (rec) {
       await sleep(600);
-      adb('shell', 'pkill', '-INT', 'screenrecord');
+      adb('emu', 'screenrecord', 'stop');
       await sleep(1500);
-      adb('pull', '/sdcard/film.mp4', out);
-      console.log('записано:', out);
+      console.log('записано:', resolve(out));
     }
   } else {
     console.log('команды: eval, login, run — см. начало файла');

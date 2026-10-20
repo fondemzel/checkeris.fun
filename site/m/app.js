@@ -8319,16 +8319,22 @@ const film = {
     const r = film.find(target)?.getBoundingClientRect();
     return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, top: r.top, left: r.left } : null;
   },
+  // Переезд к новой цели — своей траекторией (FILM_MOVE мс, с замедлением), а не переходом CSS:
+  // цель может двигаться (экран выезжает, лента листается), и рамка должна прийти туда, где
+  // цель будет, а дальше ехать вместе с ней без отставания
   spot(target, { pad = 6, radius = null, dim = 0.62 } = {}) {
     const node = film.find(target);
     if (!node) return false;
-    if (!film.el) {
+    const first = !film.el;
+    if (first) {
       film.el = document.createElement('div');
       film.el.className = 'film-spot';
       document.body.appendChild(film.el);
-      film.place(node, pad); // первое выделение — сразу на месте, только проявляется
     }
     const own = parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0;
+    // Откуда едем: где рамка сейчас (первое выделение — сразу на месте, только проявляется)
+    film.from = first || !film.el.classList.contains('on') ? null : film.shown;
+    film.at = performance.now();
     film.node = node;
     film.pad = pad;
     film.radius = radius ?? Math.max(10, own + pad);
@@ -8337,18 +8343,24 @@ const film = {
     if (!film.raf) film.follow();
     return true;
   },
-  place(node, pad) {
-    const r = node.getBoundingClientRect();
-    Object.assign(film.el.style, {
-      left: `${(r.left - pad).toFixed(1)}px`,
-      top: `${(r.top - pad).toFixed(1)}px`,
-      width: `${(r.width + pad * 2).toFixed(1)}px`,
-      height: `${(r.height + pad * 2).toFixed(1)}px`,
-      borderRadius: `${film.radius ?? 12}px`,
-    });
-  },
   follow() {
-    if (film.node?.isConnected) film.place(film.node, film.pad);
+    if (film.node?.isConnected) {
+      const r = film.node.getBoundingClientRect();
+      const p = film.pad;
+      const goal = { x: r.left - p, y: r.top - p, w: r.width + p * 2, h: r.height + p * 2, r: film.radius };
+      const t = film.from ? Math.min(1, (performance.now() - film.at) / FILM_MOVE) : 1;
+      const k = 1 - (1 - t) ** 3;
+      const mix = (a, b) => a + (b - a) * k;
+      const f = film.from;
+      film.shown = t < 1 ? { x: mix(f.x, goal.x), y: mix(f.y, goal.y), w: mix(f.w, goal.w), h: mix(f.h, goal.h), r: mix(f.r, goal.r) } : goal;
+      const s = film.shown;
+      Object.assign(film.el.style, {
+        transform: `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px)`,
+        width: `${s.w.toFixed(1)}px`,
+        height: `${s.h.toFixed(1)}px`,
+        borderRadius: `${s.r.toFixed(1)}px`,
+      });
+    }
     film.raf = requestAnimationFrame(film.follow);
   },
   clear() {
@@ -8356,4 +8368,5 @@ const film = {
     film.node = null;
   },
 };
+const FILM_MOVE = 550;
 window.film = film;
