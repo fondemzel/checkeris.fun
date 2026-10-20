@@ -16,6 +16,8 @@
 //   node scripts/film.mjs run <сценарий.mjs> [--rec out.webm] [--today 2026-12-18]
 //       — прогнать сценарий (и записать). --today — «сегодня» для страницы на время съёмки: так
 //       нужный месяц демо-семьи — текущий (лимиты показывают «можно в день», а не «не начался»)
+//       --pace 2 — замедлить всё вдвое: анимации приложения (и CSS, и по часам страницы),
+//       выделение, жесты и отметки сценария. Ролик выходит длиннее во столько же раз
 //
 // Сценарий — модуль с export default async (f) => { … }, где f — команды ниже. Координаты —
 // пиксели страницы; цель — селектор, 'text:Питание' или элемент (см. film.find в app.js).
@@ -39,6 +41,8 @@ const flag = (name) => {
 const BROWSER = argv.includes('--browser');
 const PHONE = argv.includes('--phone');
 const SCRCPY = process.env.SCRCPY || 'scrcpy';
+// Темп съёмки: во сколько раз медленнее живого (--pace). Множит отметки, паузы и жесты сценария
+const PACE = Number(flag('pace')) || 1;
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const SITE = 'https://checkeris.fun/m/';
 // Экран телефона: 412×915 точек при плотности 2,625 → 1080×2400 пикселей
@@ -228,6 +232,7 @@ function commands(cdp) {
   // идут по часам, ответа страницы на каждый не ждём: под нагрузкой записи ответ приходит
   // через ~60 мс, и жест в 0,36 с растягивался до 1,4 с (замер 20.10.2026)
   const glide = async (from, to, ms) => {
+    ms *= PACE;
     const steps = Math.max(2, Math.round(ms / 16));
     const t0 = Date.now();
     const sent = [];
@@ -242,17 +247,17 @@ function commands(cdp) {
   };
   return {
     eval: evaluate,
-    wait: sleep,
+    wait: (ms) => sleep(ms * PACE),
     /** Пауза до отметки времени ролика (секунды от начала сценария) — держит темп озвучки. */
     async at(seconds) {
-      const left = this.start + seconds * 1000 - Date.now();
+      const left = this.start + seconds * 1000 * PACE - Date.now();
       if (left > 0) await sleep(left);
       // Опоздали к отметке — темп разойдётся с озвучкой: видно, какой шаг не успевает
       else if (left < -150) console.log(`опоздание к ${seconds} с: ${(-left / 1000).toFixed(2)} с`);
     },
     /** Ждать, пока на странице не станет верно условие (смена периода, открытие экрана). */
     async until(expr, timeout = 4000) {
-      const end = Date.now() + timeout;
+      const end = Date.now() + timeout * PACE;
       while (Date.now() < end) {
         if (await evaluate(expr)) return true;
         await sleep(100);
@@ -263,9 +268,9 @@ function commands(cdp) {
     async tap(target, { hold = 90 } = {}) {
       const p = await where(target);
       // Chrome на телефоне из голых касаний «клик» не собирает — нужен жест касания целиком
-      if (PHONE) return cdp.send('Input.synthesizeTapGesture', { x: p.x, y: p.y, duration: hold, gestureSourceType: 'touch' });
+      if (PHONE) return cdp.send('Input.synthesizeTapGesture', { x: p.x, y: p.y, duration: hold * PACE, gestureSourceType: 'touch' });
       await touch('touchStart', [p]);
-      await sleep(hold);
+      await sleep(hold * PACE);
       await touch('touchEnd', []);
     },
     async swipe(from, to, ms = 320) {
@@ -295,15 +300,15 @@ function commands(cdp) {
     async press(target, { hold = 650, then = null, ms = 380 } = {}) {
       const a = await where(target);
       await touch('touchStart', [a]);
-      await sleep(hold);
+      await sleep(hold * PACE);
       if (then) await glide(a, await where(then), ms);
-      await sleep(150);
+      await sleep(150 * PACE);
       await touch('touchEnd', []);
     },
     async type(text, { every = 90 } = {}) {
       for (const ch of text) {
         await cdp.send('Input.insertText', { text: ch });
-        await sleep(every);
+        await sleep(every * PACE);
       }
     },
     spot: (target, opts = {}) => evaluate(`film.spot(${JSON.stringify(target)}, ${JSON.stringify(opts)})`),
@@ -325,16 +330,37 @@ try {
   } else if (cmd === 'run') {
     const scenario = (await import(pathToFileURL(resolve(arg)).href)).default;
     const todayAt = rest.indexOf('--today');
+    const early = [];
     if (todayAt >= 0) {
       // Сдвиг часов страницы: Date и Date.now идут от выбранного дня, время суток — днём
-      const shift = `(() => { const D = Date; const shift = D.parse('${rest[todayAt + 1]}T14:00:00') - D.now();
+      early.push(`(() => { const D = Date; const shift = D.parse('${rest[todayAt + 1]}T14:00:00') - D.now();
         class FilmDate extends D { constructor(...a) { if (a.length) super(...a); else super(D.now() + shift); } static now() { return D.now() + shift; } }
-        window.Date = FilmDate; })();`;
+        window.Date = FilmDate; })();`);
+    }
+    if (PACE !== 1) {
+      // Замедление: часы страницы (performance.now, метки кадров) идут в PACE раз медленнее, таймеры —
+      // во столько же раз дольше. Так замедляется и то, что приложение анимирует само (заливка
+      // кольца, счётчик суммы, выделение). CSS-анимации и переходы — ниже, скоростью анимаций
+      early.push(`(() => { const P = ${PACE}; const pn = performance.now.bind(performance); const t0 = pn();
+        performance.now = () => t0 + (pn() - t0) / P;
+        const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (cb) => raf((t) => cb(t0 + (t - t0) / P));
+        const st = window.setTimeout.bind(window); window.setTimeout = (fn, ms = 0, ...a) => st(fn, ms * P, ...a);
+        const si = window.setInterval.bind(window); window.setInterval = (fn, ms = 0, ...a) => si(fn, ms * P, ...a); })();`);
+    }
+    if (early.length) {
       await cdp.send('Page.enable');
-      await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: shift });
+      for (const source of early) await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source });
       await f.eval(`(location.href = location.pathname + '?screen=summary', true)`);
       await sleep(6000);
     }
+    if (PACE !== 1) {
+      await cdp.send('Animation.enable');
+      await cdp.send('Animation.setPlaybackRate', { playbackRate: 1 / PACE });
+    }
+    // Плашка «демо-режим» под заголовком — служебная, в ролике не нужна: на время съёмки спрятана
+    await f.eval(`(() => { const st = document.createElement('style'); st.textContent = '#demo-pill { display: none !important; }'; document.head.appendChild(st); return true; })()`);
+    // Подсказка при свайпе (полоска со стрелкой) мелькает в ролике — на время съёмки выключена
+    await f.eval(`(localStorage.setItem('checker.motion.kinds', JSON.stringify({ ...JSON.parse(localStorage.getItem('checker.motion.kinds') || '{}'), peek: false })), true)`);
     const recAt = rest.indexOf('--rec');
     const out = recAt >= 0 ? rest[recAt + 1] : null;
     let rec = null;
@@ -342,7 +368,7 @@ try {
     if (out && PHONE) {
       // scrcpy пишет экран телефона сам (аппаратный кодек), без окна; до 90 с — сценарий короче
       rec = spawn(SCRCPY, ['-s', DEVICE, '--no-window', '--no-audio', '--video-codec=h264', '--video-bit-rate=40M',
-        '--max-fps=60', '--time-limit=90', `--record=${resolve(out)}.mkv`], { stdio: 'ignore' });
+        '--max-fps=60', `--time-limit=${Math.round(60 * PACE + 30)}`, `--record=${resolve(out)}.mkv`], { stdio: 'ignore' });
       await sleep(2500); // scrcpy запускает сервер на телефоне
       rec.lead = Date.now();
     } else if (out && BROWSER) {
