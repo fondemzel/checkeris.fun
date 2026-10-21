@@ -337,7 +337,9 @@ button, input, select { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border: none; border-radius: 12px;
   background: none; font: inherit; font-size: 15px; color: var(--text); text-align: left; cursor: pointer;
 }
-.quick-menu .drop-row:active { background: var(--fill); }
+.quick-menu .drop-row:active, .quick-menu .drop-row.hot { background: var(--fill); }
+/* Кнопка меню: долгое нажатие открывает попап — без выделения текста и меню телефона */
+[data-drop] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .quick-menu .drop-row.on { color: var(--accent); font-weight: 600; }
 .quick-menu .drop-ic { display: flex; color: var(--muted); }
 .quick-menu .drop-row.on .drop-ic { color: var(--accent); }

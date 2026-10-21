@@ -547,16 +547,28 @@ function dropPopClose(now = false) {
     .finished.then(() => el.remove(), () => el.remove());
 }
 
+/** Выбрать строку попапа: нажать её копию в меню у кнопки, которое на экране сейчас. */
+function dropPopPick(row) {
+  const { el, title } = dropPop;
+  const i = [...el.querySelectorAll('.drop-row')].indexOf(row);
+  dropPopClose();
+  const now = [...document.querySelectorAll('[data-drop]')].find((b) => b.title === title)?.nextElementSibling;
+  now?.querySelectorAll('.drop-row')[i]?.click();
+}
+
 // Попап открыт: строка — выбор, мимо — закрыть (нажатие на ту же кнопку не открывает его снова)
 document.addEventListener('click', (e) => {
+  // Нажатие, которым кончилось долгое, — не переключение попапа: он уже открыт
+  if (dropHold?.ate && e.target.closest('[data-drop]')) {
+    dropHold.ate = false;
+    e.stopPropagation();
+    return;
+  }
   if (!dropPop) return;
   const { el, title } = dropPop;
   const row = e.target.closest('.drop-row');
   if (row && el.contains(row)) {
-    const i = [...el.querySelectorAll('.drop-row')].indexOf(row);
-    dropPopClose();
-    const now = [...document.querySelectorAll('[data-drop]')].find((b) => b.title === title)?.nextElementSibling;
-    now?.querySelectorAll('.drop-row')[i]?.click();
+    dropPopPick(row);
     e.stopPropagation();
     return;
   }
@@ -567,6 +579,61 @@ document.addEventListener('click', (e) => {
 }, true);
 addEventListener('scroll', () => dropPopClose(), { passive: true });
 window.addEventListener('popstate', () => dropPopClose(true));
+
+// Долгое нажатие на сортировку — как на «Расходе» острова: попап открывается, пока палец
+// держат; можно, не отпуская, провести до пункта и отпустить, а можно отпустить и нажать.
+// Пока палец держит попап, лента не листается и не тянется, вкладки не переключаются
+let dropHold = null; // { x, y, timer, held, moved, ate }
+const holdsDrop = () => Boolean(dropHold?.held);
+
+document.addEventListener('pointerdown', (e) => {
+  const btn = e.target.closest('[data-drop]');
+  if (dropHold && !dropHold.held) clearTimeout(dropHold.timer);
+  if (!btn || btn.title !== 'Сортировка') {
+    if (dropHold) dropHold.ate = false;
+    return;
+  }
+  const hold = { x: e.clientX, y: e.clientY, held: false, moved: false, ate: false };
+  hold.timer = setTimeout(() => {
+    dropPopOpen(btn, btn.nextElementSibling);
+    hold.held = true;
+    hold.ate = true; // click за отпусканием — не повторное открытие
+    navigator.vibrate?.(15);
+  }, QUICK_HOLD);
+  dropHold = hold;
+});
+document.addEventListener('pointermove', (e) => {
+  if (!dropHold) return;
+  if (!dropHold.held) {
+    // Палец поехал до срока — это не долгое нажатие
+    if (Math.hypot(e.clientX - dropHold.x, e.clientY - dropHold.y) > 10) clearTimeout(dropHold.timer);
+    return;
+  }
+  if (!dropPop) return;
+  dropHold.moved = true;
+  const row = document.elementFromPoint(e.clientX, e.clientY)?.closest('.drop-row');
+  for (const r of dropPop.el.querySelectorAll('.drop-row')) r.classList.toggle('hot', r === row);
+});
+const dropRelease = (e) => {
+  if (!dropHold) return;
+  clearTimeout(dropHold.timer);
+  if (!dropHold.held) return;
+  dropHold.held = false;
+  if (!dropPop) return;
+  const row = e.type === 'pointerup' && document.elementFromPoint(e.clientX, e.clientY)?.closest('.drop-row');
+  if (row && dropPop.el.contains(row)) return dropPopPick(row);
+  // Отпустили, не уводя палец, — попап остаётся: пункт можно нажать
+  if (dropHold.moved) dropPopClose();
+};
+document.addEventListener('pointerup', dropRelease);
+document.addEventListener('pointercancel', dropRelease);
+// Пока палец держит попап, страница не прокручивается
+document.addEventListener('touchmove', (e) => {
+  if (holdsDrop()) e.preventDefault();
+}, { passive: false });
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('[data-drop]')) e.preventDefault();
+});
 
 // Корневые экраны: у них нет «назад». «Банк» — такой же вид «Расхода», как чеки,
 // в него приходят переключателем, а не вглубь
@@ -4823,6 +4890,7 @@ addEventListener('touchstart', (e) => {
 
 addEventListener('touchmove', (e) => {
   if (pullFrom == null) return;
+  if (holdsDrop()) return; // палец ведут по попапу сортировки
   const dy = e.touches[0].clientY - pullFrom;
   pullBy = dy > 0 && window.scrollY <= 0 ? Math.min(PULL_MAX, dy * 0.5) : 0; // тянется туже пальца
   puller.style.transform = `translateY(${pullBy}px) rotate(${pullBy * 3.5}deg)`;
@@ -4883,6 +4951,7 @@ function setStretch(offset, transition = '') {
 
 addEventListener('touchmove', (e) => {
   if (stretchFrom == null) return;
+  if (holdsDrop()) return; // палец ведут по попапу сортировки
   const y = e.touches[0].clientY;
   if (!stretchEdge) {
     const top = window.scrollY <= 0;
@@ -5053,8 +5122,9 @@ addEventListener('touchmove', (e) => {
   if (!swipeFrom) return;
   const dx = e.touches[0].clientX - swipeFrom.x;
   const dy = e.touches[0].clientY - swipeFrom.y;
-  // Долгое нажатие на «Расход» / «Доход» открыло попап — палец ведут к пункту, это не свайп
-  if (quick.el && !swipeLock) {
+  // Долгое нажатие на «Расход» / «Доход» или на сортировку открыло попап — палец ведут к пункту,
+  // это не свайп
+  if ((quick.el || holdsDrop()) && !swipeLock) {
     swipeFrom = null;
     return;
   }
