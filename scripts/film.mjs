@@ -17,6 +17,7 @@
 //   node scripts/film.mjs run <сценарий.mjs> [--rec out.webm] [--today 2026-12-18]
 //       — прогнать сценарий (и записать). --today — «сегодня» для страницы на время съёмки: так
 //       нужный месяц демо-семьи — текущий (лимиты показывают «можно в день», а не «не начался»)
+//       --theme dark — тема оформления на время съёмки (ставится до загрузки страницы)
 //       --pace 2 — замедлить всё вдвое: анимации приложения (и CSS, и по часам страницы),
 //       выделение, жесты и отметки сценария. Ролик выходит длиннее во столько же раз
 //
@@ -350,9 +351,15 @@ try {
         performance.now = () => t0 + (pn() - t0) / P;
         const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (cb) => raf((t) => cb(t0 + (t - t0) / P)); })();`);
     }
+    const themeAt = rest.indexOf('--theme');
+    if (themeAt >= 0) {
+      // Тему страница берёт при загрузке (index.html) — ставим до перезагрузки ниже
+      await f.eval(`(localStorage.setItem('checker.theme', ${JSON.stringify(rest[themeAt + 1])}), true)`);
+      if (!early.length) early.push('');
+    }
     if (early.length) {
       await cdp.send('Page.enable');
-      for (const source of early) await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source });
+      for (const source of early.filter(Boolean)) await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source });
       await f.eval(`(location.href = location.pathname + '?screen=summary', true)`);
       await sleep(6000);
     }
@@ -362,8 +369,9 @@ try {
     }
     // Плашка «демо-режим» под заголовком — служебная, в ролике не нужна: на время съёмки спрятана
     await f.eval(`(() => { const st = document.createElement('style'); st.textContent = '#demo-pill { display: none !important; }'; document.head.appendChild(st); return true; })()`);
-    // Подсказка при свайпе (полоска со стрелкой) мелькает в ролике — на время съёмки выключена
-    await f.eval(`(localStorage.setItem('checker.motion.kinds', JSON.stringify({ ...JSON.parse(localStorage.getItem('checker.motion.kinds') || '{}'), peek: false })), true)`);
+    // Подсказка при свайпе (полоска со стрелкой) в ролике нужна: показывает, куда листают.
+    // Включаем явно — её могли выключить в этом браузере раньше
+    await f.eval(`(localStorage.setItem('checker.motion.kinds', JSON.stringify({ ...JSON.parse(localStorage.getItem('checker.motion.kinds') || '{}'), peek: true })), true)`);
     const recAt = rest.indexOf('--rec');
     const out = recAt >= 0 ? rest[recAt + 1] : null;
     let rec = null;

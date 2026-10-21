@@ -8375,7 +8375,7 @@ const film = {
       const r = el.getBoundingClientRect();
       return r.width > 2 && r.height > 2 && getComputedStyle(el).visibility !== 'hidden';
     };
-    const all = [...document.querySelectorAll('#screen *, .tabs *, .quick *, .sheet *')]
+    const all = [...document.querySelectorAll('#screen *, .tabs *, .quick *, .sheet *, .picker *')]
       .filter((el) => (el.textContent.trim() === text || el.getAttribute('aria-label')?.startsWith(`${text}:`)) && seen(el));
     return all.find((el) => ![...el.children].some((c) => all.includes(c))) ?? null;
   },

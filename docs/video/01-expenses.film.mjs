@@ -104,7 +104,7 @@ export default async (f) => {
   await f.spot(FILTER, { pad: 4 });
   await f.at(33.8);
   await f.tap(FILTER);
-  await spotSoon(f, '.sheet-box', { pad: 0 });
+  await spotSoon(f, '.picker-box', { pad: 0 }); // лист фильтра (.picker) выезжает снизу
   await f.at(35.2);
   await f.tap('text:Только чеки'); // икра — из чека «Перекрёстка»: поиск ниже её найдёт
   await f.wait(200);
@@ -118,8 +118,10 @@ export default async (f) => {
   await f.type('икра', { every: 140 });
   await f.wait(400);
   await f.hideKeyboard();
-  // По дате разделы — дни, обычно раскрыты; свёрнут — раскрыть первый
-  if (!(await f.until(`!!film.find(${JSON.stringify(ICRA)})`, 1200))) await f.tap('#screen [data-section]');
+  // По дате разделы — дни. Найденное — в свёрнутом «30 декабря»: дождаться, пока поиск
+  // обновит список (раньше — раскрылся бы другой день), и раскрыть
+  await f.until(`!!film.find('text:30 декабря')`, 3000);
+  if (!(await f.until(`!!film.find(${JSON.stringify(ICRA)})`, 300))) await f.tap('text:30 декабря');
   await spotSoon(f, ICRA, { up: '.row', pad: 2 }); // вся строка покупки
   await f.at(40.8);
   await f.tap(ICRA);
