@@ -6319,7 +6319,16 @@ async function exportBudget() {
       return null;
     }
     const file = new File([blob], name, { type: 'application/zip' });
-    if (navigator.canShare?.({ files: [file] })) return await navigator.share({ files: [file], title: name }).catch(() => null);
+    // Chrome на Android ZIP через Web Share не отдаёт, хоть canShare и отвечает «да» (NotAllowedError,
+    // 21.10.2026), — тогда скачиваем. Закрыл человек список сам (AbortError) — ничего не делаем
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: name });
+        return null;
+      } catch (err) {
+        if (err.name === 'AbortError') return null;
+      }
+    }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = name;
