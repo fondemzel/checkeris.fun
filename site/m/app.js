@@ -699,8 +699,9 @@ function go(patch, replace = false) {
   if (state.screen === 'set_cat' && state.tc) params.set('tc', state.tc);
   if (['set_cats', 'set_group', 'set_cat'].includes(state.screen) && state.tk) params.set('tk', state.tk);
   if (state.op) params.set('op', state.op);
-  if (state.screen === 'summary' && state.src) params.set('src', state.src);
-  if (state.screen === 'summary' && state.sg) params.set('sg', state.sg);
+  // Отборы «Расхода» действуют и в «Аналитике»: в адресе — чтобы экран из памяти был с ними
+  if (['summary', 'stats'].includes(state.screen) && state.src) params.set('src', state.src);
+  if (['summary', 'stats'].includes(state.screen) && state.sg) params.set('sg', state.sg);
   if (state.screen === 'income' && state.inf) params.set('inf', state.inf);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
@@ -4436,7 +4437,7 @@ async function render() {
   if (state.screen !== 'added') manualCarry = null;
 
   setTitle(typeof screen.title === 'function' ? screen.title() : screen.title,
-    state.screen === 'stats' ? anaTitle() : PERIOD_SCREENS.includes(state.screen) ? humanPeriod(state.from, state.to) : '');
+    state.screen === 'stats' || PERIOD_SCREENS.includes(state.screen) ? humanPeriod(state.from, state.to) : '');
   $('back').hidden = top;
 
   const actions = screen.actions?.() ?? '';
@@ -4480,8 +4481,7 @@ async function render() {
     if (!landed) return;
     arrived = true;
     if (state.screen === 'stats') {
-      holdAnalytics();
-      anaRowsIn(); // строки групп — во время въезда; полосы заливаются после остановки
+      holdAnalytics(); // линии графика — пустыми, рисуются после остановки
     }
     playRing(false); // кольцо въезжает пустым
     playList(); // строки проявляются по одной прямо во время въезда
@@ -5224,7 +5224,7 @@ function prefetchPeriod(p) {
   if (!p) return;
   const paths = state.screen === 'summary' ? Object.values(summaryFeeds(p.from, p.to))
     : state.screen === 'income' && bankLinked ? Object.values(incomeFeeds(p.from, p.to))
-      : state.screen === 'stats' ? [analyticsFeed(p.to)] : [];
+      : state.screen === 'stats' ? Object.values(anaFeeds(p.from, p.to)) : [];
   for (const path of paths) if (path) apiFeed(path).catch(() => {});
 }
 
@@ -5244,12 +5244,9 @@ function prefetchNeighbors() {
   }, RING_ANIM + 500);
 }
 
-/** Куда листать свайпом: соседний период; в аналитике — соседний месяц, не позже текущего. */
+/** Куда листать свайпом: соседний период (в «Аналитике» — так же, как в «Расходе»). */
 function swipeTarget(dir) {
-  if (state.screen !== 'stats') return shiftPeriod(state.from, state.to, dir);
-  const [y, m] = monthKey(state.to).split('-').map(Number);
-  const next = monthPeriod(y, m - 1 + dir);
-  return next.from > monthPeriod(new Date().getFullYear(), new Date().getMonth()).from ? null : next;
+  return shiftPeriod(state.from, state.to, dir);
 }
 
 async function swipeEnd(e) {
@@ -8368,201 +8365,324 @@ if (token.get()) {
   showLogin();
 }
 
-// ── Аналитика: лимиты по группам на месяц (limits.mjs) ────────────────────────
-// Месяц календарный; лимит — общий для бюджета; остаток не переносится. Сверху — сколько
-// ещё можно тратить в день до конца месяца, ниже — группы: потрачено из лимита и прогноз
-// к концу месяца (потрачено + сколько обычно уходит в группе после сегодняшнего числа). Нажатие на группу — правка её лимита.
+// ── Аналитика: как росли траты за период ──────────────────
+// График накопленных расходов по дням периода (у длинного — по месяцам): «Всего», три самые
+// большие группы и «Остальное» — цветами групп, на конце каждой линии её значок; нажатие на
+// значок — линии её категорий (у «Остального» — групп, слитых в него). В фильтре одна группа —
+// сразу её категории. Пунктир «обычно» — как в среднем росли траты за три прошлых таких же
+// периода; в идущем периоде линии обрываются на сегодня, «Всего» продолжает прогноз точками.
+// Доходы — едва заметной зелёной заливкой: видно, перекрывают ли траты то, что пришло.
+// Данные — те же ленты, что у «Расхода», но по дням (collapse=day), с теми же отборами.
 
-// Месяц аналитики — из общего периода приложения: месяц, в котором он заканчивается. Листается
-// свайпом (swipeTarget), в заголовке — его название (anaTitle)
-let anaData = null; // последний ответ /api/analytics
-// Объявления функций, а не стрелки в константах: первая отрисовка идёт раньше этого места файла
-function monthKey(iso) {
-  return iso.slice(0, 7);
-}
-function anaTitle() {
-  const [y, m] = monthKey(state.to).split('-').map(Number);
-  return periodTitle(...Object.values(monthPeriod(y, m - 1)));
-}
-function currentMonthKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const ANA_LINES = 3; // линий групп, кроме «Всего» и «Остального»
+const ANA_USUAL = 3; // прошлых периодов для «обычно»
+const ANA_REST = '~';
+
+function anaFeeds(from, to) {
+  const items = new URLSearchParams({ from, to, collapse: 'day', per: '20000', sort: 'date', dir: 'asc' });
+  const ops = new URLSearchParams({ from, to, direction: 'debit', kind: 'expense', per: '20000' });
+  const income = new URLSearchParams({ from, to, direction: 'credit', kind: 'income', per: '20000' });
+  return { items: `/api/items?${items}`, ops: `/api/bank/ops?${ops}`, income: bankLinked ? `/api/bank/ops?${income}` : null };
 }
 
-/** Запрос «Аналитики» за месяц, в котором кончается период (не позже текущего). */
-function analyticsFeed(to) {
-  const month = monthKey(to) > currentMonthKey() ? currentMonthKey() : monthKey(to);
-  return `/api/analytics?month=${month}`;
+/** Траты периода с отборами экрана (источник, группы, поиск) — как в «Расходе»: [{ day, slug, sum }]. */
+function anaSpend(items, ops) {
+  const picked = new Set(state.sg ? state.sg.split(',') : []);
+  const inGroup = (slug) => !state.sg || picked.has(slug ?? '') || picked.has(findCategory(slug)?.group.slug ?? NONE);
+  const out = [];
+  if (state.src !== 'bank' && state.src !== 'failed') {
+    for (const r of items) {
+      if (state.src && itemSource(r) !== state.src) continue;
+      if (!matchesQ([r.name, r.seller, r.retail_place, findCategory(r.category_slug)?.category.name], [r.sum])) continue;
+      if (inGroup(r.category_slug)) out.push({ day: r.day ?? r.purchased_at.slice(0, 10), slug: r.category_slug, sum: r.sum });
+    }
+  }
+  if (!state.src || state.src === 'bank') {
+    for (const op of ops) {
+      if (!matchesQ([op.merchant, op.description, op.account_name, findCategory(op.category_slug)?.category.name], [op.amount])) continue;
+      if (inGroup(op.category_slug)) out.push({ day: op.at.slice(0, 10), slug: op.category_slug, sum: op.amount });
+    }
+  }
+  return out;
+}
+
+/** Деления оси: дни периода, а у длинного (больше двух месяцев) — месяцы. */
+function anaBuckets(from, to) {
+  const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
+  if (days <= 62) {
+    const keys = Array.from({ length: days }, (_, i) => isoDay(addDays(parseDay(from), i)));
+    const at = new Map(keys.map((k, i) => [k, i]));
+    return { keys, monthly: false, of: (day) => at.get(day) ?? -1 };
+  }
+  const keys = [];
+  for (let d = parseDay(from); isoDay(d) <= to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) keys.push(isoDay(d).slice(0, 7));
+  const at = new Map(keys.map((k, i) => [k, i]));
+  return { keys, monthly: true, of: (day) => at.get(day.slice(0, 7)) ?? -1 };
+}
+
+/** Накопленная сумма по делениям: [5, 0, 3] → [5, 5, 8]. */
+const anaCum = (arr) => {
+  let n = 0;
+  return arr.map((v) => (n += v));
+};
+
+/**
+ * Какие линии: уровень (группы, категории группы, слитые в «Остальное») и ключ строки на нём.
+ * Отбор одной группы в фильтре — сразу её категории
+ */
+function anaLevel() {
+  const one = state.sg && !state.sg.includes(',') && findGroup(state.sg) ? state.sg : '';
+  const group = state.ringGroup || one;
+  if (group) {
+    const g = findGroup(group);
+    return { kind: 'cats', key: (slug) => slug ?? NONE, name: (k) => findCategory(k)?.category.name ?? 'Без категории',
+      color: (k) => categoryColor(g?.slug, k) ?? g?.color, icon: (k) => findCategory(k)?.category.icon || g?.icon || 'none', only: null };
+  }
+  const groupOf = (slug) => findCategory(slug)?.group.slug ?? NONE;
+  return { kind: 'groups', key: groupOf, name: (k) => findGroup(k)?.name ?? 'Без категории',
+    color: (k) => findGroup(k)?.color ?? '#9aa3ad', icon: (k) => findGroup(k)?.icon ?? 'none',
+    only: state.ringRest ? new Set(state.ringRest.split(',')) : null };
 }
 
 async function screenAnalytics() {
-  const month = monthKey(state.to) > currentMonthKey() ? currentMonthKey() : monthKey(state.to);
-  // Через память лент: её загружает заранее и свайп месяца (prefetchPeriod)
-  const data = await apiFeed(analyticsFeed(state.to));
-  anaData = data;
-  const [y, m] = month.split('-').map(Number);
-  const daysIn = new Date(y, m, 0).getDate();
-  const current = month === currentMonthKey();
-  const passed = current ? new Date().getDate() : daysIn;
-  const groups = meta?.categories ?? [];
-  const lim = data.limits;
-  const spentOf = (slug) => data.spent[slug] ?? 0;
-  const limited = groups.filter((g) => lim[g.slug] > 0);
-  const totalLimit = limited.reduce((n, g) => n + lim[g.slug], 0);
-  const spentLimited = limited.reduce((n, g) => n + spentOf(g.slug), 0);
-  const left = totalLimit - spentLimited;
-  const badge = (g) => {
-    const c = g.color ?? 'var(--fill)';
-    return `<span class="ic" style="background:${c};color:${readableText(c)}">${groupIcon(g.icon ?? 'none')}</span>`;
-  };
+  const from = state.from;
+  const to = state.to;
+  const today = isoDay(new Date());
+  const feeds = anaFeeds(from, to);
+  const past = Array.from({ length: ANA_USUAL }, (_, i) => shiftPeriod(from, to, -(i + 1)));
+  const [items, ops, income, ...history] = await Promise.all([
+    apiFeed(feeds.items),
+    apiFeed(feeds.ops).catch(() => null),
+    feeds.income ? apiFeed(feeds.income).catch(() => null) : null,
+    ...past.flatMap((p) => {
+      const f = anaFeeds(p.from, p.to);
+      return [apiFeed(f.items).catch(() => null), apiFeed(f.ops).catch(() => null)];
+    }),
+  ]);
+  const B = anaBuckets(from, to);
+  const n = B.keys.length;
+  const level = anaLevel();
+  const rows = anaSpend(items.rows, ops?.rows ?? []).filter((r) => !level.only || level.only.has(level.key(r.slug)));
 
-
-  let hero;
-  if (data.off) {
-    return `
-      <div class="card ana-hero">
-        <div class="ana-title">${T.settings.limits.offTitle}</div>
-        <p class="note">${T.settings.limits.offNote}</p>
-        <button class="btn primary big" type="button" data-lim-edit="">${T.settings.limits.setup}</button>
-      </div>`;
+  // Суммы по делениям: всего и по ключам уровня
+  const total = new Array(n).fill(0);
+  const byKey = new Map();
+  for (const r of rows) {
+    const i = B.of(r.day);
+    if (i < 0) continue;
+    total[i] += r.sum;
+    const k = level.key(r.slug);
+    if (!byKey.has(k)) byKey.set(k, new Array(n).fill(0));
+    byKey.get(k)[i] += r.sum;
   }
-  if (!limited.length) {
-    const can = Object.keys(data.suggest).length > 0;
-    hero = `
-      <div class="card ana-hero">
-        <div class="ana-title">Лимиты не заданы</div>
-        <p class="note">Задайте, сколько готовы тратить в месяц на каждую группу, — здесь будет видно, сколько ещё можно тратить в день и где перебор.</p>
-        ${can ? '<button class="btn primary big" type="button" data-limits-suggest>Предложить лимиты по моим тратам</button>' : '<p class="note">Пока не по чему предложить: нужны траты хотя бы за прошлый месяц.</p>'}
-      </div>`;
-  } else if (current) {
-    const daysLeft = daysIn - passed + 1;
-    hero = `
-      <div class="card ana-hero">
-        ${left > 0
-    ? `<div class="ana-big">≈ ${money(left / daysLeft)} <small>в день</small></div>
-           <p class="note">до конца ${MONTHS_GEN[m - 1]} · осталось ${money(left)} из ${money(totalLimit)}</p>`
-    : `<div class="ana-big over">Перерасход ${money(-left)}</div><p class="note">лимиты на ${MONTHS[m - 1]} уже превышены</p>`}
-        <div class="ana-bars">
-          <span class="ana-bar-label">Месяц: ${passed} из ${daysIn} ${plural(daysIn, 'дня', 'дней', 'дней')}</span>
-          <span class="ana-bar"><i style="width:${Math.round((passed / daysIn) * 100)}%"></i></span>
-          <span class="ana-bar-label">Потрачено ${Math.round((spentLimited / totalLimit) * 100)}% лимитов</span>
-          <span class="ana-bar ${spentLimited > totalLimit ? 'over' : spentLimited / totalLimit > passed / daysIn ? 'warn' : 'ok'}"><i style="width:${Math.min(100, Math.round((spentLimited / totalLimit) * 100))}%"></i></span>
-        </div>
-      </div>`;
-  } else {
-    hero = `
-      <div class="card ana-hero">
-        <div class="ana-big${left < 0 ? ' over' : ''}">${left >= 0 ? `Уложились · сэкономили ${money(left)}` : `Перерасход ${money(-left)}`}</div>
-        <p class="note">потрачено ${money(spentLimited)} из ${money(totalLimit)} по лимитам</p>
-      </div>`;
+  const sumOf = (arr) => arr.reduce((a, b) => a + b, 0);
+  const ranked = [...byKey.entries()].map(([k, arr]) => ({ k, arr, sum: sumOf(arr) })).filter((x) => x.sum > 0).sort((a, b) => b.sum - a.sum);
+  const top = ranked.slice(0, ANA_LINES);
+  const rest = ranked.slice(ANA_LINES);
+  const lines = top.map((x) => ({ key: x.k, name: level.name(x.k), color: level.color(x.k), icon: level.icon(x.k), cum: anaCum(x.arr) }));
+  if (rest.length) {
+    const arr = new Array(n).fill(0);
+    rest.forEach((x) => x.arr.forEach((v, i) => (arr[i] += v)));
+    lines.push({ key: ANA_REST + rest.map((x) => x.k).join(','), name: 'Остальное', color: '#9aa3ad', icon: 'dots', cum: anaCum(arr), rest: true });
+  }
+  const all = anaCum(total);
+
+  // Где обрываются линии: в идущем периоде — на сегодня; будущий период — пусто
+  const cut = from > today ? -1 : to < today ? n - 1 : B.of(today);
+
+  // «Обычно»: накопленный рост за прошлые периоды по номеру деления, в среднем
+  const usualRuns = [];
+  for (let p = 0; p < ANA_USUAL; p += 1) {
+    const pi = history[p * 2];
+    if (!pi) continue;
+    const pb = anaBuckets(past[p].from, past[p].to);
+    const arr = new Array(n).fill(0);
+    for (const r of anaSpend(pi.rows, history[p * 2 + 1]?.rows ?? [])) {
+      if (level.only && !level.only.has(level.key(r.slug))) continue;
+      const i = pb.of(r.day);
+      if (i >= 0 && i < n) arr[i] += r.sum;
+    }
+    if (sumOf(arr) > 0) usualRuns.push(anaCum(arr));
+  }
+  const usual = usualRuns.length ? all.map((_, i) => usualRuns.reduce((s, run) => s + run[Math.min(i, run.length - 1)], 0) / usualRuns.length) : null;
+
+  // Прогноз «Всего» до конца идущего периода: к сегодняшнему — сколько обычно уходит дальше,
+  // а без истории — нынешний темп
+  let forecast = null;
+  if (cut >= 0 && cut < n - 1) {
+    const now = all[cut];
+    forecast = all.map((_, i) => {
+      if (i < cut) return null;
+      if (usual) return now + (usual[i] - usual[cut]);
+      return now + (now / (cut + 1)) * (i - cut);
+    });
   }
 
-  // Группы с лимитом: самые близкие к перебору — сверху
-  const rows = limited
-    .map((g) => {
-      const spent = spentOf(g.slug);
-      const limit = lim[g.slug];
-      // Прогноз — по привычке самого человека: потрачено + сколько обычно уходит до конца месяца
-      const forecast = current ? spent + (data.rest?.[g.slug] ?? 0) : null;
-      const tone = spent > limit ? 'over' : (forecast ?? spent) > limit ? 'warn' : 'ok';
-      return { g, spent, limit, forecast, tone, ratio: spent / limit };
-    })
-    .sort((a, b) => b.ratio - a.ratio)
-    .map(({ g, spent, limit, forecast, tone, ratio }) => {
-      const note = current
-        // «9 676 из 12 000 ₽ · прогноз 14 496 ₽»; прогноз — только если ещё что-то ожидается
-        ? `${int.format(Math.round(spent / 100))} из ${money(limit)}${forecast != null && Math.round(forecast / 100) > Math.round(spent / 100) ? ` · прогноз ${money(forecast)}` : ''}`
-        : spent > limit ? `перерасход ${money(spent - limit)}` : `осталось ${money(limit - spent)}`;
-      return `
-        <button class="ana-row" type="button" data-limit="${esc(g.slug)}">
-          ${badge(g)}
-          <span class="ana-main">
-            <span class="ana-name">${esc(g.name)}</span>
-            <span class="ana-note">${note}</span>
-            <span class="ana-bar ${tone}"><i style="width:${Math.min(100, Math.round(ratio * 100))}%"></i></span>
-          </span>
-          <span class="ana-pct ${tone}">${Math.round(ratio * 100)}%</span>
-        </button>`;
-    })
-    .join('');
+  // Доходы — накопленные поступления (без отборов: они про траты)
+  const inc = new Array(n).fill(0);
+  for (const op of income?.rows ?? []) {
+    const i = B.of(op.at.slice(0, 10));
+    if (i >= 0) inc[i] += op.amount;
+  }
+  const incCum = sumOf(inc) > 0 ? anaCum(inc) : null;
 
-  // Без лимита: что потрачено и сколько обычно
-  const free = groups
-    .filter((g) => !(lim[g.slug] > 0) && (spentOf(g.slug) > 0 || data.suggest[g.slug]))
-    .sort((a, b) => spentOf(b.slug) - spentOf(a.slug))
-    .map((g) => `
-      <button class="ana-row" type="button" data-limit="${esc(g.slug)}">
-        ${badge(g)}
-        <span class="ana-main">
-          <span class="ana-name">${esc(g.name)}</span>
-          <span class="ana-note">потрачено ${money(spentOf(g.slug))}${data.suggest[g.slug] ? ` · обычно ≈ ${money(data.suggest[g.slug])}` : ''}</span>
-        </span>
-        <span class="ana-set">задать</span>
-      </button>`)
-    .join('');
+  // Шапка — как в «Расходе»: сумма, подпись, период, поиск; справа — только фильтр
+  const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
+  const shown = cut < 0 ? 0 : all[cut];
+  const picked = state.sg ? state.sg.split(',') : [];
+  const note = [
+    part('count', `${int.format(rows.length)} ${plural(rows.length, 'покупка', 'покупки', 'покупок')}`),
+    state.ringGroup ? part('src', findGroup(state.ringGroup)?.name ?? '') : state.ringRest ? part('src', 'Остальное') : '',
+    state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)?.[1].toLowerCase() ?? '') : '',
+    picked.length ? part('src', picked.map((k) => (k === NONE ? 'без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
+    state.q ? part('q', `поиск «${state.q.trim()}»`) : '',
+    forecast ? part('forecast', `прогноз ${money(forecast[n - 1])}`) : '',
+  ].filter(Boolean).join(' · ');
+  const head = `<div class="stuck-head">${listHead({ sum: money(shown), note, sorts: false, filters: sourceChips(), search: true })}</div>`;
 
-  return hero
-    + (rows ? `<section class="card sec ana-sec"><div class="sec-title">Лимиты</div>${rows}</section>` : '')
-    + (free ? `<section class="card sec ana-sec"><div class="sec-title">Без лимита</div>${free}</section><p class="sec-foot">Нажмите на группу, чтобы задать или поменять её лимит</p>` : '');
+  if (cut < 0) return `${head}<div class="empty">Период ещё не начался</div>`;
+  if (!rows.length) return `${head}<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период трат нет'}</div>`;
+  return head + anaChart({ B, n, cut, all, lines, usual, forecast, incCum });
+}
+
+/** Подпись суммы на оси: 12 тыс., 1,2 млн. */
+function anaShort(kop) {
+  const r = kop / 100;
+  if (r >= 1e6) return `${(r / 1e6).toFixed(r >= 1e7 ? 0 : 1).replace('.', ',')} млн`;
+  if (r >= 1e3) return `${Math.round(r / 1e3)} тыс.`;
+  return `${Math.round(r)}`;
+}
+
+/** Подпись деления: «5 окт.» или «окт. 26». */
+function anaTick(B, i) {
+  const k = B.keys[i];
+  if (B.monthly) return new Date(`${k}-01T12:00:00`).toLocaleDateString('ru-RU', { month: 'short' });
+  return new Date(`${k}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
 /**
- * Появление аналитики: строки групп — по одной сверху вниз («Раскрытие разделов»), полосы
- * прогресса заполняются от нуля, каждая — когда появилась её строка («Заливка колец и полос»).
+ * График: SVG в координатах 0–1000 по ширине и 0–600 по высоте, линии без искажения толщины
+ * (vector-effect). Значки — поверх, HTML: на правом конце каждой линии, раздвинуты по вертикали
  */
-/** Экран приехал лентой страниц: полосы — пустыми до остановки (заливает animateAnalytics). */
+function anaChart({ B, n, cut, all, lines, usual, forecast, incCum }) {
+  const W = 1000;
+  const H = 600;
+  const top = Math.max(all[cut], ...(usual ?? [0]), ...(forecast ?? [0]).filter((v) => v != null), ...(incCum ? [incCum[cut]] : [0]), 1);
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * 10 ** Math.floor(Math.log10(top / 3))).find((s) => s * 3 >= top) ?? top / 3;
+  const max = step * 3;
+  const x = (i) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
+  const y = (v) => H - (v / max) * H;
+  const path = (arr, upto = cut, from = 0) => arr.slice(from, upto + 1).map((v, j) => `${j ? 'L' : 'M'}${x(from + j).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  const grid = [1, 2, 3].map((k) => `<line class="ana-grid" x1="0" x2="${W}" y1="${y(step * k)}" y2="${y(step * k)}" />`).join('');
+  const gridLabels = [1, 2, 3].map((k) => `<span class="ana-y" style="top:${(y(step * k) / H) * 100}%">${anaShort(step * k)}</span>`).join('');
+  const ticks = [0, Math.floor((n - 1) / 2), n - 1].filter((v, i, a) => a.indexOf(v) === i)
+    .map((i) => `<span class="ana-x" style="left:${(x(i) / W) * 100}%">${esc(anaTick(B, i))}</span>`).join('');
+  const incomeArea = incCum ? `<path class="ana-income" d="${path(incCum)}L${x(cut)},${H}L0,${H}Z" />` : '';
+  const usualLine = usual ? `<path class="ana-usual" d="${path(usual, n - 1)}" />` : '';
+  const forecastLine = forecast ? `<path class="ana-forecast" d="${path(forecast, n - 1, cut)}" />` : '';
+  const groupLines = lines.map((l) => `<path class="ana-line" d="${path(l.cum)}" style="stroke:${l.color}" pathLength="1" />`).join('');
+
+  // Значки на концах: по высоте конца линии, раздвинуты (не ближе 30 точек), в пределах графика
+  const BOX = 260;
+  const ends = lines.map((l) => ({ l, at: (y(l.cum[cut]) / H) * BOX })).sort((a, b) => a.at - b.at);
+  for (let k = 1; k < ends.length; k += 1) ends[k].at = Math.max(ends[k].at, ends[k - 1].at + 30);
+  const over = ends.length ? ends[ends.length - 1].at - (BOX - 6) : 0;
+  if (over > 0) ends.forEach((e) => (e.at -= over));
+  const left = (x(cut) / W) * 100;
+  const icons = ends.map(({ l, at }) => {
+    const c = l.color ?? 'var(--fill)';
+    return `<button class="ana-ic" type="button" data-ana="${esc(l.key)}" style="top:${at.toFixed(1)}px;left:calc(${left}% + 6px);background:${c};color:${readableText(c)}" aria-label="${esc(l.name)}: ${money(l.cum[cut])}">${groupIcon(l.icon)}</button>`;
+  }).join('');
+
+  // Данные для черты под пальцем: суммы всех линий по делениям
+  const tipData = {
+    ticks: B.keys.map((_, i) => anaTick(B, i)),
+    cut,
+    series: [{ name: 'Всего', color: 'var(--text)', cum: all }, ...lines.map((l) => ({ name: l.name, color: l.color, cum: l.cum }))],
+    income: incCum,
+  };
+  anaTip = tipData;
+
+  return `
+    <div class="card ana-card" data-shift>
+      <div class="ana-plot">
+        <svg class="ana-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+          ${grid}${incomeArea}${usualLine}${groupLines}
+          <path class="ana-line ana-total" d="${path(all)}" pathLength="1" />
+          ${forecastLine}
+          <line class="ana-cursor" x1="0" x2="0" y1="0" y2="${H}" />
+        </svg>
+        ${gridLabels}
+        ${icons}
+        <div class="ana-tip" hidden></div>
+      </div>
+      <div class="ana-axis">${ticks}</div>
+      <p class="note ana-legend">${usual ? '<span class="ana-key usual"></span>обычно · ' : ''}${forecast ? '<span class="ana-key forecast"></span>прогноз · ' : ''}${incCum ? '<span class="ana-key income"></span>доходы' : ''}</p>
+    </div>`;
+}
+let anaTip = null; // суммы линий по делениям — для черты под пальцем
+
+/** Экран приехал лентой страниц: линии — пустыми до остановки (рисует animateAnalytics). */
 function holdAnalytics() {
   if (!motion('ring')) return;
-  for (const b of document.querySelectorAll('#screen .ana-bar i')) {
-    b.dataset.w = b.style.width;
-    b.style.width = '0';
-  }
+  document.querySelectorAll('#screen .ana-line, #screen .ana-usual').forEach((p) => p.classList.add('ana-hold'));
+  document.querySelectorAll('#screen .ana-ic, #screen .ana-forecast').forEach((p) => p.classList.add('ana-hold'));
 }
 
-/** Строки групп аналитики — по одной сверху вниз; один раз на показ (въезд мог уже пустить). */
-function anaRowsIn() {
-  const rows = [...document.querySelectorAll('#screen .ana-row')];
-  if (!motion('sections') || rows[0]?.dataset.shown) return;
-  rows.forEach((el, i) => {
-    el.dataset.shown = '1';
-    el.style.setProperty('--i', i);
-    el.classList.add('ana-in');
-    el.addEventListener('animationend', () => el.classList.remove('ana-in'), { once: true });
-  });
-}
-
+/** Линии рисуются слева направо, как заливка кольца; значки и прогноз проявляются в конце. */
 function animateAnalytics() {
-  const rows = [...document.querySelectorAll('#screen .ana-row')];
-  const rowsOn = motion('sections');
-  anaRowsIn();
   if (!motion('ring')) return;
-  const bars = [...document.querySelectorAll('#screen .ana-bar i')];
-  const target = bars.map((b) => b.dataset.w ?? b.style.width);
-  bars.forEach((b) => (b.style.width = '0'));
-  void document.body.offsetWidth; // зафиксировать нулевую ширину, иначе заполнения не будет видно
-  bars.forEach((b, k) => {
-    const row = rows.indexOf(b.closest('.ana-row'));
-    b.style.transitionDelay = `${(rowsOn && row >= 0 ? row * 45 : 0) + 120}ms`;
-    b.classList.add('ana-fill');
-    b.style.width = target[k];
+  const paths = document.querySelectorAll('#screen .ana-line, #screen .ana-usual');
+  const late = document.querySelectorAll('#screen .ana-ic, #screen .ana-forecast');
+  paths.forEach((p) => {
+    p.classList.add('ana-hold');
+    p.classList.remove('ana-draw');
   });
+  late.forEach((p) => p.classList.add('ana-hold'));
+  void document.body.offsetWidth;
+  paths.forEach((p) => {
+    p.classList.add('ana-draw');
+    p.classList.remove('ana-hold');
+  });
+  setTimeout(() => late.forEach((p) => p.classList.remove('ana-hold')), RING_ANIM * 0.7);
 }
 
-$('screen').addEventListener('click', async (e) => {
-  if (state.screen !== 'stats') return;
-  const limit = e.target.closest('[data-limit]');
-  if (limit) return openLimitSheet(limit.dataset.limit);
-  if (e.target.closest('[data-limits-suggest]') && anaData) {
-    if (!(await ask('Поставить лимиты по вашим обычным тратам? Каждый можно потом поменять.', { ok: 'Поставить' }))) return null;
-    try {
-      // Предложения — на период лимитов бюджета (в анализе они месячные)
-      const full = await api('/api/limits');
-      await api('/api/limits', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limits: full.suggest }) });
-      return limitsChanged();
-    } catch (err) {
-      return toast(`${T.common.failed}: ${err.message}`);
-    }
+/** Черта под пальцем: дата и суммы линий на этот день. */
+function anaPoint(clientX) {
+  const plot = document.querySelector('#screen .ana-plot');
+  if (!plot || !anaTip) return;
+  const r = plot.getBoundingClientRect();
+  const n = anaTip.ticks.length;
+  const i = Math.max(0, Math.min(anaTip.cut, Math.round(((clientX - r.left) / r.width) * (n - 1))));
+  const px = n === 1 ? 0.5 : i / (n - 1);
+  const cursor = plot.querySelector('.ana-cursor');
+  cursor.setAttribute('x1', px * 1000);
+  cursor.setAttribute('x2', px * 1000);
+  cursor.classList.add('on');
+  const tip = plot.querySelector('.ana-tip');
+  const line = (s) => `<div><i style="background:${s.color}"></i>${esc(s.name)}<b>${money(s.cum[i])}</b></div>`;
+  tip.innerHTML = `<div class="ana-tip-day">${esc(anaTip.ticks[i])}</div>${anaTip.series.map(line).join('')}`
+    + (anaTip.income ? `<div class="ana-tip-inc"><i></i>Доходы<b>${money(anaTip.income[i])}</b></div>` : '');
+  tip.hidden = false;
+  tip.style.left = px > 0.55 ? '' : `calc(${px * 100}% + 12px)`;
+  tip.style.right = px > 0.55 ? `calc(${(1 - px) * 100}% + 12px)` : '';
+}
+
+$('screen').addEventListener('click', (e) => {
+  if (state.screen !== 'stats') return null;
+  // Значок линии: группа — её категории, «Остальное» — слитые в него группы, категория — её траты
+  const ic = e.target.closest('[data-ana]');
+  if (ic) {
+    const key = ic.dataset.ana;
+    if (key.startsWith(ANA_REST)) return go({ ringGroup: '', ringRest: key.slice(1) });
+    if (anaLevel().kind === 'groups' && key !== NONE) return go({ ringGroup: key, ringRest: '' });
+    return go({ screen: 'summary', mode: 'list', sg: key, ringGroup: '', ringRest: '' });
   }
+  const plot = e.target.closest('.ana-plot');
+  if (plot) return anaPoint(e.clientX);
+  // Мимо графика — черта и подсказка убираются
+  document.querySelector('#screen .ana-tip')?.setAttribute('hidden', '');
+  document.querySelector('#screen .ana-cursor')?.classList.remove('on');
   return null;
 });
 
