@@ -8354,17 +8354,6 @@ async function offerInvite() {
 
 takeInviteFromUrl();
 readUrl();
-if (token.get()) {
-  try {
-    await api('/api/session');
-    await start();
-  } catch {
-    showLogin();
-  }
-} else {
-  showLogin();
-}
-
 // ── Аналитика: как росли траты за период ──────────────────
 // График накопленных расходов по дням периода (у длинного — по месяцам): «Всего», три самые
 // большие группы и «Остальное» — цветами групп, на конце каждой линии её значок; нажатие на
@@ -8685,6 +8674,18 @@ $('screen').addEventListener('click', (e) => {
   document.querySelector('#screen .ana-cursor')?.classList.remove('on');
   return null;
 });
+
+
+if (token.get()) {
+  try {
+    await api('/api/session');
+    await start();
+  } catch {
+    showLogin();
+  }
+} else {
+  showLogin();
+}
 
 // ── съёмка роликов: выделение ────────────────────────────
 // Сценарий ролика (scripts/film.mjs — с компьютера, через отладку WebView в эмуляторе) зовёт
