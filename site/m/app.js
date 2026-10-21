@@ -345,7 +345,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits', 'set_backup'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -4229,6 +4229,7 @@ const SCREENS = {
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
   set_limits: { title: T.settings.limits.label, render: screenSetLimits, after: limitsFocus },
+  set_backup: { title: T.settings.backup.label, render: screenSetBackup },
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
   set_banks: { title: T.settings.banks.label, render: screenSetBanks },
   privacy: { title: T.settings.data.label, render: screenPrivacy },
@@ -4268,7 +4269,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary', autolabel: 'summary',
-  set_profile: 'settings', set_motion: 'settings', set_limits: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
+  set_profile: 'settings', set_motion: 'settings', set_limits: 'settings', set_backup: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
 };
 
 /**
@@ -6122,6 +6123,7 @@ async function screenSettings() {
     link('profile', UI.user, S.profile.label, me?.name || (me?.telegram ? S.profile.viaTelegram : S.profile.viaPassword))
     + (budget ? link('budget', UI.wallet, S.budget.label, `${budget.name} · ${int.format(members)} ${pl(members, S.menu.members)}`) : '')
     + (inApp() ? link('banks', UI.bank, S.banks.label, banks.length ? banks.join(', ') : S.menu.banksNone) : '')
+    + (backupInfo() ? link('backup', UI.history, S.backup.label, backupLast(backupInfo())) : '')
     + link('limits', UI.limit, S.limits.label, limitsNote()))
     // Внешний вид: тема и анимации — выбор хранится на телефоне (index.html ставит их до отрисовки)
     + section(S.look.label, '',
@@ -6170,6 +6172,7 @@ function settingsIndex() {
   if (budget?.members.length > 1) add(B.notify, B.label, UI.telegram, { toggle: 'notify' }, 'уведомления сообщения бот телеграм');
   if (inApp()) {
     add(S.banks.label, S.menu.label, UI.bank, { screen: 'set_banks' });
+    if (backupInfo()) add(S.backup.label, S.menu.label, UI.history, { screen: 'set_backup' }, 'резервная копия бэкап бекап сохранить восстановить архив');
     add(S.banks.add, S.banks.label, UI.bank, { screen: 'set_banks' }, 'т-банк тинькофф сбер сбербанк озон ozon wildberries вб подключить');
   }
   // Внешний вид
@@ -6485,6 +6488,74 @@ $('screen').addEventListener('change', (e) => {
         toast(`${T.common.failed}: ${err.message}`);
       });
   }
+});
+
+// ── резервная копия ──────────────────────────────────────
+// Копию делает телефон (Backup.java): сервер отдаёт снимок бюджета, телефон сжимает его в ZIP и
+// кладёт в «Загрузки/Checker/backup». Здесь — частота, последняя копия и кнопки. Мост Checker:
+// backupInfo / setBackupEvery / backupNow / shareBackup; старое приложение этого не умеет — экрана нет
+
+/** Сведения о копиях с телефона; null — приложение не умеет. */
+function backupInfo() {
+  if (!window.Checker?.backupInfo) return null;
+  try {
+    return JSON.parse(window.Checker.backupInfo());
+  } catch {
+    return null;
+  }
+}
+const BACKUP_EVERY = [1, 2, 3, 7]; // дней
+
+/** «21 октября, 14:05 · 2,4 МБ» — или «ещё не было». */
+function backupLast(info) {
+  const B = T.settings.backup;
+  if (!info?.last) return B.never;
+  const when = new Date(info.last).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  const mb = info.size / 1048576;
+  const size = mb >= 1 ? `${mb.toFixed(1).replace('.', ',')} МБ` : `${Math.max(1, Math.round(info.size / 1024))} КБ`;
+  return `${when} · ${size}`;
+}
+
+function screenSetBackup() {
+  const B = T.settings.backup;
+  const info = backupInfo();
+  if (!info) return section('', B.noApp, '');
+  const last = esc(backupLast(info)) + (info.error ? `<br><span class="perm-bad">${esc(f(B.failed, { error: info.error }))}</span>` : '');
+  return section(B.label, f(B.note, { folder: info.folder }),
+    srow({ icon: UI.refresh, title: B.every, note: B.everyOpts[info.every] ?? B.everyOpts[1], attrs: 'data-backup-every', end: GO })
+    + srow({ icon: UI.history, title: B.last, note: last, wrap: true })
+    + srow({ icon: UI.plus, title: B.now, attrs: 'data-backup-now', end: GO })
+    + srow({ icon: UI.upload, title: B.share, attrs: 'data-backup-share', off: !info.last, end: GO }));
+}
+
+$('screen').addEventListener('click', (e) => {
+  if (state.screen !== 'set_backup') return null;
+  const B = T.settings.backup;
+  if (e.target.closest('[data-backup-now]')) {
+    toast(B.busy);
+    return window.Checker?.backupNow?.();
+  }
+  if (e.target.closest('[data-backup-share]')) {
+    if (!backupInfo()?.last) return toast(B.noFile);
+    return window.Checker?.shareBackup?.() || toast(B.noFile);
+  }
+  if (!e.target.closest('[data-backup-every]')) return null;
+  const current = backupInfo()?.every ?? 1;
+  const rows = BACKUP_EVERY.map((d) => dropRow(`data-days="${d}"`, '', B.everyOpts[d], d === current)).join('');
+  return openChoice(B.every, `<div class="choice-list">${rows}</div>`, (ev, close) => {
+    const row = ev.target.closest('[data-days]');
+    if (!row) return;
+    window.Checker?.setBackupEvery?.(Number(row.dataset.days));
+    close();
+    render();
+  });
+});
+
+// Итог «Сделать копию сейчас» приходит от приложения событием
+window.addEventListener('checker-backup', (e) => {
+  const B = T.settings.backup;
+  toast(e.detail?.error ? f(B.failed, { error: e.detail.error }) : B.done);
+  if (state.screen === 'set_backup' || state.screen === 'settings') render();
 });
 
 /** Стрелка «дальше» в сером кружке: строка ведёт на другой экран. */

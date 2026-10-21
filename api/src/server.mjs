@@ -45,6 +45,7 @@ import { freshItems } from './fresh.mjs';
 import { knownShop, knownCheques, importCheque, finishSync, shopStats, forgetShop } from './shops.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import { exportBudget } from './export.mjs';
+import { backupBudget } from './backup.mjs';
 import {
   getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat, fillIncomeIcons,
 } from './incomecats.mjs';
@@ -958,6 +959,9 @@ async function handleApi(req, res, url) {
     const item = getItem(db, user.budget_id, Number(itemMatch[1]));
     return item ? sendJson(res, 200, item) : sendJson(res, 404, { error: 'item not found' });
   }
+
+  // Снимок бюджета для резервной копии на телефоне (backup.mjs, Backup.java)
+  if (pathname === '/api/backup.json') return sendJson(res, 200, backupBudget(db, user.budget_id));
 
   // Весь бюджет архивом CSV для Excel: расходы, доходы, категории (export.mjs)
   if (pathname === '/api/export.zip') {

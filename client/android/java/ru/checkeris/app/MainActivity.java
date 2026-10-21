@@ -137,6 +137,34 @@ public class MainActivity extends android.app.Activity {
             }
         }
 
+        /** Резервная копия: частота, когда была последняя, файл, размер, ошибка (JSON). */
+        @JavascriptInterface
+        public String backupInfo() {
+            return Backup.info(MainActivity.this).toString();
+        }
+
+        @JavascriptInterface
+        public void setBackupEvery(int days) {
+            Backup.setEvery(MainActivity.this, days);
+        }
+
+        /** «Сделать копию сейчас»: в фоновом потоке, итог уходит на страницу событием. */
+        @JavascriptInterface
+        public void backupNow() {
+            String token = new Secrets(MainActivity.this).get(BankSync.TOKEN);
+            new Thread(() -> {
+                String payload = Backup.run(MainActivity.this, token).toString();
+                runOnUiThread(() -> web.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('checker-backup',{detail:" + payload + "}))", null));
+            }).start();
+        }
+
+        /** «Поделиться последней копией». false — копии ещё нет или файл недоступен. */
+        @JavascriptInterface
+        public boolean shareBackup() {
+            return Backup.share(MainActivity.this);
+        }
+
         @JavascriptInterface
         public String syncPrefs() {
             return SyncPrefs.read(MainActivity.this).toString();

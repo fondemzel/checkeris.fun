@@ -36,9 +36,13 @@ public class BankJobService extends JobService {
         if (scheduler != null) scheduler.schedule(job);
     }
 
-    /** Подключено ли хоть что-то: без подключений будить телефон незачем. */
+    /**
+     * Нужно ли будить телефон: есть вход в Чекер — значит, нужны резервные копии (Backup), даже
+     * без подключённых банков. Нет входа — будить незачем.
+     */
     static boolean anyConnected(Context context) {
-        return BankSync.connected(context) || SberSync.connected(context) || WbSync.connected(context) || OzonSync.connected(context);
+        return new Secrets(context).get(BankSync.TOKEN) != null
+                || BankSync.connected(context) || SberSync.connected(context) || WbSync.connected(context) || OzonSync.connected(context);
     }
 
     static void cancel(Context context) {
@@ -70,6 +74,8 @@ public class BankJobService extends JobService {
                     SyncPrefs.ran(this, "ozon");
                     LinkReport.send(token, "ozon", OzonSync.run(this, token), OzonSync.expired(this), true);
                 }
+                // Резервная копия бюджета — когда подошёл её срок (раз в день, два, три, неделю)
+                if (Backup.due(this)) Backup.run(this, token);
             }
             jobFinished(params, false);
         }).start();
