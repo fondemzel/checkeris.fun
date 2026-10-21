@@ -4242,8 +4242,18 @@ function pulse(name) {
   el.classList.remove('pulse');
   void el.offsetWidth; // перезапуск анимации, если нажали дважды подряд
   el.classList.add('pulse');
+  // Круг — поверх страницы, в центре изменённой части: внутри подписи его обрезало
+  const r = el.getBoundingClientRect();
+  const ring = document.createElement('div');
+  ring.className = 'note-ripple';
+  ring.style.left = `${r.left + r.width / 2}px`;
+  ring.style.top = `${r.top + r.height / 2}px`;
+  document.body.appendChild(ring);
   // Снимаем по таймеру: событие конца анимации приходит не во всех браузерах
-  setTimeout(() => el.classList.remove('pulse'), 1100);
+  setTimeout(() => {
+    el.classList.remove('pulse');
+    ring.remove();
+  }, 1100);
 }
 // Куда шли к этому экрану: вглубь (go) или «назад» — по нему экраны въезжают справа
 // или слева (slideScreen)

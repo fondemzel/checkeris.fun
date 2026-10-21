@@ -1052,15 +1052,12 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 .drop-mark .sort-dir.asc { transform: rotate(180deg); }
 /* Часть подписи, которую только что изменил значок: расходящийся тающий круг */
 .note-part { position: relative; display: inline-block; }
-.note-part.pulse { animation: note-bold 1s ease-out; z-index: 30; }
-/* Круг — поверх всего: и соседей в шапке (строка периода, поиск), и карточек ниже. Без этого
-   позиционированные элементы, идущие следом, рисовались поверх него */
-:is(.card, .stuck-head):has(.note-part.pulse) { position: relative; z-index: 30; }
-.note-part.pulse::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
+.note-part.pulse { animation: note-bold 1s ease-out; }
+/* Круг — отдельным элементом поверх страницы (pulse): строка подписи обрезает выходящее за неё
+   (overflow: hidden — для многоточия), и круг внутри неё был виден только полоской */
+.note-ripple {
+  position: fixed;
+  z-index: 20;
   width: 12px;
   height: 12px;
   margin: -6px 0 0 -6px;
