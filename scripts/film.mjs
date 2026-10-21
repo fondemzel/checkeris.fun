@@ -227,9 +227,18 @@ function commands(cdp) {
     if (!r) throw new Error(`на экране нет: ${target}`);
     return r;
   };
-  const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', {
-    type, touchPoints: points.map(({ x, y }) => ({ x, y, radiusX: 8, radiusY: 8, force: 1, id: 0 })),
-  });
+  // Отметка касания в кадре (film.touch в приложении): команду не ждём — она не должна
+  // задерживать сам жест
+  const mark = (call) => cdp.send('Runtime.evaluate', { expression: `window.film?.touch?.${call}` }).catch(() => null);
+  const touch = (type, points) => {
+    const [p] = points;
+    if (type === 'touchStart') mark(`down(${p.x}, ${p.y})`);
+    else if (type === 'touchMove') mark(`move(${p.x}, ${p.y})`);
+    else mark('up()');
+    return cdp.send('Input.dispatchTouchEvent', {
+      type, touchPoints: points.map(({ x, y }) => ({ x, y, radiusX: 8, radiusY: 8, force: 1, id: 0 })),
+    });
+  };
   // Плавное движение пальца: кадр раз в 16 мс, с замедлением к концу, как у человека. Шаги
   // идут по часам, ответа страницы на каждый не ждём: под нагрузкой записи ответ приходит
   // через ~60 мс, и жест в 0,36 с растягивался до 1,4 с (замер 20.10.2026)
@@ -272,7 +281,12 @@ function commands(cdp) {
     async tap(target, { hold = 90 } = {}) {
       const p = await where(target);
       // Chrome на телефоне из голых касаний «клик» не собирает — нужен жест касания целиком
-      if (PHONE) return cdp.send('Input.synthesizeTapGesture', { x: p.x, y: p.y, duration: hold * PACE, gestureSourceType: 'touch' });
+      if (PHONE) {
+        mark(`down(${p.x}, ${p.y})`);
+        await cdp.send('Input.synthesizeTapGesture', { x: p.x, y: p.y, duration: hold * PACE, gestureSourceType: 'touch' });
+        mark('up()');
+        return;
+      }
       await touch('touchStart', [p]);
       await sleep(hold * PACE);
       await touch('touchEnd', []);

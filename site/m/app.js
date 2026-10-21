@@ -8548,5 +8548,45 @@ const film = {
   },
 };
 const FILM_MOVE = 550;
+
+// Отметка касания для роликов (зовёт scripts/film.mjs на каждое касание сценария): касания
+// приходят из скрипта, и системное «показывать касания» их не рисует. Круг под пальцем;
+// задержали дольше мгновения — вокруг заполняется кольцо до срабатывания долгого нажатия
+// (QUICK_HOLD); ведут — круг едет за пальцем с тающим следом; отпустили — гаснет
+film.touch = {
+  el: null,
+  trailAt: 0,
+  down(x, y) {
+    film.touch.up();
+    const el = document.createElement('div');
+    el.className = 'film-touch';
+    el.innerHTML = '<svg viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="26"/></svg>';
+    el.style.setProperty('--hold', `${QUICK_HOLD - 150}ms`);
+    el.style.transform = `translate(${x}px, ${y}px)`;
+    document.body.appendChild(el);
+    film.touch.el = el;
+  },
+  move(x, y) {
+    const el = film.touch.el;
+    if (!el) return;
+    el.style.transform = `translate(${x}px, ${y}px)`;
+    el.classList.add('moving'); // ведут — значит, не долгое нажатие: кольцо не нужно
+    const now = performance.now();
+    if (now - film.touch.trailAt < 24) return;
+    film.touch.trailAt = now;
+    const dot = document.createElement('div');
+    dot.className = 'film-trail';
+    dot.style.transform = `translate(${x}px, ${y}px)`;
+    document.body.appendChild(dot);
+    setTimeout(() => dot.remove(), 700);
+  },
+  up() {
+    const el = film.touch.el;
+    if (!el) return;
+    film.touch.el = null;
+    el.classList.add('off');
+    setTimeout(() => el.remove(), 700);
+  },
+};
 const FILM_CORNER = 64;
 window.film = film;
