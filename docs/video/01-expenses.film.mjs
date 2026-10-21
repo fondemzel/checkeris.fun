@@ -93,7 +93,7 @@ export default async (f) => {
   await f.spot(SORT, { pad: 4 });
   await f.at(29.6);
   await f.tap(SORT);
-  await spotSoon(f, '.sheet-box', { pad: 0 }); // лист выезжает снизу — рамка с ним
+  await spotSoon(f, '.quick-menu', { pad: 2 }); // попап растёт из кнопки — рамка растёт с ним
   await f.at(31.0);
   await f.tap('text:По дате');
   await f.wait(200);

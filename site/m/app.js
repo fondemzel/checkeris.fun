@@ -493,6 +493,9 @@ document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-drop]');
   if (!btn) return;
   const menu = btn.nextElementSibling;
+  // Сортировка — коротким попапом прямо из кнопки, как выбор периода на острове: пунктов
+  // мало, лист снизу для них — лишнее движение через весь экран
+  if (btn.title === 'Сортировка') return dropPopOpen(btn, menu);
   const sheet = openChoice(btn.title, `<div class="choice-list">${menu.innerHTML}</div>`, (ev, close) => {
     const row = ev.target.closest('.drop-row');
     if (!row) return;
@@ -509,6 +512,61 @@ document.addEventListener('click', (e) => {
     close();
   });
 });
+
+// ── попап меню у кнопки (сортировка) ──
+// Вырастает из кнопки вниз, как попап периода на острове (.quick). Строки — копия скрытого
+// меню у кнопки; нажатая строка нажимает свою копию в меню, которое на экране сейчас
+let dropPop = null; // { el, title }
+
+function dropPopOpen(btn, menu) {
+  dropPopClose(true);
+  const el = document.createElement('div');
+  el.className = 'quick quick-menu';
+  el.innerHTML = menu.innerHTML;
+  document.body.appendChild(el);
+  // Под кнопкой, правым краем к её правому краю, не вылезая за экран
+  const r = btn.getBoundingClientRect();
+  const w = el.offsetWidth;
+  const left = Math.min(Math.max(10, r.right - w), innerWidth - 10 - w);
+  el.style.left = `${left}px`;
+  el.style.top = `${r.bottom + 8}px`;
+  el.style.transformOrigin = `${r.left + r.width / 2 - left}px 0`;
+  if (motion('sheets')) {
+    el.animate([{ opacity: 0, transform: 'scale(0.5)' }, { opacity: 1, transform: 'none' }],
+      { duration: 200, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.15)' });
+  }
+  dropPop = { el, title: btn.title };
+}
+
+function dropPopClose(now = false) {
+  const el = dropPop?.el;
+  if (!el) return;
+  dropPop = null;
+  if (now || !motion('sheets')) return el.remove();
+  el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.8)' }], { duration: 120, easing: 'ease-in' })
+    .finished.then(() => el.remove(), () => el.remove());
+}
+
+// Попап открыт: строка — выбор, мимо — закрыть (нажатие на ту же кнопку не открывает его снова)
+document.addEventListener('click', (e) => {
+  if (!dropPop) return;
+  const { el, title } = dropPop;
+  const row = e.target.closest('.drop-row');
+  if (row && el.contains(row)) {
+    const i = [...el.querySelectorAll('.drop-row')].indexOf(row);
+    dropPopClose();
+    const now = [...document.querySelectorAll('[data-drop]')].find((b) => b.title === title)?.nextElementSibling;
+    now?.querySelectorAll('.drop-row')[i]?.click();
+    e.stopPropagation();
+    return;
+  }
+  if (el.contains(e.target)) return;
+  const again = e.target.closest('[data-drop]')?.title === title;
+  dropPopClose();
+  if (again) e.stopPropagation();
+}, true);
+addEventListener('scroll', () => dropPopClose(), { passive: true });
+window.addEventListener('popstate', () => dropPopClose(true));
 
 // Корневые экраны: у них нет «назад». «Банк» — такой же вид «Расхода», как чеки,
 // в него приходят переключателем, а не вглубь
@@ -4741,8 +4799,10 @@ function pullReset() {
 }
 
 // Касание на острове (тянут «+», ведут по попапу периода) — его жест: ни обновление, ни
-// «резина», ни свайп периода и вкладок его не подхватывают
+// «резина» его не подхватывают. Свайп вбок по острову листает вкладки (PINNED) — кроме «+»
+// (у него свой жест вверх) и попапа периода: там палец ведут к пункту
 const onIsland = (e) => Boolean(e.target.closest?.('.tabs, .quick'));
+const islandOwn = (e) => Boolean(e.target.closest?.('#fab, .quick')) || Boolean(quick.el);
 
 addEventListener('touchstart', (e) => {
   const allowed = window.scrollY <= 0 && e.touches.length === 1 && !pulling && !$('app').hidden
@@ -4965,7 +5025,7 @@ addEventListener('touchstart', (e) => {
   swipeFrom = null;
   swipeLock = '';
   const t = e.touches[0];
-  if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker') || onIsland(e)) return;
+  if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker') || islandOwn(e)) return;
   // В настройках свайпать вбок больше нечего — там свайп по любому месту листает вкладки
   swipeTab = Boolean(e.target.closest(PINNED)) || (TAB_OF[state.screen] === 'settings' && !stretchEl.querySelector('[data-shift]'));
   if (!swipeTab && !stretchEl.querySelector('[data-shift]') && state.screen !== 'stats') return;
@@ -4983,6 +5043,11 @@ addEventListener('touchmove', (e) => {
   if (!swipeFrom) return;
   const dx = e.touches[0].clientX - swipeFrom.x;
   const dy = e.touches[0].clientY - swipeFrom.y;
+  // Долгое нажатие на «Расход» / «Доход» открыло попап — палец ведут к пункту, это не свайп
+  if (quick.el && !swipeLock) {
+    swipeFrom = null;
+    return;
+  }
   // Скорость пальца, сглаженная: по ней подсказка тише при быстром свайпе (peekShow)
   const now = performance.now();
   if (now > swipeSpeed.at) {

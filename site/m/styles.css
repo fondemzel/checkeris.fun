@@ -331,6 +331,18 @@ button, input, select { font: inherit; color: inherit; }
 .quick-item.hot, .quick-item:active { background: var(--fill); }
 .quick-item.on { color: var(--accent); font-weight: 600; }
 .quick-item svg { flex: none; width: 18px; height: 18px; }
+/* Тот же попап у кнопки сортировки (dropPopOpen): строки меню — как пункты попапа периода */
+.quick-menu { min-width: 200px; }
+.quick-menu .drop-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border: none; border-radius: 12px;
+  background: none; font: inherit; font-size: 15px; color: var(--text); text-align: left; cursor: pointer;
+}
+.quick-menu .drop-row:active { background: var(--fill); }
+.quick-menu .drop-row.on { color: var(--accent); font-weight: 600; }
+.quick-menu .drop-ic { display: flex; color: var(--muted); }
+.quick-menu .drop-row.on .drop-ic { color: var(--accent); }
+.quick-menu .drop-text { flex: 1; }
+.quick-menu .drop-ic svg, .quick-menu .drop-mark svg { width: 18px; height: 18px; }
 
 .badge {
   position: absolute;
