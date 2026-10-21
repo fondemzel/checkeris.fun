@@ -179,7 +179,11 @@ export function spendingPurchases(db, budgetId, params, listItems) {
   if (src !== 'bank') {
     const p = new URLSearchParams(params);
     for (const key of ['src', 'collapse', 'sort', 'dir']) p.delete(key);
-    p.set('per', '500');
+    // Страница — самая большая из допустимых: каждая страница listItems заново считает итоги по
+    // всему отбору (~0,3 с на 30 тыс. позиций), и по 500 строк выгрузка большого бюджета шла
+    // 20 с, держа сервер (замер 21.10.2026)
+    const PER = 20000;
+    p.set('per', String(PER));
     for (let page = 1; ; page += 1) {
       p.set('page', String(page));
       const chunk = listItems(db, budgetId, p).rows;
@@ -187,7 +191,7 @@ export function spendingPurchases(db, budgetId, params, listItems) {
         const source = itemSource(r);
         if (!src || source === src) rows.push({ ...r, source });
       }
-      if (chunk.length < 500 || rows.length >= 50000) break;
+      if (chunk.length < PER || rows.length >= 100000) break;
     }
   }
   if (!src || src === 'bank') rows.push(...bankRows(db, budgetId, params));

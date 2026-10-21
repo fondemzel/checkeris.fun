@@ -73,5 +73,12 @@
             android:label="Вход в банк"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Файлы для «Поделиться» (экспорт бюджета): только на чтение, по разрешению из запроса -->
+        <provider
+            android:name=".ShareProvider"
+            android:authorities="ru.checkeris.app.share"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

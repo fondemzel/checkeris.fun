@@ -106,6 +106,37 @@ public class MainActivity extends android.app.Activity {
     private class Bridge {
 
         /** Настройки синхронизации (SyncPrefs) — странице: JSON. */
+        /**
+         * «Поделиться» файлом (экспорт бюджета): страница отдаёт содержимое base64, файл ложится в
+         * кэш приложения, дальше — обычный список приложений Android. Прошлые выгрузки удаляем:
+         * копить их незачем, а в кэше лежат личные траты
+         */
+        @JavascriptInterface
+        public boolean shareFile(String base64, String name, String mime) {
+            try {
+                String safe = name.replaceAll("[^A-Za-z0-9._-]", "_");
+                java.io.File dir = ShareProvider.dir(MainActivity.this);
+                java.io.File[] old = dir.listFiles();
+                if (old != null) for (java.io.File f : old) f.delete();
+                java.io.File file = new java.io.File(dir, safe);
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) {
+                    out.write(android.util.Base64.decode(base64, android.util.Base64.DEFAULT));
+                }
+                Uri uri = ShareProvider.uri(safe);
+                Intent send = new Intent(Intent.ACTION_SEND)
+                        .setType(mime)
+                        .putExtra(Intent.EXTRA_STREAM, uri)
+                        .putExtra(Intent.EXTRA_SUBJECT, safe)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                send.setClipData(android.content.ClipData.newRawUri(safe, uri));
+                runOnUiThread(() -> startActivity(Intent.createChooser(send, "Экспорт бюджета")));
+                return true;
+            } catch (Exception e) {
+                Trace.log("поделиться файлом: " + e.getMessage());
+                return false;
+            }
+        }
+
         @JavascriptInterface
         public String syncPrefs() {
             return SyncPrefs.read(MainActivity.this).toString();

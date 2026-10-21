@@ -44,6 +44,7 @@ import { knownBank } from './bankformat.mjs';
 import { freshItems } from './fresh.mjs';
 import { knownShop, knownCheques, importCheque, finishSync, shopStats, forgetShop } from './shops.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
+import { exportBudget } from './export.mjs';
 import {
   getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat, fillIncomeIcons,
 } from './incomecats.mjs';
@@ -956,6 +957,17 @@ async function handleApi(req, res, url) {
   if (itemMatch) {
     const item = getItem(db, user.budget_id, Number(itemMatch[1]));
     return item ? sendJson(res, 200, item) : sendJson(res, 404, { error: 'item not found' });
+  }
+
+  // Весь бюджет архивом CSV для Excel: расходы, доходы, категории (export.mjs)
+  if (pathname === '/api/export.zip') {
+    const { name, data } = exportBudget(db, user.budget_id);
+    res.writeHead(200, {
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename="${name}"`,
+      'content-length': data.length,
+    });
+    return res.end(data);
   }
 
   if (pathname === '/api/export.csv') {

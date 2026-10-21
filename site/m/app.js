@@ -6158,6 +6158,7 @@ function settingsIndex() {
   add(S.profile.logout, S.profile.label, UI.logout, { screen: 'set_profile' }, 'выход выйти');
   add(T.settings.deleteAccount, S.profile.label, UI.trash, { screen: 'set_profile' }, 'удалить аккаунт');
   add(B.label, S.menu.label, UI.wallet, { screen: 'set_budget' });
+  add(B.export.title, B.label, UI.upload, { screen: 'set_budget' }, 'экспорт выгрузка excel csv таблица архив поделиться');
   add(B.nameLabel, B.label, UI.wallet, { screen: 'set_budget' });
   add(B.members, B.label, UI.user, { screen: 'set_budget' }, 'семья участник');
   if (budget?.is_owner) add(B.invite, B.label, UI.userPlus, { screen: 'set_budget' }, 'приглашение семья ссылка');
@@ -6284,8 +6285,54 @@ async function screenSetProfile() {
 }
 
 async function screenSetBudget() {
-  return budgetSection(await apiKept('/api/budget').catch(() => null));
+  return budgetSection(await apiKept('/api/budget').catch(() => null)) + exportSection();
 }
+
+/** «Данные»: экспорт всего бюджета архивом CSV для Excel — через «Поделиться» телефона. */
+function exportSection() {
+  const E = T.settings.budget.export;
+  return section(E.label, E.note, srow({ icon: UI.upload, title: E.title, attrs: 'data-export', end: GO }));
+}
+
+/**
+ * Экспорт: сервер собирает архив (/api/export.zip), дальше — «Поделиться» с обычным списком
+ * приложений. В приложении — мостом (Checker.shareFile): в WebView Web Share файлами не
+ * делится. В браузере — Web Share, а нет его — скачивание
+ */
+async function exportBudget() {
+  const E = T.settings.budget.export;
+  if (inApp() && !window.Checker.shareFile) return toast(E.oldApp);
+  toast(E.busy);
+  try {
+    const res = await fetch('/api/export.zip', { headers: token.get() ? { authorization: `Bearer ${token.get()}` } : {} });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'checker.zip';
+    if (window.Checker?.shareFile) {
+      const data = await new Promise((ok, fail) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result).split(',')[1]);
+        r.onerror = () => fail(r.error);
+        r.readAsDataURL(blob);
+      });
+      if (!window.Checker.shareFile(data, name, 'application/zip')) toast(T.common.failed);
+      return null;
+    }
+    const file = new File([blob], name, { type: 'application/zip' });
+    if (navigator.canShare?.({ files: [file] })) return await navigator.share({ files: [file], title: name }).catch(() => null);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    return null;
+  } catch (err) {
+    return toast(`${T.common.failed}: ${err.message}`);
+  }
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-export]')) exportBudget();
+});
 
 async function screenSetBanks() {
   const [bank, budget] = await Promise.all([

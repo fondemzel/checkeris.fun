@@ -6,6 +6,14 @@
 // на экране показывается русский вариант.
 
 export const en = {
+  island: {
+    periods: {
+      today: '', // Сегодня
+      week: '', // Неделя
+      month: '', // Месяц
+      year: '', // Год
+    },
+  },
   common: {
     ops: ['operation', 'operations', 'operations'],
     receipts: ['receipt', 'receipts', 'receipts'],
@@ -153,6 +161,13 @@ export const en = {
       notifyNote: '', // Бот сообщит в Telegram, когда другой участник внесёт трату или доход
       notifyNoTelegram: 'Link Telegram in your profile to get messages about other members’ spending',
       leaveConfirm: 'Leave the shared budget? You will return to your own. Your expenses stay in the shared one.',
+      export: {
+        label: '', // Данные
+        title: '', // Экспорт
+        note: '', // Архив с тратами, доходами и категориями бюджета откроется в Excel. Его можно сохранить или отправить в любое приложение
+        busy: '', // Готовлю архив…
+        oldApp: '', // Чтобы поделиться архивом, обновите приложение
+      },
     },
     banks: {
       label: 'Banks',
