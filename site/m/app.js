@@ -5986,15 +5986,19 @@ function budgetSection(budget) {
     .join('');
   const invite = budget.is_owner ? srow({ icon: UI.userPlus, title: B.invite, note: B.inviteNote, attrs: 'data-invite' }) : '';
   const leave = budget.is_home ? '' : srow({ icon: UI.logout, title: B.leave, note: B.leaveNote, attrs: 'data-leave', danger: true });
-  // Сообщения в Telegram о тратах и доходах других участников — только в общем бюджете
+  // Сообщения в Telegram о тратах и доходах других участников — только в общем бюджете. Строкой
+  // в «Участниках»: это про них, а отдельным блоком она висела одна
   const notifyRow = budget.members.length > 1
-    ? section('', budget.telegram ? B.notifyNote : B.notifyNoTelegram, srow({
-      icon: UI.telegram, title: B.notify, end: toggle(`data-notify-members${budget.telegram ? '' : ' disabled'}`, budget.notify_members && budget.telegram, B.notify),
-    }))
+    ? srow({
+      icon: UI.telegram,
+      title: B.notify,
+      note: budget.telegram ? B.notifyNote : B.notifyNoTelegram,
+      wrap: true,
+      end: toggle(`data-notify-members${budget.telegram ? '' : ' disabled'}`, budget.notify_members && budget.telegram, B.notify),
+    })
     : '';
   return section(B.main, '', name + leave)
-    + section(B.members, budget.members.length > 1 ? B.noteShared : B.noteAlone, members + invite)
-    + notifyRow;
+    + section(B.members, budget.members.length > 1 ? B.noteShared : B.noteAlone, members + invite + notifyRow);
 }
 
 /**
