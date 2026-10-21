@@ -7,13 +7,17 @@
 // какие выключены). Чего нет: подключений банков (там зашифрованная сессия), токенов, паролей,
 // приглашений, Telegram-данных участников — это доступы, а не данные. Участники — только имена.
 //
-// Без полей raw (исходные ответы ФНС и банков): всё нужное из них уже разложено по колонкам, а
-// весят они половину копии. Таблицы — колонками: { columns, rows } — имена полей один раз, а не
-// в каждой строке. Самый большой бюджет (6,2 тыс. чеков, 23 тыс. операций): 66,6 МБ JSON и 5,6 МБ
-// в ZIP — так стало 16,9 МБ и 2,5 МБ (замер 21.10.2026); обычный бюджет — около 0,1 МБ
+// Что сделано, чтобы копия была маленькой (самый большой бюджет — 6,2 тыс. чеков, 23 тыс. операций;
+// замеры 21.10.2026, размер в ZIP):
+// — без полей raw (исходные ответы ФНС и банков): всё нужное из них уже разложено по колонкам — 5,6 → 2,5 МБ;
+// — таблица хранится по столбцам: { columns, data }, data[i] — все значения столбца columns[i].
+//   Похожие значения идут подряд и сжимаются лучше — 2,5 → 2,15 МБ;
+// — без того, что восстанавливается само: name_norm (из name, normalizeName) и budget_id (один на
+//   всю копию — budget.id) — 2,15 → 1,84 МБ.
+// Обычный бюджет — около 0,1 МБ
 
 export const BACKUP_FORMAT = 'checker-backup';
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2; // 2 — таблицы по столбцам, без name_norm и budget_id
 
 // Таблицы бюджета: [таблица, условие выборки]. Порядок — как восстанавливать: сначала справочник,
 // потом то, что на него ссылается
@@ -38,6 +42,9 @@ const BUDGET_TABLES = [
   ['scan_jobs', 'budget_id = :b'],
 ];
 
+// Не кладём: raw — исходные ответы ФНС и банков; name_norm — выводится из name; budget_id — budget.id
+const SKIP = new Set(['raw', 'name_norm', 'budget_id']);
+
 const exists = (db, table) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
 
 /** Снимок бюджета для резервной копии. */
@@ -52,9 +59,10 @@ export function backupBudget(db, budgetId, now = new Date()) {
   const tables = {};
   for (const [table, where] of BUDGET_TABLES) {
     if (!exists(db, table)) continue;
-    const columns = db.prepare('SELECT name FROM pragma_table_info(?)').all(table).map((c) => c.name).filter((c) => c !== 'raw');
+    const columns = db.prepare('SELECT name FROM pragma_table_info(?)').all(table).map((c) => c.name)
+      .filter((c) => !SKIP.has(c));
     const rows = db.prepare(`SELECT ${columns.map((c) => `"${c}"`).join(', ')} FROM ${table} WHERE ${where}`).all({ b: budgetId });
-    tables[table] = { columns, rows: rows.map((r) => columns.map((c) => r[c])) };
+    tables[table] = { columns, data: columns.map((c) => rows.map((r) => r[c])) };
   }
   return {
     format: BACKUP_FORMAT,
