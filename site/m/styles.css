@@ -2211,27 +2211,14 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .film-spot > i { width: 100px; height: 100px; background: #0a0e14; }
 .film-spot > b { width: 64px; height: 64px; background: radial-gradient(circle 64px at 100% 100%, transparent 98.5%, #0a0e14 100%); }
 
-/* Отметка касания в роликах (film.touch): светлый круг под пальцем — читается и на тёмной теме,
-   и на светлой; кольцо вокруг заполняется, пока палец держат (долгое нажатие); след при ведении */
-.film-touch, .film-trail { position: fixed; left: 0; top: 0; z-index: 1001; pointer-events: none; width: 0; height: 0; }
+/* Отметка касания в роликах (film.touch): небольшой светлый круг под пальцем — читается и на
+   тёмной теме, и на светлой; едет за пальцем, при отпускании гаснет */
+.film-touch { position: fixed; left: 0; top: 0; z-index: 1001; pointer-events: none; width: 0; height: 0; }
 .film-touch::before {
-  content: ''; position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%;
-  background: rgba(255, 255, 255, 0.32); box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.6), 0 2px 12px rgba(0, 0, 0, 0.35);
+  content: ''; position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65), 0 1px 6px rgba(0, 0, 0, 0.35);
   animation: film-touch-in 0.16s ease-out;
 }
-.film-touch svg { position: absolute; left: -28px; top: -28px; width: 56px; height: 56px; transform: rotate(-90deg); overflow: visible; }
-.film-touch circle {
-  fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 164; stroke-dashoffset: 164;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
-  animation: film-touch-hold var(--hold, 300ms) linear 150ms forwards;
-}
-.film-touch.moving circle { animation: none; opacity: 0; }
-.film-touch.off::before, .film-touch.off svg { animation: film-touch-out 0.3s ease-in forwards; }
-.film-trail::before {
-  content: ''; position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%;
-  background: rgba(255, 255, 255, 0.35); animation: film-trail 0.45s ease-out forwards;
-}
+.film-touch.off::before { animation: film-touch-out 0.3s ease-in forwards; }
 @keyframes film-touch-in { from { transform: scale(0.6); opacity: 0; } }
 @keyframes film-touch-out { to { transform: scale(1.25); opacity: 0; } }
-@keyframes film-touch-hold { to { stroke-dashoffset: 0; } }
-@keyframes film-trail { to { transform: scale(0.3); opacity: 0; } }
