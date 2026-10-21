@@ -11,6 +11,9 @@ const ICRA = 'text:Икра красная горбуши 140 г';
 const FOOD_LIST = '[data-section="food.groceries"]'; // раздел «Еда» в списке — раскрывается нажатием
 
 const SEARCH = '#screen label.search'; // всё поле поиска, со значком
+const DINING = '[data-section="food.dining"]'; // раздел «Рестораны и кафе» в списке
+const SORT = '[data-drop][aria-label="Сортировка"]';
+const FILTER = '[data-drop][aria-label="Фильтр"]';
 
 // Выделение — на опережение: ставим, как только элемент появился в разметке (экран ещё
 // выезжает, лента ещё листается). Рамка едет вместе с ним и к остановке уже на месте
@@ -72,37 +75,72 @@ export default async (f) => {
   await f.up();
   await f.clear(); // попап уходит — и выделение с ним
 
-  // 23–30 с. «Любая покупка находится поиском. А к любой можно оставить заметку.»
+  // 23–29 с. «Кнопка справа переключает кольцо на список…» — список по категориям
   await f.at(22.8);
+  await f.spot(MODE, { pad: 4 });
+  await f.at(23.6);
   await f.tap(MODE); // списком
-  await f.at(23.2);
+  await spotSoon(f, '#screen .list', { pad: 0 }); // весь список разделов
+  await f.at(26.6);
+  await f.spot(DINING, { pad: 2 });
+  await f.at(27.2);
+  await f.tap(DINING); // раздел раскрывается
+  await f.at(28.4);
+  await f.clear();
+
+  // 29–33 с. «Сортировка меняет порядок…» — по дате: покупки по дням
+  await f.at(29.0);
+  await f.spot(SORT, { pad: 4 });
+  await f.at(29.6);
+  await f.tap(SORT);
+  await spotSoon(f, '.sheet-box', { pad: 0 }); // лист выезжает снизу — рамка с ним
+  await f.at(31.0);
+  await f.tap('text:По дате');
+  await f.wait(200);
+  await f.clear();
+
+  // 33–37 с. «Фильтр оставляет покупки из одного источника…» — только чеки
+  await f.at(33.2);
+  await f.spot(FILTER, { pad: 4 });
+  await f.at(33.8);
+  await f.tap(FILTER);
+  await spotSoon(f, '.sheet-box', { pad: 0 });
+  await f.at(35.2);
+  await f.tap('text:Только чеки'); // икра — из чека «Перекрёстка»: поиск ниже её найдёт
+  await f.wait(200);
+  await f.clear();
+
+  // 37–44 с. «Поиск находит покупки по названию… В карточке покупки…»
+  await f.at(37.2);
   await f.spot(SEARCH, { pad: 3 });
   await f.tap('#q');
   await f.wait(300);
   await f.type('икра', { every: 140 });
   await f.wait(400);
   await f.hideKeyboard();
-  await f.tap(FOOD_LIST); // найденное — в свёрнутом разделе «Еда»
+  // По дате разделы — дни, обычно раскрыты; свёрнут — раскрыть первый
+  if (!(await f.until(`!!film.find(${JSON.stringify(ICRA)})`, 1200))) await f.tap('#screen [data-section]');
   await spotSoon(f, ICRA, { up: '.row', pad: 2 }); // вся строка покупки
-  await f.at(26.8);
+  await f.at(40.8);
   await f.tap(ICRA);
   // Весь блок «Комментарий»; карточка выезжает — рамка едет с ней
   await spotSoon(f, 'text:Не открывать до 31-го!', { up: '.card', pad: 2 });
 
-  // 30–36 с. «Задайте лимит — и Чекер подскажет, сколько ещё можно тратить в день.»
-  await f.at(30.0);
+  // 44–50 с. «Если для группы задан лимит…»
+  await f.at(44.0);
   await f.clear();
   await f.eval(`localStorage.setItem('checker.mode', 'ring'), true`);
-  await f.eval(`film.tab('summary', { mode: 'ring', from: '2026-12-01', to: '2026-12-31' })`); // снова декабрь, кольцо
-  await f.at(31.6);
+  // Снова декабрь, кольцо; отбор по источнику снят — при отборе лимит не показывается
+  await f.eval(`film.tab('summary', { mode: 'ring', src: '', from: '2026-12-01', to: '2026-12-31' })`);
+  await f.at(45.6);
   await f.tap(FOOD);
   await f.wait(150);
   await spotSoon(f, '.lim-card', { pad: 4 }); // рамка — на лимит сразу, дальше едет с лентой
-  await f.at(32.6);
+  await f.at(46.6);
   await f.swipe({ x: 200, y: 650 }, { dx: 0, dy: -380 }, 700); // вниз, к карточке лимита
 
-  // 36–40 с. «Чекер. Траты сами раскладываются по полочкам.» — заставка накладывается при монтаже
-  await f.at(36.5);
+  // 50–54 с. «Чекер. Учёт расходов по чекам и операциям банков.» — заставка при монтаже
+  await f.at(50.5);
   await f.clear();
-  await f.at(39.5);
+  await f.at(53.5);
 };
