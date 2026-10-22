@@ -1156,6 +1156,7 @@ const RING_ANIM = 1300; // заливка и проявление последн
 let listPlayed = '';
 function playList() {
   const stats = state.screen === 'stats';
+  if (!stats) anaBarsKey = ''; // ушли из аналитики — вернёмся, и полосы зальются заново
   const fresh = stats ? document.querySelector('#screen .ana-row')
     : ['summary', 'income'].includes(state.screen) && state.mode !== 'ring' && document.querySelector('#screen .list');
   if (!fresh) {
@@ -8630,15 +8631,20 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
   const fc = forecast ? `<path class="ana-fc" d="${path(forecast, n - 1, cut)}" />` : '';
   const fcEnd = forecast ? `<span class="ana-end" style="left:100%;top:${(y(forecast[n - 1]) / H) * 100}%"></span>` : '';
   anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all, prev: prevAll, prevName: names.key, curName: names.cur };
+  // Линии открываются шторками, как полосы групп: этот период с прогнозом — одним движением,
+  // прошлый — следом. Шторка — прямоугольник обрезки; id — свои у каждого графика: при листании
+  // на экране бывают два графика сразу
+  const id = `ana${++anaClipSeq}`;
+  const shut = (name) => `<clipPath id="${id}-${name}"><rect class="ana-shut" x="0" y="${-H}" width="${W}" height="${3 * H}" /></clipPath>`;
   return `
     <div class="ana-plot">
       <svg class="ana-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-        <path class="ana-line ana-prev" d="${path(prevAll, prevAll.length - 1)}" pathLength="1" />
-        ${fc}
-        <path class="ana-line ana-now" d="${path(all, cut)}" pathLength="1" />
+        <defs>${shut('prev')}${shut('now')}</defs>
+        <g clip-path="url(#${id}-prev)" data-shut="prev"><path class="ana-line ana-prev" d="${path(prevAll, prevAll.length - 1)}" /></g>
+        <g clip-path="url(#${id}-now)" data-shut="now">${fc}<path class="ana-line ana-now" d="${path(all, cut)}" /></g>
         <line class="ana-cursor" x1="0" x2="0" y1="0" y2="${H}" />
       </svg>
-      <span class="ana-dot" style="left:${(x(cut) / W) * 100}%;top:${(y(all[cut]) / H) * 100}%"></span>
+      <span class="ana-dot" data-at="${(x(cut) / W).toFixed(3)}" style="left:${(x(cut) / W) * 100}%;top:${(y(all[cut]) / H) * 100}%"></span>
       ${fcEnd}
       <div class="ana-tip" hidden></div>
     </div>
@@ -8646,6 +8652,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
     <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
+let anaClipSeq = 0; // номера шторок графиков
 
 /**
  * Строка группы: название и сумма этого периода; две полосы — сверху этот период, снизу прошлый
@@ -8687,8 +8694,8 @@ function anaRow(r, names) {
 /** Экран приехал лентой страниц: линии и полосы — пустыми до остановки (рисует animateAnalytics). */
 function holdAnalytics() {
   if (!motion('ring')) return;
-  document.querySelectorAll('#screen .ana-line').forEach((p) => p.classList.add('ana-hold'));
-  document.querySelectorAll('#screen .ana-fc, #screen .ana-dot, #screen .ana-end').forEach((p) => p.classList.add('ana-hold'));
+  document.querySelectorAll('#screen .ana-shut').forEach((r) => (r.style.width = '0'));
+  document.querySelectorAll('#screen .ana-dot, #screen .ana-end').forEach((p) => p.classList.add('ana-hold'));
   // Полосы этого же вида уже залиты (тихое обновление данных) — не прячем
   if (anaBarsKey !== anaKey()) document.querySelectorAll('#screen .ana-clip').forEach((b) => (b.style.clipPath = 'inset(0 100% 0 0)'));
 }
@@ -8701,7 +8708,7 @@ let anaBarsKey = ''; // вид, полосы которого уже залив�
 function anaFillRow(row, wait) {
   row.querySelectorAll('.ana-clip').forEach((b) => {
     const delay = wait + (b.parentElement.classList.contains('ana-was') ? ANA_WAS : 0);
-    b.style.transition = `clip-path ${ANA_FILL}ms cubic-bezier(0.3, 0, 0.2, 1) ${delay}ms`;
+    b.style.transition = `clip-path ${ANA_FILL}ms ${ANA_EASE} ${delay}ms`;
     b.style.clipPath = `inset(0 ${(100 - Number(b.dataset.w)).toFixed(1)}% 0 0)`;
   });
 }
@@ -8709,34 +8716,51 @@ function anaFillRow(row, wait) {
 const ANA_SORTS = ['category', 'name', 'sum']; // сортировки строк групп и категорий
 const ANA_FILL = 800; // шторка полосы, мс
 const ANA_WAS = 150; // прошлый период — следом, с этим сдвигом
+const ANA_EASE = 'cubic-bezier(0.3, 0, 0.2, 1)'; // шторки полос и линий
+
+/** Когда шторка (ANA_EASE) дойдёт до доли пути at: 0–1 от её длительности. */
+function anaEaseTime(at) {
+  // Кривая Безье с точками (0.3, 0) и (0.2, 1): ищем, где путь дошёл до at, перебором
+  const bz = (t, a, b) => 3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t ** 2 * b + t ** 3;
+  for (let k = 0; k <= 100; k++) {
+    const u = k / 100;
+    if (bz(u, 0, 1) >= at) return bz(u, 0.3, 0.2);
+  }
+  return 1;
+}
 
 /**
- * Линии рисуются слева направо, точки — в конце. Полосы заливает playList — каждой строке сразу,
- * как она проявилась; здесь — только если строки не проявлялись (тогда лесенкой).
+ * Линии открываются шторками слева направо — тем же движением, что полосы; точка «сегодня»
+ * появляется, когда до неё дошла шторка, кружок конца прогноза — в конце. Полосы заливает
+ * playList — каждой строке сразу, как она проявилась; здесь — только если строки не
+ * проявлялись (тогда лесенкой).
  */
 function animateAnalytics() {
   if (!motion('ring')) return;
-  const lines = document.querySelectorAll('#screen .ana-line');
-  const late = document.querySelectorAll('#screen .ana-fc, #screen .ana-dot, #screen .ana-end');
+  const shuts = [...document.querySelectorAll('#screen [data-shut]')]
+    .map((g) => ({ prev: g.dataset.shut === 'prev', rect: document.querySelector(`#screen ${g.getAttribute('clip-path').slice(4, -1)} .ana-shut`) }));
+  const dot = document.querySelector('#screen .ana-dot');
+  const end = document.querySelector('#screen .ana-end');
   const rows = anaBarsKey === anaKey() ? [] : [...document.querySelectorAll('#screen .ana-row')];
   anaBarsKey = anaKey();
-  lines.forEach((p) => {
-    p.classList.add('ana-hold');
-    p.classList.remove('ana-draw');
+  shuts.forEach(({ rect }) => {
+    rect.style.transition = 'none';
+    rect.style.width = '0';
   });
-  late.forEach((p) => p.classList.add('ana-hold'));
+  [dot, end].forEach((p) => p?.classList.add('ana-hold'));
   const bars = rows.map((row) => [...row.querySelectorAll('.ana-clip')]);
   bars.flat().forEach((b) => {
     b.style.transition = 'none';
     b.style.clipPath = 'inset(0 100% 0 0)';
   });
   void document.body.offsetWidth;
-  lines.forEach((p) => {
-    p.classList.add('ana-draw');
-    p.classList.remove('ana-hold');
+  shuts.forEach(({ prev, rect }) => {
+    rect.style.transition = `width ${ANA_FILL}ms ${ANA_EASE} ${prev ? ANA_WAS : 0}ms`;
+    rect.style.width = '';
   });
   rows.forEach((row, k) => anaFillRow(row, 120 + k * 40));
-  setTimeout(() => late.forEach((p) => p.classList.remove('ana-hold')), RING_ANIM * 0.75);
+  if (dot) setTimeout(() => dot.classList.remove('ana-hold'), ANA_FILL * anaEaseTime(Number(dot.dataset.at)));
+  if (end) setTimeout(() => end.classList.remove('ana-hold'), ANA_FILL);
 }
 
 /** Подсказка под пальцем: дата и суммы этого и прошлого периода. */
