@@ -8516,6 +8516,10 @@ async function screenAnalytics() {
   const incNow = anaCum(inc)[cut];
 
   const names = anaPrevNames(prev);
+  // Этот период словами: у календарного месяца — его название, «к концу месяца»
+  const month = wholeMonths(from, to) === 1;
+  names.cur = month ? ANA_NAME[parseDay(from).getMonth()] : 'этот период';
+  names.end = month ? 'К концу месяца' : 'К концу периода';
   const now = all[cut];
   const was = at(prevAll);
   const going = cut < n - 1;
@@ -8538,7 +8542,7 @@ async function screenAnalytics() {
   const cmp = dlt == null ? '' : Math.abs(dlt) < 0.02
     ? ` — столько же, сколько ${names.in}${going ? ' к этому дню' : ''}`
     : ` — на <b class="${dlt < 0 ? 'ana-less' : 'ana-more'}">${Math.round(Math.abs(dlt) * 100)}% ${dlt < 0 ? 'меньше' : 'больше'}</b>, чем ${names.in}${going ? ' к этому дню' : ''}`;
-  const answer = `Потрачено <b>${anaShort(now)} ₽</b>${cmp}.${forecast ? ` К концу периода выйдет около <b>${anaShort(forecast[n - 1])} ₽</b>.` : ''}`;
+  const answer = `Потрачено <b>${anaShort(now)} ₽</b>${cmp}.${forecast ? ` ${names.end} выйдет около <b>${anaShort(forecast[n - 1])} ₽</b>.` : ''}`;
 
   // Группы (или категории раскрытой группы) — по тратам этого периода
   const range = limits?.range ?? {};
@@ -8594,7 +8598,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
     .map((i) => `<span class="ana-x" style="left:${(x(i) / W) * 100}%">${esc(anaTick(B, i))}</span>`).join('');
   const fc = forecast ? `<path class="ana-fc" d="${path(forecast, n - 1, cut)}" />` : '';
   const fcEnd = forecast ? `<span class="ana-end" style="left:100%;top:${(y(forecast[n - 1]) / H) * 100}%"></span>` : '';
-  anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all, prev: prevAll, prevName: names.key };
+  anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all, prev: prevAll, prevName: names.key, curName: names.cur };
   return `
     <div class="ana-plot">
       <svg class="ana-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
@@ -8608,7 +8612,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${ticks}</div>
-    <div class="ana-keys"><span><i class="k-now"></i>этот период</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}</div>`;
+    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
 
@@ -8693,7 +8697,7 @@ function anaPoint(clientX) {
   cursor.classList.add('on');
   const tip = plot.querySelector('.ana-tip');
   tip.innerHTML = `<div class="ana-tip-day">${esc(anaTip.ticks[i])}</div>`
-    + `<div><i class="k-now"></i>этот период<b>${money(anaTip.all[i])}</b></div>`
+    + `<div><i class="k-now"></i>${esc(anaTip.curName)}<b>${money(anaTip.all[i])}</b></div>`
     + `<div><i class="k-prev"></i>${esc(anaTip.prevName)}<b>${money(anaTip.prev[Math.min(i, anaTip.prev.length - 1)] ?? 0)}</b></div>`;
   tip.hidden = false;
   tip.style.left = px > 0.55 ? '' : `calc(${px * 100}% + 12px)`;
