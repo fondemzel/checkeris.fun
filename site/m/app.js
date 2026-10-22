@@ -1167,7 +1167,15 @@ function playList() {
   if (key === listPlayed) return;
   listPlayed = key;
   if (!motion('sections')) return; // и при въезде экрана — одновременно с ним
-  if (stats && motion('ring')) anaBarsKey = key; // полосы строки заливаются, как только она проявилась
+  if (stats && motion('ring')) {
+    // Полосы строки заливаются, как только она проявилась; до того — спрятаны (шторка закрыта):
+    // экран мог прийти без въезда (листание периодов), и тогда их ещё никто не прятал
+    anaBarsKey = key;
+    document.querySelectorAll('#screen .ana-clip').forEach((b) => {
+      b.style.transition = 'none';
+      b.style.clipPath = 'inset(0 100% 0 0)';
+    });
+  }
   [...document.querySelectorAll(stats ? '#screen .ana-row' : '#screen .list > *')].forEach((el, i) => {
     if (i >= 25) return stats && anaBarsKey === key && anaFillRow(el, 0);
     el.style.setProperty('--i', i);
@@ -8596,7 +8604,7 @@ async function screenAnalytics() {
     .sort((a, b) => compare(a, b) * back);
 
   return head(now, note)
-    + `<div class="card ana-card" data-shift><p class="ana-answer">${answer}</p>${anaChart({ B, n, cut, all, prevAll, forecast, names })}`
+    + `<div class="card ana-card"><p class="ana-answer">${answer}</p>${anaChart({ B, n, cut, all, prevAll, forecast, names })}`
     + (income ? `<div class="ana-income-row">Пришло <b>${anaShort(incNow)} ₽</b> · потрачено <b>${anaShort(now)} ₽</b></div>` : '')
     + '</div>'
     + section(open ? open.name : 'Группы', open ? 'Нажмите на категорию, чтобы открыть её траты' : 'Нажмите на группу, чтобы увидеть её категории',
