@@ -2224,6 +2224,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .k-fc { border-top: 2px dotted var(--accent); }
 .ana-income-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
 .ana-income-row b { color: var(--text); font-weight: 600; }
+.ana-sum { white-space: nowrap; }
 .ana-tip {
   position: absolute; top: 4px; z-index: 2; min-width: 170px; padding: 8px 10px; border-radius: 12px;
   background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line); font-size: 12px; pointer-events: none;

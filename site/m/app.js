@@ -8413,13 +8413,22 @@ function anaSpend(items, ops) {
   return out;
 }
 
-/** Деления оси: дни периода, а у длинного (больше двух месяцев) — месяцы. */
+/**
+ * Деления оси: до двух месяцев — дни, до года — недели (по семь дней от начала периода; ключ —
+ * первый день), дольше — месяцы.
+ */
 function anaBuckets(from, to) {
   const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
+  const dayKeys = Array.from({ length: days <= 366 ? days : 0 }, (_, i) => isoDay(addDays(parseDay(from), i)));
   if (days <= 62) {
-    const keys = Array.from({ length: days }, (_, i) => isoDay(addDays(parseDay(from), i)));
-    const at = new Map(keys.map((k, i) => [k, i]));
-    return { keys, monthly: false, of: (day) => at.get(day) ?? -1 };
+    const at = new Map(dayKeys.map((k, i) => [k, i]));
+    return { keys: dayKeys, monthly: false, of: (day) => at.get(day) ?? -1 };
+  }
+  if (days <= 366) {
+    const at = new Map(dayKeys.map((k, i) => [k, Math.floor(i / 7)]));
+    const keys = dayKeys.filter((_, i) => i % 7 === 0);
+    const ends = keys.map((_, i) => dayKeys[Math.min(i * 7 + 6, days - 1)]); // последний день недели
+    return { keys, ends, weekly: true, monthly: false, of: (day) => at.get(day) ?? -1 };
   }
   const keys = [];
   for (let d = parseDay(from); isoDay(d) <= to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) keys.push(isoDay(d).slice(0, 7));
@@ -8553,7 +8562,7 @@ async function screenAnalytics() {
   const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
   const picked = state.sg ? state.sg.split(',') : [];
   const note = [
-    part('count', going ? `по ${anaTick(B, cut)}` : `${int.format(curRows.length)} ${plural(curRows.length, 'покупка', 'покупки', 'покупок')}`),
+    part('count', going ? `по ${B.monthly ? anaTick(B, cut) : ANA_DAY.format(parseDay(today))}` : `${int.format(curRows.length)} ${plural(curRows.length, 'покупка', 'покупки', 'покупок')}`),
     part('sort', SORTS[sort][0].toLowerCase()),
     open ? part('src', open.name) : '',
     state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)?.[1].toLowerCase() ?? '') : '',
@@ -8573,8 +8582,8 @@ async function screenAnalytics() {
     return ` <span class="${(d > 0) === good ? 'ana-less' : 'ana-more'}">(${d > 0 ? '+' : '−'}${Math.abs(d)}%)</span>`;
   };
   const sums = [
-    income ? `Пришло <b>${anaShort(incNow)} ₽</b>${pct(incNow, incWas, true)}` : '',
-    `потрачено <b>${anaShort(now)} ₽</b>${pct(now, was, false)}`,
+    income ? `Пришло <span class="ana-sum"><b>${anaShort(incNow)} ₽</b>${pct(incNow, incWas, true)}</span>` : '',
+    `потрачено <span class="ana-sum"><b>${anaShort(now)} ₽</b>${pct(now, was, false)}</span>`,
   ].filter(Boolean).join(' · ');
 
   // Сортировка: по сумме этого периода, по названию или как в настройках (без категории — в конце)
@@ -8622,11 +8631,17 @@ function anaShort(kop) {
   return `${Math.round(r)}`;
 }
 
-/** Подпись деления: «5 окт.» или «окт.». */
+/** Подпись деления: «5 окт.», у недели — «5–11 окт.», у месяца — «окт.». */
 function anaTick(B, i) {
   const k = B.keys[i];
   // Форматы — готовые: toLocaleDateString на каждое деление заметно тормозил листание
   if (B.monthly) return ANA_MONTH.format(new Date(`${k}-01T12:00:00`));
+  if (B.weekly) {
+    const end = B.ends[i];
+    const last = ANA_DAY.format(new Date(`${end}T12:00:00`));
+    if (end === k) return last;
+    return end.slice(5, 7) === k.slice(5, 7) ? `${Number(k.slice(8, 10))}–${last}` : `${ANA_DAY.format(new Date(`${k}T12:00:00`))} – ${last}`;
+  }
   return ANA_DAY.format(new Date(`${k}T12:00:00`));
 }
 const ANA_MONTH = new Intl.DateTimeFormat('ru-RU', { month: 'short' });
@@ -8640,12 +8655,25 @@ function anaNiceStep(v) {
 
 /**
  * Подпись деления оси X или '' — без подписи. Дни: до недели — каждый, до месяца — 1, 5, 10…,
- * дольше — 1, 10, 20; первая подпись и смена месяца — с названием месяца. Месяцы — так, чтобы
+ * до двух месяцев — 1, 10, 20; недели — по началу месяца; смена месяца — с его названием (сам период виден в шапке). Месяцы — так, чтобы
  * подписей было не больше семи.
  */
 function anaAxisLabel(B, i, n) {
   const k = B.keys[i];
   if (B.monthly) return i % Math.ceil(n / 7) === 0 ? ANA_MONTH.format(new Date(`${k}-01T12:00:00`)) : '';
+  if (B.weekly) {
+    // Недели: подписана та, в которую начался месяц (или первая, если период начат 1-го);
+    // месяцев больше семи — через один
+    const month = (j) => {
+      const s = B.keys[j];
+      if (s.endsWith('-01')) return s.slice(0, 7);
+      return B.ends[j].slice(5, 7) !== s.slice(5, 7) ? B.ends[j].slice(0, 7) : null;
+    };
+    const m = month(i);
+    if (!m) return '';
+    const starts = B.keys.map((_, j) => month(j)).filter(Boolean);
+    return starts.indexOf(m) % Math.ceil(starts.length / 7) === 0 ? ANA_MONTH.format(new Date(`${m}-01T12:00:00`)) : '';
+  }
   const day = Number(k.slice(8, 10));
   const marks = n <= 8 ? null : n <= 31 ? [1, 5, 10, 15, 20, 25, 30] : [1, 10, 20];
   const marked = (j) => j >= 0 && j < n && (!marks || marks.includes(Number(B.keys[j].slice(8, 10))));
@@ -8654,7 +8682,7 @@ function anaAxisLabel(B, i, n) {
   if (!on(i)) return '';
   let j = i - 1;
   while (j >= 0 && !on(j)) j--;
-  return j < 0 || B.keys[j].slice(5, 7) !== k.slice(5, 7) ? ANA_DAY.format(new Date(`${k}T12:00:00`)) : String(day);
+  return j >= 0 && B.keys[j].slice(5, 7) !== k.slice(5, 7) ? ANA_DAY.format(new Date(`${k}T12:00:00`)) : String(day);
 }
 
 /** График: этот период ярко, прошлый — бледнее, прогноз — точками. SVG 0–1000 × 0–600. */
