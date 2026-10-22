@@ -45,6 +45,7 @@ import { freshItems } from './fresh.mjs';
 import { knownShop, knownCheques, importCheque, finishSync, shopStats, forgetShop } from './shops.mjs';
 import { listSpending, listIncome, spendingPurchases } from './spending.mjs';
 import { exportBudget } from './export.mjs';
+import { addIncome, deleteIncome } from './manualincome.mjs';
 import { backupBudget } from './backup.mjs';
 import {
   getIncomeTaxonomy, createIncomeGroup, updateIncomeGroup, deleteIncomeGroup, createIncomeCat, updateIncomeCat, deleteIncomeCat, fillIncomeIcons,
@@ -521,9 +522,13 @@ async function handleApi(req, res, url) {
       const p = url.searchParams;
       const period = p.get('from') && p.get('to') ? bankTotals(db, user.budget_id, p.get('from'), p.get('to')) : null;
       // budget_ops — операции банка в бюджете от любого участника: в общем бюджете банк
-      // подключает один, а доходы и траты из банка видят все
-      const budgetOps = db.prepare('SELECT COUNT(*) c FROM bank_ops WHERE budget_id = ?').get(user.budget_id).c;
-      return sendJson(res, 200, { links: listLinks(db, user.id), totals: period, budget_ops: budgetOps });
+      // подключает один, а доходы и траты из банка видят все. manual_ops — доходы, вписанные
+      // вручную: с ними экран «Доход» есть и без банка
+      const count = (manual) => db.prepare(
+        `SELECT COUNT(*) c FROM bank_ops o JOIN bank_links l ON l.id = o.link_id
+          WHERE o.budget_id = ? AND (l.bank = 'manual') = ?`,
+      ).get(user.budget_id, manual ? 1 : 0).c;
+      return sendJson(res, 200, { links: listLinks(db, user.id), totals: period, budget_ops: count(false), manual_ops: count(true) });
     }
     if (pathname === '/api/bank' && req.method === 'DELETE') {
       return sendJson(res, 200, unlink(db, user.id, String(url.searchParams.get('bank') ?? 'tbank')));
@@ -880,6 +885,23 @@ async function handleApi(req, res, url) {
       const job = getScan(db, user.budget_id, id);
       return job ? sendJson(res, 200, { job }) : sendJson(res, 404, { error: 'скан не найден' });
     }
+    return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
+  }
+
+  // Доход, вписанный вручную; удаляется только такой
+  if (pathname === '/api/income/manual' && req.method === 'POST') {
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = addIncome(db, user, body);
+    return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
+  }
+  const incomeDel = pathname.match(/^\/api\/income\/manual\/(\d+)$/);
+  if (incomeDel && req.method === 'DELETE') {
+    const result = deleteIncome(db, user.budget_id, Number(incomeDel[1]));
     return result.error ? sendJson(res, result.status ?? 400, { error: result.error }) : sendJson(res, 200, result);
   }
 

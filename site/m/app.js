@@ -342,13 +342,14 @@ const state = {
     }
   })(),
   same: '', // точный отбор «все такие же» из карточки: 'item|название' | 'op|продавец' | 'in|описание'
-  inf: '', // фильтр доходов: '' | '-' (без категории) | код группы доходов
+  inf: '', // фильтр доходов: '' | '-' (без категории) | коды групп доходов через запятую
+  isrc: '', // источники доходов: '' — все | bank,manual
   added: '', // чек, только что добавленный сканом или руками
   sort: 'category', // списки: date | category | name | sum; по умолчанию — defaultSort(экран)
   dir: 'desc',
 };
 
-const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'added', 'income',
+const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'income_add', 'added', 'income',
   'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits', 'set_backup'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
@@ -514,7 +515,7 @@ document.addEventListener('click', (e) => {
   // Сортировка — коротким попапом прямо из кнопки, как выбор периода на острове: пунктов
   // мало, лист снизу для них — лишнее движение через весь экран
   if (btn.title === 'Сортировка') return dropPopOpen(btn, menu);
-  if (menu.querySelector('[data-sg]')) return openFilterSheet(); // источники и группы — плитками
+  if (menu.querySelector('[data-sg], [data-inf]')) return openFilterSheet(Boolean(menu.querySelector('[data-inf]'))); // источники и группы — плитками
   const sheet = openChoice(btn.title, `<div class="choice-list">${menu.innerHTML}</div>`, (ev, close) => {
     const row = ev.target.closest('.drop-row');
     if (!row) return;
@@ -550,12 +551,16 @@ const groupTileIc = (g) => {
  * когда лист закрывают (галочка, мимо, «назад»; крестик — сбросив всё): применять на ходу нельзя — перерисовка
  * экрана под листом спорила бы с его записью в истории
  */
-function openFilterSheet() {
-  const src = new Set(state.src ? state.src.split(',') : []);
-  const sg = new Set(state.sg ? state.sg.split(',') : []);
-  const sources = Object.keys(SOURCE_SHORT).filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
+function openFilterSheet(income = false) {
+  // Расходы: источники и группы расходов (src, sg). Доходы: банк или вручную и группы доходов (isrc, inf)
+  const cfg = income
+    ? { srcKey: 'isrc', groupKey: 'inf', sources: ['bank', 'manual'], none: '-', groups: meta?.income ?? [], noneName: T.income.noCategory }
+    : { srcKey: 'src', groupKey: 'sg', sources: Object.keys(SOURCE_SHORT), none: NONE, groups: meta?.categories ?? [], noneName: 'Без категории' };
+  const src = new Set(state[cfg.srcKey] ? state[cfg.srcKey].split(',') : []);
+  const sg = new Set(state[cfg.groupKey] ? state[cfg.groupKey].split(',') : []);
+  const sources = cfg.sources.filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
     .map((k) => pickTile(`data-fsrc="${k}"`, `<span class="pick-ic big filt-src-ic">${SOURCES[k].icon}</span>`, SOURCE_SHORT[k], src.has(k))).join('');
-  const groups = [...(meta?.categories ?? []), { slug: NONE, name: 'Без категории', icon: 'none' }]
+  const groups = [...cfg.groups, { slug: cfg.none, name: cfg.noneName, icon: 'none' }]
     .map((g) => pickTile(`data-fsg="${esc(g.slug)}"`, groupTileIc(g), g.name, sg.has(g.slug))).join('');
   const body = `<div class="filt-row">${sources}</div><div class="filt-sep"></div><div class="filt-grid">${groups}</div>`;
   // Вверху справа: крестик — сбросить всё и закрыть, галочка — показать выбранное
@@ -580,8 +585,8 @@ function openFilterSheet() {
   }, { action });
   // Лист закрыли — применяем, когда отработает «назад» (его запись в истории)
   const apply = () => {
-    const next = { src: [...src].join(','), sg: [...sg].join(',') };
-    if (next.src === state.src && next.sg === state.sg) return;
+    const next = { [cfg.srcKey]: [...src].join(','), [cfg.groupKey]: [...sg].join(',') };
+    if (next[cfg.srcKey] === state[cfg.srcKey] && next[cfg.groupKey] === state[cfg.groupKey]) return;
     pulseNext = 'count';
     go({ ...next, ringGroup: '', ringRest: '' }, true);
   };
@@ -592,6 +597,7 @@ function openFilterSheet() {
     else setTimeout(apply, 0);
   }).observe(sheet.parentNode, { childList: true });
 }
+
 
 // ── попап меню у кнопки (сортировка) ──
 // Вырастает из кнопки вниз, как попап периода на острове (.quick). Строки — копия скрытого
@@ -783,6 +789,7 @@ function go(patch, replace = false) {
   if (['summary', 'stats'].includes(state.screen) && state.src) params.set('src', state.src);
   if (['summary', 'stats'].includes(state.screen) && state.sg) params.set('sg', state.sg);
   if (state.screen === 'income' && state.inf) params.set('inf', state.inf);
+  if (state.screen === 'income' && state.isrc) params.set('isrc', state.isrc);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   const usual = defaultSort(state.screen);
@@ -822,6 +829,7 @@ function readUrl() {
   state.op = p.get('op') ?? '';
   state.src = (p.get('src') ?? '').split(',').filter((k) => ['receipt', 'market', 'bank', 'manual', 'failed'].includes(k)).join(',');
   state.inf = p.get('inf') ?? '';
+  state.isrc = (p.get('isrc') ?? '').split(',').filter((k) => ['bank', 'manual'].includes(k)).join(',');
   state.sg = p.get('sg') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
@@ -989,6 +997,9 @@ const expenseSwitch = () => `
 // Есть ли в бюджете операции банка (подключал кто угодно из участников): без них третья
 // вкладка «Расхода» и вкладка «Доход» не нужны
 let bankLinked = false;
+let incomeManual = false; // в бюджете есть доходы, вписанные вручную
+/** Есть ли что показать в «Доходе»: банк подключён или доходы вписаны вручную. */
+const incomeOn = () => bankLinked || incomeManual;
 
 let failedCount = 0; // сканы с ошибкой: показывать ли «Чеки с ошибкой» в фильтре источников
 
@@ -2239,10 +2250,10 @@ function incomeFeeds(from, to) {
 }
 
 async function screenIncome() {
-  if (!bankLinked) {
-    return soon(UI.income, 'Доходы', inApp()
+  if (!incomeOn()) {
+    return soon(UI.income, 'Доходы', `${inApp()
       ? 'Подключите банк в настройках — поступления появятся здесь сами.'
-      : 'Поступления берутся из банка. Подключить его можно в приложении для Android.');
+      : 'Поступления берутся из банка. Подключить его можно в приложении для Android.'} Или впишите доход вручную: «+» → «Доход вручную».`);
   }
 
   const feeds = incomeFeeds(state.from, state.to);
@@ -2260,8 +2271,10 @@ async function screenIncome() {
   const filterName = [...keys].map((k) => (k === '-' ? T.income.noCategory : groups.find((g) => g.slug === k)?.name ?? incomeCat(k)?.name ?? '')).join(', ');
   // Данные — из памяти (apiFeed): отбираем в свой список, ответ сервера не трогаем
   const all = data.rows;
-  const narrowed = Boolean(filter || state.q.trim());
+  const isrcOn = (op) => !state.isrc || state.isrc.split(',').includes(op.bank === 'manual' ? 'manual' : 'bank');
+  const narrowed = Boolean(filter || state.isrc || state.q.trim());
   const rows = all
+    .filter(isrcOn)
     .filter((op) => {
       if (!filter) return true;
       const found = incomeCat(op.category_slug);
@@ -2275,7 +2288,7 @@ async function screenIncome() {
     dropRow('data-inf=""', UI.layers, T.income.all, !filter)
     + groups.map((g) => dropRow(`data-inf="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, filter === g.slug)).join('')
     + dropRow('data-inf="-"', groupIcon('none'), T.income.noCategory, filter === '-'),
-    Boolean(filter));
+    Boolean(filter || state.isrc));
 
   const head = `
     <div class="stuck-head">
@@ -2284,6 +2297,7 @@ async function screenIncome() {
         note: [
           `${int.format(count)} ${pl(count, T.income.many)}`,
           SORTS[state.sort] ? SORTS[state.sort][0].toLowerCase() : '',
+          state.isrc ? state.isrc.split(',').map((k) => SOURCE_SHORT[k]?.toLowerCase()).join(', ') : '',
           filter ? filterName.toLowerCase() : '',
           state.q.trim() ? (state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
           !filter && transfers ? `${int.format(transfers.count)} переводов между своими` : '',
@@ -2447,7 +2461,7 @@ const sectionState = new Map();
 let feedSections = { order: [], single: false };
 // Поиск в ключ не входит: раскрытое человеком остаётся раскрытым, что бы он ни искал
 // Отбор (источник, группа) — тоже часть ключа: отобранный список начинает со своих разделов
-const sectionsKey = () => `${state.screen}|${state.sort}|${state.group}|${state.category}|${state.from}|${state.to}|${state.src}|${state.sg}|${state.inf}`;
+const sectionsKey = () => `${state.screen}|${state.sort}|${state.group}|${state.category}|${state.from}|${state.to}|${state.src}|${state.sg}|${state.inf}|${state.isrc}`;
 // Строк немного — разделы сразу раскрыты: прятать нечего, а открывать по одному — лишние нажатия.
 // Не в поиске: найденное там намеренно свёрнуто, раскрывает человек
 const FEW_ROWS = 30;
@@ -2500,6 +2514,7 @@ async function screenOp() {
     account_name: op.account_name,
     account: op.account,
     bank: op.bank,
+    manualIncome: op.bank === 'manual', // вписан вручную: источник «вручную», его можно удалить
   });
 }
 
@@ -2549,7 +2564,7 @@ function itemCard(it) {
         // У траты из банка цифры карты стоят в строке «Счёт», отдельная строка не нужна
         ['Карта', !bank && it.card ? `·${esc(it.card)}` : ''],
         ['Счёт', esc(bank ? accountName(it) : it.account_name ?? '')],
-        ['Источник', `${SOURCES[it.source].icon} ${esc(sourceName(it))}`],
+        ['Источник', it.manualIncome ? `${SOURCES.manual.icon} ${esc(T.sources.manual)}` : `${SOURCES[it.source].icon} ${esc(sourceName(it))}`],
       ])}
     </div>
 
@@ -2583,7 +2598,9 @@ function itemCard(it) {
     </div>
 
     <div class="settings-actions item-actions">
-      ${bank
+      ${it.manualIncome
+        ? `<button class="btn danger" type="button" data-op-del="${it.id}">Удалить запись</button>`
+        : bank
         ? `<button class="btn danger" type="button" data-op-kind="excluded" data-id="${it.id}">Не учитывать</button>
            <p class="note">${it.income ? T.income.transferHint : 'Перевод себе — например, на карту Озона — отмечается в выборе категории: расходом станут покупки, сделанные на эти деньги.'}</p>`
         : `<button class="btn danger" type="button" data-item-hide="${it.id}">${it.source === 'manual' ? 'Удалить запись' : 'Убрать из расходов'}</button>`}
@@ -3058,6 +3075,10 @@ function screenAdd() {
         <span class="add-ic">${UI.pen}</span>
         <span class="add-text"><b>Вбить вручную</b><span>Трата без чека: рынок, перевод, наличные</span></span>
       </button>
+      <button class="add-btn" type="button" data-screen="income_add">
+        <span class="add-ic">${UI.income}</span>
+        <span class="add-text"><b>Доход вручную</b><span>Зарплата наличными, возврат долга, подработка</span></span>
+      </button>
     </div>`;
 }
 
@@ -3384,6 +3405,69 @@ function screenManual() {
       <p class="note" id="m-note"></p>
       <button class="btn primary big" id="m-save" type="submit">Записать</button>
     </form>`;
+}
+
+/** Доход, вписанный вручную: те же поля, что у ручной траты, категория — из справочника доходов. */
+let incomeAddCat = ''; // переживает перерисовку, как manualCategory
+
+function screenIncomeAdd() {
+  const today = isoDay(new Date());
+  return `
+    <form class="card form" id="income-form" novalidate>
+      <label class="field">
+        <span>Сумма, ₽</span>
+        <input id="i-sum" class="sum-input" inputmode="decimal" autocomplete="off" placeholder="0" required />
+      </label>
+      <label class="field">
+        <span>Откуда</span>
+        <input id="i-name" type="text" maxlength="200" autocomplete="off" placeholder="Необязательно: зарплата, возврат долга" />
+      </label>
+      <label class="field">
+        <span>Дата</span>
+        <input id="i-date" type="date" value="${today}" max="${today}" required />
+      </label>
+      <div class="field">
+        <span>Категория</span>
+        <button class="cat-pick" id="i-cat" type="button">${incomeButton(incomeAddCat)}</button>
+      </div>
+      <label class="field">
+        <span>Комментарий</span>
+        <textarea id="i-note" class="m-note" rows="2" maxlength="1000" placeholder="Необязательно"></textarea>
+      </label>
+      <p class="note" id="i-msg"></p>
+      <button class="btn primary big" id="i-save" type="submit">Записать</button>
+    </form>`;
+}
+
+async function saveIncome() {
+  const msg = $('i-msg');
+  const sum = $('i-sum').value.trim();
+  const date = $('i-date').value;
+  msg.classList.add('error');
+  if (!(Number(sum.replace(/\s/g, '').replace(',', '.')) > 0)) {
+    msg.textContent = 'Укажите сумму';
+    return $('i-sum').focus();
+  }
+  if (!date) return (msg.textContent = 'Укажите дату');
+  if (!incomeAddCat) return (msg.textContent = 'Выберите категорию');
+  const now = new Date();
+  const time = date === isoDay(now) ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : '12:00';
+  $('i-save').disabled = true;
+  msg.classList.remove('error');
+  msg.textContent = 'Записываем…';
+  try {
+    await post('/api/income/manual', { sum, date, time, name: $('i-name').value, category: incomeAddCat, note: $('i-note').value });
+    incomeManual = true;
+    toast('Доход записан');
+    // В «Доход» — за месяц этой записи: она там видна сразу
+    const d = parseDay(date);
+    openTab('income', monthPeriod(d.getFullYear(), d.getMonth()));
+  } catch (err) {
+    msg.classList.add('error');
+    msg.textContent = `Не записалось: ${err.message}`;
+  } finally {
+    if ($('i-save')) $('i-save').disabled = false;
+  }
 }
 
 async function saveManual() {
@@ -4284,6 +4368,7 @@ const SCREENS = {
   add: { title: 'Добавить', render: screenAdd },
   // form — на экране поля, которые человек заполняет: закрытие попапа его не перерисовывает
   manual: { title: 'Вручную', render: screenManual, after: () => $('m-sum')?.focus(), form: true },
+  income_add: { title: 'Доход вручную', render: screenIncomeAdd, after: () => $('i-sum')?.focus(), form: true },
   added: {
     title: 'Добавлено',
     render: screenAdded,
@@ -4350,7 +4435,7 @@ const soon = (icon, title, text) => `
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
 const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
-  income: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
+  income: 'income', income_add: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary', autolabel: 'summary',
   set_profile: 'settings', set_motion: 'settings', set_limits: 'settings', set_backup: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
 };
@@ -5315,7 +5400,7 @@ function tabLabel(name) {
 function prefetchPeriod(p) {
   if (!p) return;
   const paths = state.screen === 'summary' ? Object.values(summaryFeeds(p.from, p.to))
-    : state.screen === 'income' && bankLinked ? Object.values(incomeFeeds(p.from, p.to))
+    : state.screen === 'income' && incomeOn() ? Object.values(incomeFeeds(p.from, p.to))
       : state.screen === 'stats' ? anaPaths(p.from, p.to) : [];
   for (const path of paths) if (path) apiFeed(path).catch(() => {});
 }
@@ -5615,6 +5700,19 @@ async function onScreenClick(e) {
     }
   }
 
+  // Ручной доход — удалить
+  const opDel = e.target.closest('[data-op-del]');
+  if (opDel) {
+    if (!(await ask('Удалить эту запись?', { ok: T.common.delete, danger: true }))) return;
+    try {
+      await api(`/api/income/manual/${opDel.dataset.opDel}`, { method: 'DELETE' });
+      toast('Запись удалена');
+      return history.back();
+    } catch (err) {
+      return toast(`Не вышло: ${err.message}`);
+    }
+  }
+
   // Трата из банка — перевод себе или не учитывать
   const opKind = e.target.closest('[data-op-kind]');
   if (opKind) {
@@ -5753,6 +5851,14 @@ async function onScreenClick(e) {
   const more = e.target.closest('#more');
   if (more) return loadMoreReceipts(more);
 
+  if (e.target.closest('#i-cat')) {
+    return openCategoryPicker(null, (_, slug) => {
+      incomeAddCat = slug;
+      $('i-cat').innerHTML = incomeButton(slug);
+      $('i-msg').textContent = '';
+    }, meta?.income ?? []);
+  }
+
   if (e.target.closest('#m-cat')) {
     return openCategoryPicker(null, (_, slug) => {
       manualCategory = slug;
@@ -5767,6 +5873,10 @@ $('screen').addEventListener('click', onScreenClick);
 $('actions').addEventListener('click', onScreenClick);
 
 $('screen').addEventListener('submit', (e) => {
+  if (e.target.id === 'income-form') {
+    e.preventDefault();
+    return saveIncome();
+  }
   if (e.target.id !== 'manual-form') return;
   e.preventDefault();
   saveManual();
@@ -5804,7 +5914,7 @@ $('fab').addEventListener('click', () => {
     fabPulled = false; // это был жест вверх, а не нажатие
     return;
   }
-  go({ screen: 'add' });
+  go({ screen: TAB_OF[state.screen] === 'income' ? 'income_add' : 'add' }); // в «Доходе» «+» — сразу доход
 });
 
 // «+» потянули вверх — сразу сканер чеков. Из-за кнопки вырастает её продолжение — полоса той
@@ -8302,6 +8412,7 @@ async function start() {
   meta = m;
   // Банк в бюджете — у себя или у другого участника: операции из него видны всем
   if (bank) bankLinked = (bank.links ?? []).some((l) => l.ops > 0) || bank.budget_ops > 0;
+  incomeManual = (bank?.manual_ops ?? 0) > 0;
 
   // Пустой месяц на старте — не повод показывать ноль: открываем последний с данными
   const p = new URLSearchParams(location.search);
@@ -8460,7 +8571,7 @@ function anaFeeds(from, to) {
   const items = new URLSearchParams({ from, to, collapse: 'day', per: '20000', sort: 'date', dir: 'asc' });
   const ops = new URLSearchParams({ from, to, direction: 'debit', kind: 'expense', per: '20000' });
   const income = new URLSearchParams({ from, to, direction: 'credit', kind: 'income', per: '20000' });
-  return { items: `/api/items?${items}`, ops: `/api/bank/ops?${ops}`, income: bankLinked ? `/api/bank/ops?${income}` : null };
+  return { items: `/api/items?${items}`, ops: `/api/bank/ops?${ops}`, income: incomeOn() ? `/api/bank/ops?${income}` : null };
 }
 
 /** Лимиты — только у групп и без отборов: иначе потраченное не сравнить с лимитом. */
