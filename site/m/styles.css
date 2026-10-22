@@ -2223,9 +2223,14 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .k-now { border-top: 2.6px solid var(--accent); }
 .k-prev { border-top: 1.25px solid color-mix(in srgb, var(--accent) 45%, transparent); }
 .k-fc { border-top: 2px dotted var(--accent); }
-/* Столбики: этот период — ярко, прошлый — бледным позади */
-.ana-col rect { fill: var(--accent); }
-.ana-col-prev rect { fill: color-mix(in srgb, var(--accent) 30%, transparent); }
+/* Столбики: слева — этот период, справа — прошлый (бледнее), тонкий зазор; скруглены внешние
+   верхние углы — у левой половины левый, у правой правый. Части (категории) — снизу вверх */
+.ana-cols { position: absolute; inset: 0; }
+.ana-c { position: absolute; top: 0; bottom: 0; display: flex; align-items: flex-end; gap: 1px; transform: translateX(-50%); }
+.ana-h { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.ana-h i { min-height: 0; flex-basis: 0; }
+.ana-h-now { border-top-left-radius: 3px; }
+.ana-h-was { border-top-right-radius: 3px; opacity: 0.35; }
 .k-col { height: 8px; border-radius: 2px; background: var(--accent); width: 10px !important; }
 .k-col-prev { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 .k-inc { border-top: 2.6px solid #1baf7a; }
