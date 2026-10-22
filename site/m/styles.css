@@ -2127,13 +2127,13 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .lim-head { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .lim-sub { font-size: 13px; }
 .lim-bar { position: relative; height: 8px; margin: 10px 0 12px; border-radius: 4px; background: var(--fill); }
-/* Заливка — клипом по --w: зелёное до отсечки и красное после стоят на своих местах во всю полосу */
+/* Заливка — клипом по --w: сплошная до лимита и штриховка после стоят на своих местах во всю полосу */
 .lim-run { position: absolute; inset: 0; border-radius: 4px; overflow: hidden; clip-path: inset(0 calc(100% - var(--w, 0%)) 0 0 round 4px); }
 .lim-run.lim-fill { transition: clip-path 0.9s cubic-bezier(0.2, 0.8, 0.3, 1); }
 .lim-run i { position: absolute; top: 0; bottom: 0; left: 0; }
 .lim-run .ok { background: #1baf7a; }
-.lim-run .over { right: 0; background: var(--danger); }
-.lim-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--text); }
+/* Сверх лимита — штриховкой цвета заливки, как в аналитике; граница видна по началу штриховки */
+.lim-run .over { right: 0; background: repeating-linear-gradient(-45deg, #1baf7a 0 3px, transparent 3px 6px); }
 .lim-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .lim-num { display: flex; flex-direction: column; min-width: 0; }
 .lim-num:nth-child(2) { text-align: center; }
@@ -2198,8 +2198,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-plot { position: relative; height: 113px; margin: 14px 6px 0; }
 .ana-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ana-svg path, .ana-svg line { vector-effect: non-scaling-stroke; fill: none; }
-.ana-line { stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
-.ana-prev { stroke-opacity: 0.35; stroke-width: 2; } /* прошлый период — тоньше и бледнее */
+.ana-line { stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.ana-prev { stroke-opacity: 0.45; stroke-width: 1.25; } /* прошлый период — тоньше и бледнее */
 .ana-inc { stroke: #1baf7a; }
 .ana-fc { stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: 1.5 6; stroke-linecap: round; }
 .ana-dot.ana-hold, .ana-end.ana-hold { opacity: 0; }
@@ -2220,11 +2220,11 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-x-r { transform: translateX(-100%); }
 .ana-keys { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .ana-keys i, .ana-tip i { display: inline-block; width: 16px; margin-right: 5px; vertical-align: middle; }
-.k-now { border-top: 3px solid var(--accent); }
-.k-prev { border-top: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.k-now { border-top: 2.6px solid var(--accent); }
+.k-prev { border-top: 1.25px solid color-mix(in srgb, var(--accent) 45%, transparent); }
 .k-fc { border-top: 2px dotted var(--accent); }
-.k-inc { border-top: 3px solid #1baf7a; }
-.k-inc-prev { border-top: 2px solid color-mix(in srgb, #1baf7a 35%, transparent); }
+.k-inc { border-top: 2.6px solid #1baf7a; }
+.k-inc-prev { border-top: 1.25px solid color-mix(in srgb, #1baf7a 45%, transparent); }
 .ana-income-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
 .ana-income-row b { color: var(--text); font-weight: 600; }
 .ana-sum { white-space: nowrap; }

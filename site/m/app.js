@@ -1510,7 +1510,6 @@ function limitCard(st, slug = '') {
         <span class="lim-run" data-w="${w.toFixed(2)}" style="--w:${w.toFixed(2)}%">
           <i class="ok" style="width:${a.toFixed(2)}%"></i>${over ? `<i class="over" style="left:${a.toFixed(2)}%"></i>` : ''}
         </span>
-        ${over ? `<b class="lim-mark" style="left:${a.toFixed(2)}%"></b>` : ''}
       </div>
       <div class="lim-nums">
         ${num(P.limit, limit ? money(limit) : '—')}
@@ -5134,7 +5133,7 @@ addEventListener('touchstart', (e) => {
   if (field && (!swipeTab || field === document.activeElement || field.type === 'range')) return; // ползунок — свой жест
   if (e.target.closest('.chips, .drop-menu') || (!swipeTab && e.target.closest('[data-shift]'))) return;
   swipeFrom = { x: t.clientX, y: t.clientY, t: Date.now() };
-  swipeSpeed = { x: t.clientX, at: performance.now(), v: 0 };
+  swipeSpeed = { trail: [{ x: t.clientX, at: performance.now() }], v: 0 };
 }, { passive: true });
 
 addEventListener('touchmove', (e) => {
@@ -5148,11 +5147,13 @@ addEventListener('touchmove', (e) => {
     return;
   }
   // Скорость пальца, сглаженная: по ней подсказка тише при быстром свайпе (peekShow)
+  // Скорость — за последние 100 мс, а не между соседними событиями: телефон присылает их
+  // неровно, иногда два почти разом, и скорость между ними подскакивала — подсказка мигала
   const now = performance.now();
-  if (now > swipeSpeed.at) {
-    const v = Math.abs(e.touches[0].clientX - swipeSpeed.x) / (now - swipeSpeed.at); // пикселей за мс
-    swipeSpeed = { x: e.touches[0].clientX, at: now, v: swipeSpeed.v * 0.7 + v * 0.3 };
-  }
+  const trail = swipeSpeed.trail.filter((p) => now - p.at <= 100);
+  trail.push({ x: e.touches[0].clientX, at: now });
+  const span = now - trail[0].at;
+  swipeSpeed = { trail, v: span >= 30 ? Math.abs(trail.at(-1).x - trail[0].x) / span : swipeSpeed.v }; // пикселей за мс
   if (!swipeLock) {
     if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
     swipeLock = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'x' : 'y';
@@ -5193,7 +5194,7 @@ addEventListener('touchmove', (e) => {
 // пути до смены, держится посередине полосы (едет вместе с её краем) и заполнена целиком
 // ровно там, где по отпусканию экран сменится (SWIPE_TO), — тогда и название синеет
 let peekEl = null;
-let swipeSpeed = { x: 0, at: 0, v: 0 }; // палец: где был, когда и сглаженная скорость
+let swipeSpeed = { trail: [], v: 0 }; // палец: где был за последние 100 мс и скорость по ним
 function peekShow(dx, name, below = '') {
   if (!name || !motion('peek')) return peekHide();
   if (!peekEl) {
@@ -5211,7 +5212,7 @@ function peekShow(dx, name, below = '') {
   const low = peekEl.querySelector('.peek-below');
   low.textContent = below;
   low.hidden = !below;
-  peekEl.style.transition = 'none';
+  peekEl.style.transition = 'opacity 0.12s linear'; // место — сразу за пальцем, яркость — плавно
   peekEl.style.left = `${(dx < 0 ? w + dx / 2 : dx / 2).toFixed(1)}px`;
   // Не ярче 0,7: подсказка — на краю внимания, а не главное на экране
   // Быстрый свайп — подсказка почти не видна: человек и так знает, куда листает. Медленный
@@ -8706,7 +8707,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
     const last = n - 1;
     let j = last - 1;
     while (j > 0 && !labels[j]) j--;
-    if (labels[j] && x(last) - x(j) < W * 0.14) labels[j] = '';
+    if (labels[j] && x(last) - x(j) < W * 0.25) labels[j] = ''; // конец подписан вправо от деления — места нужно больше
     labels[last] = B.weekly ? ANA_DAY.format(new Date(`${B.ends[last]}T12:00:00`)) : ANA_MONTH.format(new Date(`${B.keys[last]}-01T12:00:00`));
   }
   const axis = B.keys.map((_, i) => {
@@ -8876,8 +8877,12 @@ function anaPoint(clientX) {
     + (anaTip.inc ? `<div><i class="k-inc"></i>доходы, ${esc(anaTip.curName)}<b>${money(anaTip.inc[i])}</b></div>` : '')
     + (anaTip.incPrev ? `<div><i class="k-inc-prev"></i>доходы, ${esc(anaTip.prevName)}<b>${money(anaTip.incPrev[i] ?? 0)}</b></div>` : '');
   tip.hidden = false;
-  tip.style.left = px > 0.55 ? '' : `calc(${px * 100}% + 12px)`;
-  tip.style.right = px > 0.55 ? `calc(${(1 - px) * 100}% + 12px)` : '';
+  // Сбоку от курсора, где больше места, и не за краями графика
+  const w = tip.offsetWidth;
+  const at = px * r.width;
+  const left = px > 0.5 ? at - 12 - w : at + 12;
+  tip.style.left = `${Math.max(0, Math.min(r.width - w, left))}px`;
+  tip.style.right = '';
 }
 
 $('screen').addEventListener('click', (e) => {
