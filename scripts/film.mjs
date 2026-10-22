@@ -34,6 +34,7 @@ const DEVICE = process.env.FILM_DEVICE || 'emulator-5554';
 const PORT = 9333;
 const adb = (...args) => execFileSync(ADB, ['-s', DEVICE, ...args], { encoding: 'utf8' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const PHONE_FILE = '/sdcard/checker-film.mp4'; // запись прогона на телефоне (--phone-rec), после — удаляется
 
 const argv = process.argv.slice(2);
 const flag = (name) => {
@@ -390,6 +391,14 @@ try {
     const out = recAt >= 0 ? rest[recAt + 1] : null;
     let rec = null;
     if (PHONE) console.log('во весь экран:', await fullscreen(f));
+    // --phone-rec файл.mp4 — пробный прогон: запись встроенной записью экрана телефона (без
+    // scrcpy). Включается после подготовки — когда подсказка Chrome о полноэкранном режиме ушла
+    const phoneRec = PHONE ? flag('phone-rec') : null;
+    let shot = null;
+    if (phoneRec) {
+      shot = spawn(ADB, ['-s', DEVICE, 'shell', 'screenrecord', '--time-limit', '180', '--bit-rate', '16000000', PHONE_FILE], { stdio: 'ignore' });
+      await sleep(800); // запись стартует не сразу
+    }
     if (out && PHONE) {
       // scrcpy пишет экран телефона сам (аппаратный кодек), без окна; до 90 с — сценарий короче
       rec = spawn(SCRCPY, ['-s', DEVICE, '--no-window', '--no-audio', '--video-codec=h264', '--video-bit-rate=40M',
@@ -408,7 +417,30 @@ try {
       await sleep(600);
     }
     f.start = Date.now();
-    await scenario(f);
+    await scenario(f).finally(async () => {
+      if (!shot) return;
+      // Остановить запись (её процесс — наш), дождаться, пока файл допишется, забрать и удалить
+      // с телефона: тестовые файлы на нём не оставляем
+      await sleep(600);
+      let pids = '';
+      try {
+        pids = adb('shell', 'pidof screenrecord');
+      } catch {
+        // уже остановилась (предел времени)
+      }
+      for (const pid of pids.trim().split(/\s+/).filter(Boolean)) {
+        try {
+          adb('shell', 'kill', '-2', pid);
+        } catch {
+          // чужой процесс записи — не наш
+        }
+      }
+      await Promise.race([new Promise((ok) => shot.on('close', ok)), sleep(8000)]);
+      await sleep(1500);
+      adb('pull', PHONE_FILE, resolve(phoneRec));
+      adb('shell', 'rm', PHONE_FILE);
+      console.log('запись прогона:', resolve(phoneRec));
+    });
     if (rec && PHONE) {
       // Запись остановить нечем, кроме предела времени: ждём его и режем ролик по сценарию
       const lead = (f.start - rec.lead) / 1000 + 1.0; // +1 с: scrcpy начинает писать не сразу

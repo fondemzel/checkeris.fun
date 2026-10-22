@@ -30,7 +30,7 @@ import { setLimits, suggestLimits } from './limits.mjs';
 const DEMO_LOGIN = '__demo__';
 const DEMO_NAME = 'Демо-режим';
 // Версия генератора: поправили его — поднять, и база пересоздастся при следующем включении
-const DEMO_VERSION = 5;
+const DEMO_VERSION = 6;
 const now = () => new Date().toISOString();
 
 /** Бюджет — тестовый? */
@@ -66,6 +66,10 @@ function demoBudget(db) {
   // Лимиты — по обычным тратам этого же человека: «Аналитике» сразу есть что показать.
   // После COMMIT: setLimits открывает свою транзакцию, а вложенных SQLite не умеет
   setLimits(db, id, suggestLimits(db, id));
+  // «Дети» — по летним месяцам с коляской лимит выходит завышенным, и перерасхода не видно. После
+  // рождения пара держит 15 000 ₽ в месяц — и превышает: «Аналитике» есть что показать
+  const kids = db.prepare("SELECT slug FROM groups WHERE budget_id = ? AND name = 'Дети'").get(id)?.slug;
+  if (kids) setLimits(db, id, { [kids]: 1500000 });
   return id;
 }
 
@@ -539,6 +543,14 @@ function generate(db, budgetId) {
       ], { by: he });
     }
     if (md === '03-08') receipt(at(d, 9, 12), '', '', null, [['Тюльпаны 25 шт', 3000, 4500, 'gifts.gifts']], { manual: true, by: he, notes: NOTES });
+    // Закупка в «Ленте»: продукты, корм, бытовая химия — по ней снят скан в ролике «Чекер за минуту»
+    if (md === '05-15') {
+      receipt(at(d, 11, 13), 'ООО "Лента"', 'Лента', null, [
+        ['Молоко Простоквашино 3,2% 930 мл', 89, 115, 'food.groceries'], ['Филе куриное охлаждённое', 389, 469, 'food.groceries', 'кг'],
+        ['Сыр Российский 45% 200 г', 179, 249, 'food.groceries'], ['Корм для кошек Purina One 1,5 кг', 1090, 1390, 'pets.food'],
+        ['Стиральный порошок Persil 1,5 кг', 449, 599, 'home.household'], ['Средство для посуды Fairy 450 мл', 159, 219, 'home.household'],
+      ], { by: she });
+    }
     if (md === '07-09') income(at(d, 12, 20), 1500000, 'Друзья', 'Перевод: с днём рождения!', 'in.gifts', { group: 'TRANSFER', note: 'Артёму от друзей — на велосипед' });
 
     // ── машина: Киа Рио — ОСАГО весной, переобувка дважды в год, ТО летом, налог осенью ──
