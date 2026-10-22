@@ -8422,7 +8422,7 @@ function anaSpend(items, ops) {
 
 /**
  * Деления оси: до двух месяцев — дни, до года — недели (по семь дней от начала периода; ключ —
- * первый день), дольше — месяцы.
+ * первый день), до трёх лет — месяцы, до двенадцати — кварталы, дольше — годы.
  */
 function anaBuckets(from, to) {
   const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
@@ -8437,10 +8437,15 @@ function anaBuckets(from, to) {
     const ends = keys.map((_, i) => dayKeys[Math.min(i * 7 + 6, days - 1)]); // последний день недели
     return { keys, ends, weekly: true, monthly: false, of: (day) => at.get(day) ?? -1 };
   }
-  const keys = [];
-  for (let d = parseDay(from); isoDay(d) <= to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) keys.push(isoDay(d).slice(0, 7));
+  const months = [];
+  for (let d = parseDay(from); isoDay(d) <= to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(isoDay(d).slice(0, 7));
+  // Дольше трёх лет месяцы мельчат — кварталы («2026-Q1»), дольше двенадцати — годы
+  const span = months.length > 144 ? 'year' : months.length > 36 ? 'quarter' : '';
+  const keyOf = (month) => (span === 'year' ? month.slice(0, 4)
+    : span === 'quarter' ? `${month.slice(0, 4)}-Q${Math.floor((Number(month.slice(5, 7)) - 1) / 3) + 1}` : month);
+  const keys = [...new Set(months.map(keyOf))];
   const at = new Map(keys.map((k, i) => [k, i]));
-  return { keys, monthly: true, of: (day) => at.get(day.slice(0, 7)) ?? -1 };
+  return { keys, monthly: !span, span, of: (day) => at.get(keyOf(day.slice(0, 7))) ?? -1 };
 }
 
 /** Накопленная сумма по делениям: [5, 0, 3] → [5, 5, 8]. */
@@ -8634,7 +8639,7 @@ async function screenAnalytics() {
     .sort((a, b) => compare(a, b) * back);
 
   return head(now, note)
-    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, parts: anaParts(open, cur, prevSplit, n) }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
+    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
     + `<div class="ana-income-row">${sums.charAt(0).toUpperCase()}${sums.slice(1)}</div>`
     + '</div>'
     + section(open ? open.name : 'Группы', open ? 'Нажмите на категорию, чтобы открыть её траты' : 'Нажмите на группу, чтобы увидеть её категории',
@@ -8654,6 +8659,8 @@ function anaTick(B, i) {
   const k = B.keys[i];
   // Форматы — готовые: toLocaleDateString на каждое деление заметно тормозил листание
   if (B.monthly) return ANA_MONTH.format(new Date(`${k}-01T12:00:00`));
+  if (B.span === 'quarter') return `${k.slice(6)} кв. ${k.slice(0, 4)}`;
+  if (B.span === 'year') return k;
   if (B.weekly) {
     const end = B.ends[i];
     const last = ANA_DAY.format(new Date(`${end}T12:00:00`));
@@ -8679,6 +8686,13 @@ function anaNiceStep(v) {
 function anaAxisLabel(B, i, n) {
   const k = B.keys[i];
   if (B.monthly) return i % Math.ceil(n / 7) === 0 ? ANA_MONTH.format(new Date(`${k}-01T12:00:00`)) : '';
+  if (B.span === 'year') return i % Math.ceil(n / 7) === 0 ? k : '';
+  if (B.span === 'quarter') {
+    // Кварталы: подписан год у первого квартала; лет больше семи — через год-другой
+    if (!k.endsWith('-Q1')) return '';
+    const years = B.keys.filter((q) => q.endsWith('-Q1'));
+    return years.indexOf(k) % Math.ceil(years.length / 7) === 0 ? k.slice(0, 4) : '';
+  }
   if (B.weekly) {
     // Недели: подписана та, в которую начался месяц (или первая, если период начат 1-го);
     // месяцев больше семи — через один
@@ -8774,6 +8788,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
     <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}${incAll || incPrevAll ? '<span><i class="k-inc"></i>доходы</span>' : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
+let anaClipSeq = 0; // номера шторок графиков
 
 /**
  * Ось X и шкала слева. Ось: деление на каждый день (неделю, месяц), подписи — реже, чтобы не
@@ -8784,12 +8799,13 @@ function anaAxes(B, n, x, y, top) {
   const W = 1000;
   const H = 600;
   const labels = B.keys.map((_, i) => anaAxisLabel(B, i, n));
-  if ((B.weekly || B.monthly) && n > 1) {
+  if ((B.weekly || B.monthly || B.span) && n > 1) {
     const last = n - 1;
     let j = last - 1;
     while (j > 0 && !labels[j]) j--;
     if (labels[j] && x(last) - x(j) < W * 0.25) labels[j] = ''; // конец подписан вправо от деления — места нужно больше
-    labels[last] = B.weekly ? ANA_DAY.format(new Date(`${B.ends[last]}T12:00:00`)) : ANA_MONTH.format(new Date(`${B.keys[last]}-01T12:00:00`));
+    labels[last] = B.weekly ? ANA_DAY.format(new Date(`${B.ends[last]}T12:00:00`))
+      : B.monthly ? ANA_MONTH.format(new Date(`${B.keys[last]}-01T12:00:00`)) : anaTick(B, last);
   }
   const axis = B.keys.map((_, i) => {
     const left = (x(i) / W) * 100;
@@ -8816,51 +8832,24 @@ function anaView() {
 }
 
 /**
- * Части столбиков: у раскрытой группы — её категории своими цветами, снизу вверх в порядке
- * настроек; иначе — одна часть цвета графика. now/was — суммы по делениям.
+ * Столбики: сколько ушло за каждый день (неделю, месяц) — не накопительно. Прошлый период —
+ * широким бледным столбиком, этот — узким ярким спереди; у раскрытой группы — её цветом. Растут снизу вверх
+ * (animateAnalytics).
  */
-function anaParts(open, cur, prev, n) {
-  const zero = new Array(n).fill(0);
-  if (!open) return [{ color: 'var(--accent)', now: cur.total, was: prev.total }];
-  const keys = [...new Set([...cur.byKey.keys(), ...prev.byKey.keys()])];
-  const order = (k) => {
-    const i = open.subcategories.findIndex((c) => c.slug === k);
-    return i < 0 ? Infinity : i;
-  };
-  return keys.sort((a, b) => order(a) - order(b)).map((k) => ({
-    color: categoryColor(open.slug, k) ?? open.color,
-    now: cur.byKey.get(k) ?? zero,
-    was: prev.byKey.get(k) ?? zero,
-  }));
-}
-
-/**
- * Столбики: сколько ушло за каждый день (неделю, месяц) — не накопительно. Столбик разделён
- * вдоль: слева — этот период, справа — прошлый (бледнее); внешние верхние углы скруглены.
- * У раскрытой группы столбик сложен из её категорий. Разметкой, а не SVG: график растянут по
- * ширине, и скругления в SVG сплющились бы. Растут снизу вверх (animateAnalytics).
- */
-function anaBars({ B, n, cut, now, was, names, parts }) {
+function anaBars({ B, n, cut, now, was, names, tint }) {
   const W = 1000;
   const H = 600;
   const top = Math.max(...now.slice(0, cut + 1), ...was, 1) * 1.05;
   const x = (i) => ((i + 0.5) / n) * W; // середина столбика
   const y = (v) => H - (v / top) * H;
   const { axis, grid, yLabels } = anaAxes(B, n, x, y, top);
-  const half = (i, total, cls, of) => {
-    if (total <= 0) return `<span class="ana-h ${cls}"></span>`;
-    // Части — сверху вниз: первая по порядку категория — у основания
-    const segs = parts.filter((p) => of(p)[i] > 0).reverse()
-      .map((p) => `<i style="flex-grow:${of(p)[i]};background:${p.color}"></i>`).join('');
-    return `<span class="ana-h ${cls}" style="height:${((total / top) * 100).toFixed(2)}%">${segs}</span>`;
-  };
+  // Столбик в столбике: прошлый период — широкий бледный, этот — узкий яркий спереди
+  const col = (v, cls) => (v > 0 ? `<span class="ana-h ${cls}" style="height:${((v / top) * 100).toFixed(2)}%"></span>` : '');
   const cols = B.keys.map((_, i) => `<span class="ana-c" data-i="${i}" style="left:${(x(i) / 10).toFixed(2)}%;width:${(70 / n).toFixed(3)}%">`
-    + half(i, i <= cut ? now[i] : 0, 'ana-h-now', (p) => p.now)
-    + half(i, was[i] ?? 0, 'ana-h-was', (p) => p.was)
-    + '</span>').join('');
+    + col(was[i] ?? 0, 'ana-h-was') + col(i <= cut ? now[i] : 0, 'ana-h-now') + '</span>').join('');
   anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all: now, prev: was, prevName: names.key, curName: names.cur, bars: true };
   return `
-    <div class="ana-plot">
+    <div class="ana-plot"${tint ? ` style="--accent:${tint}"` : ''}>
       <svg class="ana-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
         ${grid}<line class="ana-base" x1="0" x2="${W}" y1="${H}" y2="${H}" />
       </svg>
@@ -8872,7 +8861,7 @@ function anaBars({ B, n, cut, now, was, names, parts }) {
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${axis}</div>
-    <div class="ana-keys"><span><i class="k-col"></i>${esc(names.cur)}</span><span><i class="k-col k-col-prev"></i>${esc(names.key)}</span></div>`;
+    <div class="ana-keys"${tint ? ` style="--accent:${tint}"` : ''}><span><i class="k-col"></i>${esc(names.cur)}</span><span><i class="k-col k-col-prev"></i>${esc(names.key)}</span></div>`;
 }
 
 /**
@@ -8916,7 +8905,7 @@ function anaRow(r, names) {
 function holdAnalytics() {
   if (!motion('ring')) return;
   document.querySelectorAll('#screen .ana-shut').forEach((r) => (r.style.width = '0'));
-  document.querySelectorAll('#screen .ana-h').forEach((h) => (h.style.clipPath = 'inset(100% 0 0 0)'));
+  document.querySelectorAll('#screen .ana-h').forEach((h) => (h.style.transform = 'scaleY(0)'));
   document.querySelectorAll('#screen .ana-dot, #screen .ana-end').forEach((p) => p.classList.add('ana-hold'));
   // Полосы этого же вида уже залиты (тихое обновление данных) — не прячем
   if (anaBarsKey !== anaKey()) document.querySelectorAll('#screen .ana-clip').forEach((b) => (b.style.clipPath = 'inset(0 100% 0 0)'));
@@ -8975,11 +8964,12 @@ function animateAnalytics() {
     rect.style.width = '';
     rect.animate([{ width: '0px' }, { width: '1000px' }], { duration: ANA_FILL, easing: ANA_EASE, delay: prev ? ANA_WAS : 0, fill: 'backwards' });
   });
-  // Столбики растут снизу вверх слева направо, половина прошлого периода — чуть позже своей
+  // Столбики растут снизу вверх слева направо, прошлый период — чуть позже своего. Масштабом,
+  // а не обрезкой: масштаб считает видеокарта, обрезка перерисовывала все столбики каждый кадр
   const cols = [...document.querySelectorAll('#screen .ana-c')];
   cols.forEach((c, k) => c.querySelectorAll('.ana-h').forEach((h) => {
-    h.style.clipPath = '';
-    h.animate([{ clipPath: 'inset(100% 0 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], {
+    h.style.transform = '';
+    h.animate([{ transform: 'scaleY(0)' }, { transform: 'scaleY(1)' }], {
       duration: ANA_FILL * 0.75, easing: ANA_EASE, fill: 'backwards',
       delay: (k / cols.length) * ANA_FILL * 0.6 + (h.classList.contains('ana-h-was') ? ANA_WAS / 2 : 0),
     });
