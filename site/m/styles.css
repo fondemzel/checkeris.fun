@@ -2199,7 +2199,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ana-svg path, .ana-svg line { vector-effect: non-scaling-stroke; fill: none; }
 .ana-line { stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
-.ana-prev { stroke-opacity: 0.35; }
+.ana-prev { stroke-opacity: 0.35; stroke-width: 2; } /* прошлый период — тоньше и бледнее */
+.ana-inc { stroke: #1baf7a; }
 .ana-fc { stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: 1.5 6; stroke-linecap: round; }
 .ana-dot.ana-hold, .ana-end.ana-hold { opacity: 0; }
 .ana-dot, .ana-end { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; pointer-events: none; transition: opacity 0.2s ease; }
@@ -2220,8 +2221,10 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-keys { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .ana-keys i, .ana-tip i { display: inline-block; width: 16px; margin-right: 5px; vertical-align: middle; }
 .k-now { border-top: 3px solid var(--accent); }
-.k-prev { border-top: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.k-prev { border-top: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
 .k-fc { border-top: 2px dotted var(--accent); }
+.k-inc { border-top: 3px solid #1baf7a; }
+.k-inc-prev { border-top: 2px solid color-mix(in srgb, #1baf7a 35%, transparent); }
 .ana-income-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
 .ana-income-row b { color: var(--text); font-weight: 600; }
 .ana-sum { white-space: nowrap; }
@@ -2229,7 +2232,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   position: absolute; top: 4px; z-index: 2; min-width: 170px; padding: 8px 10px; border-radius: 12px;
   background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line); font-size: 12px; pointer-events: none;
 }
-.ana-tip div { display: flex; align-items: center; line-height: 1.6; }
+.ana-tip div { display: flex; align-items: center; line-height: 1.6; white-space: nowrap; }
 .ana-tip b { margin-left: auto; padding-left: 10px; font-weight: 600; }
 .ana-tip-day { color: var(--muted); }
 /* Строка группы */

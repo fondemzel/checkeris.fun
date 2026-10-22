@@ -358,8 +358,8 @@ const SORTS = {
   sum: ['По сумме', 'desc', 'ruble'],
 };
 
-/** Сортировка по умолчанию: расходы и доходы — по категориям, аналитика — по сумме, остальные списки — по дате. */
-const defaultSort = (screen) => (['summary', 'income'].includes(screen) ? 'category' : screen === 'stats' ? 'sum' : 'date');
+/** Сортировка по умолчанию: расходы, доходы и аналитика — по категориям, остальные списки — по дате. */
+const defaultSort = (screen) => (['summary', 'income', 'stats'].includes(screen) ? 'category' : 'date');
 
 /**
   * Шапка списка: сумма и подпись слева, справа две кнопки — сортировка и фильтр; ниже период.
@@ -8504,7 +8504,7 @@ async function screenAnalytics() {
   // Где обрывается этот период: в идущем — сегодня; будущий — пусто
   const cut = from > today ? -1 : to < today ? n - 1 : B.of(today);
   const head = (sum, note) => `<div class="stuck-head">${listHead({ sum: money(sum), note, sorts: ANA_SORTS, filters: sourceChips(), search: true })}</div>`;
-  const sort = ANA_SORTS.includes(state.sort) ? state.sort : 'sum';
+  const sort = ANA_SORTS.includes(state.sort) ? state.sort : 'category';
   if (cut < 0) return `${head(0, '')}<div class="empty">Период ещё не начался</div>`;
 
   const all = anaCum(cur.total);
@@ -8545,6 +8545,11 @@ async function screenAnalytics() {
     if (i >= 0) inc[i] += op.amount;
   }
   const incNow = anaCum(inc)[cut];
+  const incPrev = new Array(n).fill(0);
+  for (const op of incomeWas?.rows ?? []) {
+    const i = pB.of(op.at.slice(0, 10));
+    if (i >= 0 && i < n) incPrev[i] += op.amount;
+  }
 
   const names = anaPrevNames(prev);
   // Этот период словами: у календарного месяца — его название, «к концу месяца»
@@ -8616,7 +8621,7 @@ async function screenAnalytics() {
     .sort((a, b) => compare(a, b) * back);
 
   return head(now, note)
-    + `<div class="card ana-card">${anaChart({ B, n, cut, all, prevAll, forecast, names })}`
+    + `<div class="card ana-card">${anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: income ? anaCum(inc) : null, incPrevAll: incomeWas ? anaCum(incPrev) : null })}`
     + `<div class="ana-income-row">${sums.charAt(0).toUpperCase()}${sums.slice(1)}</div>`
     + '</div>'
     + section(open ? open.name : 'Группы', open ? 'Нажмите на категорию, чтобы открыть её траты' : 'Нажмите на группу, чтобы увидеть её категории',
@@ -8686,17 +8691,27 @@ function anaAxisLabel(B, i, n) {
 }
 
 /** График: этот период ярко, прошлый — бледнее, прогноз — точками. SVG 0–1000 × 0–600. */
-function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
+function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll }) {
   const W = 1000;
   const H = 600;
-  const top = Math.max(all[cut], ...prevAll, ...(forecast ?? []).filter((v) => v != null), 1) * 1.05;
+  const top = Math.max(all[cut], ...prevAll, ...(forecast ?? []).filter((v) => v != null),
+    incAll?.[cut] ?? 0, ...(incPrevAll ?? []), 1) * 1.05;
   const x = (i) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
   const y = (v) => H - (v / top) * H;
   const path = (arr, upto, start = 0) => arr.slice(start, upto + 1).map((v, j) => `${j ? 'L' : 'M'}${x(start + j).toFixed(1)},${y(v).toFixed(1)}`).join('');
-  // Ось X: деление на каждый день (месяц), подписи — реже, чтобы не слипались
+  // Ось X: деление на каждый день (неделю, месяц), подписи — реже, чтобы не слипались. У недель и
+  // месяцев подписан и конец — последний день периода (месяц); соседняя подпись вплотную — убирается
+  const labels = B.keys.map((_, i) => anaAxisLabel(B, i, n));
+  if ((B.weekly || B.monthly) && n > 1) {
+    const last = n - 1;
+    let j = last - 1;
+    while (j > 0 && !labels[j]) j--;
+    if (labels[j] && x(last) - x(j) < W * 0.14) labels[j] = '';
+    labels[last] = B.weekly ? ANA_DAY.format(new Date(`${B.ends[last]}T12:00:00`)) : ANA_MONTH.format(new Date(`${B.keys[last]}-01T12:00:00`));
+  }
   const axis = B.keys.map((_, i) => {
     const left = (x(i) / W) * 100;
-    const label = anaAxisLabel(B, i, n);
+    const label = labels[i];
     const side = left < 4 ? ' ana-x-l' : left > 96 ? ' ana-x-r' : '';
     return `<i class="ana-xt${label ? ' ana-xt-on' : ''}" style="left:${left}%"></i>`
       + (label ? `<span class="ana-x${side}" style="left:${left}%">${esc(label)}</span>` : '');
@@ -8709,7 +8724,10 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
   const yLabels = scale.map((v) => `<span class="ana-y" style="top:${(y(v) / H) * 100}%">${anaShort(v)}</span>`).join('');
   const fc = forecast ? `<path class="ana-fc" d="${path(forecast, n - 1, cut)}" />` : '';
   const fcEnd = forecast ? `<span class="ana-end" style="left:100%;top:${(y(forecast[n - 1]) / H) * 100}%"></span>` : '';
-  anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all, prev: prevAll, prevName: names.key, curName: names.cur };
+  anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all, prev: prevAll, prevName: names.key, curName: names.cur, inc: incAll, incPrev: incPrevAll };
+  // Доходы (опыт): зелёные линии — этот период ярко, прошлый бледнее
+  const incPrevLine = incPrevAll ? `<path class="ana-line ana-inc ana-prev" d="${path(incPrevAll, n - 1)}" />` : '';
+  const incLine = incAll ? `<path class="ana-line ana-inc" d="${path(incAll, cut)}" />` : '';
   // Линии открываются шторками, как полосы групп: этот период с прогнозом — одним движением,
   // прошлый — следом. Шторка — прямоугольник обрезки; id — свои у каждого графика: при листании
   // на экране бывают два графика сразу
@@ -8720,8 +8738,8 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
       <svg class="ana-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
         <defs>${shut('prev')}${shut('now')}</defs>
         ${grid}<line class="ana-base" x1="0" x2="${W}" y1="${H}" y2="${H}" />
-        <g clip-path="url(#${id}-prev)" data-shut="prev"><path class="ana-line ana-prev" d="${path(prevAll, prevAll.length - 1)}" /></g>
-        <g clip-path="url(#${id}-now)" data-shut="now">${fc}<path class="ana-line ana-now" d="${path(all, cut)}" /></g>
+        <g clip-path="url(#${id}-prev)" data-shut="prev">${incPrevLine}<path class="ana-line ana-prev" d="${path(prevAll, prevAll.length - 1)}" /></g>
+        <g clip-path="url(#${id}-now)" data-shut="now">${incLine}${fc}<path class="ana-line ana-now" d="${path(all, cut)}" /></g>
         <line class="ana-cursor" x1="0" x2="0" y1="0" y2="${H}" />
       </svg>
       <span class="ana-dot" data-at="${(x(cut) / W).toFixed(3)}" style="left:${(x(cut) / W) * 100}%;top:${(y(all[cut]) / H) * 100}%"></span>
@@ -8730,7 +8748,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${axis}</div>
-    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}</div>`;
+    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}${incAll || incPrevAll ? '<span><i class="k-inc"></i>доходы</span>' : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
 let anaClipSeq = 0; // номера шторок графиков
@@ -8854,7 +8872,9 @@ function anaPoint(clientX) {
   const tip = plot.querySelector('.ana-tip');
   tip.innerHTML = `<div class="ana-tip-day">${esc(anaTip.ticks[i])}</div>`
     + `<div><i class="k-now"></i>${esc(anaTip.curName)}<b>${money(anaTip.all[i])}</b></div>`
-    + `<div><i class="k-prev"></i>${esc(anaTip.prevName)}<b>${money(anaTip.prev[Math.min(i, anaTip.prev.length - 1)] ?? 0)}</b></div>`;
+    + `<div><i class="k-prev"></i>${esc(anaTip.prevName)}<b>${money(anaTip.prev[Math.min(i, anaTip.prev.length - 1)] ?? 0)}</b></div>`
+    + (anaTip.inc ? `<div><i class="k-inc"></i>доходы, ${esc(anaTip.curName)}<b>${money(anaTip.inc[i])}</b></div>` : '')
+    + (anaTip.incPrev ? `<div><i class="k-inc-prev"></i>доходы, ${esc(anaTip.prevName)}<b>${money(anaTip.incPrev[i] ?? 0)}</b></div>` : '');
   tip.hidden = false;
   tip.style.left = px > 0.55 ? '' : `calc(${px * 100}% + 12px)`;
   tip.style.right = px > 0.55 ? `calc(${(1 - px) * 100}% + 12px)` : '';
