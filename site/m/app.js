@@ -148,6 +148,8 @@ const UI = {
       '<circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
   ),
   ring: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v5"/><path d="m19.8 16.5-4.3-2.5"/>'),
+  chartLine: svg('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16c.5-2 1.5-7 4-7 2 0 2 3 4 3 2.5 0 4.5-5 5-7"/>'),
+  chartBars: svg('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'),
   list: svg('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'),
   moon: svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
   sparkle: svg('<path d="M9.94 14.06 4 20"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="m16.24 7.76 2.83-2.83"/>'),
@@ -418,7 +420,7 @@ function matchesQ(fields, amounts = []) {
   });
 }
 
-const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false, mode = false }) => `
+const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false, mode = false, extra = '' }) => `
   <div class="total compact">
     <div class="head-top">
       <div class="head-sum">
@@ -428,6 +430,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
       <div class="head-btns">
         ${sorts && !(mode && state.mode === 'ring') ? sortDrop(sorts === true ? undefined : sorts) : ''}
         ${filters}
+        ${extra}
         ${mode ? `<button class="drop-btn" type="button" data-mode-toggle
           aria-label="${state.mode === 'ring' ? 'Показать списком' : 'Показать кольцом'}" title="${state.mode === 'ring' ? 'Списком' : 'Кольцом'}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
       </div>
@@ -4893,10 +4896,12 @@ function pullReset() {
 // (у него свой жест вверх) и попапа периода: там палец ведут к пункту
 const onIsland = (e) => Boolean(e.target.closest?.('.tabs, .quick'));
 const islandOwn = (e) => Boolean(e.target.closest?.('#fab, .quick')) || Boolean(quick.el);
+// График аналитики — палец ведёт подсказку: ни обновление, ни «резина» жест не подхватывают
+const onPlot = (e) => Boolean(e.target.closest?.('.ana-plot'));
 
 addEventListener('touchstart', (e) => {
   const allowed = window.scrollY <= 0 && e.touches.length === 1 && !pulling && !$('app').hidden
-    && PULLABLE.includes(state.screen) && !document.querySelector('.sheet, .picker') && !e.target.closest('.drop-menu') && !onIsland(e);
+    && PULLABLE.includes(state.screen) && !document.querySelector('.sheet, .picker') && !e.target.closest('.drop-menu') && !onIsland(e) && !onPlot(e);
   pullFrom = allowed ? e.touches[0].clientY : null;
   pullBy = 0;
 }, { passive: true });
@@ -4949,7 +4954,7 @@ addEventListener('touchstart', (e) => {
   stretchEdge = null;
   if (e.touches.length !== 1 || $('app').hidden || document.querySelector('.sheet, .picker')) return;
   // Выпадающее меню листается само: «резина» перехватила бы жест, и меню бы не сдвинулось
-  if (e.target.closest('.drop-menu') || onIsland(e)) return;
+  if (e.target.closest('.drop-menu') || onIsland(e) || onPlot(e)) return;
   stretchFrom = e.touches[0].clientY;
   swipeParts().forEach((el) => (el.style.transition = ''));
 }, { passive: true });
@@ -8505,7 +8510,11 @@ async function screenAnalytics() {
 
   // Где обрывается этот период: в идущем — сегодня; будущий — пусто
   const cut = from > today ? -1 : to < today ? n - 1 : B.of(today);
-  const head = (sum, note) => `<div class="stuck-head">${listHead({ sum: money(sum), note, sorts: ANA_SORTS, filters: sourceChips(), search: true })}</div>`;
+  // Вид графика — накопительные линии или столбики по дням (неделям, месяцам); помним на телефоне
+  const bars = anaView() === 'bars';
+  const viewBtn = `<button class="drop-btn" type="button" data-ana-view aria-label="${bars ? 'Показать линиями' : 'Показать столбиками'}"
+    title="${bars ? 'Линиями' : 'Столбиками'}">${bars ? UI.chartLine : UI.chartBars}</button>`;
+  const head = (sum, note) => `<div class="stuck-head">${listHead({ sum: money(sum), note, sorts: ANA_SORTS, filters: sourceChips(), search: true, extra: viewBtn })}</div>`;
   const sort = ANA_SORTS.includes(state.sort) ? state.sort : 'category';
   if (cut < 0) return `${head(0, '')}<div class="empty">Период ещё не начался</div>`;
 
@@ -8564,6 +8573,8 @@ async function screenAnalytics() {
   for (const r of prevRows) prevFull.set(keyOf(r.slug), (prevFull.get(keyOf(r.slug)) ?? 0) + r.sum);
   const was = prevRows.reduce((sum, r) => sum + r.sum, 0);
   const going = cut < n - 1;
+  // Отбор, поиск или раскрытая группа — на графике только эти траты: доходы с ними не сравнить
+  const plain = !open && !state.src && !state.sg && !state.q.trim();
 
   // Шапка — как в «Расходе»: сумма, подпись, период, поиск; справа — сортировка и фильтр
   const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
@@ -8623,7 +8634,7 @@ async function screenAnalytics() {
     .sort((a, b) => compare(a, b) * back);
 
   return head(now, note)
-    + `<div class="card ana-card">${anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: income ? anaCum(inc) : null, incPrevAll: incomeWas ? anaCum(incPrev) : null })}`
+    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
     + `<div class="ana-income-row">${sums.charAt(0).toUpperCase()}${sums.slice(1)}</div>`
     + '</div>'
     + section(open ? open.name : 'Группы', open ? 'Нажмите на категорию, чтобы открыть её траты' : 'Нажмите на группу, чтобы увидеть её категории',
@@ -8733,29 +8744,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
   const path = (arr, upto, start = 0) => anaMonotone(arr.map((v, i) => [x(i), y(v)]), start, upto);
   // Этот период и прогноз — один ряд: факт до сегодня, дальше — прогноз
   const run = forecast ? all.slice(0, cut + 1).concat(forecast.slice(cut + 1)) : all.slice(0, cut + 1);
-  // Ось X: деление на каждый день (неделю, месяц), подписи — реже, чтобы не слипались. У недель и
-  // месяцев подписан и конец — последний день периода (месяц); соседняя подпись вплотную — убирается
-  const labels = B.keys.map((_, i) => anaAxisLabel(B, i, n));
-  if ((B.weekly || B.monthly) && n > 1) {
-    const last = n - 1;
-    let j = last - 1;
-    while (j > 0 && !labels[j]) j--;
-    if (labels[j] && x(last) - x(j) < W * 0.25) labels[j] = ''; // конец подписан вправо от деления — места нужно больше
-    labels[last] = B.weekly ? ANA_DAY.format(new Date(`${B.ends[last]}T12:00:00`)) : ANA_MONTH.format(new Date(`${B.keys[last]}-01T12:00:00`));
-  }
-  const axis = B.keys.map((_, i) => {
-    const left = (x(i) / W) * 100;
-    const label = labels[i];
-    const side = left < 4 ? ' ana-x-l' : left > 96 ? ' ana-x-r' : '';
-    return `<i class="ana-xt${label ? ' ana-xt-on' : ''}" style="left:${left}%"></i>`
-      + (label ? `<span class="ana-x${side}" style="left:${left}%">${esc(label)}</span>` : '');
-  }).join('');
-  // Шкала слева — редкая: две-три круглые отметки, подпись над своей линией
-  const step = anaNiceStep(top / 3);
-  const scale = [];
-  for (let v = step; v < top * 0.97; v += step) scale.push(v);
-  const grid = scale.map((v) => `<line class="ana-grid" x1="0" x2="${W}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" />`).join('');
-  const yLabels = scale.map((v) => `<span class="ana-y" style="top:${(y(v) / H) * 100}%">${anaShort(v)}</span>`).join('');
+  const { axis, grid, yLabels } = anaAxes(B, n, x, y, top);
   const fc = forecast ? `<path class="ana-fc" d="${path(run, n - 1, cut)}" />` : '';
   const fcEnd = forecast ? `<span class="ana-end" style="left:100%;top:${(y(forecast[n - 1]) / H) * 100}%"></span>` : '';
   anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all, prev: prevAll, prevName: names.key, curName: names.cur, inc: incAll, incPrev: incPrevAll };
@@ -8785,6 +8774,78 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
     <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}${incAll || incPrevAll ? '<span><i class="k-inc"></i>доходы</span>' : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
+
+/**
+ * Ось X и шкала слева. Ось: деление на каждый день (неделю, месяц), подписи — реже, чтобы не
+ * слипались; у недель и месяцев подписан и конец — последний день периода (месяц), соседняя
+ * подпись вплотную — убирается. Шкала — редкая: две-три круглые отметки, подпись над линией.
+ */
+function anaAxes(B, n, x, y, top) {
+  const W = 1000;
+  const H = 600;
+  const labels = B.keys.map((_, i) => anaAxisLabel(B, i, n));
+  if ((B.weekly || B.monthly) && n > 1) {
+    const last = n - 1;
+    let j = last - 1;
+    while (j > 0 && !labels[j]) j--;
+    if (labels[j] && x(last) - x(j) < W * 0.25) labels[j] = ''; // конец подписан вправо от деления — места нужно больше
+    labels[last] = B.weekly ? ANA_DAY.format(new Date(`${B.ends[last]}T12:00:00`)) : ANA_MONTH.format(new Date(`${B.keys[last]}-01T12:00:00`));
+  }
+  const axis = B.keys.map((_, i) => {
+    const left = (x(i) / W) * 100;
+    const label = labels[i];
+    const side = left < 4 ? ' ana-x-l' : left > 96 ? ' ana-x-r' : '';
+    return `<i class="ana-xt${label ? ' ana-xt-on' : ''}" style="left:${left}%"></i>`
+      + (label ? `<span class="ana-x${side}" style="left:${left}%">${esc(label)}</span>` : '');
+  }).join('');
+  const step = anaNiceStep(top / 3);
+  const scale = [];
+  for (let v = step; v < top * 0.97; v += step) scale.push(v);
+  const grid = scale.map((v) => `<line class="ana-grid" x1="0" x2="${W}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" />`).join('');
+  const yLabels = scale.map((v) => `<span class="ana-y" style="top:${(y(v) / H) * 100}%">${anaShort(v)}</span>`).join('');
+  return { axis, grid, yLabels };
+}
+
+/** Вид графика аналитики: 'line' — накопительные линии, 'bars' — столбики по делениям. */
+function anaView() {
+  try {
+    return localStorage.getItem('checker.anaView') === 'bars' ? 'bars' : 'line';
+  } catch {
+    return 'line';
+  }
+}
+
+/**
+ * Столбики: сколько ушло за каждый день (неделю, месяц) — не накопительно. Этот период — ярко,
+ * прошлый — бледным столбиком на том же месте позади. Открываются теми же шторками, что линии.
+ */
+function anaBars({ B, n, cut, now, was, names }) {
+  const W = 1000;
+  const H = 600;
+  const top = Math.max(...now.slice(0, cut + 1), ...was, 1) * 1.05;
+  const x = (i) => ((i + 0.5) / n) * W; // середина столбика
+  const y = (v) => H - (v / top) * H;
+  const { axis, grid, yLabels } = anaAxes(B, n, x, y, top);
+  const bw = (W / n) * 0.64;
+  const bar = (v, i) => (v > 0 ? `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H - y(v)).toFixed(1)}" />` : '');
+  anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all: now, prev: was, prevName: names.key, curName: names.cur, bars: true };
+  const id = `ana${++anaClipSeq}`;
+  const shut = (name) => `<clipPath id="${id}-${name}"><rect class="ana-shut" x="0" y="${-H}" width="${W}" height="${3 * H}" /></clipPath>`;
+  return `
+    <div class="ana-plot">
+      <svg class="ana-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <defs>${shut('prev')}${shut('now')}</defs>
+        ${grid}<line class="ana-base" x1="0" x2="${W}" y1="${H}" y2="${H}" />
+        <g class="ana-col ana-col-prev" clip-path="url(#${id}-prev)" data-shut="prev">${was.map(bar).join('')}</g>
+        <g class="ana-col" clip-path="url(#${id}-now)" data-shut="now">${now.slice(0, cut + 1).map(bar).join('')}</g>
+        <line class="ana-cursor" x1="0" x2="0" y1="0" y2="${H}" />
+      </svg>
+      ${yLabels}
+      <div class="ana-tip" hidden></div>
+    </div>
+    <div class="ana-axis">${axis}</div>
+    <div class="ana-keys"><span><i class="k-col"></i>${esc(names.cur)}</span><span><i class="k-col k-col-prev"></i>${esc(names.key)}</span></div>`;
+}
 let anaClipSeq = 0; // номера шторок графиков
 
 /**
@@ -8897,8 +8958,9 @@ function anaPoint(clientX) {
   if (!plot || !anaTip) return;
   const r = plot.getBoundingClientRect();
   const n = anaTip.ticks.length;
-  const i = Math.max(0, Math.min(anaTip.cut, Math.round(((clientX - r.left) / r.width) * (n - 1))));
-  const px = n === 1 ? 0.5 : i / (n - 1);
+  const frac = (clientX - r.left) / r.width;
+  const i = Math.max(0, Math.min(anaTip.cut, anaTip.bars ? Math.floor(frac * n) : Math.round(frac * (n - 1))));
+  const px = anaTip.bars ? (i + 0.5) / n : n === 1 ? 0.5 : i / (n - 1);
   const cursor = plot.querySelector('.ana-cursor');
   cursor.setAttribute('x1', px * 1000);
   cursor.setAttribute('x2', px * 1000);
@@ -8918,24 +8980,17 @@ function anaPoint(clientX) {
   tip.style.right = '';
 }
 
-// Палец на графике ведёт подсказку по дням: вбок — подсказка, вверх-вниз — обычная прокрутка
-let anaScrub = null; // { x, y, lock } касания
+// Палец на графике ведёт подсказку по дням — в любую сторону, страница под ним не прокручивается
+// (у .ana-plot touch-action: none). Остальная карточка листает периоды, как весь экран
+let anaScrub = false;
 $('screen').addEventListener('touchstart', (e) => {
-  anaScrub = state.screen === 'stats' && e.touches.length === 1 && e.target.closest('.ana-plot')
-    ? { x: e.touches[0].clientX, y: e.touches[0].clientY, lock: '' } : null;
+  anaScrub = state.screen === 'stats' && e.touches.length === 1 && Boolean(e.target.closest('.ana-plot'));
+  if (anaScrub) anaPoint(e.touches[0].clientX);
 }, { passive: true });
 $('screen').addEventListener('touchmove', (e) => {
   if (!anaScrub) return;
-  const t = e.touches[0];
-  if (!anaScrub.lock) {
-    const dx = Math.abs(t.clientX - anaScrub.x);
-    const dy = Math.abs(t.clientY - anaScrub.y);
-    if (dx < 6 && dy < 6) return;
-    anaScrub.lock = dx > dy ? 'x' : 'y';
-  }
-  if (anaScrub.lock !== 'x') return;
   e.preventDefault();
-  anaPoint(t.clientX);
+  anaPoint(e.touches[0].clientX);
 }, { passive: false });
 
 $('screen').addEventListener('click', (e) => {
@@ -8949,6 +9004,14 @@ $('screen').addEventListener('click', (e) => {
     return go({ screen: 'summary', mode: 'list', sg: key, ringGroup: '', ringRest: '' });
   }
   if (e.target.closest('.ana-plot')) return anaPoint(e.clientX);
+  if (e.target.closest('[data-ana-view]')) {
+    try {
+      localStorage.setItem('checker.anaView', anaView() === 'bars' ? 'line' : 'bars');
+    } catch {
+      // не запомнится — до перезапуска не переключится
+    }
+    return go({}, true);
+  }
   // Мимо графика — подсказка убирается
   document.querySelector('#screen .ana-tip')?.setAttribute('hidden', '');
   document.querySelector('#screen .ana-cursor')?.classList.remove('on');
