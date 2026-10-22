@@ -8467,8 +8467,10 @@ async function screenAnalytics() {
   const one = state.sg && !state.sg.includes(',') && findGroup(state.sg) ? state.sg : '';
   const open = findGroup(state.ringGroup || one);
   const keyOf = open ? (slug) => slug ?? NONE : (slug) => findCategory(slug)?.group.slug ?? NONE;
-  const cur = anaSplit(anaSpend(items.rows, ops?.rows ?? []), B, keyOf);
-  const curRows = anaSpend(items.rows, ops?.rows ?? []);
+  // Раскрытая группа — только её траты: и строки, и график, и сумма в шапке
+  const spend = (its, ops2) => anaSpend(its, ops2).filter((r) => !open || (findCategory(r.slug)?.group.slug ?? NONE) === open.slug);
+  const cur = anaSplit(spend(items.rows, ops?.rows ?? []), B, keyOf);
+  const curRows = spend(items.rows, ops?.rows ?? []);
 
   // Где обрывается этот период: в идущем — сегодня; будущий — пусто
   const cut = from > today ? -1 : to < today ? n - 1 : B.of(today);
@@ -8478,7 +8480,7 @@ async function screenAnalytics() {
   const all = anaCum(cur.total);
   // Прошлый период — по номеру деления: к этому же дню
   const pB = anaBuckets(prev.from, prev.to);
-  const prevSplit = anaSplit(anaSpend(history[0]?.rows ?? [], history[1]?.rows ?? []), { ...pB, of: (day) => {
+  const prevSplit = anaSplit(spend(history[0]?.rows ?? [], history[1]?.rows ?? []), { ...pB, of: (day) => {
     const i = pB.of(day);
     return i >= n ? -1 : i;
   }, keys: B.keys }, keyOf);
@@ -8493,7 +8495,7 @@ async function screenAnalytics() {
     for (let p = 0; p < ANA_USUAL; p += 1) {
       if (!history[p * 2]) continue;
       const pb = anaBuckets(past[p].from, past[p].to);
-      const run = anaSplit(anaSpend(history[p * 2].rows, history[p * 2 + 1]?.rows ?? []), { ...pb, of: (day) => {
+      const run = anaSplit(spend(history[p * 2].rows, history[p * 2 + 1]?.rows ?? []), { ...pb, of: (day) => {
         const i = pb.of(day);
         return i >= n ? -1 : i;
       }, keys: B.keys }, keyOf).total;
@@ -8627,8 +8629,16 @@ function anaRow(r, names) {
   const pw = (r.was / topv) * 100;
   const over = r.limit > 0 && r.now > r.limit;
   const lw = over ? (r.limit / topv) * 100 : w;
-  const fill = `<i style="width:${lw.toFixed(1)}%;background:${r.color}" data-w="${lw.toFixed(1)}"></i>`
-    + (over ? `<i class="ana-over" style="left:${lw.toFixed(1)}%;width:${(w - lw).toFixed(1)}%;--c:${r.color}" data-w="${(w - lw).toFixed(1)}"></i>` : '');
+  // Заливки — как одна монолитная фигура: скруглены только её внешние углы. У верхней (этот
+  // период) — левый верхний, правые — если она здесь торчит; у нижней (прошлый) — левый нижний,
+  // правые — так же. Стык полос и стык сплошной части со штриховкой — прямые
+  const R = 3;
+  const corners = (tl, tr, br, bl) => `border-radius:${tl ? R : 0}px ${tr ? R : 0}px ${br ? R : 0}px ${bl ? R : 0}px`;
+  const longer = w > pw; // верхняя торчит правее нижней
+  const solidEnd = !over; // правый край сплошной части — край фигуры, если штриховки нет
+  const fill = `<i style="width:${lw.toFixed(1)}%;background:${r.color};${corners(true, solidEnd, solidEnd && longer, pw === 0)}" data-w="${lw.toFixed(1)}"></i>`
+    + (over ? `<i class="ana-over" style="left:${lw.toFixed(1)}%;width:${(w - lw).toFixed(1)}%;--c:${r.color};${corners(false, true, longer, false)}" data-w="${(w - lw).toFixed(1)}"></i>` : '');
+  const wasFill = `<i style="width:${pw.toFixed(1)}%;background:${r.color};${corners(w === 0, pw > w, true, true)}" data-w="${pw.toFixed(1)}"></i>`;
   const d = r.now - r.was;
   const diff = Math.abs(d) < 50000
     ? `<span class="ana-same">как ${esc(names.in)}</span>`
@@ -8639,7 +8649,7 @@ function anaRow(r, names) {
     <span class="ana-mid">
       <span class="ana-top"><span class="ana-name">${esc(r.name)}</span><b>${anaShort(r.now)} ₽</b></span>
       <span class="ana-twin">
-        <span class="ana-bars"><span class="ana-bar">${fill}</span><span class="ana-bar ana-was"><i style="width:${pw.toFixed(1)}%;background:${r.color}" data-w="${pw.toFixed(1)}"></i></span></span>
+        <span class="ana-bars"><span class="ana-bar">${fill}</span><span class="ana-bar ana-was">${wasFill}</span></span>
         <span class="ana-psum">${anaShort(r.was)} ₽</span>
       </span>
       <span class="ana-note">${diff}${overNote}</span>

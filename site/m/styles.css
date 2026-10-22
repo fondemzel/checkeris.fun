@@ -2230,7 +2230,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-less { color: #1f9d55; }
 .ana-more { color: #d0453a; }
 .ana-same { color: var(--muted); }
-.ana-plot { position: relative; height: 170px; margin: 0 6px; }
+.ana-plot { position: relative; height: 113px; margin: 0 6px; }
 .ana-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ana-svg path, .ana-svg line { vector-effect: non-scaling-stroke; fill: none; }
 .ana-line { stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 1; stroke-dashoffset: 0; }
@@ -2271,12 +2271,11 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
 .ana-top b { font-weight: 600; white-space: nowrap; }
 .ana-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ana-twin { display: flex; align-items: flex-end; gap: 10px; margin: 5px 0 3px; }
+.ana-twin { display: flex; align-items: flex-end; gap: 10px; margin: 2px 0 3px; }
 /* Две полосы: тонкий зазор между ними, внешние углы скруглены (у верхней — верхние, у нижней — нижние) */
 .ana-bars { flex: 1; display: flex; flex-direction: column; gap: 1px; }
-.ana-bar { position: relative; height: 6px; overflow: hidden; background: var(--fill); }
-.ana-bar:first-child { border-radius: 3px 3px 0 0; }
-.ana-bar.ana-was { border-radius: 0 0 3px 3px; }
+/* Подложка — без скруглений и обрезки: скруглены сами заливки, как одна фигура (anaRow) */
+.ana-bar { position: relative; height: 6px; background: var(--fill); }
 .ana-bar i { position: absolute; left: 0; top: 0; bottom: 0; }
 .ana-bar i.ana-fill { transition: width 0.9s cubic-bezier(0.3, 0, 0.2, 1); }
 .ana-was i { opacity: 0.35; }
