@@ -192,7 +192,9 @@ async function api(path, options = {}) {
  */
 const feedData = new Map(); // путь → { at, promise }
 const FEED_TTL = 2 * 60 * 1000;
-const FEED_KEEP = 12; // за всё время — десятки мегабайт в памяти; старые выбрасываем
+// За всё время — десятки мегабайт в памяти; старые выбрасываем. Одному виду аналитики нужно ~11
+// ответов (этот и три прошлых периода, доходы, лимиты), и соседи для свайпа — ещё столько же
+const FEED_KEEP = 36;
 
 function apiFeed(path) {
   const hit = feedData.get(path);
@@ -5249,7 +5251,7 @@ function prefetchPeriod(p) {
   if (!p) return;
   const paths = state.screen === 'summary' ? Object.values(summaryFeeds(p.from, p.to))
     : state.screen === 'income' && bankLinked ? Object.values(incomeFeeds(p.from, p.to))
-      : state.screen === 'stats' ? Object.values(anaFeeds(p.from, p.to)) : [];
+      : state.screen === 'stats' ? anaPaths(p.from, p.to) : [];
   for (const path of paths) if (path) apiFeed(path).catch(() => {});
 }
 
@@ -8399,6 +8401,25 @@ function anaFeeds(from, to) {
   return { items: `/api/items?${items}`, ops: `/api/bank/ops?${ops}`, income: bankLinked ? `/api/bank/ops?${income}` : null };
 }
 
+/** Лимиты — только у групп и без отборов: иначе потраченное не сравнить с лимитом. */
+const anaWithLimits = () => meta?.limits_on !== false && !state.src && !state.sg && !state.q.trim();
+
+/**
+ * Все запросы, которые сделает аналитика за период (screenAnalytics): его траты и доходы, доходы
+ * прошлого периода, лимиты и траты трёх прошлых периодов — для прогноза. Предзагрузка соседнего
+ * периода берёт их все: иначе после отпускания свайпа шли запросы и экран ждал сети
+ */
+function anaPaths(from, to) {
+  const prev = shiftPeriod(from, to, -1);
+  const past = Array.from({ length: ANA_USUAL }, (_, i) => shiftPeriod(from, to, -(i + 1)));
+  return [
+    ...Object.values(anaFeeds(from, to)),
+    anaFeeds(prev.from, prev.to).income,
+    anaWithLimits() ? `/api/limits/state?from=${from}&to=${to}` : null,
+    ...past.flatMap((p) => [anaFeeds(p.from, p.to).items, anaFeeds(p.from, p.to).ops]),
+  ].filter(Boolean);
+}
+
 /** Траты периода с отборами экрана (источник, группы, поиск) — как в «Расходе»: [{ day, slug, sum }]. */
 function anaSpend(items, ops) {
   const picked = new Set(state.sg ? state.sg.split(',') : []);
@@ -8487,7 +8508,7 @@ async function screenAnalytics() {
   const prev = shiftPeriod(from, to, -1);
   const past = Array.from({ length: ANA_USUAL }, (_, i) => shiftPeriod(from, to, -(i + 1)));
   // Лимиты — только у групп и без отборов: иначе потраченное не сравнить с лимитом
-  const withLimits = meta?.limits_on !== false && !state.src && !state.sg && !state.q.trim();
+  const withLimits = anaWithLimits();
   const feeds = anaFeeds(from, to);
   const prevIncome = anaFeeds(prev.from, prev.to).income;
   const [items, ops, income, incomeWas, limits, ...history] = await Promise.all([
@@ -8685,7 +8706,8 @@ function anaNiceStep(v) {
  */
 function anaAxisLabel(B, i, n) {
   const k = B.keys[i];
-  if (B.monthly) return i % Math.ceil(n / 7) === 0 ? ANA_MONTH.format(new Date(`${k}-01T12:00:00`)) : '';
+  // Месяцы дольше года: январь подписан годом — иначе «янв. июль янв.» не различить
+  if (B.monthly) return i % Math.ceil(n / 7) === 0 ? (n > 12 && k.endsWith('-01') ? k.slice(0, 4) : ANA_MONTH.format(new Date(`${k}-01T12:00:00`))) : '';
   if (B.span === 'year') return i % Math.ceil(n / 7) === 0 ? k : '';
   if (B.span === 'quarter') {
     // Кварталы: подписан год у первого квартала; лет больше семи — через год-другой
