@@ -358,8 +358,8 @@ const SORTS = {
   sum: ['По сумме', 'desc', 'ruble'],
 };
 
-/** Сортировка по умолчанию: расходы и доходы — по категориям, остальные списки — по дате. */
-const defaultSort = (screen) => (['summary', 'income'].includes(screen) ? 'category' : 'date');
+/** Сортировка по умолчанию: расходы и доходы — по категориям, аналитика — по сумме, остальные списки — по дате. */
+const defaultSort = (screen) => (['summary', 'income'].includes(screen) ? 'category' : screen === 'stats' ? 'sum' : 'date');
 
 /**
   * Шапка списка: сумма и подпись слева, справа две кнопки — сортировка и фильтр; ниже период.
@@ -706,7 +706,7 @@ function go(patch, replace = false) {
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   const usual = defaultSort(state.screen);
-  if (['summary', 'income', 'category', 'receipts', 'bank'].includes(state.screen)
+  if (['summary', 'income', 'category', 'receipts', 'bank', 'stats'].includes(state.screen)
     && (state.sort !== usual || state.dir !== SORTS[usual][1])) {
     params.set('sort', state.sort);
     params.set('dir', state.dir);
@@ -8481,7 +8481,8 @@ async function screenAnalytics() {
 
   // Где обрывается этот период: в идущем — сегодня; будущий — пусто
   const cut = from > today ? -1 : to < today ? n - 1 : B.of(today);
-  const head = (sum, note) => `<div class="stuck-head">${listHead({ sum: money(sum), note, sorts: false, filters: sourceChips(), search: true })}</div>`;
+  const head = (sum, note) => `<div class="stuck-head">${listHead({ sum: money(sum), note, sorts: ANA_SORTS, filters: sourceChips(), search: true })}</div>`;
+  const sort = ANA_SORTS.includes(state.sort) ? state.sort : 'sum';
   if (cut < 0) return `${head(0, '')}<div class="empty">Период ещё не начался</div>`;
 
   const all = anaCum(cur.total);
@@ -8533,11 +8534,12 @@ async function screenAnalytics() {
   const was = at(prevAll);
   const going = cut < n - 1;
 
-  // Шапка — как в «Расходе»: сумма, подпись, период, поиск; справа — только фильтр
+  // Шапка — как в «Расходе»: сумма, подпись, период, поиск; справа — сортировка и фильтр
   const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
   const picked = state.sg ? state.sg.split(',') : [];
   const note = [
     part('count', going ? `по ${anaTick(B, cut)}` : `${int.format(curRows.length)} ${plural(curRows.length, 'покупка', 'покупки', 'покупок')}`),
+    part('sort', SORTS[sort][0].toLowerCase()),
     open ? part('src', open.name) : '',
     state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)?.[1].toLowerCase() ?? '') : '',
     picked.length && !open ? part('src', picked.map((k) => (k === NONE ? 'без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
@@ -8553,11 +8555,17 @@ async function screenAnalytics() {
     : ` — на <b class="${dlt < 0 ? 'ana-less' : 'ana-more'}">${Math.round(Math.abs(dlt) * 100)}% ${dlt < 0 ? 'меньше' : 'больше'}</b>, чем ${names.in}${going ? ' к этому дню' : ''}`;
   const answer = `Потрачено <b>${anaShort(now)} ₽</b>${cmp}.${forecast ? ` ${names.end} выйдет около <b>${anaShort(forecast[n - 1])} ₽</b>.` : ''}`;
 
-  // Группы — по тратам этого периода; категории раскрытой группы — в порядке настроек
+  // Сортировка: по сумме этого периода, по названию или как в настройках (без категории — в конце)
   const order = (k) => {
-    const i = open ? open.subcategories.findIndex((c) => c.slug === k) : -1;
+    const i = (open ? open.subcategories : meta?.categories ?? []).findIndex((c) => c.slug === k);
     return i < 0 ? Infinity : i;
   };
+  const back = state.dir === SORTS[sort][1] ? 1 : -1;
+  const compare = {
+    sum: (a, b) => b.now - a.now || b.was - a.was,
+    name: (a, b) => a.name.localeCompare(b.name, 'ru'),
+    category: (a, b) => (order(a.key) - order(b.key)) || 0,
+  }[sort];
   const range = limits?.range ?? {};
   const rows = new Set([...cur.byKey.keys(), ...prevSplit.byKey.keys()]);
   const groupsRows = [...rows].map((k) => {
@@ -8575,7 +8583,7 @@ async function screenAnalytics() {
       limit: open ? 0 : range[k] ?? 0,
     };
   }).filter((r) => r.now || r.was)
-    .sort(open ? (a, b) => order(a.key) - order(b.key) || b.now - a.now : (a, b) => b.now - a.now || b.was - a.was);
+    .sort((a, b) => compare(a, b) * back);
 
   return head(now, note)
     + `<div class="card ana-card" data-shift><p class="ana-answer">${answer}</p>${anaChart({ B, n, cut, all, prevAll, forecast, names })}`
@@ -8636,7 +8644,8 @@ let anaTip = null; // суммы по делениям — для подсказ
  * лимита — штриховкой. Подпись — разница и перерасход
  */
 function anaRow(r, names) {
-  const topv = Math.max(r.now, r.was, 1);
+  // Полная длина — не меньше лимита: видно, сколько от него потрачено
+  const topv = Math.max(r.now, r.was, r.limit, 1);
   const w = (r.now / topv) * 100;
   const pw = (r.was / topv) * 100;
   const over = r.limit > 0 && r.now > r.limit;
@@ -8688,6 +8697,7 @@ function anaFillRow(row, wait) {
   });
 }
 
+const ANA_SORTS = ['category', 'name', 'sum']; // сортировки строк групп и категорий
 const ANA_FILL = 800; // шторка полосы, мс
 const ANA_WAS = 150; // прошлый период — следом, с этим сдвигом
 
