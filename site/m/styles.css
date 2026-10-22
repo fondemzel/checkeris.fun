@@ -2268,13 +2268,12 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-row .ic { flex: none; width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
 .ana-row .ic svg { width: 19px; height: 19px; }
 .ana-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.ana-top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+.ana-top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; line-height: 1.25; }
 .ana-top b { font-weight: 600; white-space: nowrap; }
 .ana-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ana-twin { display: flex; align-items: flex-end; gap: 10px; margin: 2px 0 3px; }
+.ana-twin { display: flex; align-items: flex-end; gap: 10px; margin: 0 0 3px; }
 /* Две полосы: тонкий зазор между ними, внешние углы скруглены (у верхней — верхние, у нижней — нижние) */
-.ana-bars { flex: 1; display: flex; flex-direction: column; gap: 1px; }
-/* Подложка — без скруглений и обрезки: скруглены сами заливки, как одна фигура (anaRow) */
+.ana-bars { flex: 1; display: flex; flex-direction: column; gap: 1px; border-radius: 4px; overflow: hidden; } /* маска: блок полос — один прямоугольник со скруглёнными углами */
 .ana-bar { position: relative; height: 6px; background: var(--fill); }
 .ana-bar i { position: absolute; left: 0; top: 0; bottom: 0; }
 .ana-bar i.ana-fill { transition: width 0.9s cubic-bezier(0.3, 0, 0.2, 1); }

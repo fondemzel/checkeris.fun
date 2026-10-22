@@ -8629,16 +8629,11 @@ function anaRow(r, names) {
   const pw = (r.was / topv) * 100;
   const over = r.limit > 0 && r.now > r.limit;
   const lw = over ? (r.limit / topv) * 100 : w;
-  // Заливки — как одна монолитная фигура: скруглены только её внешние углы. У верхней (этот
-  // период) — левый верхний, правые — если она здесь торчит; у нижней (прошлый) — левый нижний,
-  // правые — так же. Стык полос и стык сплошной части со штриховкой — прямые
-  const R = 3;
-  const corners = (tl, tr, br, bl) => `border-radius:${tl ? R : 0}px ${tr ? R : 0}px ${br ? R : 0}px ${bl ? R : 0}px`;
-  const longer = w > pw; // верхняя торчит правее нижней
-  const solidEnd = !over; // правый край сплошной части — край фигуры, если штриховки нет
-  const fill = `<i style="width:${lw.toFixed(1)}%;background:${r.color};${corners(true, solidEnd, solidEnd && longer, pw === 0)}" data-w="${lw.toFixed(1)}"></i>`
-    + (over ? `<i class="ana-over" style="left:${lw.toFixed(1)}%;width:${(w - lw).toFixed(1)}%;--c:${r.color};${corners(false, true, longer, false)}" data-w="${(w - lw).toFixed(1)}"></i>` : '');
-  const wasFill = `<i style="width:${pw.toFixed(1)}%;background:${r.color};${corners(w === 0, pw > w, true, true)}" data-w="${pw.toFixed(1)}"></i>`;
+  // Заливки — прямоугольные: скругляет их маска — весь блок из двух полос (.ana-bars) обрезан
+  // одним прямоугольником со скруглёнными углами
+  const fill = `<i style="width:${lw.toFixed(1)}%;background:${r.color}" data-w="${lw.toFixed(1)}"></i>`
+    + (over ? `<i class="ana-over" style="left:${lw.toFixed(1)}%;width:${(w - lw).toFixed(1)}%;--c:${r.color}" data-w="${(w - lw).toFixed(1)}"></i>` : '');
+  const wasFill = `<i style="width:${pw.toFixed(1)}%;background:${r.color}" data-w="${pw.toFixed(1)}"></i>`;
   const d = r.now - r.was;
   const diff = Math.abs(d) < 50000
     ? `<span class="ana-same">как ${esc(names.in)}</span>`
