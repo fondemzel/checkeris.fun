@@ -1512,8 +1512,8 @@ function limitCard(st, slug = '') {
         </span>
       </div>
       <div class="lim-nums">
-        ${num(P.limit, limit ? money(limit) : '—')}
         ${num(P.spent, money(spent))}
+        ${num(P.limit, limit ? money(limit) : '—')}
         ${over ? num(P.overBy[0].toUpperCase() + P.overBy.slice(1), money(-left), ' over') : num(P.left, limit ? money(left) : '—')}
       </div>
       <p class="note lim-note">${note}</p>
@@ -8691,6 +8691,34 @@ function anaAxisLabel(B, i, n) {
   return j >= 0 && B.keys[j].slice(5, 7) !== k.slice(5, 7) ? ANA_DAY.format(new Date(`${k}T12:00:00`)) : String(day);
 }
 
+/**
+ * Путь SVG монотонным кубическим сплайном (Fritsch–Carlson) по точкам P [[x, y]], от a до b.
+ * Проходит через все точки и не перелетает: где ряд стоит — линия горизонтальна, где растёт —
+ * растёт. Обычный сплайн у накопительной кривой проседал перед скачком, будто траты уменьшались
+ */
+function anaMonotone(P, a = 0, b = P.length - 1) {
+  const n = P.length;
+  const f = (v) => v.toFixed(1);
+  if (n < 2 || b <= a) return `M${f(P[a][0])},${f(P[a][1])}`;
+  const s = []; // наклоны отрезков
+  for (let i = 0; i < n - 1; i++) s.push((P[i + 1][1] - P[i][1]) / (P[i + 1][0] - P[i][0] || 1));
+  const m = P.map((_, i) => {
+    if (i === 0) return s[0];
+    if (i === n - 1) return s[n - 2];
+    if (s[i - 1] * s[i] <= 0) return 0;
+    const h0 = P[i][0] - P[i - 1][0];
+    const h1 = P[i + 1][0] - P[i][0];
+    const mid = (s[i - 1] * h1 + s[i] * h0) / (h0 + h1);
+    return Math.sign(s[i]) * Math.min(Math.abs(s[i - 1]), Math.abs(s[i]), 0.5 * Math.abs(mid)) * 2;
+  });
+  let d = `M${f(P[a][0])},${f(P[a][1])}`;
+  for (let i = a; i < b; i++) {
+    const dx = (P[i + 1][0] - P[i][0]) / 3;
+    d += `C${f(P[i][0] + dx)},${f(P[i][1] + dx * m[i])} ${f(P[i + 1][0] - dx)},${f(P[i + 1][1] - dx * m[i + 1])} ${f(P[i + 1][0])},${f(P[i + 1][1])}`;
+  }
+  return d;
+}
+
 /** График: этот период ярко, прошлый — бледнее, прогноз — точками. SVG 0–1000 × 0–600. */
 function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll }) {
   const W = 1000;
@@ -8699,7 +8727,11 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
     incAll?.[cut] ?? 0, ...(incPrevAll ?? []), 1) * 1.05;
   const x = (i) => (n === 1 ? W / 2 : (i / (n - 1)) * W);
   const y = (v) => H - (v / top) * H;
-  const path = (arr, upto, start = 0) => arr.slice(start, upto + 1).map((v, j) => `${j ? 'L' : 'M'}${x(start + j).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  // Линия — монотонным сплайном по всему ряду, нарисована от start до upto: изгибы считаются по
+  // соседям, поэтому сплошная часть и пунктир прогноза из одного ряда сходятся без излома
+  const path = (arr, upto, start = 0) => anaMonotone(arr.map((v, i) => [x(i), y(v)]), start, upto);
+  // Этот период и прогноз — один ряд: факт до сегодня, дальше — прогноз
+  const run = forecast ? all.slice(0, cut + 1).concat(forecast.slice(cut + 1)) : all.slice(0, cut + 1);
   // Ось X: деление на каждый день (неделю, месяц), подписи — реже, чтобы не слипались. У недель и
   // месяцев подписан и конец — последний день периода (месяц); соседняя подпись вплотную — убирается
   const labels = B.keys.map((_, i) => anaAxisLabel(B, i, n));
@@ -8723,12 +8755,12 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
   for (let v = step; v < top * 0.97; v += step) scale.push(v);
   const grid = scale.map((v) => `<line class="ana-grid" x1="0" x2="${W}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" />`).join('');
   const yLabels = scale.map((v) => `<span class="ana-y" style="top:${(y(v) / H) * 100}%">${anaShort(v)}</span>`).join('');
-  const fc = forecast ? `<path class="ana-fc" d="${path(forecast, n - 1, cut)}" />` : '';
+  const fc = forecast ? `<path class="ana-fc" d="${path(run, n - 1, cut)}" />` : '';
   const fcEnd = forecast ? `<span class="ana-end" style="left:100%;top:${(y(forecast[n - 1]) / H) * 100}%"></span>` : '';
   anaTip = { ticks: B.keys.map((_, i) => anaTick(B, i)), cut, all, prev: prevAll, prevName: names.key, curName: names.cur, inc: incAll, incPrev: incPrevAll };
   // Доходы (опыт): зелёные линии — этот период ярко, прошлый бледнее
   const incPrevLine = incPrevAll ? `<path class="ana-line ana-inc ana-prev" d="${path(incPrevAll, n - 1)}" />` : '';
-  const incLine = incAll ? `<path class="ana-line ana-inc" d="${path(incAll, cut)}" />` : '';
+  const incLine = incAll ? `<path class="ana-line ana-inc" d="${path(incAll.slice(0, cut + 1), cut)}" />` : '';
   // Линии открываются шторками, как полосы групп: этот период с прогнозом — одним движением,
   // прошлый — следом. Шторка — прямоугольник обрезки; id — свои у каждого графика: при листании
   // на экране бывают два графика сразу
@@ -8740,7 +8772,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
         <defs>${shut('prev')}${shut('now')}</defs>
         ${grid}<line class="ana-base" x1="0" x2="${W}" y1="${H}" y2="${H}" />
         <g clip-path="url(#${id}-prev)" data-shut="prev">${incPrevLine}<path class="ana-line ana-prev" d="${path(prevAll, prevAll.length - 1)}" /></g>
-        <g clip-path="url(#${id}-now)" data-shut="now">${incLine}${fc}<path class="ana-line ana-now" d="${path(all, cut)}" /></g>
+        <g clip-path="url(#${id}-now)" data-shut="now">${incLine}${fc}<path class="ana-line ana-now" d="${path(run, cut)}" /></g>
         <line class="ana-cursor" x1="0" x2="0" y1="0" y2="${H}" />
       </svg>
       <span class="ana-dot" data-at="${(x(cut) / W).toFixed(3)}" style="left:${(x(cut) / W) * 100}%;top:${(y(all[cut]) / H) * 100}%"></span>
