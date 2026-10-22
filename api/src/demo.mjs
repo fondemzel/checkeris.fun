@@ -14,7 +14,8 @@
 // осенью взяли квартиру в ипотеку и обустраивают её: мебель и техника в первые месяцы, дальше
 // мелочи. Этой осенью родится первый ребёнок: до этого врачи, курсы, детская, декрет и
 // декретные, после — подгузники, педиатр, пособия. Летом — поездка вдвоём в Калининград, в
-// декабре — подарки и ёлка. Дома кошка Маркиза и корги Бублик. «Дети» и «Путешествия» — свои
+// декабре — подарки и ёлка. Дома кошка Маркиза и корги Бублик; во дворе — Киа Рио: бензин,
+// ОСАГО, переобувка, ТО. «Дети» и «Путешествия» — свои
 // группы этой семьи: в общем справочнике их нет, заодно видно, как выглядят созданные человеком.
 //
 // Операции банка тестовой базы держатся за подключения служебного пользователя
@@ -29,7 +30,7 @@ import { setLimits, suggestLimits } from './limits.mjs';
 const DEMO_LOGIN = '__demo__';
 const DEMO_NAME = 'Демо-режим';
 // Версия генератора: поправили его — поднять, и база пересоздастся при следующем включении
-const DEMO_VERSION = 4;
+const DEMO_VERSION = 5;
 const now = () => new Date().toISOString();
 
 /** Бюджет — тестовый? */
@@ -539,6 +540,13 @@ function generate(db, budgetId) {
     }
     if (md === '03-08') receipt(at(d, 9, 12), '', '', null, [['Тюльпаны 25 шт', 3000, 4500, 'gifts.gifts']], { manual: true, by: he, notes: NOTES });
     if (md === '07-09') income(at(d, 12, 20), 1500000, 'Друзья', 'Перевод: с днём рождения!', 'in.gifts', { group: 'TRANSFER', note: 'Артёму от друзей — на велосипед' });
+
+    // ── машина: Киа Рио — ОСАГО весной, переобувка дважды в год, ТО летом, налог осенью ──
+    if (md === '03-20') op(at(d, 12, 18), { amount: rub(10500, 12800), merchant: 'Ингосстрах', description: 'ОСАГО', cat: 'transport.service', note: 'Продлевать каждый март. Вписали Катю' });
+    if (md === '04-12' || md === '10-25') op(at(d, 10, 17), { amount: rub(2900, 3800), merchant: 'Шиномонтаж Колесо', description: 'Сезонная замена шин', cat: 'transport.service' });
+    if (md === '07-18') op(at(d, 10, 17), { amount: rub(19000, 27000), merchant: 'Kia Автомир', description: 'Плановое ТО', cat: 'transport.service', note: 'Перед роддомом — чтобы без сюрпризов' });
+    if (md === '11-26') op(at(d, 9, 12), { amount: rub(2600, 3400), merchant: 'ФНС России', description: 'Транспортный налог', cat: 'finance.taxes' });
+    if (chance(0.025)) op(at(d, 10, 20), { amount: rub(450, 900), merchant: 'Мойка Лайт', description: 'Автомойка', cat: 'transport.service' });
   }
 
   // День поездки в Калининград: кафе, продукты, такси, экскурсии
@@ -577,6 +585,19 @@ function generate(db, budgetId) {
       market(at(d, 8, 23), [...new Map(lines.map((l) => [l[0], l])).values()]);
     }
     if (chance(0.06)) receipt(at(d, 9, 21), 'ООО "Аптека-А.в.е-1"', 'Аптека Ригла', null, Array.from({ length: Math.floor(between(1, 3)) }, () => pick(PHARMACY)));
+    // Бензин — раз в неделю-полторы: заправляет Артём
+    if (chance(0.11)) {
+      const litres = Math.round(between(25, 42));
+      const price = between(58, 64);
+      const sum = Math.round(litres * price) * 100;
+      const n = doc++;
+      const lukoil = chance(0.5);
+      const id = Number(insReceipt.run(budgetId, he, `demo:${budgetId}:${n}`, `9999078900${String(budgetId).padStart(6, '0')}`, n, 100000 + n,
+        stamp, at(d, 7, 22), day(d), lukoil ? 'ООО "Лукойл-Интер-Кард"' : 'АО "Газпромнефть-Центр"',
+        null, lukoil ? 'АЗС Лукойл' : 'АЗС Газпромнефть', sum, 0, sum, 1, sum).lastInsertRowid);
+      const item = Number(insItem.run(id, 1, 'Бензин АИ-95', normalizeName('Бензин АИ-95'), litres, 'л', Math.round(price * 100), sum).lastInsertRowid);
+      insLabel.run(item, budgetId, 'transport.fuel', 'dictionary', 0.9, stamp);
+    }
     if (chance(0.02)) {
       receipt(at(d, 11, 21), 'ООО "Спортмастер"', 'Спортмастер', null,
         [pick([['Футболка спортивная', 990, 1990, 'clothing.apparel'], ['Кроссовки', 4990, 8990, 'clothing.shoes'], ['Шапка', 790, 1490, 'clothing.accessories']])]);
@@ -609,8 +630,8 @@ function generate(db, budgetId) {
     else homeDay(d, { weekend, age });
 
     // ── банк: траты без чеков ──
-    if (chance(weekend ? 0.08 : 0.12)) op(at(d, 7, 23), { amount: rub(290, 890), merchant: 'Яндекс Go', description: 'Яндекс Такси', cat: 'transport.public', bank: someone() });
-    if (chance(0.03)) op(at(d, 9, 21), { amount: rub(450, 1400), merchant: 'Яндекс Драйв', description: 'Каршеринг', cat: 'transport.public' });
+    if (chance(weekend ? 0.04 : 0.07)) op(at(d, 7, 23), { amount: rub(290, 890), merchant: 'Яндекс Go', description: 'Яндекс Такси', cat: 'transport.public', bank: someone() });
+    if (chance(0.05)) op(at(d, 9, 20), { amount: rub(150, 450), merchant: 'Парковки Москвы', cat: 'transport.parking' });
     if (dom === 1 || dom === 16) op(at(d, 8, 10), { amount: 100000, merchant: 'Тройка', description: 'Пополнение карты Тройка', cat: 'transport.public' });
     if (dom === 10) op(at(d, 12, 20), { amount: rub(6200, 8400), merchant: 'ЕИРЦ Москвы', description: 'Оплата ЖКУ', cat: 'housing.utilities', bank: 'sber' });
     if (dom === 12) op(at(d, 12, 20), { amount: rub(900, 1500), merchant: 'Мосэнергосбыт', cat: 'housing.utilities', bank: 'sber' });
