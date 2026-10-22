@@ -8637,10 +8637,12 @@ function anaRow(r, names) {
   const over = r.limit > 0 && r.now > r.limit;
   const lw = over ? (r.limit / topv) * 100 : w;
   // Заливки — прямоугольные: скругляет их маска — весь блок из двух полос (.ana-bars) обрезан
-  // одним прямоугольником со скруглёнными углами
-  const fill = `<i style="width:${lw.toFixed(1)}%;background:${r.color}" data-w="${lw.toFixed(1)}"></i>`
-    + (over ? `<i class="ana-over" style="left:${lw.toFixed(1)}%;width:${(w - lw).toFixed(1)}%;--c:${r.color}" data-w="${(w - lw).toFixed(1)}"></i>` : '');
-  const wasFill = `<i style="width:${pw.toFixed(1)}%;background:${r.color}" data-w="${pw.toFixed(1)}"></i>`;
+  // одним прямоугольником со скруглёнными углами. Каждая полоса проявляется одной шторкой
+  // (.ana-clip): расход и перерасход — одним движением
+  const fill = `<i style="width:${lw.toFixed(1)}%;background:${r.color}"></i>`
+    + (over ? `<i class="ana-over" style="left:${lw.toFixed(1)}%;width:${(w - lw).toFixed(1)}%;--c:${r.color}"></i>` : '');
+  const wasFill = `<i style="width:${pw.toFixed(1)}%;background:${r.color}"></i>`;
+  const clip = (wd, html) => `<span class="ana-clip" data-w="${wd.toFixed(1)}">${html}</span>`;
   const d = r.now - r.was;
   const diff = Math.abs(d) < 50000
     ? `<span class="ana-same">как ${esc(names.in)}</span>`
@@ -8651,7 +8653,7 @@ function anaRow(r, names) {
     <span class="ana-mid">
       <span class="ana-top"><span class="ana-name">${esc(r.name)}</span><b>${anaShort(r.now)} ₽</b></span>
       <span class="ana-twin">
-        <span class="ana-bars"><span class="ana-bar">${fill}</span><span class="ana-bar ana-was">${wasFill}</span></span>
+        <span class="ana-bars"><span class="ana-bar">${clip(w, fill)}</span><span class="ana-bar ana-was">${clip(pw, wasFill)}</span></span>
         <span class="ana-psum">${anaShort(r.was)} ₽</span>
       </span>
       <span class="ana-note">${diff}${overNote}</span>
@@ -8664,17 +8666,16 @@ function holdAnalytics() {
   if (!motion('ring')) return;
   document.querySelectorAll('#screen .ana-line').forEach((p) => p.classList.add('ana-hold'));
   document.querySelectorAll('#screen .ana-fc, #screen .ana-dot, #screen .ana-end').forEach((p) => p.classList.add('ana-hold'));
-  document.querySelectorAll('#screen .ana-bar i').forEach((b) => (b.style.width = '0'));
+  document.querySelectorAll('#screen .ana-clip').forEach((b) => (b.style.clipPath = 'inset(0 100% 0 0)'));
 }
 
-const ANA_FILL = 700; // заливка полосы этого периода, мс
+const ANA_FILL = 800; // шторка полосы, мс
 const ANA_WAS = 150; // прошлый период — следом, с этим сдвигом
-const ANA_OVER = 400; // перерасход — после заливки до лимита
 
 /**
  * Линии рисуются слева направо, точки — в конце. Полосы строки заливаются от нуля, когда сама
- * строка уже проявилась (playList): сначала этот период, чуть позже — прошлый, перерасход —
- * только после заливки до лимита.
+ * строка уже проявилась (playList): сначала этот период (перерасход — продолжением того же
+ * движения), чуть позже — прошлый.
  */
 function animateAnalytics() {
   if (!motion('ring')) return;
@@ -8686,10 +8687,10 @@ function animateAnalytics() {
     p.classList.remove('ana-draw');
   });
   late.forEach((p) => p.classList.add('ana-hold'));
-  const bars = rows.map((row) => [...row.querySelectorAll('.ana-bar i')]);
+  const bars = rows.map((row) => [...row.querySelectorAll('.ana-clip')]);
   bars.flat().forEach((b) => {
     b.style.transition = 'none';
-    b.style.width = '0';
+    b.style.clipPath = 'inset(0 100% 0 0)';
   });
   void document.body.offsetWidth;
   lines.forEach((p) => {
@@ -8698,11 +8699,9 @@ function animateAnalytics() {
   });
   const ease = 'cubic-bezier(0.3, 0, 0.2, 1)';
   const fill = (list, wait) => list.forEach((b) => {
-    const over = b.classList.contains('ana-over');
-    const was = b.parentElement.classList.contains('ana-was');
-    const delay = wait + (over ? ANA_FILL : was ? ANA_WAS : 0);
-    b.style.transition = over ? `width ${ANA_OVER}ms ease-out ${delay}ms` : `width ${ANA_FILL}ms ${ease} ${delay}ms`;
-    b.style.width = `${b.dataset.w}%`;
+    const delay = wait + (b.parentElement.classList.contains('ana-was') ? ANA_WAS : 0);
+    b.style.transition = `clip-path ${ANA_FILL}ms ${ease} ${delay}ms`;
+    b.style.clipPath = `inset(0 ${(100 - Number(b.dataset.w)).toFixed(1)}% 0 0)`;
   });
   rows.forEach((row, k) => {
     // Строка ещё проявляется — полосы ждут её конца; иначе — сразу, лесенкой
