@@ -5132,6 +5132,7 @@ addEventListener('touchstart', (e) => {
   const field = e.target.closest('input, textarea');
   if (field && (!swipeTab || field === document.activeElement || field.type === 'range')) return; // ползунок — свой жест
   if (e.target.closest('.chips, .drop-menu') || (!swipeTab && e.target.closest('[data-shift]'))) return;
+  if (!swipeTab && e.target.closest('.ana-plot')) return; // по графику палец ведёт подсказку (anaScrub)
   swipeFrom = { x: t.clientX, y: t.clientY, t: Date.now() };
   swipeSpeed = { trail: [{ x: t.clientX, at: performance.now() }], v: 0 };
 }, { passive: true });
@@ -8916,6 +8917,26 @@ function anaPoint(clientX) {
   tip.style.left = `${Math.max(0, Math.min(r.width - w, left))}px`;
   tip.style.right = '';
 }
+
+// Палец на графике ведёт подсказку по дням: вбок — подсказка, вверх-вниз — обычная прокрутка
+let anaScrub = null; // { x, y, lock } касания
+$('screen').addEventListener('touchstart', (e) => {
+  anaScrub = state.screen === 'stats' && e.touches.length === 1 && e.target.closest('.ana-plot')
+    ? { x: e.touches[0].clientX, y: e.touches[0].clientY, lock: '' } : null;
+}, { passive: true });
+$('screen').addEventListener('touchmove', (e) => {
+  if (!anaScrub) return;
+  const t = e.touches[0];
+  if (!anaScrub.lock) {
+    const dx = Math.abs(t.clientX - anaScrub.x);
+    const dy = Math.abs(t.clientY - anaScrub.y);
+    if (dx < 6 && dy < 6) return;
+    anaScrub.lock = dx > dy ? 'x' : 'y';
+  }
+  if (anaScrub.lock !== 'x') return;
+  e.preventDefault();
+  anaPoint(t.clientX);
+}, { passive: false });
 
 $('screen').addEventListener('click', (e) => {
   if (state.screen !== 'stats') return null;
