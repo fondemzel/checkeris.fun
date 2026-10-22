@@ -533,23 +533,35 @@ document.addEventListener('click', (e) => {
 });
 
 /**
+ * Плитка выбора: значок, мелкая подпись под ним; выбранная — с кружком-галочкой на углу значка.
+ * Одна и та же в листе фильтров и в выборе группы везде в приложении
+ */
+const pickTile = (attr, ic, name, on = false) => `<button class="picker-tile filt-tile${on ? ' on' : ''}" type="button" ${attr}>
+  <span class="filt-ic">${ic}<b class="filt-check">${UI.ok}</b></span><span class="picker-tile-name">${esc(name)}</span></button>`;
+/** Значок группы для плитки — её цветом. */
+const groupTileIc = (g) => {
+  const color = g.color ?? 'var(--fill)';
+  return `<span class="pick-ic big" style="background:${color};color:${readableText(color)}">${groupIcon(g.icon ?? 'none')}</span>`;
+};
+
+/**
  * Лист фильтров «Расхода» и «Аналитики»: верхний ряд — источники, под чертой — группы, плитками
  * со значками. Выбрать можно несколько; выбранная плитка — с кружком-галочкой. Отбор применяется,
- * когда лист закрывают («Показать», крестик, мимо, «назад»): применять на ходу нельзя — перерисовка
+ * когда лист закрывают (галочка, мимо, «назад»; крестик — сбросив всё): применять на ходу нельзя — перерисовка
  * экрана под листом спорила бы с его записью в истории
  */
 function openFilterSheet() {
   const src = new Set(state.src ? state.src.split(',') : []);
   const sg = new Set(state.sg ? state.sg.split(',') : []);
-  const tile = (attr, ic, name, on) => `<button class="picker-tile filt-tile${on ? ' on' : ''}" type="button" ${attr}>
-    <span class="filt-ic">${ic}<b class="filt-check">${UI.ok}</b></span><span class="picker-tile-name">${esc(name)}</span></button>`;
   const sources = Object.keys(SOURCE_SHORT).filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
-    .map((k) => tile(`data-fsrc="${k}"`, `<span class="pick-ic big filt-src-ic">${SOURCES[k].icon}</span>`, SOURCE_SHORT[k], src.has(k))).join('');
+    .map((k) => pickTile(`data-fsrc="${k}"`, `<span class="pick-ic big filt-src-ic">${SOURCES[k].icon}</span>`, SOURCE_SHORT[k], src.has(k))).join('');
   const groups = [...(meta?.categories ?? []), { slug: NONE, name: 'Без категории', icon: 'none' }]
-    .map((g) => tile(`data-fsg="${esc(g.slug)}"`, `<span class="pick-ic big" style="background:${g.color ?? 'var(--fill)'};color:${readableText(g.color ?? 'var(--fill)')}">${groupIcon(g.icon ?? 'none')}</span>`,
-      g.name, sg.has(g.slug))).join('');
-  const body = `<div class="filt-row">${sources}</div><div class="filt-sep"></div><div class="filt-grid">${groups}</div>
-    <div class="filt-foot"><button class="btn" type="button" data-filt-reset>Сбросить</button><button class="btn primary" type="button" data-filt-apply>Показать</button></div>`;
+    .map((g) => pickTile(`data-fsg="${esc(g.slug)}"`, groupTileIc(g), g.name, sg.has(g.slug))).join('');
+  const body = `<div class="filt-row">${sources}</div><div class="filt-sep"></div><div class="filt-grid">${groups}</div>`;
+  // Вверху справа: крестик — сбросить всё и закрыть, галочка — показать выбранное
+  const action = `<span class="picker-acts">
+    <button class="icon-btn soft" type="button" data-filt-reset aria-label="Сбросить фильтры" title="Сбросить">${UI.close}</button>
+    <button class="icon-btn primary" type="button" data-filt-apply aria-label="Показать" title="Показать">${UI.ok}</button></span>`;
   const sheet = openChoice('Фильтр', body, (e, close) => {
     const t = e.target.closest('[data-fsrc], [data-fsg]');
     if (t) {
@@ -562,11 +574,10 @@ function openFilterSheet() {
     if (e.target.closest('[data-filt-reset]')) {
       src.clear();
       sg.clear();
-      sheet.querySelectorAll('.filt-tile.on').forEach((x) => x.classList.remove('on'));
-      return;
+      return close();
     }
     if (e.target.closest('[data-filt-apply]')) close();
-  });
+  }, { action });
   // Лист закрыли — применяем, когда отработает «назад» (его запись в истории)
   const apply = () => {
     const next = { src: [...src].join(','), sg: [...sg].join(',') };
@@ -3546,17 +3557,7 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
             <span class="picker-special-text">Перевод себе<small class="note">не расход и не доход: на свою карту, в копилку</small></span>
           </button>
         </div>` : ''}
-        <div class="picker-grid">
-          ${groups
-            .map(
-              (g) => `
-              <button class="picker-tile" type="button" data-group="${esc(g.slug)}">
-                <span class="pick-ic big" style="background:${g.color ?? 'var(--fill)'};color:${readableText(g.color ?? 'var(--fill)')}">${groupIcon(g.icon ?? 'none')}</span>
-                <span class="picker-tile-name">${esc(g.name)}</span>
-              </button>`,
-            )
-            .join('')}
-        </div>
+        <div class="filt-grid">${groups.map((g) => pickTile(`data-group="${esc(g.slug)}"`, groupTileIc(g), g.name)).join('')}</div>
       </div>`;
   };
 
@@ -7004,14 +7005,7 @@ async function onCatsClick(e) {
     const { groups } = await taxo();
     // Сеткой плиток, как выбор группы везде в приложении; текущая группа отмечена
     const current = groups.find((g) => g.categories.some((c) => c.slug === state.tc))?.slug;
-    const body = `<div class="picker-grid">${groups.map((g) => {
-      const color = g.color ?? 'var(--fill)';
-      return `
-      <button class="picker-tile${g.slug === current ? ' on' : ''}" type="button" data-to="${esc(g.slug)}">
-        <span class="pick-ic big" style="background:${color};color:${readableText(color)}">${groupIcon(g.icon ?? 'none')}</span>
-        <span class="picker-tile-name">${esc(g.name)}</span>
-      </button>`;
-    }).join('')}</div>`;
+    const body = `<div class="filt-grid">${groups.map((g) => pickTile(`data-to="${esc(g.slug)}"`, groupTileIc(g), g.name, g.slug === current)).join('')}</div>`;
     openChoice(C.inGroup, body, async (ev, close) => {
       const to = ev.target.closest('[data-to]')?.dataset.to;
       if (!to) return;
