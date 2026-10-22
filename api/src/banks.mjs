@@ -352,7 +352,7 @@ export function listLinks(db, userId) {
                 WHERE o.link_id = l.id AND o.at >= :today AND COALESCE(o.kind, '') <> 'excluded')
                 + (SELECT COUNT(*) FROM shop_cheques c WHERE c.link_id = l.id AND c.purchased_at >= :today) AS today,
               (SELECT MAX(at) FROM bank_ops o WHERE o.link_id = l.id) AS last_op_at
-         FROM bank_links l WHERE l.user_id = :user AND l.bank <> 'manual'`, -- ручные доходы — не банк (manualincome.mjs)
+         FROM bank_links l WHERE l.user_id = :user AND l.bank <> 'manual'`, // ручные доходы — не банк (manualincome.mjs)
     )
     .all({ today, user: userId });
 }

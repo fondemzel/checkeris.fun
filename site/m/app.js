@@ -32,6 +32,7 @@ function shades(hex, n, from = 25, to = 85) {
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
 import { T, f, pl } from '/m/i18n/index.js';
+import qrcode from '/shared/qrcode.js';
 
 const $ = (id) => document.getElementById(id);
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
@@ -3256,9 +3257,44 @@ async function followScan(job, onUpdate) {
   return job;
 }
 
+/**
+ * Считанный код — картинкой в рамке, пока ФНС отвечает: камера к этому времени погашена, и
+ * рамка была бы просто тёмной. Модули — скруглёнными точками, глазки — кольцами; часть точек
+ * изредка мигает, по зелёной рамке бежит свет: видно, что работа идёт.
+ */
+function scannerQr(text) {
+  let q;
+  try {
+    q = qrcode(0, 'M');
+    q.addData(text);
+    q.make();
+  } catch {
+    return ''; // не уложилось в код — оставляем рамку как была
+  }
+  const n = q.getModuleCount();
+  const eye = (x, y) => x < 7 && y < 7 ? [0, 0] : x >= n - 7 && y < 7 ? [n - 7, 0] : x < 7 && y >= n - 7 ? [0, n - 7] : null;
+  let dots = '';
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      if (!q.isDark(y, x) || eye(x, y)) continue;
+      // Каждая девятая точка мигает — в своё время, чтобы мерцание шло вразнобой
+      const blink = Math.random() < 0.11 ? ` class="qr-blink" style="animation-delay:${(Math.random() * 3).toFixed(2)}s"` : '';
+      dots += `<rect x="${x + 0.08}" y="${y + 0.08}" width="0.84" height="0.84" rx="0.3"${blink}/>`;
+    }
+  }
+  const eyes = [[0, 0], [n - 7, 0], [0, n - 7]].map(([x, y]) => `
+    <rect x="${x + 0.5}" y="${y + 0.5}" width="6" height="6" rx="1.7" fill="none" stroke="currentColor" stroke-width="1"/>
+    <rect x="${x + 2}" y="${y + 2}" width="3" height="3" rx="0.9"/>`).join('');
+  return `<div class="scanner-qr"><svg viewBox="-1 -1 ${n + 2} ${n + 2}" aria-hidden="true">${eyes}${dots}</svg></div>
+    <svg class="scanner-run" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <rect x="0.6" y="0.6" width="98.8" height="98.8" rx="5.5" pathLength="100"/></svg>`;
+}
+
 /** Отправка распознанной строки и слежение за заданием до готовности. */
 async function submitScan(current, qr) {
   current.el.classList.add('caught');
+  const frame = current.el.querySelector('.scanner-frame');
+  if (!frame.querySelector('.scanner-qr')) frame.insertAdjacentHTML('afterbegin', scannerQr(qr));
   const again = '<button class="btn" type="button" data-again>Сканировать ещё</button>';
   scannerSay(current, 'Код прочитан, отправляем…');
 
@@ -3272,6 +3308,7 @@ async function submitScan(current, qr) {
       return openReceiptSheet(job.receipt_id);
     }
   } catch (err) {
+    current.el.classList.add('scan-failed');
     return scannerSay(current, esc(cap(err.message)), { error: true, actions: again });
   }
 
@@ -3282,6 +3319,7 @@ async function submitScan(current, qr) {
     closeScanner();
     go({ screen: 'added', added: String(job.receipt_id) });
   } else if (job.status === 'failed') {
+    current.el.classList.add('scan-failed');
     feedData.delete('/api/scan?state=failed');
     apiFeed('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
     scannerSay(
@@ -3420,7 +3458,7 @@ function screenIncomeAdd() {
       </label>
       <label class="field">
         <span>Откуда</span>
-        <input id="i-name" type="text" maxlength="200" autocomplete="off" placeholder="Необязательно: зарплата, возврат долга" />
+        <input id="i-name" type="text" maxlength="200" autocomplete="off" placeholder="Зарплата, возврат долга" />
       </label>
       <label class="field">
         <span>Дата</span>
