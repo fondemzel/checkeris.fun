@@ -1189,8 +1189,10 @@ function ringTitle(base, nameOf) {
   } else {
     const filter = state.screen === 'summary' ? state.sg : state.screen === 'income' ? state.inf : '';
     const keys = filter ? filter.split(',') : [];
-    if (keys.length === 1) names.push(nameOf(keys[0]));
-    if (keys.length > 1) names.push('Остальное');
+    // Отобрано несколько (фильтр с выбором или «Остальное» кольца) — названиями, а не «Остальное»:
+    // две — обе, больше — две и сколько ещё
+    const list = keys.map(nameOf).filter(Boolean);
+    if (list.length) names.push(list.length <= 2 ? list.join(', ') : `${list.slice(0, 2).join(', ')} и ещё ${list.length - 2}`);
   }
   // Раскрытое — вместо названия раздела: рядом ещё период, а раздел видно по вкладке
   const shown = names.filter(Boolean);
