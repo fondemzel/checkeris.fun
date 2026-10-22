@@ -469,12 +469,14 @@ const SOURCE_FILTERS = [
 ];
 
 const sourceChips = () => drop(UI.filter, 'Фильтр',
-  dropRow('data-src=""', UI.layers, 'Все источники', !state.src)
+  // Что-то отобрано — первой строкой «Сбросить фильтры»: источник и группы разом
+  (state.src || state.sg ? dropRow('data-reset-filters', UI.close, 'Сбросить фильтры', false) + '<div class="drop-sep"></div>' : '')
+  + dropRow('data-src=""', UI.layers, 'Все источники', !state.src)
   + SOURCE_FILTERS.filter(([key]) => key !== 'failed' || failedCount > 0 || state.src === 'failed')
     .map(([key, label]) => dropRow(`data-src="${key}"`, SOURCES[key].icon, label, state.src === key)).join('')
   // Группа: все покупки только её категорий. Повторное нажатие снимает. Внутри кольца группы
   // (и раскрытого «Остального») групп не предлагаем: другая группа дала бы пустое кольцо
-  + (state.mode === 'ring' && (state.ringGroup || state.ringRest) ? '' : '<div class="drop-sep"></div>'
+  + (state.screen !== 'stats' && state.mode === 'ring' && (state.ringGroup || state.ringRest) ? '' : '<div class="drop-sep"></div>'
     + (meta?.categories ?? []).map((g) => dropRow(`data-sg="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, state.sg === g.slug)).join('')
     + dropRow(`data-sg="${NONE}"`, groupIcon('none'), 'Без категории', state.sg === NONE)),
   Boolean(state.src || state.sg));
@@ -5384,6 +5386,10 @@ async function onScreenClick(e) {
   // Фильтр по источнику: повторное нажатие снимает
   const inf = e.target.closest('[data-inf]');
   if (inf) return go({ inf: inf.dataset.inf }, true);
+  if (e.target.closest('[data-reset-filters]')) {
+    pulseNext = 'count';
+    return go({ src: '', sg: '' }, true);
+  }
   const sg = e.target.closest('[data-sg]');
   if (sg) {
     const next = state.sg === sg.dataset.sg ? '' : sg.dataset.sg;
@@ -5845,7 +5851,7 @@ function openTab(name, extra = {}, tapped = true) {
 // отпуская, провести до пункта и отпустить, а можно отпустить и нажать пункт. Выбор — как
 // смена периода в шапке: открывает этот экран и остаётся. Обычное нажатие — как было.
 // Периоды календарные, с начала: неделя с понедельника, месяц с 1-го, год с 1 января.
-const QUICK_TABS = ['summary', 'income'];
+const QUICK_TABS = ['summary', 'income', 'stats'];
 const QUICK_HOLD = 450; // мс — как долгое нажатие на строках ленты
 const quick = { press: null, el: null, tab: '', held: false, moved: false, ate: false };
 
@@ -8527,7 +8533,7 @@ async function screenAnalytics() {
   const n = B.keys.length;
   // Уровень: группы или категории раскрытой группы (или единственной группы в фильтре)
   const one = state.sg && !state.sg.includes(',') && findGroup(state.sg) ? state.sg : '';
-  const open = findGroup(state.ringGroup || one);
+  const open = findGroup(one);
   const keyOf = open ? (slug) => slug ?? NONE : (slug) => findCategory(slug)?.group.slug ?? NONE;
   // Раскрытая группа — только её траты: и строки, и график, и сумма в шапке
   const spend = (its, ops2) => anaSpend(its, ops2).filter((r) => !open || (findCategory(r.slug)?.group.slug ?? NONE) === open.slug);
@@ -9049,7 +9055,8 @@ $('screen').addEventListener('click', (e) => {
   if (row) {
     const key = row.dataset.ana;
     const one = state.sg && !state.sg.includes(',') && findGroup(state.sg);
-    if (!state.ringGroup && !one && key !== NONE) return go({ ringGroup: key, ringRest: '' });
+    // Группа раскрывается фильтром по ней — тем же, что в листе фильтров: видно, что отобрано, и снимается там же
+    if (!one && key !== NONE) return go({ sg: key, ringGroup: '', ringRest: '' });
     return go({ screen: 'summary', mode: 'list', sg: key, ringGroup: '', ringRest: '' });
   }
   if (e.target.closest('.ana-plot')) return anaPoint(e.clientX);
