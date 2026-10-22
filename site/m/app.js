@@ -1171,10 +1171,7 @@ function playList() {
     // Полосы строки заливаются, как только она проявилась; до того — спрятаны (шторка закрыта):
     // экран мог прийти без въезда (листание периодов), и тогда их ещё никто не прятал
     anaBarsKey = key;
-    document.querySelectorAll('#screen .ana-clip').forEach((b) => {
-      b.style.transition = 'none';
-      b.style.clipPath = 'inset(0 100% 0 0)';
-    });
+    document.querySelectorAll('#screen .ana-clip').forEach((b) => (b.style.clipPath = 'inset(0 100% 0 0)'));
   }
   [...document.querySelectorAll(stats ? '#screen .ana-row' : '#screen .list > *')].forEach((el, i) => {
     if (i >= 25) return stats && anaBarsKey === key && anaFillRow(el, 0);
@@ -8622,9 +8619,12 @@ function anaShort(kop) {
 /** Подпись деления: «5 окт.» или «окт.». */
 function anaTick(B, i) {
   const k = B.keys[i];
-  if (B.monthly) return new Date(`${k}-01T12:00:00`).toLocaleDateString('ru-RU', { month: 'short' });
-  return new Date(`${k}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  // Форматы — готовые: toLocaleDateString на каждое деление заметно тормозил листание
+  if (B.monthly) return ANA_MONTH.format(new Date(`${k}-01T12:00:00`));
+  return ANA_DAY.format(new Date(`${k}T12:00:00`));
 }
+const ANA_MONTH = new Intl.DateTimeFormat('ru-RU', { month: 'short' });
+const ANA_DAY = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' });
 
 /** График: этот период ярко, прошлый — бледнее, прогноз — точками. SVG 0–1000 × 0–600. */
 function anaChart({ B, n, cut, all, prevAll, forecast, names }) {
@@ -8712,12 +8712,17 @@ function holdAnalytics() {
 const anaKey = () => `${sectionsKey()}|${state.ringGroup ?? ''}`;
 let anaBarsKey = ''; // вид, полосы которого уже заливаются по строкам (playList)
 
-/** Полосы строки открываются шторкой: этот период (перерасход — тем же движением), прошлый — следом. */
+/**
+ * Полосы строки открываются шторкой: этот период (перерасход — тем же движением), прошлый —
+ * следом. Анимацией, а не переходом: переходу нужен пересчёт раскладки всей страницы, чтобы
+ * начать с закрытой шторки, — на телефоне это заметная пауза при листании
+ */
 function anaFillRow(row, wait) {
   row.querySelectorAll('.ana-clip').forEach((b) => {
     const delay = wait + (b.parentElement.classList.contains('ana-was') ? ANA_WAS : 0);
-    b.style.transition = `clip-path ${ANA_FILL}ms ${ANA_EASE} ${delay}ms`;
-    b.style.clipPath = `inset(0 ${(100 - Number(b.dataset.w)).toFixed(1)}% 0 0)`;
+    b.style.clipPath = ''; // закрытую шторку до начала держит сама анимация (fill: backwards)
+    b.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: `inset(0 ${(100 - Number(b.dataset.w)).toFixed(1)}% 0 0)` }],
+      { duration: ANA_FILL, easing: ANA_EASE, delay, fill: 'backwards' });
   });
 }
 
@@ -8751,20 +8756,10 @@ function animateAnalytics() {
   const end = document.querySelector('#screen .ana-end');
   const rows = anaBarsKey === anaKey() ? [] : [...document.querySelectorAll('#screen .ana-row')];
   anaBarsKey = anaKey();
-  shuts.forEach(({ rect }) => {
-    rect.style.transition = 'none';
-    rect.style.width = '0';
-  });
   [dot, end].forEach((p) => p?.classList.add('ana-hold'));
-  const bars = rows.map((row) => [...row.querySelectorAll('.ana-clip')]);
-  bars.flat().forEach((b) => {
-    b.style.transition = 'none';
-    b.style.clipPath = 'inset(0 100% 0 0)';
-  });
-  void document.body.offsetWidth;
   shuts.forEach(({ prev, rect }) => {
-    rect.style.transition = `width ${ANA_FILL}ms ${ANA_EASE} ${prev ? ANA_WAS : 0}ms`;
     rect.style.width = '';
+    rect.animate([{ width: '0px' }, { width: '1000px' }], { duration: ANA_FILL, easing: ANA_EASE, delay: prev ? ANA_WAS : 0, fill: 'backwards' });
   });
   rows.forEach((row, k) => anaFillRow(row, 120 + k * 40));
   if (dot) setTimeout(() => dot.classList.remove('ana-hold'), ANA_FILL * anaEaseTime(Number(dot.dataset.at)));
