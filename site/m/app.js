@@ -5008,7 +5008,12 @@ const SWIPE_FROM = 0.05;
 const SWIPE_TO = 0.3;
 /** Сколько протянули по шкале: 0 — до SWIPE_FROM, 1 — от SWIPE_TO. */
 const swipeProgress = (dx) => Math.min(1, Math.max(0, (Math.abs(dx) / window.innerWidth - SWIPE_FROM) / (SWIPE_TO - SWIPE_FROM)));
-const swipeTabNext = (dx) => SWIPE_TABS[SWIPE_TABS.indexOf(TAB_OF[state.screen]) + (dx < 0 ? 1 : -1)];
+/** Соседняя вкладка в сторону свайпа — по кругу: за «Аналитикой» снова «Расход», и наоборот. */
+const swipeTabNext = (dx) => {
+  const i = SWIPE_TABS.indexOf(TAB_OF[state.screen]);
+  const step = dx < 0 ? 1 : -1;
+  return i < 0 ? SWIPE_TABS[i + step] : SWIPE_TABS[(i + step + SWIPE_TABS.length) % SWIPE_TABS.length];
+};
 // Капсула выбранной вкладки на острове при свайпе: тянется к соседней вкладке вместе со сдвигом
 // экрана (дотянулась — когда экран сдвинут на полширины), по отпусканию стягивается на новую
 // вкладку или возвращается. Пока она видна, собственный фон выбранной вкладки спрятан (.pill-on)
@@ -8443,9 +8448,9 @@ function anaPrevNames(prev) {
   const months = wholeMonths(prev.from, prev.to);
   if (months === 1) {
     const m = parseDay(prev.from).getMonth();
-    return { in: `в ${ANA_IN[m]}`, to: `к ${ANA_TO[m]}`, key: ANA_NAME[m] };
+    return { in: `в ${ANA_IN[m]}`, to: `к ${ANA_TO[m]}`, key: ANA_NAME[m], of: `за ${ANA_NAME[m]}`, whole: ANA_NAME[m] };
   }
-  return { in: 'в прошлом периоде', to: 'к прошлому периоду', key: 'прошлый период' };
+  return { in: 'в прошлом периоде', to: 'к прошлому периоду', key: 'прошлый период', of: 'за прошлый период', whole: 'прошлый период' };
 }
 
 async function screenAnalytics() {
@@ -8486,14 +8491,13 @@ async function screenAnalytics() {
   if (cut < 0) return `${head(0, '')}<div class="empty">Период ещё не начался</div>`;
 
   const all = anaCum(cur.total);
-  // Прошлый период — по номеру деления: к этому же дню
+  // Линия прошлого периода на графике — по номеру деления, рядом с этим днём
   const pB = anaBuckets(prev.from, prev.to);
   const prevSplit = anaSplit(spend(history[0]?.rows ?? [], history[1]?.rows ?? []), { ...pB, of: (day) => {
     const i = pB.of(day);
     return i >= n ? -1 : i;
   }, keys: B.keys }, keyOf);
   const prevAll = anaCum(prevSplit.total);
-  const at = (arr) => arr[Math.min(cut, arr.length - 1)] ?? 0;
 
   // Прогноз «Всего» до конца идущего периода: к сегодняшнему — сколько обычно уходит дальше
   // (среднее по трём прошлым периодам), без истории — нынешний темп
@@ -8531,7 +8535,11 @@ async function screenAnalytics() {
   names.cur = month ? ANA_NAME[parseDay(from).getMonth()] : 'этот период';
   names.end = month ? 'К концу месяца' : 'К концу периода';
   const now = all[cut];
-  const was = at(prevAll);
+  // Прошлый период — целиком: сколько ушло за весь прошлый месяц, а не к этому же дню
+  const prevRows = spend(history[0]?.rows ?? [], history[1]?.rows ?? []);
+  const prevFull = new Map();
+  for (const r of prevRows) prevFull.set(keyOf(r.slug), (prevFull.get(keyOf(r.slug)) ?? 0) + r.sum);
+  const was = prevRows.reduce((sum, r) => sum + r.sum, 0);
   const going = cut < n - 1;
 
   // Шапка — как в «Расходе»: сумма, подпись, период, поиск; справа — сортировка и фильтр
@@ -8549,10 +8557,12 @@ async function screenAnalytics() {
   if (!curRows.length && !was) return `${head(0, note)}<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период трат нет'}</div>`;
 
   // Ответ фразой
+  // Идущий период ещё не кончился — сколько это от всего прошлого; прошедший — больше или меньше
   const dlt = was ? now / was - 1 : null;
-  const cmp = dlt == null ? '' : Math.abs(dlt) < 0.02
-    ? ` — столько же, сколько ${names.in}${going ? ' к этому дню' : ''}`
-    : ` — на <b class="${dlt < 0 ? 'ana-less' : 'ana-more'}">${Math.round(Math.abs(dlt) * 100)}% ${dlt < 0 ? 'меньше' : 'больше'}</b>, чем ${names.in}${going ? ' к этому дню' : ''}`;
+  const cmp = dlt == null ? ''
+    : going && dlt < -0.02 ? ` — это <b>${Math.round((now / was) * 100)}%</b> от трат ${names.of} (${anaShort(was)} ₽)`
+      : Math.abs(dlt) < 0.02 ? ` — столько же, сколько ${going ? `ушло ${names.of}` : names.in}`
+        : ` — на <b class="${dlt < 0 ? 'ana-less' : 'ana-more'}">${Math.round(Math.abs(dlt) * 100)}% ${dlt < 0 ? 'меньше' : 'больше'}</b>, чем ${going ? `за весь ${names.whole}` : names.in}`;
   const answer = `Потрачено <b>${anaShort(now)} ₽</b>${cmp}.${forecast ? ` ${names.end} выйдет около <b>${anaShort(forecast[n - 1])} ₽</b>.` : ''}`;
 
   // Сортировка: по сумме этого периода, по названию или как в настройках (без категории — в конце)
@@ -8567,10 +8577,9 @@ async function screenAnalytics() {
     category: (a, b) => (order(a.key) - order(b.key)) || 0,
   }[sort];
   const range = limits?.range ?? {};
-  const rows = new Set([...cur.byKey.keys(), ...prevSplit.byKey.keys()]);
+  const rows = new Set([...cur.byKey.keys(), ...prevFull.keys()]);
   const groupsRows = [...rows].map((k) => {
     const c = cur.byKey.get(k);
-    const p = prevSplit.byKey.get(k);
     const g = open ? null : findGroup(k);
     const cat = open ? findCategory(k) : null;
     return {
@@ -8579,7 +8588,7 @@ async function screenAnalytics() {
       icon: open ? cat?.category.icon || open.icon || 'none' : g?.icon ?? 'none',
       color: open ? categoryColor(open.slug, k) ?? open.color : g?.color ?? '#9aa3ad',
       now: c ? anaCum(c)[cut] : 0,
-      was: p ? at(anaCum(p)) : 0,
+      was: prevFull.get(k) ?? 0,
       limit: open ? 0 : range[k] ?? 0,
     };
   }).filter((r) => r.now || r.was)
