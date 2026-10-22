@@ -9425,9 +9425,11 @@ const film = {
   // а дальше ехать вместе с ней без отставания. Цель пропала со страницы — затемнение гаснет
   // up — выделить весь блок вокруг найденного (строку, карточку): 'text:…' находит только текст
   spot(target, { pad = 6, radius = null, dim = 0.62, up = null } = {}) {
-    const found = film.find(target);
-    const node = up ? found?.closest(up) : found;
-    if (!node) return false;
+    // Несколько целей — один вырез вокруг всех (две кнопки рядом)
+    const nodes = (Array.isArray(target) ? target : [target]).map((t) => (up ? film.find(t)?.closest(up) : film.find(t)));
+    const node = nodes[0];
+    if (!node || nodes.some((n) => !n)) return false;
+    film.extra = nodes.slice(1);
     if (!film.el) film.build();
     const own = parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0;
     // Откуда едем: где вырез сейчас. Было погашено — «наезд»: вырез сжимается к цели от краёв
@@ -9475,7 +9477,8 @@ const film = {
     });
   },
   /** Перейти на вкладку без перезагрузки страницы (та остаётся во весь экран): как нажатие. */
-  tab: (name, extra = {}) => (openTab(name, extra, false), true),
+  // tapped — как нажатие на остров (капсула перетекает); сценарий сам ставит отметку касания
+  tab: (name, extra = {}, tapped = false) => (openTab(name, extra, tapped), true),
   /** Вырез во весь экран (чуть шире краёв): с него начинается наезд. */
   full: () => ({ x: -4, y: -4, w: innerWidth + 8, h: innerHeight + 8, r: 0 }),
   /** Промежуточный вырез: от from к goal, доля t (с замедлением к концу). */
@@ -9489,7 +9492,10 @@ const film = {
     const alive = film.node?.isConnected && film.node.getClientRects().length;
     if (film.node && !alive) film.clear(); // элемент исчез — не держать рамку на пустом месте
     if (alive) {
-      const r = film.node.getBoundingClientRect();
+      const rs = [film.node, ...(film.extra ?? [])].map((n) => n.getBoundingClientRect());
+      const left = Math.min(...rs.map((x) => x.left));
+      const top = Math.min(...rs.map((x) => x.top));
+      const r = { left, top, width: Math.max(...rs.map((x) => x.right)) - left, height: Math.max(...rs.map((x) => x.bottom)) - top };
       const p = film.pad;
       const goal = { x: r.left - p, y: r.top - p, w: r.width + p * 2, h: r.height + p * 2, r: film.radius };
       film.shown = film.blend(film.from, goal, Math.min(1, (now - film.at) / FILM_MOVE));

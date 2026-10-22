@@ -11,6 +11,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { provisionTaxonomy } from './taxonomy.mjs';
 import { provisionIncome } from './incomecats.mjs';
 import { classifyItems } from './classify.mjs';
+import { demoMembers } from './demo.mjs';
 
 const INVITE_DAYS = 7;
 const sha = (v) => createHash('sha256').update(String(v)).digest('hex');
@@ -55,7 +56,8 @@ export function getBudget(db, user) {
   const isOwner = budget.owner_id === user.id;
   // Тестовая база — общая на всех, кто её включил: другие люди в ней — не участники
   if (budget.demo) {
-    return { id: budget.id, name: budget.name, demo: true, is_owner: false, is_home: false, members: [{ id: user.id, name: user.name ?? user.login, is_me: true, is_owner: false, receipts: 0 }], invites: [] };
+    // Участники — вымышленная пара тестовой базы: её чеки подписаны ими
+    return { id: budget.id, name: budget.name, demo: true, is_owner: false, is_home: false, members: demoMembers(db, budget.id), invites: [] };
   }
 
   const members = db
