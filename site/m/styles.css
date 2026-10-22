@@ -1742,6 +1742,21 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 }
 
 .picker-tile-name { font-size: 12px; line-height: 1.2; text-align: center; color: var(--muted); }
+
+/* Лист фильтров: ряд источников, черта, сетка групп; выбранная плитка — с кружком-галочкой */
+.filt-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 4px; }
+.filt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 4px; }
+.filt-sep { height: 1px; margin: 8px 4px; background: var(--line); }
+.filt-tile { padding: 8px 2px; gap: 5px; background: none; }
+.filt-tile .picker-tile-name { font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.filt-tile.on .picker-tile-name { color: var(--text); }
+.filt-ic { position: relative; display: block; }
+.filt-src-ic { background: var(--fill); color: var(--text); }
+.filt-check { position: absolute; right: -5px; bottom: -3px; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); color: #fff; box-shadow: 0 0 0 2px var(--bg); transform: scale(0); transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+.filt-check svg { width: 13px; height: 13px; stroke-width: 3; }
+.filt-tile.on .filt-check { transform: scale(1); }
+.filt-foot { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; margin-top: 12px; }
 .picker-tile:active { background: var(--press); }
 
 .picker-list { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--surface); }

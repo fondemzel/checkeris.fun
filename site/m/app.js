@@ -468,6 +468,17 @@ const SOURCE_FILTERS = [
   ['failed', 'Чеки с ошибкой'], // в фильтре — только когда такие есть (sourceChips)
 ];
 
+/** Короткие подписи источников — плитки листа фильтров и подпись под суммой при нескольких. */
+const SOURCE_SHORT = { receipt: 'Чеки', market: 'Маркетплейсы', bank: 'Банк', manual: 'Вручную', failed: 'С ошибкой' };
+/** Источник проходит отбор: ничего не выбрано — проходят все. */
+const srcOn = (kind) => !state.src || state.src.split(',').includes(kind);
+/** Подпись отбора по источникам: один — «только чеки», несколько — «чеки, банк». */
+const srcNote = () => {
+  const keys = state.src.split(',');
+  return keys.length === 1 ? SOURCE_FILTERS.find(([k]) => k === keys[0])?.[1].toLowerCase() ?? ''
+    : keys.map((k) => SOURCE_SHORT[k]?.toLowerCase()).filter(Boolean).join(', ');
+};
+
 const sourceChips = () => drop(UI.filter, 'Фильтр',
   // Что-то отобрано — первой строкой «Сбросить фильтры»: источник и группы разом
   (state.src || state.sg ? dropRow('data-reset-filters', UI.close, 'Сбросить фильтры', false) + '<div class="drop-sep"></div>' : '')
@@ -503,6 +514,7 @@ document.addEventListener('click', (e) => {
   // Сортировка — коротким попапом прямо из кнопки, как выбор периода на острове: пунктов
   // мало, лист снизу для них — лишнее движение через весь экран
   if (btn.title === 'Сортировка') return dropPopOpen(btn, menu);
+  if (menu.querySelector('[data-sg]')) return openFilterSheet(); // источники и группы — плитками
   const sheet = openChoice(btn.title, `<div class="choice-list">${menu.innerHTML}</div>`, (ev, close) => {
     const row = ev.target.closest('.drop-row');
     if (!row) return;
@@ -519,6 +531,56 @@ document.addEventListener('click', (e) => {
     close();
   });
 });
+
+/**
+ * Лист фильтров «Расхода» и «Аналитики»: верхний ряд — источники, под чертой — группы, плитками
+ * со значками. Выбрать можно несколько; выбранная плитка — с кружком-галочкой. Отбор применяется,
+ * когда лист закрывают («Показать», крестик, мимо, «назад»): применять на ходу нельзя — перерисовка
+ * экрана под листом спорила бы с его записью в истории
+ */
+function openFilterSheet() {
+  const src = new Set(state.src ? state.src.split(',') : []);
+  const sg = new Set(state.sg ? state.sg.split(',') : []);
+  const tile = (attr, ic, name, on) => `<button class="picker-tile filt-tile${on ? ' on' : ''}" type="button" ${attr}>
+    <span class="filt-ic">${ic}<b class="filt-check">${UI.ok}</b></span><span class="picker-tile-name">${esc(name)}</span></button>`;
+  const sources = Object.keys(SOURCE_SHORT).filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
+    .map((k) => tile(`data-fsrc="${k}"`, `<span class="pick-ic big filt-src-ic">${SOURCES[k].icon}</span>`, SOURCE_SHORT[k], src.has(k))).join('');
+  const groups = [...(meta?.categories ?? []), { slug: NONE, name: 'Без категории', icon: 'none' }]
+    .map((g) => tile(`data-fsg="${esc(g.slug)}"`, `<span class="pick-ic big" style="background:${g.color ?? 'var(--fill)'};color:${readableText(g.color ?? 'var(--fill)')}">${groupIcon(g.icon ?? 'none')}</span>`,
+      g.name, sg.has(g.slug))).join('');
+  const body = `<div class="filt-row">${sources}</div><div class="filt-sep"></div><div class="filt-grid">${groups}</div>
+    <div class="filt-foot"><button class="btn" type="button" data-filt-reset>Сбросить</button><button class="btn primary" type="button" data-filt-apply>Показать</button></div>`;
+  const sheet = openChoice('Фильтр', body, (e, close) => {
+    const t = e.target.closest('[data-fsrc], [data-fsg]');
+    if (t) {
+      const [set, key] = t.dataset.fsrc ? [src, t.dataset.fsrc] : [sg, t.dataset.fsg];
+      if (!set.delete(key)) set.add(key);
+      t.classList.toggle('on', set.has(key));
+      navigator.vibrate?.(8);
+      return;
+    }
+    if (e.target.closest('[data-filt-reset]')) {
+      src.clear();
+      sg.clear();
+      sheet.querySelectorAll('.filt-tile.on').forEach((x) => x.classList.remove('on'));
+      return;
+    }
+    if (e.target.closest('[data-filt-apply]')) close();
+  });
+  // Лист закрыли — применяем, когда отработает «назад» (его запись в истории)
+  const apply = () => {
+    const next = { src: [...src].join(','), sg: [...sg].join(',') };
+    if (next.src === state.src && next.sg === state.sg) return;
+    pulseNext = 'count';
+    go({ ...next, ringGroup: '', ringRest: '' }, true);
+  };
+  new MutationObserver((_, mo) => {
+    if (sheet.isConnected) return;
+    mo.disconnect();
+    if (history.state?.popup) addEventListener('popstate', () => setTimeout(apply, 0), { once: true });
+    else setTimeout(apply, 0);
+  }).observe(sheet.parentNode, { childList: true });
+}
 
 // ── попап меню у кнопки (сортировка) ──
 // Вырастает из кнопки вниз, как попап периода на острове (.quick). Строки — копия скрытого
@@ -747,7 +809,7 @@ function readUrl() {
   state.tg = p.get('tg') ?? '';
   state.tc = p.get('tc') ?? '';
   state.op = p.get('op') ?? '';
-  state.src = ['receipt', 'market', 'bank', 'manual'].includes(p.get('src')) ? p.get('src') : '';
+  state.src = (p.get('src') ?? '').split(',').filter((k) => ['receipt', 'market', 'bank', 'manual', 'failed'].includes(k)).join(',');
   state.inf = p.get('inf') ?? '';
   state.sg = p.get('sg') ?? '';
   state.added = p.get('added') ?? '';
@@ -960,7 +1022,7 @@ function summaryFeeds(from, to) {
   });
   const opsQuery = new URLSearchParams({ from, to, direction: 'debit', kind: 'expense', per: '20000' });
   // Переводы себе — отдельным разделом в конце (только по категориям): видно, что туда ушло
-  const withSelf = state.sort === 'category' && (!state.src || state.src === 'bank');
+  const withSelf = state.sort === 'category' && srcOn('bank');
   const selfQuery = new URLSearchParams({ from, to, direction: 'debit', kind: 'transfer', per: '20000' });
   // Карточка лимита под кольцом — без отборов: иначе потрачено не сравнить с лимитом
   const withLimit = meta?.limits_on !== false && state.mode === 'ring' && !state.src && !state.sg && !state.q.trim() && !state.ringRest;
@@ -994,11 +1056,11 @@ async function screenSummary() {
   }
 
   // Фильтр по источнику: итог и число покупок считаем по тому, что осталось
-  let shownItems = (state.src === 'bank' ? [] : data.rows.filter((r) => !state.src || itemSource(r) === state.src))
+  let shownItems = data.rows.filter((r) => srcOn(itemSource(r)))
     .filter((r) => (state.same ? sameAs('item', r) : matchesQ([r.name, r.seller, r.retail_place, SOURCES[itemSource(r)].title, T.sources[itemSource(r)],
       findCategory(r.category_slug)?.category.name], [r.sum, ...String(r.sums ?? '').split(','), ...String(r.prices ?? '').split(',')]
       .filter((v) => v !== '').map(Number))));
-  let shownOps = (!state.src || state.src === 'bank' ? bankRows : [])
+  let shownOps = (srcOn('bank') ? bankRows : [])
     .filter((op) => (state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title, T.sources.bank,
       bankById(op.bank)?.name, findCategory(op.category_slug)?.category.name], [op.amount, op.orig_amount])));
   // Отбор по группе — после источника и поиска: строки только её категорий
@@ -1011,7 +1073,7 @@ async function screenSummary() {
   }
   // Сканы с ошибкой — строками в «Без категории», «вне суммы»: за ту же покупку может быть
   // операция из банка, и трата посчиталась бы дважды. Сумма и дата — из QR-кода
-  const scanRows = (!state.src || state.src === 'failed') && (!state.sg || picked.has(NONE) || picked.has(''))
+  const scanRows = srcOn('failed') && (!state.sg || picked.has(NONE) || picked.has(''))
     ? (failed?.jobs ?? []).filter((j) => j.purchased_at.slice(0, 10) >= state.from && j.purchased_at.slice(0, 10) <= state.to)
       .filter((j) => matchesQ([SOURCES.failed.title, 'без категории'], [j.total_sum]))
     : [];
@@ -1024,7 +1086,7 @@ async function screenSummary() {
   const note = [
     part('count', `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`),
     SORTS[state.sort] ? part('sort', SORTS[state.sort][0].toLowerCase()) : '',
-    state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)[1].toLowerCase()) : '',
+    state.src ? part('src', srcNote()) : '',
     state.sg ? part('src', [...picked].map((k) => (k === NONE ? 'без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
     state.q ? part('q', state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
     perDayNote(shownItems, shownOps, part),
@@ -8431,14 +8493,14 @@ function anaSpend(items, ops) {
   const picked = new Set(state.sg ? state.sg.split(',') : []);
   const inGroup = (slug) => !state.sg || picked.has(slug ?? '') || picked.has(findCategory(slug)?.group.slug ?? NONE);
   const out = [];
-  if (state.src !== 'bank' && state.src !== 'failed') {
+  {
     for (const r of items) {
-      if (state.src && itemSource(r) !== state.src) continue;
+      if (!srcOn(itemSource(r))) continue;
       if (!matchesQ([r.name, r.seller, r.retail_place, findCategory(r.category_slug)?.category.name], [r.sum])) continue;
       if (inGroup(r.category_slug)) out.push({ day: r.day ?? r.purchased_at.slice(0, 10), slug: r.category_slug, sum: r.sum });
     }
   }
-  if (!state.src || state.src === 'bank') {
+  if (srcOn('bank')) {
     for (const op of ops) {
       if (!matchesQ([op.merchant, op.description, op.account_name, findCategory(op.category_slug)?.category.name], [op.amount])) continue;
       if (inGroup(op.category_slug)) out.push({ day: op.at.slice(0, 10), slug: op.category_slug, sum: op.amount });
@@ -8615,7 +8677,7 @@ async function screenAnalytics() {
     part('count', going ? `по ${B.monthly ? anaTick(B, cut) : ANA_DAY.format(parseDay(today))}` : `${int.format(curRows.length)} ${plural(curRows.length, 'покупка', 'покупки', 'покупок')}`),
     part('sort', SORTS[sort][0].toLowerCase()),
     open ? part('src', open.name) : '',
-    state.src ? part('src', SOURCE_FILTERS.find(([key]) => key === state.src)?.[1].toLowerCase() ?? '') : '',
+    state.src ? part('src', srcNote()) : '',
     picked.length && !open ? part('src', picked.map((k) => (k === NONE ? 'без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
     state.q ? part('q', `поиск «${state.q.trim()}»`) : '',
     forecast ? part('forecast', `прогноз ${anaShort(forecast[n - 1])} ₽`) : '',
