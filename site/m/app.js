@@ -1162,14 +1162,19 @@ function playList() {
     listPlayed = '';
     return;
   }
-  const key = sectionsKey() + (stats ? `|${state.ringGroup ?? ''}` : '');
+  const key = stats ? anaKey() : sectionsKey();
   if (key === listPlayed) return;
   listPlayed = key;
   if (!motion('sections')) return; // и при въезде экрана — одновременно с ним
-  [...document.querySelectorAll(stats ? '#screen .ana-row' : '#screen .list > *')].slice(0, 25).forEach((el, i) => {
+  if (stats && motion('ring')) anaBarsKey = key; // полосы строки заливаются, как только она проявилась
+  [...document.querySelectorAll(stats ? '#screen .ana-row' : '#screen .list > *')].forEach((el, i) => {
+    if (i >= 25) return stats && anaBarsKey === key && anaFillRow(el, 0);
     el.style.setProperty('--i', i);
     el.classList.add('row-in');
-    el.addEventListener('animationend', () => el.classList.remove('row-in'), { once: true });
+    el.addEventListener('animationend', () => {
+      el.classList.remove('row-in');
+      if (stats && anaBarsKey === key) anaFillRow(el, 0);
+    }, { once: true });
   });
 }
 
@@ -8666,22 +8671,36 @@ function holdAnalytics() {
   if (!motion('ring')) return;
   document.querySelectorAll('#screen .ana-line').forEach((p) => p.classList.add('ana-hold'));
   document.querySelectorAll('#screen .ana-fc, #screen .ana-dot, #screen .ana-end').forEach((p) => p.classList.add('ana-hold'));
-  document.querySelectorAll('#screen .ana-clip').forEach((b) => (b.style.clipPath = 'inset(0 100% 0 0)'));
+  // Полосы этого же вида уже залиты (тихое обновление данных) — не прячем
+  if (anaBarsKey !== anaKey()) document.querySelectorAll('#screen .ana-clip').forEach((b) => (b.style.clipPath = 'inset(0 100% 0 0)'));
+}
+
+/** Вид аналитики: период, отборы и раскрытая группа. */
+const anaKey = () => `${sectionsKey()}|${state.ringGroup ?? ''}`;
+let anaBarsKey = ''; // вид, полосы которого уже заливаются по строкам (playList)
+
+/** Полосы строки открываются шторкой: этот период (перерасход — тем же движением), прошлый — следом. */
+function anaFillRow(row, wait) {
+  row.querySelectorAll('.ana-clip').forEach((b) => {
+    const delay = wait + (b.parentElement.classList.contains('ana-was') ? ANA_WAS : 0);
+    b.style.transition = `clip-path ${ANA_FILL}ms cubic-bezier(0.3, 0, 0.2, 1) ${delay}ms`;
+    b.style.clipPath = `inset(0 ${(100 - Number(b.dataset.w)).toFixed(1)}% 0 0)`;
+  });
 }
 
 const ANA_FILL = 800; // шторка полосы, мс
 const ANA_WAS = 150; // прошлый период — следом, с этим сдвигом
 
 /**
- * Линии рисуются слева направо, точки — в конце. Полосы строки заливаются от нуля, когда сама
- * строка уже проявилась (playList): сначала этот период (перерасход — продолжением того же
- * движения), чуть позже — прошлый.
+ * Линии рисуются слева направо, точки — в конце. Полосы заливает playList — каждой строке сразу,
+ * как она проявилась; здесь — только если строки не проявлялись (тогда лесенкой).
  */
 function animateAnalytics() {
   if (!motion('ring')) return;
   const lines = document.querySelectorAll('#screen .ana-line');
   const late = document.querySelectorAll('#screen .ana-fc, #screen .ana-dot, #screen .ana-end');
-  const rows = [...document.querySelectorAll('#screen .ana-row')];
+  const rows = anaBarsKey === anaKey() ? [] : [...document.querySelectorAll('#screen .ana-row')];
+  anaBarsKey = anaKey();
   lines.forEach((p) => {
     p.classList.add('ana-hold');
     p.classList.remove('ana-draw');
@@ -8697,17 +8716,7 @@ function animateAnalytics() {
     p.classList.add('ana-draw');
     p.classList.remove('ana-hold');
   });
-  const ease = 'cubic-bezier(0.3, 0, 0.2, 1)';
-  const fill = (list, wait) => list.forEach((b) => {
-    const delay = wait + (b.parentElement.classList.contains('ana-was') ? ANA_WAS : 0);
-    b.style.transition = `clip-path ${ANA_FILL}ms ${ease} ${delay}ms`;
-    b.style.clipPath = `inset(0 ${(100 - Number(b.dataset.w)).toFixed(1)}% 0 0)`;
-  });
-  rows.forEach((row, k) => {
-    // Строка ещё проявляется — полосы ждут её конца; иначе — сразу, лесенкой
-    if (row.classList.contains('row-in')) row.addEventListener('animationend', () => fill(bars[k], 0), { once: true });
-    else fill(bars[k], 120 + k * 40);
-  });
+  rows.forEach((row, k) => anaFillRow(row, 120 + k * 40));
   setTimeout(() => late.forEach((p) => p.classList.remove('ana-hold')), RING_ANIM * 0.75);
 }
 
