@@ -3260,7 +3260,7 @@ async function followScan(job, onUpdate) {
 /**
  * Считанный код — картинкой в рамке, пока ФНС отвечает: камера к этому времени погашена, и
  * рамка была бы просто тёмной. Модули — скруглёнными точками, глазки — кольцами; часть точек
- * изредка мигает, по зелёной рамке бежит свет: видно, что работа идёт.
+ * изредка мигает, по рамке бегут утолщения (scannerRun): видно, что работа идёт.
  */
 function scannerQr(text) {
   let q;
@@ -3286,15 +3286,111 @@ function scannerQr(text) {
     <rect x="${x + 0.5}" y="${y + 0.5}" width="6" height="6" rx="1.7" fill="none" stroke="currentColor" stroke-width="1"/>
     <rect x="${x + 2}" y="${y + 2}" width="3" height="3" rx="0.9"/>`).join('');
   return `<div class="scanner-qr"><svg viewBox="-1 -1 ${n + 2} ${n + 2}" aria-hidden="true">${eyes}${dots}</svg></div>
-    <svg class="scanner-run" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <rect x="0.6" y="0.6" width="98.8" height="98.8" rx="5.5" pathLength="100"/></svg>`;
+    <canvas class="scanner-run" aria-hidden="true"></canvas>`;
+}
+
+/**
+ * Утолщения, бегущие по рамке сканера: голова — втрое толще рамки, хвост плавно сужается до её
+ * толщины. Их 2–4, у каждого своя скорость; одни вырастают в случайном месте, другие сходят на
+ * нет — сужаются до толщины рамки. Рисуются по кадрам на холсте поверх рамки, пока сканер ждёт
+ * ответа; отказ (scan-failed) или закрытие — останавливают.
+ */
+function scannerRun(current) {
+  const canvas = current.el.querySelector('canvas.scanner-run');
+  if (!canvas) return;
+  const PAD = 6; // холст шире рамки: голова выходит за её линию
+  const LINE = 2; // толщина рамки — как border у .scanner-frame
+  const R = 16 - LINE / 2; // радиус по середине линии рамки
+  const box = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(box.width * dpr);
+  canvas.height = Math.round(box.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  // Середина линии рамки — скруглённый прямоугольник; точка и нормаль по длине s
+  const x0 = PAD + LINE / 2;
+  const y0 = PAD + LINE / 2;
+  const w = box.width - 2 * x0;
+  const h = box.height - 2 * y0;
+  const sx = w - 2 * R;
+  const sy = h - 2 * R;
+  const arc = (Math.PI / 2) * R;
+  const per = 2 * sx + 2 * sy + 4 * arc;
+  const at = (s) => {
+    s = ((s % per) + per) % per;
+    const corner = (cx, cy, a0, t) => {
+      const a = a0 + (t / arc) * (Math.PI / 2);
+      return { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a), nx: Math.cos(a), ny: Math.sin(a) };
+    };
+    const legs = [
+      [sx, (t) => ({ x: x0 + R + t, y: y0, nx: 0, ny: -1 })],
+      [arc, (t) => corner(x0 + w - R, y0 + R, -Math.PI / 2, t)],
+      [sy, (t) => ({ x: x0 + w, y: y0 + R + t, nx: 1, ny: 0 })],
+      [arc, (t) => corner(x0 + w - R, y0 + h - R, 0, t)],
+      [sx, (t) => ({ x: x0 + w - R - t, y: y0 + h, nx: 0, ny: 1 })],
+      [arc, (t) => corner(x0 + R, y0 + h - R, Math.PI / 2, t)],
+      [sy, (t) => ({ x: x0, y: y0 + h - R - t, nx: -1, ny: 0 })],
+      [arc, (t) => corner(x0 + R, y0 + R, Math.PI, t)],
+    ];
+    for (const [len, fn] of legs) {
+      if (s <= len) return fn(s);
+      s -= len;
+    }
+    return legs[0][1](0);
+  };
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const GROW = 700; // мс — вырасти или сойти на нет
+  const spawn = (t) => ({ s: rnd(0, per), v: rnd(0.04, 0.12) * per / 1000, len: rnd(0.12, 0.24) * per, born: t, dies: t + rnd(2500, 6000) });
+  let comets = null;
+  let last = 0;
+  const frame = (t) => {
+    if (scanner !== current || current.el.classList.contains('scan-failed')) return ctx.clearRect(0, 0, box.width, box.height);
+    if (!comets) comets = Array.from({ length: 2 + Math.floor(Math.random() * 2) }, () => spawn(t - rnd(0, GROW)));
+    const dt = last ? Math.min(50, t - last) : 0;
+    last = t;
+    // Догорели — убираем; меньше двух — вырастает новое, иногда и сверх того, но не больше четырёх
+    comets = comets.filter((c) => t < c.dies + GROW);
+    const alive = comets.filter((c) => t < c.dies).length;
+    if (alive < 2 || (comets.length < 4 && Math.random() < dt / 2500)) comets.push(spawn(t));
+    ctx.clearRect(0, 0, box.width, box.height);
+    ctx.fillStyle = '#4ade80';
+    for (const c of comets) {
+      c.s += c.v * dt;
+      const ease = (k) => k * k * (3 - 2 * k);
+      const amp = ease(Math.min(1, (t - c.born) / GROW)) * ease(Math.max(0, Math.min(1, (c.dies + GROW - t) / GROW)));
+      // Контур: от головы к хвосту по внешней стороне, обратно — по внутренней
+      const N = Math.ceil(c.len / 1.5); // точка на каждые полтора пикселя: на скруглениях не видно граней
+      const side = [];
+      for (let i = 0; i <= N; i++) {
+        const k = i / N; // 0 — голова, 1 — хвост
+        const p = at(c.s - k * c.len);
+        const half = (LINE + 2 * LINE * amp * (1 - k) ** 1.6) / 2;
+        side.push([p, half]);
+      }
+      ctx.beginPath();
+      side.forEach(([p, half], i) => ctx[i ? 'lineTo' : 'moveTo'](p.x + p.nx * half, p.y + p.ny * half));
+      for (let i = side.length - 1; i >= 0; i--) ctx.lineTo(side[i][0].x - side[i][0].nx * side[i][1], side[i][0].y - side[i][0].ny * side[i][1]);
+      ctx.closePath();
+      ctx.fill();
+      // Голова — скруглённая: кружок её толщины
+      const head = at(c.s);
+      ctx.beginPath();
+      ctx.arc(head.x, head.y, side[0][1], 0, Math.PI * 2);
+      ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 /** Отправка распознанной строки и слежение за заданием до готовности. */
 async function submitScan(current, qr) {
   current.el.classList.add('caught');
   const frame = current.el.querySelector('.scanner-frame');
-  if (!frame.querySelector('.scanner-qr')) frame.insertAdjacentHTML('afterbegin', scannerQr(qr));
+  if (!frame.querySelector('.scanner-qr')) {
+    frame.insertAdjacentHTML('afterbegin', scannerQr(qr));
+    scannerRun(current);
+  }
   const again = '<button class="btn" type="button" data-again>Сканировать ещё</button>';
   scannerSay(current, 'Код прочитан, отправляем…');
 
@@ -8998,18 +9094,20 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
   // Доходы (опыт): зелёные линии — этот период ярко, прошлый бледнее
   const incPrevLine = incPrevAll ? `<path class="ana-line ana-inc ana-prev" d="${path(incPrevAll, n - 1)}" />` : '';
   const incLine = incAll ? `<path class="ana-line ana-inc" d="${path(incAll.slice(0, cut + 1), cut)}" />` : '';
-  // Линии открываются шторками, как полосы групп: этот период с прогнозом — одним движением,
-  // прошлый — следом. Шторка — прямоугольник обрезки; id — свои у каждого графика: при листании
-  // на экране бывают два графика сразу
+  // Линии открываются шторками, как полосы групп, каждая следующая — с задержкой: этот период с
+  // прогнозом (одним движением), прошлый, доходы этого, доходы прошлого. Шторка — прямоугольник
+  // обрезки; id — свои у каждого графика: при листании на экране бывают два графика сразу
   const id = `ana${++anaClipSeq}`;
   const shut = (name) => `<clipPath id="${id}-${name}"><rect class="ana-shut" x="0" y="${-H}" width="${W}" height="${3 * H}" /></clipPath>`;
   return `
     <div class="ana-plot">
       <svg class="ana-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-        <defs>${shut('prev')}${shut('now')}</defs>
+        <defs>${[0, 1, 2, 3].map((k) => shut(k)).join('')}</defs>
         ${grid}<line class="ana-base" x1="0" x2="${W}" y1="${H}" y2="${H}" />
-        <g clip-path="url(#${id}-prev)" data-shut="prev">${incPrevLine}<path class="ana-line ana-prev" d="${path(prevAll, prevAll.length - 1)}" /></g>
-        <g clip-path="url(#${id}-now)" data-shut="now">${incLine}${fc}<path class="ana-line ana-now" d="${path(run, cut)}" /></g>
+        <g clip-path="url(#${id}-3)" data-shut="3">${incPrevLine}</g>
+        <g clip-path="url(#${id}-2)" data-shut="2">${incLine}</g>
+        <g clip-path="url(#${id}-1)" data-shut="1"><path class="ana-line ana-prev" d="${path(prevAll, prevAll.length - 1)}" /></g>
+        <g clip-path="url(#${id}-0)" data-shut="0">${fc}<path class="ana-line ana-now" d="${path(run, cut)}" /></g>
         <line class="ana-cursor" x1="0" x2="0" y1="0" y2="${H}" />
       </svg>
       <span class="ana-dot" data-at="${(x(cut) / W).toFixed(3)}" style="left:${(x(cut) / W) * 100}%;top:${(y(all[cut]) / H) * 100}%"></span>
@@ -9165,6 +9263,7 @@ function anaFillRow(row, wait) {
 const ANA_SORTS = ['category', 'name', 'sum']; // сортировки строк групп и категорий
 const ANA_FILL = 800; // шторка полосы, мс
 const ANA_WAS = 150; // прошлый период — следом, с этим сдвигом
+const ANA_LINE_STEP = 220; // линии графика: каждая следующая — с этой задержкой
 const ANA_EASE = 'cubic-bezier(0.3, 0, 0.2, 1)'; // шторки полос и линий
 
 /** Когда шторка (ANA_EASE) дойдёт до доли пути at: 0–1 от её длительности. */
@@ -9187,15 +9286,17 @@ function anaEaseTime(at) {
 function animateAnalytics() {
   if (!motion('ring')) return;
   const shuts = [...document.querySelectorAll('#screen [data-shut]')]
-    .map((g) => ({ prev: g.dataset.shut === 'prev', rect: document.querySelector(`#screen ${g.getAttribute('clip-path').slice(4, -1)} .ana-shut`) }));
+    .filter((g) => g.firstElementChild) // пустые (доходов нет) — не ждём
+    .map((g) => ({ rect: document.querySelector(`#screen ${g.getAttribute('clip-path').slice(4, -1)} .ana-shut`) }));
   const dot = document.querySelector('#screen .ana-dot');
   const end = document.querySelector('#screen .ana-end');
   const rows = anaBarsKey === anaKey() ? [] : [...document.querySelectorAll('#screen .ana-row')];
   anaBarsKey = anaKey();
   [dot, end].forEach((p) => p?.classList.add('ana-hold'));
-  shuts.forEach(({ prev, rect }) => {
+  // Порядок в разметке — снизу вверх; рисуются сверху: этот период первым, каждая следующая — позже
+  shuts.reverse().forEach(({ rect }, k) => {
     rect.style.width = '';
-    rect.animate([{ width: '0px' }, { width: '1000px' }], { duration: ANA_FILL, easing: ANA_EASE, delay: prev ? ANA_WAS : 0, fill: 'backwards' });
+    rect.animate([{ width: '0px' }, { width: '1000px' }], { duration: ANA_FILL, easing: ANA_EASE, delay: k * ANA_LINE_STEP, fill: 'backwards' });
   });
   // Столбики растут снизу вверх слева направо, прошлый период — чуть позже своего. Масштабом,
   // а не обрезкой: масштаб считает видеокарта, обрезка перерисовывала все столбики каждый кадр

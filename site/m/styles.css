@@ -1453,11 +1453,8 @@ button.bank-op { cursor: pointer; }
 @keyframes qr-in { from { opacity: 0; transform: scale(0.85); } }
 .qr-blink { animation: qr-blink 3s ease-in-out infinite; }
 @keyframes qr-blink { 0%, 82%, 100% { opacity: 1; } 88% { opacity: 0.12; } 94% { fill: #22c55e; opacity: 1; } }
-/* Свет бежит по зелёной рамке */
-.scanner-run { position: absolute; inset: -2px; width: calc(100% + 4px); height: calc(100% + 4px); overflow: visible; }
-.scanner-run rect { fill: none; stroke: #d9ffe6; stroke-width: 3; vector-effect: non-scaling-stroke; stroke-linecap: round;
-  stroke-dasharray: 16 84; filter: drop-shadow(0 0 4px #4ade80); animation: scan-run 1.6s linear infinite; }
-@keyframes scan-run { to { stroke-dashoffset: -100; } }
+/* Холст бегущих утолщений (scannerRun): шире рамки на 6 px с каждой стороны — голова выходит за линию */
+.scanner-run { position: absolute; inset: -8px; width: calc(100% + 16px); height: calc(100% + 16px); }
 .scanner.scan-failed .scanner-run { display: none; }
 .scanner.scan-failed .qr-blink { animation: none; }
 .scanner.scan-failed .scanner-qr { opacity: 0.35; }
