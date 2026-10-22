@@ -2110,36 +2110,6 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .bar-title.long { font-size: 16px; letter-spacing: -0.01em; }
 .bar-title.long.tight { font-size: 15px; }
 
-/* ── Аналитика ─────────────────────────────────────────── */
-.ana-hero { padding: 16px; margin-bottom: 12px; }
-.ana-hero .note { margin: 4px 0 0; }
-.ana-hero .btn { margin-top: 12px; width: 100%; }
-.ana-title { font-size: 17px; font-weight: 600; }
-.ana-big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.ana-big small { font-size: 15px; font-weight: 500; color: var(--muted); }
-.ana-big.over { color: var(--danger); font-size: 22px; }
-.ana-bars { display: grid; gap: 4px; margin-top: 12px; }
-.ana-bar-label { font-size: 12px; color: var(--muted); }
-.ana-bar { display: block; height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; }
-.ana-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
-.ana-bar.ok i { background: #1baf7a; }
-.ana-bar.warn i { background: #eda100; }
-.ana-bar.over i { background: var(--danger); }
-.ana-sec { padding-bottom: 6px; }
-.ana-row {
-  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0;
-  border: none; border-top: 1px solid var(--line); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
-}
-.sec-title + .ana-row { border-top: none; }
-.ana-row .ic { width: 34px; height: 34px; border-radius: 10px; }
-.ana-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.ana-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ana-note { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.ana-main .ana-bar { height: 4px; margin-top: 2px; }
-.ana-pct { flex: none; min-width: 42px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
-.ana-pct.warn { color: #c98400; }
-.ana-pct.over { color: var(--danger); }
-.ana-set { flex: none; font-size: 13px; color: var(--accent); }
 .limit-edit { display: flex; flex-direction: column; gap: 10px; }
 .limit-field { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--surface); }
 .limit-field input { flex: 1; min-width: 0; border: none; background: none; font: inherit; font-size: 20px; font-weight: 600; outline: none; }
@@ -2188,11 +2158,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 @keyframes lim-flash { 0%, 60% { background: color-mix(in srgb, var(--accent) 16%, transparent); } }
 .srow.lim-flash { animation: lim-flash 2.4s ease-out; }
 
-/* Аналитика: строки групп появляются по одной, полосы заполняются от нуля (animateAnalytics) */
 @keyframes ana-in { from { opacity: 0; transform: translateY(8px); } }
-.ana-row.ana-in { animation: ana-in 0.3s ease-out both; animation-delay: calc(var(--i, 0) * 45ms); }
-.ana-bar i.ana-fill { transition: width 0.6s cubic-bezier(0.2, 0.8, 0.3, 1); }
-/* Лента расходов и доходов появляется по строке (playList) — как группы в аналитике */
+/* Лента расходов и доходов появляется по строке (playList) */
 .row-in { animation: ana-in 0.3s ease-out both; animation-delay: calc(var(--i, 0) * 35ms); }
 .row-wait { opacity: 0; } /* строка ждёт своей очереди проявиться */
 
@@ -2271,12 +2238,11 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; line-height: 1.25; }
 .ana-top b { font-weight: 600; white-space: nowrap; }
 .ana-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ana-twin { display: flex; align-items: flex-end; gap: 10px; margin: 0 0 3px; }
-/* Две полосы: тонкий зазор между ними, внешние углы скруглены (у верхней — верхние, у нижней — нижние) */
+.ana-twin { display: flex; align-items: flex-end; gap: 18px; margin: 4.5px 0 3px; } /* над полосами — в полтора раза больше, чем под ними */
+/* Две полосы с тонким зазором */
 .ana-bars { flex: 1; display: flex; flex-direction: column; gap: 1px; border-radius: 4px; overflow: hidden; } /* маска: блок полос — один прямоугольник со скруглёнными углами */
-.ana-bar { position: relative; height: 6px; background: var(--fill); }
+.ana-bar { position: relative; height: 8px; background: var(--fill); }
 .ana-bar i { position: absolute; left: 0; top: 0; bottom: 0; }
-.ana-bar i.ana-fill { transition: width 0.9s cubic-bezier(0.3, 0, 0.2, 1); }
 .ana-was i { opacity: 0.35; }
 .ana-over { background: repeating-linear-gradient(-45deg, var(--c) 0 3px, transparent 3px 6px) !important; }
 .ana-psum { flex: none; min-width: 52px; text-align: right; white-space: nowrap; font-size: 12px; line-height: 1; color: var(--muted); }

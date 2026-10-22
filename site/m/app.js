@@ -1149,22 +1149,24 @@ const RING_POP = 300; // проявление значка
 const RING_ANIM = 1300; // заливка и проявление последнего значка
 
 /**
- * Появление ленты расходов и доходов: заголовки разделов и строки — по одной сверху вниз, как
- * группы в аналитике («Раскрытие разделов»). Только новый список — другой период, отбор, вход на
- * экран; набор в поиске и перерисовка теми же данными его заново не проявляют.
+ * Появление ленты расходов и доходов: заголовки разделов и строки — по одной сверху вниз («Раскрытие
+ * разделов»); так же — строки групп и категорий в аналитике. Только новый список — другой период,
+ * отбор, вход на экран; набор в поиске и перерисовка теми же данными его заново не проявляют.
  */
 let listPlayed = '';
 function playList() {
-  const fresh = ['summary', 'income'].includes(state.screen) && state.mode !== 'ring' && document.querySelector('#screen .list');
+  const stats = state.screen === 'stats';
+  const fresh = stats ? document.querySelector('#screen .ana-row')
+    : ['summary', 'income'].includes(state.screen) && state.mode !== 'ring' && document.querySelector('#screen .list');
   if (!fresh) {
     listPlayed = '';
     return;
   }
-  const key = sectionsKey();
+  const key = sectionsKey() + (stats ? `|${state.ringGroup ?? ''}` : '');
   if (key === listPlayed) return;
   listPlayed = key;
   if (!motion('sections')) return; // и при въезде экрана — одновременно с ним
-  [...document.querySelectorAll('#screen .list > *')].slice(0, 25).forEach((el, i) => {
+  [...document.querySelectorAll(stats ? '#screen .ana-row' : '#screen .list > *')].slice(0, 25).forEach((el, i) => {
     el.style.setProperty('--i', i);
     el.classList.add('row-in');
     el.addEventListener('animationend', () => el.classList.remove('row-in'), { once: true });
@@ -8546,7 +8548,11 @@ async function screenAnalytics() {
     : ` — на <b class="${dlt < 0 ? 'ana-less' : 'ana-more'}">${Math.round(Math.abs(dlt) * 100)}% ${dlt < 0 ? 'меньше' : 'больше'}</b>, чем ${names.in}${going ? ' к этому дню' : ''}`;
   const answer = `Потрачено <b>${anaShort(now)} ₽</b>${cmp}.${forecast ? ` ${names.end} выйдет около <b>${anaShort(forecast[n - 1])} ₽</b>.` : ''}`;
 
-  // Группы (или категории раскрытой группы) — по тратам этого периода
+  // Группы — по тратам этого периода; категории раскрытой группы — в порядке настроек
+  const order = (k) => {
+    const i = open ? open.subcategories.findIndex((c) => c.slug === k) : -1;
+    return i < 0 ? Infinity : i;
+  };
   const range = limits?.range ?? {};
   const rows = new Set([...cur.byKey.keys(), ...prevSplit.byKey.keys()]);
   const groupsRows = [...rows].map((k) => {
@@ -8563,7 +8569,8 @@ async function screenAnalytics() {
       was: p ? at(anaCum(p)) : 0,
       limit: open ? 0 : range[k] ?? 0,
     };
-  }).filter((r) => r.now || r.was).sort((a, b) => b.now - a.now || b.was - a.was);
+  }).filter((r) => r.now || r.was)
+    .sort(open ? (a, b) => order(a.key) - order(b.key) || b.now - a.now : (a, b) => b.now - a.now || b.was - a.was);
 
   return head(now, note)
     + `<div class="card ana-card" data-shift><p class="ana-answer">${answer}</p>${anaChart({ B, n, cut, all, prevAll, forecast, names })}`
@@ -8660,19 +8667,28 @@ function holdAnalytics() {
   document.querySelectorAll('#screen .ana-bar i').forEach((b) => (b.style.width = '0'));
 }
 
-/** Линии рисуются слева направо, полосы заливаются от нуля — как кольцо; точки — в конце. */
+const ANA_FILL = 700; // заливка полосы этого периода, мс
+const ANA_WAS = 150; // прошлый период — следом, с этим сдвигом
+const ANA_OVER = 400; // перерасход — после заливки до лимита
+
+/**
+ * Линии рисуются слева направо, точки — в конце. Полосы строки заливаются от нуля, когда сама
+ * строка уже проявилась (playList): сначала этот период, чуть позже — прошлый, перерасход —
+ * только после заливки до лимита.
+ */
 function animateAnalytics() {
   if (!motion('ring')) return;
   const lines = document.querySelectorAll('#screen .ana-line');
   const late = document.querySelectorAll('#screen .ana-fc, #screen .ana-dot, #screen .ana-end');
-  const bars = [...document.querySelectorAll('#screen .ana-bar i')];
+  const rows = [...document.querySelectorAll('#screen .ana-row')];
   lines.forEach((p) => {
     p.classList.add('ana-hold');
     p.classList.remove('ana-draw');
   });
   late.forEach((p) => p.classList.add('ana-hold'));
-  bars.forEach((b) => {
-    b.classList.remove('ana-fill');
+  const bars = rows.map((row) => [...row.querySelectorAll('.ana-bar i')]);
+  bars.flat().forEach((b) => {
+    b.style.transition = 'none';
     b.style.width = '0';
   });
   void document.body.offsetWidth;
@@ -8680,10 +8696,18 @@ function animateAnalytics() {
     p.classList.add('ana-draw');
     p.classList.remove('ana-hold');
   });
-  bars.forEach((b, k) => {
-    b.style.transitionDelay = `${120 + Math.floor(k / 3) * 40}ms`;
-    b.classList.add('ana-fill');
+  const ease = 'cubic-bezier(0.3, 0, 0.2, 1)';
+  const fill = (list, wait) => list.forEach((b) => {
+    const over = b.classList.contains('ana-over');
+    const was = b.parentElement.classList.contains('ana-was');
+    const delay = wait + (over ? ANA_FILL : was ? ANA_WAS : 0);
+    b.style.transition = over ? `width ${ANA_OVER}ms ease-out ${delay}ms` : `width ${ANA_FILL}ms ${ease} ${delay}ms`;
     b.style.width = `${b.dataset.w}%`;
+  });
+  rows.forEach((row, k) => {
+    // Строка ещё проявляется — полосы ждут её конца; иначе — сразу, лесенкой
+    if (row.classList.contains('row-in')) row.addEventListener('animationend', () => fill(bars[k], 0), { once: true });
+    else fill(bars[k], 120 + k * 40);
   });
   setTimeout(() => late.forEach((p) => p.classList.remove('ana-hold')), RING_ANIM * 0.75);
 }
