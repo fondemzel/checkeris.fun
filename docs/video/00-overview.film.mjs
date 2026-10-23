@@ -38,6 +38,7 @@ const pressTab = async (f, name, extra) => {
   await f.wait(BEAT);
   const r = await f.eval(`film.rect(${JSON.stringify(TAB(name))})`);
   await f.eval(`(film.touch.down(${r.x}, ${r.y}), film.tab(${JSON.stringify(name)}, ${JSON.stringify(extra)}, true), setTimeout(() => film.touch.up(), 120), true)`);
+  await f.clear(); // экран сменился — выделение растворяется, следующее приходит уже на новом экране
 };
 
 // Скан без записи в базу. Чек — настоящий чек демо-семьи: «Лента», 15 мая — продукты, корм и
@@ -161,24 +162,21 @@ export default async (f) => {
   await press(f, 'text:3 месяца', { pad: 2 });
   await f.clear();
   await f.wait(1600); // шторки линий нового периода
-  await spotSoon(f, '.ana-card', { pad: 2 });
-  const plot = await f.eval(`film.rect('.ana-plot')`);
-  await f.down({ x: plot.left + plot.w * 0.62, y: plot.y });
-  await f.move({ x: plot.left + plot.w * 0.42, y: plot.y }, 1200); // подсказка едет по дням
-  await f.wait(300);
-  await f.up();
+  // Сначала — столбики, по ним палец ведёт подсказку по дням
   await press(f, VIEW);
   await show(f, '.ana-card', { pad: 2 }, 1200); // столбики растут
-  await f.eval(`document.querySelector('#screen .ana-row')?.closest('.card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), true`);
-  await show(f, '#screen .ana-row', { up: '.card', pad: 2 });
-  if (await f.eval(`!!document.querySelector('#screen .ana-over')`)) {
-    await f.eval(`film.spot(document.querySelector('#screen .ana-over').closest('.ana-row'), { pad: 2 })`);
-    await f.wait(BEAT * 2);
-  }
-  // «Питание» — первая строка блока: после прокрутки к группам она может быть выше края экрана
-  await f.eval(`document.querySelector('[data-ana="food"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), true`);
-  await f.wait(500);
-  await press(f, '[data-ana="food"]', { pad: 2 });
+  const plot = await f.eval(`film.rect('.ana-plot')`);
+  await f.down({ x: plot.left + plot.w * 0.62, y: plot.y });
+  await f.move({ x: plot.left + plot.w * 0.42, y: plot.y }, 1200); // подсказка едет по столбикам
+  await f.wait(300);
+  await f.up();
+  // Блок групп целиком не выделяем: он выше экрана — вырез шире экрана, и выделение будто пропадает
+  // «Питомцы» — с перерасходом: выделение сразу переезжает на эту строку и едет с ней, пока экран
+  // докручивает её на середину; затем нажатие — её категории и график
+  await f.spot('[data-ana="pets"]', { pad: 2 });
+  await f.eval(`document.querySelector('[data-ana="pets"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), true`);
+  await f.wait(1400); // прокрутка — и взгляд на перерасход
+  await f.tap('[data-ana="pets"]');
   await f.wait(1500);
   await f.clear();
   await f.eval(`localStorage.setItem('checker.anaView', 'line'), true`); // вид графика — как был

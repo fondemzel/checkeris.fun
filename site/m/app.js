@@ -345,6 +345,7 @@ const state = {
   same: '', // точный отбор «все такие же» из карточки: 'item|название' | 'op|продавец' | 'in|описание'
   inf: '', // фильтр доходов: '' | '-' (без категории) | коды групп доходов через запятую
   isrc: '', // источники доходов: '' — все | bank,manual
+  step: '', // деление графика аналитики: '' — по длине периода | d | w | m | q | y
   added: '', // чек, только что добавленный сканом или руками
   sort: 'category', // списки: date | category | name | sum; по умолчанию — defaultSort(экран)
   dir: 'desc',
@@ -515,7 +516,7 @@ document.addEventListener('click', (e) => {
   const menu = btn.nextElementSibling;
   // Сортировка — коротким попапом прямо из кнопки, как выбор периода на острове: пунктов
   // мало, лист снизу для них — лишнее движение через весь экран
-  if (btn.title === 'Сортировка') return dropPopOpen(btn, menu);
+  if (btn.title === 'Сортировка' || 'pop' in btn.dataset) return dropPopOpen(btn, menu);
   if (menu.querySelector('[data-sg], [data-inf]')) return openFilterSheet(Boolean(menu.querySelector('[data-inf]'))); // источники и группы — плитками
   const sheet = openChoice(btn.title, `<div class="choice-list">${menu.innerHTML}</div>`, (ev, close) => {
     const row = ev.target.closest('.drop-row');
@@ -791,6 +792,7 @@ function go(patch, replace = false) {
   if (['summary', 'stats'].includes(state.screen) && state.sg) params.set('sg', state.sg);
   if (state.screen === 'income' && state.inf) params.set('inf', state.inf);
   if (state.screen === 'income' && state.isrc) params.set('isrc', state.isrc);
+  if (state.screen === 'stats' && state.step) params.set('step', state.step);
   if (state.added) params.set('added', state.added);
   if (state.screen === 'receipts' && state.filter !== 'all') params.set('filter', state.filter);
   const usual = defaultSort(state.screen);
@@ -831,6 +833,7 @@ function readUrl() {
   state.src = (p.get('src') ?? '').split(',').filter((k) => ['receipt', 'market', 'bank', 'manual', 'failed'].includes(k)).join(',');
   state.inf = p.get('inf') ?? '';
   state.isrc = (p.get('isrc') ?? '').split(',').filter((k) => ['bank', 'manual'].includes(k)).join(',');
+  state.step = ['d', 'w', 'm', 'q', 'y'].includes(p.get('step')) ? p.get('step') : '';
   state.sg = p.get('sg') ?? '';
   state.added = p.get('added') ?? '';
   state.filter = FILTERS.includes(p.get('filter')) ? p.get('filter') : 'all';
@@ -8754,28 +8757,66 @@ function anaSpend(items, ops) {
  * Деления оси: до двух месяцев — дни, до года — недели (по семь дней от начала периода; ключ —
  * первый день), до трёх лет — месяцы, до двенадцати — кварталы, дольше — годы.
  */
-function anaBuckets(from, to) {
+function anaBuckets(from, to, step = '') {
   const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
-  const dayKeys = Array.from({ length: days <= 366 ? days : 0 }, (_, i) => isoDay(addDays(parseDay(from), i)));
-  if (days <= 62) {
-    const at = new Map(dayKeys.map((k, i) => [k, i]));
-    return { keys: dayKeys, monthly: false, of: (day) => at.get(day) ?? -1 };
-  }
-  if (days <= 366) {
+  const months = anaMonths(from, to);
+  const s = anaStep(from, to, step);
+  if (s === 'd' || s === 'w') {
+    const dayKeys = Array.from({ length: days }, (_, i) => isoDay(addDays(parseDay(from), i)));
+    if (s === 'd') {
+      const at = new Map(dayKeys.map((k, i) => [k, i]));
+      return { keys: dayKeys, step: s, monthly: false, of: (day) => at.get(day) ?? -1 };
+    }
     const at = new Map(dayKeys.map((k, i) => [k, Math.floor(i / 7)]));
     const keys = dayKeys.filter((_, i) => i % 7 === 0);
     const ends = keys.map((_, i) => dayKeys[Math.min(i * 7 + 6, days - 1)]); // последний день недели
-    return { keys, ends, weekly: true, monthly: false, of: (day) => at.get(day) ?? -1 };
+    return { keys, ends, step: s, weekly: true, monthly: false, of: (day) => at.get(day) ?? -1 };
   }
-  const months = [];
-  for (let d = parseDay(from); isoDay(d) <= to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(isoDay(d).slice(0, 7));
-  // Дольше трёх лет месяцы мельчат — кварталы («2026-Q1»), дольше двенадцати — годы
-  const span = months.length > 144 ? 'year' : months.length > 36 ? 'quarter' : '';
+  const span = s === 'y' ? 'year' : s === 'q' ? 'quarter' : '';
   const keyOf = (month) => (span === 'year' ? month.slice(0, 4)
     : span === 'quarter' ? `${month.slice(0, 4)}-Q${Math.floor((Number(month.slice(5, 7)) - 1) / 3) + 1}` : month);
   const keys = [...new Set(months.map(keyOf))];
   const at = new Map(keys.map((k, i) => [k, i]));
-  return { keys, monthly: !span, span, of: (day) => at.get(keyOf(day.slice(0, 7))) ?? -1 };
+  return { keys, step: s, monthly: !span, span, of: (day) => at.get(keyOf(day.slice(0, 7))) ?? -1 };
+}
+
+/** Месяцы периода: ['2026-10', '2026-11', …]. */
+function anaMonths(from, to) {
+  const out = [];
+  for (let d = parseDay(from); isoDay(d) <= to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) out.push(isoDay(d).slice(0, 7));
+  return out;
+}
+
+/**
+ * Какие деления предлагать (кнопка в карточке графика): до двух месяцев — дни, недели, месяцы;
+ * до трёх лет — недели, месяцы, кварталы, годы; дольше — месяцы, кварталы, годы.
+ */
+function anaSteps(from, to) {
+  const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
+  if (days <= 62) return ['d', 'w', 'm'];
+  return anaMonths(from, to).length <= 36 ? ['w', 'm', 'q', 'y'] : ['m', 'q', 'y'];
+}
+
+/**
+ * Деление графика: выбранное (state.step), если для периода его предлагают, иначе — по длине:
+ * до двух месяцев — дни, до года — недели, до трёх лет — месяцы, до двенадцати — кварталы, дольше — годы.
+ */
+function anaStep(from, to, step = '') {
+  if (step && anaSteps(from, to).includes(step)) return step;
+  const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
+  const months = anaMonths(from, to).length;
+  return days <= 62 ? 'd' : days <= 366 ? 'w' : months <= 36 ? 'm' : months <= 144 ? 'q' : 'y';
+}
+
+const ANA_STEP_NAMES = { d: 'по дням', w: 'по неделям', m: 'по месяцам', q: 'по кварталам', y: 'по годам' };
+
+/** Кнопка деления в карточке графика: попап, как у сортировки, — варианты под длину периода. */
+function anaStepDrop(from, to, current) {
+  const rows = anaSteps(from, to).map((k) => dropRow(`data-ana-step="${k}"`, UI.calendar, cap(ANA_STEP_NAMES[k]), k === current)).join('');
+  return `<div class="drop ana-step">
+    <button class="ana-step-btn" type="button" data-drop data-pop aria-label="Деление графика" title="Деление графика">${esc(ANA_STEP_NAMES[current])}${UI.chevron}</button>
+    <div class="drop-menu" role="menu" hidden>${rows}</div>
+  </div>`;
 }
 
 /** Накопленная сумма по делениям: [5, 0, 3] → [5, 5, 8]. */
@@ -8832,7 +8873,7 @@ async function screenAnalytics() {
     }),
   ]);
 
-  const B = anaBuckets(from, to);
+  const B = anaBuckets(from, to, state.step);
   const n = B.keys.length;
   // Уровень: группы или категории раскрытой группы (или единственной группы в фильтре)
   const one = state.sg && !state.sg.includes(',') && findGroup(state.sg) ? state.sg : '';
@@ -8855,7 +8896,7 @@ async function screenAnalytics() {
 
   const all = anaCum(cur.total);
   // Линия прошлого периода на графике — по номеру деления, рядом с этим днём
-  const pB = anaBuckets(prev.from, prev.to);
+  const pB = anaBuckets(prev.from, prev.to, B.step);
   const prevSplit = anaSplit(spend(history[0]?.rows ?? [], history[1]?.rows ?? []), { ...pB, of: (day) => {
     const i = pB.of(day);
     return i >= n ? -1 : i;
@@ -8869,7 +8910,7 @@ async function screenAnalytics() {
     const runs = [];
     for (let p = 0; p < ANA_USUAL; p += 1) {
       if (!history[p * 2]) continue;
-      const pb = anaBuckets(past[p].from, past[p].to);
+      const pb = anaBuckets(past[p].from, past[p].to, B.step);
       const run = anaSplit(spend(history[p * 2].rows, history[p * 2 + 1]?.rows ?? []), { ...pb, of: (day) => {
         const i = pb.of(day);
         return i >= n ? -1 : i;
@@ -8969,7 +9010,7 @@ async function screenAnalytics() {
     .sort((a, b) => compare(a, b) * back);
 
   return head(now, note)
-    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
+    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color, stepBtn: anaStepDrop(from, to, B.step) }) : anaChart({ stepBtn: anaStepDrop(from, to, B.step), B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
     + `<div class="ana-income-row">${sums.charAt(0).toUpperCase()}${sums.slice(1)}</div>`
     + '</div>'
     + section(open ? open.name : 'Группы', open ? 'Нажмите на категорию, чтобы открыть её траты' : 'Нажмите на группу, чтобы увидеть её категории',
@@ -9077,7 +9118,7 @@ function anaMonotone(P, a = 0, b = P.length - 1) {
 }
 
 /** График: этот период ярко, прошлый — бледнее, прогноз — точками. SVG 0–1000 × 0–600. */
-function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll }) {
+function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll, stepBtn = '' }) {
   const W = 1000;
   const H = 600;
   const top = Math.max(all[cut], ...prevAll, ...(forecast ?? []).filter((v) => v != null),
@@ -9118,7 +9159,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${axis}</div>
-    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}${incAll || incPrevAll ? '<span><i class="k-inc"></i>доходы</span>' : ''}</div>`;
+    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}${incAll || incPrevAll ? '<span><i class="k-inc"></i>доходы</span>' : ''}${stepBtn}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
 let anaClipSeq = 0; // номера шторок графиков
@@ -9169,7 +9210,7 @@ function anaView() {
  * широким бледным столбиком, этот — узким ярким спереди; у раскрытой группы — её цветом. Растут снизу вверх
  * (animateAnalytics).
  */
-function anaBars({ B, n, cut, now, was, names, tint }) {
+function anaBars({ B, n, cut, now, was, names, tint, stepBtn = '' }) {
   const W = 1000;
   const H = 600;
   const top = Math.max(...now.slice(0, cut + 1), ...was, 1) * 1.05;
@@ -9194,7 +9235,7 @@ function anaBars({ B, n, cut, now, was, names, tint }) {
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${axis}</div>
-    <div class="ana-keys"${tint ? ` style="--accent:${tint}"` : ''}><span><i class="k-col"></i>${esc(names.cur)}</span><span><i class="k-col k-col-prev"></i>${esc(names.key)}</span></div>`;
+    <div class="ana-keys"${tint ? ` style="--accent:${tint}"` : ''}><span><i class="k-col"></i>${esc(names.cur)}</span><span><i class="k-col k-col-prev"></i>${esc(names.key)}</span>${stepBtn}</div>`;
 }
 
 /**
@@ -9368,6 +9409,8 @@ $('screen').addEventListener('click', (e) => {
     return go({ screen: 'summary', mode: 'list', sg: key, ringGroup: '', ringRest: '' });
   }
   if (e.target.closest('.ana-plot')) return anaPoint(e.clientX);
+  const step = e.target.closest('[data-ana-step]');
+  if (step) return go({ step: step.dataset.anaStep }, true);
   if (e.target.closest('[data-ana-view]')) {
     try {
       localStorage.setItem('checker.anaView', anaView() === 'bars' ? 'line' : 'bars');
