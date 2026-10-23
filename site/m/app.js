@@ -4531,7 +4531,7 @@ const SCREENS = {
     title: () => ringTitle('Доход', (k) => (k === '-' ? T.income.noCategory : (meta?.income ?? []).find((g) => g.slug === k)?.name ?? incomeCat(k)?.name)),
     render: screenIncome,
   },
-  stats: { title: 'Аналитика', render: screenAnalytics, after: () => animateAnalytics() },
+  stats: { title: 'Сводка', render: screenAnalytics, after: () => animateAnalytics() },
   settings: { title: 'Настройки', render: screenSettings, after: () => settingsSearch() },
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
@@ -6154,6 +6154,8 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
 
 function openTab(name, extra = {}, tapped = true) {
   if (tapped) pillTap(TAB_OF[state.screen], name);
+  // «Сводка» открывается годом (по месяцам), если период не задан явно (попап острова, сценарий)
+  if (name === 'stats' && !('from' in extra)) extra = { ...monthPeriod(new Date().getFullYear(), 0, 12), ...extra };
   const sort = defaultSort(name);
   go({ screen: name, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '', sg: '', ...extra }, true);
 }
@@ -8808,6 +8810,12 @@ function anaStep(from, to, step = '') {
   return days <= 62 ? 'd' : days <= 366 ? 'w' : months <= 36 ? 'm' : months <= 144 ? 'q' : 'y';
 }
 
+/** Деление столбиков по умолчанию: крупнее, чем у линий, — до двух месяцев дни, до полугода недели, дальше месяцы. */
+function anaBarsStep(from, to) {
+  const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
+  return days <= 62 ? 'd' : days <= 186 ? 'w' : anaMonths(from, to).length <= 36 ? 'm' : '';
+}
+
 const ANA_STEP_NAMES = { d: 'по дням', w: 'по неделям', m: 'по месяцам', q: 'по кварталам', y: 'по годам' };
 
 /** Кнопка деления в карточке графика: попап, как у сортировки, — варианты под длину периода. */
@@ -8873,7 +8881,9 @@ async function screenAnalytics() {
     }),
   ]);
 
-  const B = anaBuckets(from, to, state.step);
+  // Деление на выбор — только у столбиков (по умолчанию у них крупнее: год — по месяцам); линиям
+  // мелкое деление и нужно — кривая плавнее
+  const B = anaBuckets(from, to, anaView() === 'bars' ? state.step || anaBarsStep(from, to) : '');
   const n = B.keys.length;
   // Уровень: группы или категории раскрытой группы (или единственной группы в фильтре)
   const one = state.sg && !state.sg.includes(',') && findGroup(state.sg) ? state.sg : '';
@@ -9010,7 +9020,7 @@ async function screenAnalytics() {
     .sort((a, b) => compare(a, b) * back);
 
   return head(now, note)
-    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color, stepBtn: anaStepDrop(from, to, B.step) }) : anaChart({ stepBtn: anaStepDrop(from, to, B.step), B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
+    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color, stepBtn: anaStepDrop(from, to, B.step) }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
     + `<div class="ana-income-row">${sums.charAt(0).toUpperCase()}${sums.slice(1)}</div>`
     + '</div>'
     + section(open ? open.name : 'Группы', open ? 'Нажмите на категорию, чтобы открыть её траты' : 'Нажмите на группу, чтобы увидеть её категории',
@@ -9118,7 +9128,7 @@ function anaMonotone(P, a = 0, b = P.length - 1) {
 }
 
 /** График: этот период ярко, прошлый — бледнее, прогноз — точками. SVG 0–1000 × 0–600. */
-function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll, stepBtn = '' }) {
+function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll }) {
   const W = 1000;
   const H = 600;
   const top = Math.max(all[cut], ...prevAll, ...(forecast ?? []).filter((v) => v != null),
@@ -9159,7 +9169,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${axis}</div>
-    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}${incAll || incPrevAll ? '<span><i class="k-inc"></i>доходы</span>' : ''}${stepBtn}</div>`;
+    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}${incAll || incPrevAll ? '<span><i class="k-inc"></i>доходы</span>' : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
 let anaClipSeq = 0; // номера шторок графиков
@@ -9199,9 +9209,9 @@ function anaAxes(B, n, x, y, top) {
 /** Вид графика аналитики: 'line' — накопительные линии, 'bars' — столбики по делениям. */
 function anaView() {
   try {
-    return localStorage.getItem('checker.anaView') === 'bars' ? 'bars' : 'line';
+    return localStorage.getItem('checker.anaView') === 'line' ? 'line' : 'bars'; // по умолчанию — столбики
   } catch {
-    return 'line';
+    return 'bars';
   }
 }
 
