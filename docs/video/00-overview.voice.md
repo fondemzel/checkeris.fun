@@ -51,9 +51,9 @@
 [bright, upbeat female narrator of a product tutorial; warm and engaged, a light smile in the voice, lively but natural pace, clear diction — energetic without sounding like an ad] Бюджет можно вести как одному, так и всей семьёй. [short pause] Банки подключаются здесь же, [short pause] копия базы сохраняется сама, [short pause] а лимиты подскажут, <emphasis>где пора притормозить</emphasis>.
 ```
 
-**08** — 47–51 с, аналитика: три месяца, линии
+**08** — 47–51 с, сводка: три месяца, линии
 ```
-[bright, upbeat female narrator of a product tutorial; warm and engaged, a light smile in the voice, lively but natural pace, clear diction — energetic without sounding like an ad] Аналитика сравнивает с прошлым периодом [short pause] и подсказывает, <emphasis>сколько выйдет</emphasis> к концу.
+[bright, upbeat female narrator of a product tutorial; warm and engaged, a light smile in the voice, lively but natural pace, clear diction — energetic without sounding like an ad] Сводка сравнивает с прошлым периодом [short pause] и подсказывает, <emphasis>сколько выйдет</emphasis> к концу.
 ```
 
 **09** — 51–56 с, столбики по неделям

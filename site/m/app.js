@@ -6166,7 +6166,7 @@ function openTab(name, extra = {}, tapped = true) {
 // смена периода в шапке: открывает этот экран и остаётся. Обычное нажатие — как было.
 // Периоды календарные, с начала: неделя с понедельника, месяц с 1-го, год с 1 января.
 const QUICK_TABS = ['summary', 'income', 'stats'];
-const QUICK_HOLD = 450; // мс — как долгое нажатие на строках ленты
+const QUICK_HOLD = 250; // мс — попап острова и сортировки: обычное нажатие короче ~150 мс, ждать дольше незачем
 const quick = { press: null, el: null, tab: '', held: false, moved: false, ate: false };
 
 function quickPeriods() {
@@ -8966,7 +8966,7 @@ async function screenAnalytics() {
   const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
   const picked = state.sg ? state.sg.split(',') : [];
   const note = [
-    part('count', going ? `по ${B.monthly ? anaTick(B, cut) : ANA_DAY.format(parseDay(today))}` : `${int.format(curRows.length)} ${plural(curRows.length, 'покупка', 'покупки', 'покупок')}`),
+    part('count', going ? `по ${ANA_DAY.format(parseDay(today))}` : `${int.format(curRows.length)} ${plural(curRows.length, 'покупка', 'покупки', 'покупок')}`),
     part('sort', SORTS[sort][0].toLowerCase()),
     open ? part('src', open.name) : '',
     state.src ? part('src', srcNote()) : '',
