@@ -2355,17 +2355,43 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .bubble-att { display: block; color: var(--muted); font-size: 14px; }
 .bubble-time { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; text-align: right; }
 
-.composer { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 14px; }
-.composer textarea {
-  width: 100%;
-  min-height: 84px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-2);
+/* Подсказки в переписке — по центру, мелко, как служебные строки мессенджера */
+.chat-system { align-self: center; margin: 2px 0 6px; color: var(--muted); font-size: 13px; text-align: center; }
+.chat-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 32px 0; color: var(--muted); text-align: center; }
+.chat-empty p { margin: 0; font-size: 15px; line-height: 1.4; }
+.chat-empty-ic { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--fill); color: var(--accent); }
+.chat-empty-ic svg { width: 26px; height: 26px; }
+
+/* Поле сообщения внизу: серая «таблетка» и круглая кнопка со стрелкой */
+.composer-bar { display: flex; align-items: flex-end; gap: 8px; }
+.composer-bar textarea {
+  flex: 1;
+  min-height: 40px;
+  max-height: 132px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--fill);
   color: var(--text);
   font: inherit;
-  font-size: 16px;
-  resize: vertical;
+  font-size: 16px; /* меньше — и iOS увеличит страницу при вводе */
+  line-height: 22px;
+  resize: none;
+  outline: none;
 }
-.composer .btn { align-self: flex-end; height: 40px; padding: 0 20px; }
+.composer-bar textarea::placeholder { color: var(--muted); }
+.send-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  transition: opacity 0.15s;
+}
+.send-btn:disabled { opacity: 0.35; }
+.send-btn svg { width: 20px; height: 20px; stroke-width: 2.4; }

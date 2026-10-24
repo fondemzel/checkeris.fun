@@ -115,6 +115,7 @@ const UI = {
   ),
   trash: svg('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
   chat: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
+  send: svg('<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>'),
   shield: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
@@ -4590,7 +4591,13 @@ const SCREENS = {
   set_limits: { title: T.settings.limits.label, render: screenSetLimits, after: limitsFocus },
   set_backup: { title: T.settings.backup.label, render: screenSetBackup },
   set_support: { title: T.settings.support.title, render: screenSetSupport },
-  set_ticket: { title: () => (state.sup === 'new' ? T.settings.support.newTitle : T.settings.support.ticket), render: screenSetTicket, after: ticketAfter },
+  // Поле сообщения — внизу, над меню, как в мессенджере (полоса #actions)
+  set_ticket: {
+    title: () => (state.sup === 'new' ? T.settings.support.newTitle : T.settings.support.ticket),
+    render: screenSetTicket,
+    actions: () => composerBar(),
+    after: ticketAfter,
+  },
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
   set_banks: { title: T.settings.banks.label, render: screenSetBanks },
   privacy: { title: T.settings.data.label, render: screenPrivacy },
@@ -6545,36 +6552,60 @@ function ticketBubbles(t) {
     .join('');
 }
 
-const composer = (placeholder, button) => `
-  <div class="composer">
-    <textarea id="ticket-text" rows="3" maxlength="4000" placeholder="${esc(placeholder)}"></textarea>
-    <button class="btn primary" type="button" data-ticket-send>${button}</button>
+/** Поле сообщения, как в мессенджере: растёт с текстом, справа — круглая кнопка со стрелкой. */
+const composerBar = () => `
+  <div class="composer-bar">
+    <textarea id="ticket-text" rows="1" maxlength="4000" placeholder="${esc(T.settings.support.placeholder)}" aria-label="${esc(T.settings.support.placeholder)}"></textarea>
+    <button class="send-btn" type="button" data-ticket-send disabled aria-label="${esc(T.settings.support.send)}">${UI.send}</button>
   </div>`;
 
 async function screenSetTicket() {
   const P = T.settings.support;
+  // Новое обращение — пустая переписка с подсказкой, писать — в поле внизу
   if (state.sup === 'new') {
-    return section('', P.newFoot, composer(P.placeholder, P.send));
+    return `<div class="chat-empty"><span class="chat-empty-ic">${UI.chat}</span><p>${P.newHint}</p></div>`;
   }
   let t;
   try {
     t = await api(`/api/support/${encodeURIComponent(state.sup)}`);
   } catch {
-    return section('', '', `<p class="note ticket-empty">${P.notFound}</p>`);
+    return `<p class="chat-system" data-ticket-closed>${P.notFound}</p>`;
   }
   // Открыли — ответы прочитаны: число в настройках обновится при следующем показе
   kept.delete('/api/session');
-  const foot = t.status === 'closed' ? P.closed : t.telegram ? P.replyFoot : P.replyFootApp;
-  return `<div class="chat-list">${ticketBubbles(t)}</div>`
-    + (t.status === 'closed' ? `<p class="sec-foot">${foot}</p>` : section('', foot, composer(P.more, P.send)));
+  const top = `<p class="chat-system">${t.telegram ? P.replyFoot : P.replyFootApp}</p>`;
+  const closed = t.status === 'closed' ? `<p class="chat-system" data-ticket-closed>${P.closed}</p>` : '';
+  return `<div class="chat-list">${top}${ticketBubbles(t)}${closed}</div>`;
 }
 
-/** Переписка открылась — к последнему сообщению; новое обращение — сразу клавиатура. */
+/** Закрытое обращение — без поля; открытое — к последнему сообщению; новое — сразу клавиатура. */
 function ticketAfter() {
-  if (state.sup === 'new') return document.getElementById('ticket-text')?.focus();
-  const last = document.querySelector('.chat-list .bubble:last-child');
-  last?.scrollIntoView({ block: 'end' });
+  if (document.querySelector('[data-ticket-closed]')) {
+    $('actions').hidden = true;
+    updateDock();
+    return;
+  }
+  if (state.sup === 'new') {
+    document.getElementById('ticket-text')?.focus();
+    return;
+  }
+  document.querySelector('.chat-list .bubble:last-of-type')?.scrollIntoView({ block: 'end' });
 }
+
+/** Поле растёт с текстом до пяти строк, кнопка оживает, когда есть что отправить. */
+$('actions').addEventListener('input', (e) => {
+  if (e.target.id !== 'ticket-text') return;
+  const field = e.target;
+  field.style.height = 'auto';
+  field.style.height = `${Math.min(field.scrollHeight, 132)}px`;
+  $('actions').querySelector('[data-ticket-send]').disabled = !field.value.trim();
+  updateDock();
+});
+
+$('actions').addEventListener('click', (e) => {
+  const send = e.target.closest('[data-ticket-send]');
+  if (send && state.screen === 'set_ticket') sendTicket(send);
+});
 
 async function sendTicket(button) {
   const P = T.settings.support;
@@ -6586,10 +6617,10 @@ async function sendTicket(button) {
     const res = await post('/api/support', { text, thread_id: state.sup === 'new' ? null : Number(state.sup) });
     if (state.sup === 'new') {
       toast(P.sent);
-      // Вместо формы — уже переписка этого обращения; «назад» вернёт к списку
+      // Вместо пустой — уже переписка этого обращения; «назад» вернёт к списку
       return go({ screen: 'set_ticket', sup: String(res.thread_id) }, true);
     }
-    render();
+    render(); // перерисует и поле — пустым
   } catch (err) {
     toast(err.message);
     button.disabled = false;
@@ -6601,8 +6632,6 @@ $('screen').addEventListener('click', (e) => {
   if (!['set_support', 'set_ticket'].includes(state.screen)) return;
   const ticket = e.target.closest('[data-ticket]');
   if (ticket) return go({ screen: 'set_ticket', sup: ticket.dataset.ticket });
-  const send = e.target.closest('[data-ticket-send]');
-  if (send) return sendTicket(send);
   return null;
 });
 
