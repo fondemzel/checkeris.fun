@@ -440,15 +440,15 @@ try {
       }
       await Promise.race([new Promise((ok) => shot.on('close', ok)), sleep(8000)]);
       await sleep(1500);
-      // Запись телефона — с переменной частотой кадров (кадр, только когда экран меняется): монтаж на
-      // ней разъезжается. Переводим в постоянные 60 к/с, почти без потерь (CRF 12); исходник — удаляем
-      const vfr = `${resolve(phoneRec)}.vfr.mp4`;
-      adb('pull', PHONE_FILE, vfr);
+      adb('pull', PHONE_FILE, resolve(phoneRec));
       adb('shell', 'rm', PHONE_FILE);
-      execFileSync(ffmpeg(), ['-y', '-loglevel', 'error', '-i', vfr, '-vf', 'fps=60', '-fps_mode', 'cfr', '-c:v', 'libx264',
-        '-preset', 'slow', '-crf', '12', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', resolve(phoneRec)]);
-      rmSync(vfr);
-      console.log('запись прогона (60 к/с, постоянная частота):', resolve(phoneRec));
+      // Запись телефона — с переменной частотой кадров (кадр, только когда экран меняется): монтаж на
+      // ней разъезжается. Рядом — копия с постоянными 60 к/с, теми же настройками, что scripts/to_cfr.bat
+      const cfr = resolve(phoneRec).replace(/\.mp4$/i, '') + '_cfr.mp4';
+      execFileSync(ffmpeg(), ['-y', '-loglevel', 'error', '-i', resolve(phoneRec), '-r', '60', '-c:v', 'libx264', '-crf', '18', '-g', '60',
+        '-c:a', 'aac', '-b:a', '192k', cfr]);
+      console.log('запись прогона:', resolve(phoneRec));
+      console.log('для монтажа (60 к/с):', cfr);
     });
     if (rec && PHONE) {
       // Запись остановить нечем, кроме предела времени: ждём его и режем ролик по сценарию

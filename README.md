@@ -11,7 +11,7 @@
 | `site/` | Лендинг и кабинет `/cabinet` — статика, без сборщика |
 | `deploy/` | systemd-юнит и конфиг nginx для VPS |
 | `scripts/` | `deploy_site.sh` — версия, changelog, push и выкладка на сервер одной командой |
-| `docs/` | [Кабинет](docs/cabinet.md), [Деплой](docs/deploy.md) |
+| `docs/` | Документы по направлениям работы — [карта](docs/README.md): приложение, банки, данные, бизнес, видео, сервер |
 | [`CHANGELOG_SITE.md`](CHANGELOG_SITE.md) | История версий сайта и кабинета |
 | `client/` | Задел под мобильный клиент и ботов |
 

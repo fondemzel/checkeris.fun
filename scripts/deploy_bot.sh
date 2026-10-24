@@ -5,7 +5,7 @@
 #   scripts/deploy_bot.sh --setup    — ещё и обновить описание и меню бота в Telegram
 #
 # Хост — ssh-псевдоним из ~/.ssh/config, по умолчанию vps3; другой — BOT_HOST=...
-# Первичная установка (Node, пользователь, .env, служба) описана в docs/deploy.md.
+# Первичная установка (Node, пользователь, .env, служба) описана в docs/infra/deploy.md.
 set -euo pipefail
 
 HOST="${BOT_HOST:-vps3}"
