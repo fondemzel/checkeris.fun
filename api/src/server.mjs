@@ -67,7 +67,7 @@ import {
 import { scanQuota } from './quota.mjs';
 import { overview, personDetail, addSource, removeSource } from './admin.mjs';
 import {
-  supportIncoming, supportRelayed, supportList, supportThread, supportReply, supportStatus,
+  supportIncoming, supportList, supportThread, supportReply, supportStatus,
   supportMine, supportMineThread, supportFromApp, supportUnread,
 } from './support.mjs';
 import {
@@ -370,7 +370,7 @@ async function handleApi(req, res, url) {
 
   // Бот с зарубежного сервера. Открыто наружу, но без верной подписи не принимается
   if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm', '/api/telegram/outbox',
-       '/api/telegram/sent', '/api/telegram/known', '/api/telegram/support', '/api/telegram/support-relayed'].includes(pathname)) {
+       '/api/telegram/sent', '/api/telegram/known', '/api/telegram/support'].includes(pathname)) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     let raw;
     let body;
@@ -386,9 +386,8 @@ async function handleApi(req, res, url) {
     // Сообщения, которые Чекер хочет отправить людям: бот забирает их и отправляет сам
     if (pathname.endsWith('/outbox')) return sendJson(res, 200, { messages: takeOutbox(db) });
     if (pathname.endsWith('/sent')) return sendJson(res, 200, noteBotMessage(db, body));
-    // Поддержка (support.mjs): сообщение боту, которое не вход, и разосланные администраторам копии
+    // Поддержка (support.mjs): сообщение боту, которое не вход
     if (pathname.endsWith('/support')) return sendJson(res, 200, supportIncoming(db, body));
-    if (pathname.endsWith('/support-relayed')) return sendJson(res, 200, supportRelayed(db, body));
     // Привязан ли этот Telegram к аккаунту: привязанным бот на случайные сообщения не отвечает
     if (pathname.endsWith('/known')) {
       const id = Number(body.telegram_id);

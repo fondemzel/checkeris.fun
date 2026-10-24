@@ -1,67 +1,73 @@
-// Поддержка через бота: человек пишет боту — администратор отвечает в Telegram или в админке.
+// Поддержка: человек пишет боту или из приложения — администратор отвечает в админке.
 //
 // Чекер в Telegram не ходит (telegram.mjs): бот приносит сюда каждое сообщение, которое не
-// вход, подписанным запросом (/api/telegram/support). Здесь решается, что это:
-//   — обращение человека: сохраняем, отдаём боту шапку для администраторов и, если обращение
-//     новое, автоответ. Вложения (скриншот, голосовое) бот копирует администраторам сам —
-//     в базе только пометка, файл остаётся в Telegram;
-//   — ответ администратора: ответ (reply) на сообщение бота с шапкой обращения. Отдаём боту,
-//     кому его переслать; бот копирует сообщение человеку.
-// Из админки ответ уходит через очередь бота (tg_outbox), как остальные сообщения Чекера.
-// Из приложения человек пишет сам (экран «Поддержка»): обращение уходит администраторам тоже
-// через очередь — бот сообщает, каким сообщением отправил, и ответ на него ложится в обращение.
+// вход, подписанным запросом (/api/telegram/support). Сохраняем его в обращение, а бот шлёт
+// администраторам уведомление: кто, начало сообщения, ссылка «Ответить в админке». Отвечают
+// только в админке: когда в Telegram приходит десяток сообщений, ответ «на сообщение» легко
+// отправить не тому. Вложения (скриншот, голосовое) бот копирует администраторам — в админке
+// их не показать, в базе только пометка, файл остаётся в Telegram.
 //
-// Ответ человеку оформлен одинаково, откуда бы ни ответили: «💬 Поддержка Чекера», цитатой —
-// его последний вопрос, ниже ответ. Видит его и в Telegram, и в приложении.
+// Уведомлений не больше одного на волну: пока человек пишет подряд (меньше 10 минут между
+// сообщениями) и ответа ещё нет, повторно не беспокоим. Из приложения (экран «Поддержка»)
+// уведомление уходит через очередь бота (tg_outbox), как остальные сообщения Чекера.
 //
-// Обращение — переписка с одним человеком в Telegram: new — ждёт ответа, answered — ответили,
+// Ответ человеку оформлен одинаково: «💬 Поддержка Чекера», цитатой — его последний вопрос,
+// ниже ответ. Видит его и в Telegram, и в приложении.
+//
+// Обращение — переписка с одним человеком: new — ждёт ответа, answered — ответили,
 // closed — закрыто. Новое сообщение после закрытия начинает новое обращение.
 import { notify } from './banks.mjs';
 
 const SITE = (process.env.SITE_ORIGIN || 'https://checkeris.fun').replace(/\/$/, '');
-const BANKS = { tbank: 'Т-Банк', sber: 'Сбер', ozon: 'Озон', wb: 'Wildberries' };
-const LINK = { active: 'работает', expired: 'отвалился' };
 const ACK = 'Спасибо! Получили ваше сообщение — ответим здесь же, обычно в течение дня.';
 const REPLY_HEAD = '💬 <b>Поддержка Чекера</b>';
 const HOURLY = 30; // больше сообщений в час от одного человека не принимаем: защита от потока
+const QUIET_MS = 10 * 60_000; // пауза, после которой новое сообщение снова стоит уведомления
 const now = () => new Date().toISOString();
 const html = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const dateRu = (iso) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'Europe/Moscow' });
 const KINDS = ['text', 'photo', 'document', 'voice', 'video', 'video_note', 'audio', 'sticker', 'other'];
 const KIND_NAME = { photo: 'фото', document: 'файл', voice: 'голосовое', video: 'видео', video_note: 'кружок', audio: 'аудио', sticker: 'стикер', other: 'вложение' };
+const clip = (text, n) => (text.length > n ? `${text.slice(0, n)}…` : text);
+const adminLink = (id) => `${SITE}/admin/#/support/${id}`;
 
 const admins = (db) =>
   db.prepare("SELECT id, telegram_id FROM users WHERE role = 'admin' AND telegram_id IS NOT NULL").all();
 
 /**
  * Начало ответа человеку: заголовок и цитата — его последний вопрос (до ответа), чтобы было
- * видно, на что отвечают. Вложение без текста цитируется словом: «[скриншот]».
+ * видно, на что отвечают. Вложение без текста цитируется словом: «[фото]».
  */
 function replyPrefix(db, threadId) {
   const q = db.prepare('SELECT text, kind FROM support_messages WHERE thread_id = ? AND from_admin = 0 ORDER BY id DESC LIMIT 1').get(threadId);
   if (!q) return REPLY_HEAD;
-  const quote = q.text ? (q.text.length > 300 ? `${q.text.slice(0, 300)}…` : q.text) : `[${KIND_NAME[q.kind] ?? 'вложение'}]`;
+  const quote = q.text ? clip(q.text, 300) : `[${KIND_NAME[q.kind] ?? 'вложение'}]`;
   return `${REPLY_HEAD}\n<blockquote>${html(quote)}</blockquote>`;
 }
 
-/** Шапка обращения для администратора: кто, с какого числа, откуда пришёл, банки, ссылка в админку. */
-function header(db, thread, { fromApp = false } = {}) {
-  const u = thread.user_id
-    ? db.prepare('SELECT id, name, login, tg_username, created_at, source FROM users WHERE id = ?').get(thread.user_id)
-    : null;
-  const who = u ? html(u.name ?? u.login) : html(thread.tg_name ?? 'Без имени');
-  const nick = (u?.tg_username ?? thread.tg_username) ? ` · @${html(u?.tg_username ?? thread.tg_username)}` : '';
-  const lines = [`💬 <b>${who}</b>${nick} · обращение #${thread.id}${fromApp ? ' · из приложения' : ''}`];
-  if (u) {
-    const from = u.source ? (db.prepare('SELECT name FROM sources WHERE slug = ?').get(u.source)?.name ?? u.source) : 'напрямую';
-    const banks = db.prepare('SELECT bank, status FROM bank_links WHERE user_id = ?').all(u.id)
-      .map((b) => `${BANKS[b.bank] ?? b.bank} ${LINK[b.status] ?? b.status}`);
-    lines.push(`с ${dateRu(u.created_at)} · ${html(from)}${banks.length ? ` · ${html(banks.join(', '))}` : ''}`);
-  } else {
-    lines.push('без аккаунта в Чекере');
-  }
-  lines.push(`<a href="${SITE}/admin/#/support/${thread.id}">Открыть в админке</a> · ответьте на это сообщение, чтобы ответить человеку`);
-  return lines.join('\n');
+/** Кто написал — одной строкой: имя, ник, номер обращения, откуда. */
+function whoLine(db, thread, { fromApp = false } = {}) {
+  const u = thread.user_id ? db.prepare('SELECT name, login, tg_username FROM users WHERE id = ?').get(thread.user_id) : null;
+  const name = html(u ? (u.name ?? u.login) : (thread.tg_name ?? 'Без имени'));
+  const nick = u?.tg_username ?? thread.tg_username;
+  const where = fromApp ? ' · из приложения' : u ? '' : ' · без аккаунта';
+  return `<b>${name}</b>${nick ? ` · @${html(nick)}` : ''} · обращение #${thread.id}${where}`;
+}
+
+/** Уведомление администратору: новое сообщение, его начало цитатой и ссылка в админку. */
+function notice(db, thread, { text, kind }, opts) {
+  const quote = text ? clip(text, 300) : `[${KIND_NAME[kind] ?? 'вложение'}]`;
+  return `💬 <b>Новое сообщение в поддержку</b>\n${whoLine(db, thread, opts)}\n<blockquote>${html(quote)}</blockquote>\n`
+    + `<a href="${adminLink(thread.id)}">Ответить в админке</a>`;
+}
+
+/**
+ * Стоит ли беспокоить: да, если обращение уже отвечено или человек молчал дольше паузы. Пока
+ * он пишет подряд и ответа нет — одного уведомления хватит. Смотрим до записи нового сообщения.
+ */
+function worthNotice(db, thread) {
+  if (thread.status !== 'new') return true;
+  const prev = db.prepare('SELECT created_at FROM support_messages WHERE thread_id = ? AND from_admin = 0 ORDER BY id DESC LIMIT 1').get(thread.id);
+  return !prev || Date.now() - Date.parse(prev.created_at) >= QUIET_MS;
 }
 
 /** Открытое обращение этого человека или новое. */
@@ -80,35 +86,22 @@ function threadFor(db, telegram, userId) {
 
 /**
  * Сообщение боту, которое не вход. Бот присылает: telegram (кто), message_id, text (текст или
- * подпись), kind, reply_to (на какое сообщение ответили). Ответ — что боту сделать:
- *   { action: 'reply', chat_id }      — переслать это сообщение человеку (ответ администратора)
- *   { action: 'forward', thread_id, admins, header, text, ack } — показать администраторам
- *   { action: 'hint', text }          — подсказать (администратор написал не ответом)
- *   { action: 'ignore' }              — слишком много сообщений подряд
+ * подпись), kind. Ответ — что боту сделать:
+ *   { action: 'notify', admins, text, copy, ack } — администраторам: text (уведомление; пусто —
+ *       не беспокоить), copy — следом копия вложения; человеку — ack, если обращение новое
+ *   { action: 'hint', text }  — администратору: отвечать — в админке
+ *   { action: 'ignore' }      — слишком много сообщений подряд
  */
-export function supportIncoming(db, { telegram, message_id, text, kind, reply_to }) {
+export function supportIncoming(db, { telegram, message_id, text, kind }) {
   const tgId = Number(telegram?.id);
   if (!Number.isSafeInteger(tgId) || tgId <= 0) return { action: 'ignore' };
   const user = db.prepare('SELECT id, role FROM users WHERE telegram_id = ?').get(tgId);
   const body = String(text ?? '').slice(0, 4000) || null;
   const type = KINDS.includes(kind) ? kind : 'other';
 
-  // Администратор отвечает на шапку обращения
+  // Администратор пишет боту — скорее всего, отвечает на уведомление. Отвечают в админке
   if (user?.role === 'admin') {
-    const relay = reply_to
-      ? db.prepare('SELECT thread_id FROM support_relay WHERE admin_chat = ? AND admin_msg = ?').get(tgId, Number(reply_to))
-      : null;
-    if (relay) {
-      const thread = db.prepare('SELECT * FROM support_threads WHERE id = ?').get(relay.thread_id);
-      if (!thread) return { action: 'hint', text: 'Это обращение удалено.' };
-      const prefix = replyPrefix(db, thread.id); // до записи ответа: цитируем вопрос, а не ответ
-      addMessage(db, thread.id, { fromAdmin: true, authorId: user.id, text: body, kind: type });
-      // chat_id 0 — у человека нет Telegram: ответ он увидит только в приложении
-      return { action: 'reply', chat_id: thread.telegram_id, thread_id: thread.id, prefix };
-    }
-    // Не ответ: администратор пишет боту как человек — для проверки поддержки это и нужно,
-    // но подскажем, как отвечать. Обращение своё он увидит в админке
-    if (reply_to) return { action: 'hint', text: 'Не нашёл обращение для этого сообщения. Ответьте на сообщение с шапкой «💬 … · обращение #…».' };
+    return { action: 'hint', text: `Отвечать на обращения — в админке: ${SITE}/admin/#/support` };
   }
 
   const hour = new Date(Date.now() - 3_600_000).toISOString();
@@ -119,25 +112,21 @@ export function supportIncoming(db, { telegram, message_id, text, kind, reply_to
   if (recent >= HOURLY) return { action: 'ignore' };
 
   const { thread, created } = threadFor(db, { ...telegram, id: tgId }, user?.id ?? null);
+  const loud = created || worthNotice(db, thread);
   addMessage(db, thread.id, { fromAdmin: false, text: body, kind: type, userMsg: Number(message_id) || null });
   // Человек написал после ответа — снова ждёт ответа
   db.prepare("UPDATE support_threads SET status = 'new', updated_at = ? WHERE id = ?").run(now(), thread.id);
+  const full = { ...thread, user_id: thread.user_id ?? user?.id ?? null };
+  const copy = type !== 'text';
   return {
-    action: 'forward',
-    thread_id: thread.id,
+    action: 'notify',
     admins: admins(db).map((a) => a.telegram_id),
-    header: header(db, { ...thread, user_id: thread.user_id ?? user?.id ?? null }),
+    // Вложение посреди волны — без большого уведомления, но с подписью, чьё оно
+    text: loud ? notice(db, full, { text: body, kind: type }) : copy ? `📎 ${whoLine(db, full)}` : null,
+    copy,
     // Без аккаунта — скорее всего, не получилось войти: сразу подскажем как
     ack: created ? (user ? ACK : `${ACK}\n\nЕсли не получается войти: откройте ${SITE}/m и нажмите «Войти через Telegram».`) : null,
   };
-}
-
-/** Бот разослал сообщение администраторам — запоминаем, чтобы узнать ответ на него. */
-export function supportRelayed(db, { thread_id, admin_chat, admin_msg }) {
-  if (!thread_id || !admin_chat || !admin_msg) return { ok: false };
-  db.prepare('INSERT OR IGNORE INTO support_relay (admin_chat, admin_msg, thread_id) VALUES (?, ?, ?)')
-    .run(Number(admin_chat), Number(admin_msg), Number(thread_id));
-  return { ok: true };
 }
 
 function addMessage(db, threadId, { fromAdmin, authorId = null, text = null, kind = 'text', userMsg = null }) {
@@ -276,8 +265,7 @@ export function supportMineThread(db, user, id) {
 
 /**
  * Сообщение из приложения: в своё открытое обращение (thread_id) или новое. Администраторам —
- * через очередь бота, с шапкой; бот сообщит номера отправленных сообщений (support_relay),
- * и ответ на них в Telegram ляжет в это же обращение.
+ * уведомление через очередь бота (с той же паузой, что из Telegram).
  */
 export function supportFromApp(db, user, { thread_id = null, text }) {
   const body = String(text ?? '').trim().slice(0, 4000);
@@ -301,11 +289,14 @@ export function supportFromApp(db, user, { thread_id = null, text }) {
     ).run(me.id, me.telegram_id ?? 0, me.name ?? me.login, me.tg_username, now(), now(), now()).lastInsertRowid);
     thread = db.prepare('SELECT * FROM support_threads WHERE id = ?').get(id);
   }
+  const loud = created || worthNotice(db, thread);
   addMessage(db, thread.id, { fromAdmin: false, text: body, kind: 'text' });
   db.prepare("UPDATE support_threads SET status = 'new', updated_at = ?, user_seen_at = ? WHERE id = ?").run(now(), now(), thread.id);
 
-  const forward = `${header(db, thread, { fromApp: true })}\n\n${html(body)}`;
-  const add = db.prepare('INSERT INTO tg_outbox (chat_id, text, html, support_thread, created_at) VALUES (?, ?, 1, ?, ?)');
-  for (const a of admins(db)) add.run(a.telegram_id, forward, thread.id, now());
+  if (loud) {
+    const text = notice(db, thread, { text: body, kind: 'text' }, { fromApp: true });
+    const add = db.prepare('INSERT INTO tg_outbox (chat_id, text, html, created_at) VALUES (?, ?, 1, ?)');
+    for (const a of admins(db)) add.run(a.telegram_id, text, now());
+  }
   return { ok: true, thread_id: thread.id, created };
 }

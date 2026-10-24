@@ -77,7 +77,7 @@ export function notify(db, userId, text, { html = false } = {}) {
 /** Для бота: неотправленные сообщения. Отдаём один раз — повторить уведомление не страшно пропустить. */
 export function takeOutbox(db) {
   const rows = db
-    .prepare('SELECT id, chat_id, text, delete_msg, html, support_thread FROM tg_outbox WHERE sent_at IS NULL ORDER BY id LIMIT 20')
+    .prepare('SELECT id, chat_id, text, delete_msg, html FROM tg_outbox WHERE sent_at IS NULL ORDER BY id LIMIT 20')
     .all();
   const mark = db.prepare('UPDATE tg_outbox SET sent_at = ? WHERE id = ?');
   for (const r of rows) mark.run(now(), r.id);

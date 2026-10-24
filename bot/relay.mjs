@@ -6,8 +6,8 @@
 //
 // Что он делает: подтверждает вход, доставляет сообщения Чекера (например, «Т-Банк
 // отключился — войдите заново»): у основного сервера доступа к Telegram нет, — и ведёт
-// поддержку: всё, что человек пишет боту помимо входа, уходит администраторам, а их ответ
-// (reply на сообщение с обращением) — человеку. Что есть что, решает Чекер (support.mjs).
+// поддержку: всё, что человек пишет боту помимо входа, — обращение; администраторам приходит
+// уведомление со ссылкой в админку, отвечают там (support.mjs).
 //   /start <код>  → готовит подтверждение в Чекере (prepare): тот запоминает, кому
 //                   показан запрос, и отдаёт код для ссылки. Сообщение с устройством:
 //                   «Войти в Чекер? Запрос с iPhone · Safari» — [Войти] [Это не я]
@@ -89,14 +89,13 @@ const SUPPORT =
   'Ответим здесь же.';
 const NOT_SENT = 'Не получилось передать сообщение. Попробуйте ещё раз через минуту.';
 const MEDIA = ['photo', 'document', 'voice', 'video', 'video_note', 'audio', 'sticker'];
-const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Что за сообщение: текст или вложение. Вложение не скачиваем — копируем как есть. */
 const kindOf = (msg) => (msg.text != null ? 'text' : MEDIA.find((k) => msg[k]) ?? 'other');
 
 /**
- * Поддержка: сообщение, которое не вход. Чекер решает, что это — обращение человека или ответ
- * администратора, — а бот делает остальное в Telegram: копирует сообщение, куда нужно.
+ * Поддержка: сообщение, которое не вход. Чекер сохраняет его в обращение и говорит, кого
+ * уведомить; бот делает это в Telegram.
  */
 async function onSupport(msg) {
   const chat_id = msg.chat.id;
@@ -108,45 +107,21 @@ async function onSupport(msg) {
       message_id: msg.message_id,
       text: msg.text ?? msg.caption ?? null,
       kind,
-      reply_to: msg.reply_to_message?.message_id ?? null,
     });
   } catch (err) {
     console.error('поддержка:', err.message);
     return tg('sendMessage', { chat_id, text: NOT_SENT });
   }
 
-  if (res.action === 'hint') return tg('sendMessage', { chat_id, text: res.text });
-  if (res.action === 'reply') {
-    // Ответ администратора — человеку от бота: заголовок, цитата вопроса и сам ответ. Текст —
-    // одним сообщением; вложение — заголовком и копией следом. chat_id 0 — у человека нет
-    // Telegram, ответ он увидит в приложении
-    if (res.chat_id) {
-      const text = kind === 'text' ? `${res.prefix}\n\n${esc(msg.text)}` : null;
-      if (text && text.length <= 4000) {
-        await tg('sendMessage', { chat_id: res.chat_id, text, parse_mode: 'HTML', disable_web_page_preview: true });
-      } else {
-        await tg('sendMessage', { chat_id: res.chat_id, text: res.prefix, parse_mode: 'HTML' });
-        await tg('copyMessage', { chat_id: res.chat_id, from_chat_id: chat_id, message_id: msg.message_id });
-      }
-    }
-    return tg('setMessageReaction', { chat_id, message_id: msg.message_id, reaction: [{ type: 'emoji', emoji: '👍' }] })
-      .catch(() => tg('sendMessage', { chat_id, text: 'Отправлено', reply_to_message_id: msg.message_id }));
-  }
-  if (res.action !== 'forward') return null;
+  if (res.action === 'hint') return tg('sendMessage', { chat_id, text: res.text, disable_web_page_preview: true });
+  if (res.action !== 'notify') return null;
 
-  // Каждому администратору: шапка (кто, откуда, ссылка в админку) и само сообщение. Текст —
-  // одним сообщением с шапкой, вложение — следом копией. Ответ на любое из них — ответ человеку
-  const relayed = (admin_chat, sent) =>
-    checker('/api/telegram/support-relayed', { thread_id: res.thread_id, admin_chat, admin_msg: sent.message_id }).catch(() => {});
+  // Администраторам: уведомление со ссылкой в админку (там и отвечают) и копия вложения —
+  // в админке его не показать
   for (const admin of res.admins ?? []) {
     try {
-      const joined = kind === 'text' ? `${res.header}\n\n${esc(msg.text)}` : null;
-      if (joined && joined.length <= 4000) {
-        await relayed(admin, await tg('sendMessage', { chat_id: admin, text: joined, parse_mode: 'HTML', disable_web_page_preview: true }));
-      } else {
-        await relayed(admin, await tg('sendMessage', { chat_id: admin, text: res.header, parse_mode: 'HTML', disable_web_page_preview: true }));
-        await relayed(admin, await tg('copyMessage', { chat_id: admin, from_chat_id: chat_id, message_id: msg.message_id }));
-      }
+      if (res.text) await tg('sendMessage', { chat_id: admin, text: res.text, parse_mode: 'HTML', disable_web_page_preview: true });
+      if (res.copy) await tg('copyMessage', { chat_id: admin, from_chat_id: chat_id, message_id: msg.message_id });
     } catch (err) {
       console.error('поддержка → администратору:', err.message);
     }
@@ -154,6 +129,7 @@ async function onSupport(msg) {
   if (res.ack) await tg('sendMessage', { chat_id, text: res.ack, disable_web_page_preview: true });
   return null;
 }
+
 const NONCE = /^[A-Za-z0-9_-]{20,64}$/;
 
 const when = (iso) =>
@@ -280,11 +256,7 @@ async function pumpOutbox() {
       ? tg('deleteMessage', { chat_id: m.chat_id, message_id: m.delete_msg })
       // html — уведомления с ссылкой под словом «Посмотреть»; остальное — обычным текстом
       : tg('sendMessage', { chat_id: m.chat_id, text: m.text, disable_web_page_preview: true, ...(m.html ? { parse_mode: 'HTML' } : {}) });
-    const sent = await call.catch((err) => console.error('outbox:', err.message));
-    // Обращение из приложения: запомнить сообщение, чтобы ответ на него в Telegram лёг в обращение
-    if (m.support_thread && sent?.message_id) {
-      checker('/api/telegram/support-relayed', { thread_id: m.support_thread, admin_chat: m.chat_id, admin_msg: sent.message_id }).catch(() => {});
-    }
+    await call.catch((err) => console.error('outbox:', err.message));
   }
 }
 

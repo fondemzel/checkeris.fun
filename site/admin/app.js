@@ -428,7 +428,7 @@ function supportRows(threads) {
 function pageSupport(threads) {
   const waiting = threads.filter((t) => t.status === 'new').length;
   return subhead('Поддержка')
-    + '<p class="lead">Люди пишут боту @checker_costs_bot или из приложения («Настройки → Помощь»). Отвечать можно здесь или в Telegram — ответом на сообщение бота с обращением.</p>'
+    + '<p class="lead">Люди пишут боту @checker_costs_bot или из приложения («Настройки → Помощь»). В Telegram приходит уведомление со ссылкой сюда — отвечают здесь.</p>'
     + box(`${threads.length} ${plural(threads.length, 'обращение', 'обращения', 'обращений')}${waiting ? ` <span class="muted">· ждут ответа ${waiting}</span>` : ''}`,
       threads.length ? supportRows(threads) : blank('Обращений пока нет'));
 }

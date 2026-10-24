@@ -81,7 +81,9 @@ function addUserColumns(db) {
   addColumn(db, 'tg_logins', 'bot_msg', 'INTEGER');
   addColumn(db, 'tg_logins', 'source', 'TEXT'); // откуда пришёл человек (admin.mjs)
   addColumn(db, 'support_threads', 'user_seen_at', 'TEXT'); // поддержка: когда человек последний раз открыл обращение
-  addColumn(db, 'tg_outbox', 'support_thread', 'INTEGER'); // поддержка: сообщение администратору с обращением из приложения
+  // Поддержка отвечала из Telegram ответом на сообщение бота (0.63–0.64) — теперь только из админки
+  db.exec('DROP TABLE IF EXISTS support_relay');
+  if (db.prepare("SELECT 1 FROM pragma_table_info('tg_outbox') WHERE name = 'support_thread'").get()) db.exec('ALTER TABLE tg_outbox DROP COLUMN support_thread');
   addColumn(db, 'users', 'source', 'TEXT');
   addColumn(db, 'tg_outbox', 'delete_msg', 'INTEGER');
   addColumn(db, 'tg_outbox', 'html', 'INTEGER NOT NULL DEFAULT 0'); // разметка: ссылка под словом

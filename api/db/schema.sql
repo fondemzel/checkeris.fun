@@ -708,7 +708,6 @@ CREATE TABLE IF NOT EXISTS tg_outbox (
   text       TEXT NOT NULL,            -- что отправить; пусто — вместо отправки удалить сообщение
   delete_msg INTEGER,                  -- номер сообщения, которое надо убрать
   html       INTEGER NOT NULL DEFAULT 0, -- текст с HTML-разметкой (ссылка под словом)
-  support_thread INTEGER,              -- обращение в поддержку (support.mjs): бот сообщит, каким сообщением отправил
   created_at TEXT NOT NULL,
   sent_at    TEXT
 );
@@ -732,7 +731,7 @@ CREATE TABLE IF NOT EXISTS support_threads (
 CREATE INDEX IF NOT EXISTS idx_support_threads_tg ON support_threads (telegram_id, status);
 
 -- Сообщения обращения. Вложения не храним: kind говорит, что было (photo, voice…), файл
--- остался в Telegram — администратору его копирует бот.
+-- остался в Telegram — администратору его копирует бот. Отвечают из админки.
 CREATE TABLE IF NOT EXISTS support_messages (
   id         INTEGER PRIMARY KEY,
   thread_id  INTEGER NOT NULL REFERENCES support_threads (id) ON DELETE CASCADE,
@@ -745,11 +744,3 @@ CREATE TABLE IF NOT EXISTS support_messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_support_messages_thread ON support_messages (thread_id);
-
--- Сообщения бота администраторам с обращениями: ответ (reply) на такое сообщение — ответ человеку.
-CREATE TABLE IF NOT EXISTS support_relay (
-  admin_chat INTEGER NOT NULL,
-  admin_msg  INTEGER NOT NULL,
-  thread_id  INTEGER NOT NULL REFERENCES support_threads (id) ON DELETE CASCADE,
-  PRIMARY KEY (admin_chat, admin_msg)
-);
