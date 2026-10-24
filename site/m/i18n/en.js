@@ -334,6 +334,8 @@ export const en = {
     },
     help: {
       label: 'Help',
+      support: 'Contact support',
+      supportNote: 'We’ll reply in Telegram',
       demo: 'Demo mode',
       demoNote: 'A year of a made-up person’s spending',
       note: '', // В демо-режиме показаны траты вымышленной семьи, и менять их нельзя

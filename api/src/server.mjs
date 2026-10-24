@@ -54,6 +54,7 @@ import { listAccounts, saveAccounts, rememberLoadedAccounts, mergePrefixedAccoun
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
+  telegramConfig,
   startLogin,
   pollLogin,
   describeLogin,
@@ -65,6 +66,7 @@ import {
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
 import { overview, personDetail, addSource, removeSource } from './admin.mjs';
+import { supportIncoming, supportRelayed, supportList, supportThread, supportReply, supportStatus } from './support.mjs';
 import {
   getTaxonomy,
   createGroup,
@@ -365,7 +367,7 @@ async function handleApi(req, res, url) {
 
   // Бот с зарубежного сервера. Открыто наружу, но без верной подписи не принимается
   if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm', '/api/telegram/outbox',
-       '/api/telegram/sent', '/api/telegram/known'].includes(pathname)) {
+       '/api/telegram/sent', '/api/telegram/known', '/api/telegram/support', '/api/telegram/support-relayed'].includes(pathname)) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     let raw;
     let body;
@@ -381,6 +383,9 @@ async function handleApi(req, res, url) {
     // Сообщения, которые Чекер хочет отправить людям: бот забирает их и отправляет сам
     if (pathname.endsWith('/outbox')) return sendJson(res, 200, { messages: takeOutbox(db) });
     if (pathname.endsWith('/sent')) return sendJson(res, 200, noteBotMessage(db, body));
+    // Поддержка (support.mjs): сообщение боту, которое не вход, и разосланные администраторам копии
+    if (pathname.endsWith('/support')) return sendJson(res, 200, supportIncoming(db, body));
+    if (pathname.endsWith('/support-relayed')) return sendJson(res, 200, supportRelayed(db, body));
     // Привязан ли этот Telegram к аккаунту: привязанным бот на случайные сообщения не отвечает
     if (pathname.endsWith('/known')) {
       const id = Number(body.telegram_id);
@@ -452,6 +457,7 @@ async function handleApi(req, res, url) {
       role: user.role,
       telegram: user.telegram,
       telegram_login: telegramReady(),
+      bot: telegramConfig().bot, // поддержка: «Написать в поддержку» ведёт в этого бота
     });
   }
 
@@ -483,6 +489,25 @@ async function handleApi(req, res, url) {
       }
       const result = addSource(db, body);
       return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
+    }
+    // Поддержка: обращения, переписка, ответ, состояние
+    if (pathname === '/api/admin/support' && req.method === 'GET') return sendJson(res, 200, { threads: supportList(db) });
+    const sup = /^\/api\/admin\/support\/(\d+)(?:\/(reply|status))?$/.exec(pathname);
+    if (sup) {
+      if (!sup[2] && req.method === 'GET') {
+        const thread = supportThread(db, sup[1]);
+        return thread ? sendJson(res, 200, thread) : sendJson(res, 404, { error: 'нет такого обращения' });
+      }
+      if (sup[2] && req.method === 'POST') {
+        let body;
+        try {
+          body = await readJson(req);
+        } catch {
+          return sendJson(res, 400, { error: 'bad request body' });
+        }
+        const result = sup[2] === 'reply' ? supportReply(db, user, sup[1], body.text) : supportStatus(db, sup[1], body.status);
+        return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
+      }
     }
     const slug = /^\/api\/admin\/sources\/([^/]+)$/.exec(pathname)?.[1];
     if (slug && req.method === 'DELETE') return sendJson(res, 200, removeSource(db, decodeURIComponent(slug)));

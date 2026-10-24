@@ -4,8 +4,10 @@
 // соединения. Бот сам забирает сообщения (long polling), поэтому ему не нужны ни домен,
 // ни сертификат, ни открытые порты — только исходящие соединения к Telegram и к Чекеру.
 //
-// Что он делает: подтверждает вход и доставляет сообщения Чекера (например, «Т-Банк
-// отключился — войдите заново»): у основного сервера доступа к Telegram нет.
+// Что он делает: подтверждает вход, доставляет сообщения Чекера (например, «Т-Банк
+// отключился — войдите заново»): у основного сервера доступа к Telegram нет, — и ведёт
+// поддержку: всё, что человек пишет боту помимо входа, уходит администраторам, а их ответ
+// (reply на сообщение с обращением) — человеку. Что есть что, решает Чекер (support.mjs).
 //   /start <код>  → готовит подтверждение в Чекере (prepare): тот запоминает, кому
 //                   показан запрос, и отдаёт код для ссылки. Сообщение с устройством:
 //                   «Войти в Чекер? Запрос с iPhone · Safari» — [Войти] [Это не я]
@@ -82,6 +84,66 @@ const HELP =
   'Это бот входа в Чекер — учёт расходов по чекам.\n\n' +
   `Откройте ${CHECKER}/m и нажмите «Войти через Telegram».`;
 const TROUBLE = 'Не получилось связаться с Чекером. Попробуйте ещё раз через минуту.';
+const SUPPORT =
+  'Напишите сюда, что случилось или что хотелось бы улучшить, — можно приложить скриншот. ' +
+  'Ответим здесь же.';
+const NOT_SENT = 'Не получилось передать сообщение. Попробуйте ещё раз через минуту.';
+const MEDIA = ['photo', 'document', 'voice', 'video', 'video_note', 'audio', 'sticker'];
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** Что за сообщение: текст или вложение. Вложение не скачиваем — копируем как есть. */
+const kindOf = (msg) => (msg.text != null ? 'text' : MEDIA.find((k) => msg[k]) ?? 'other');
+
+/**
+ * Поддержка: сообщение, которое не вход. Чекер решает, что это — обращение человека или ответ
+ * администратора, — а бот делает остальное в Telegram: копирует сообщение, куда нужно.
+ */
+async function onSupport(msg) {
+  const chat_id = msg.chat.id;
+  const kind = kindOf(msg);
+  let res;
+  try {
+    res = await checker('/api/telegram/support', {
+      telegram: { id: msg.from.id, first_name: msg.from.first_name, last_name: msg.from.last_name, username: msg.from.username },
+      message_id: msg.message_id,
+      text: msg.text ?? msg.caption ?? null,
+      kind,
+      reply_to: msg.reply_to_message?.message_id ?? null,
+    });
+  } catch (err) {
+    console.error('поддержка:', err.message);
+    return tg('sendMessage', { chat_id, text: NOT_SENT });
+  }
+
+  if (res.action === 'hint') return tg('sendMessage', { chat_id, text: res.text });
+  if (res.action === 'reply') {
+    // Ответ администратора — человеку, копией: без «переслано от», как будто пишет бот
+    await tg('copyMessage', { chat_id: res.chat_id, from_chat_id: chat_id, message_id: msg.message_id });
+    return tg('setMessageReaction', { chat_id, message_id: msg.message_id, reaction: [{ type: 'emoji', emoji: '👍' }] })
+      .catch(() => tg('sendMessage', { chat_id, text: 'Отправлено', reply_to_message_id: msg.message_id }));
+  }
+  if (res.action !== 'forward') return null;
+
+  // Каждому администратору: шапка (кто, откуда, ссылка в админку) и само сообщение. Текст —
+  // одним сообщением с шапкой, вложение — следом копией. Ответ на любое из них — ответ человеку
+  const relayed = (admin_chat, sent) =>
+    checker('/api/telegram/support-relayed', { thread_id: res.thread_id, admin_chat, admin_msg: sent.message_id }).catch(() => {});
+  for (const admin of res.admins ?? []) {
+    try {
+      const joined = kind === 'text' ? `${res.header}\n\n${esc(msg.text)}` : null;
+      if (joined && joined.length <= 4000) {
+        await relayed(admin, await tg('sendMessage', { chat_id: admin, text: joined, parse_mode: 'HTML', disable_web_page_preview: true }));
+      } else {
+        await relayed(admin, await tg('sendMessage', { chat_id: admin, text: res.header, parse_mode: 'HTML', disable_web_page_preview: true }));
+        await relayed(admin, await tg('copyMessage', { chat_id: admin, from_chat_id: chat_id, message_id: msg.message_id }));
+      }
+    } catch (err) {
+      console.error('поддержка → администратору:', err.message);
+    }
+  }
+  if (res.ack) await tg('sendMessage', { chat_id, text: res.ack, disable_web_page_preview: true });
+  return null;
+}
 const NONCE = /^[A-Za-z0-9_-]{20,64}$/;
 
 const when = (iso) =>
@@ -93,16 +155,21 @@ const when = (iso) =>
 async function onMessage(msg) {
   if (msg.chat?.type !== 'private') return; // в группах бот не участвует
   const chat_id = msg.chat.id;
-  const nonce = /^\/start(?:@\w+)?\s+(\S+)/.exec(msg.text ?? '')?.[1];
-  if (!nonce || !NONCE.test(nonce)) {
-    // Telegram уже привязан к Чекеру — человек получает от бота уведомления, и подсказка про
-    // вход в ответ на любое сообщение только сбивает с толку. Молчим. Не узнали — подсказываем
+  const start = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/.exec(msg.text ?? '');
+  const nonce = start?.[1];
+  // «Написать в поддержку» из приложения (start=support) и /help — подсказка, как написать
+  if (nonce === 'support' || /^\/help(?:@\w+)?\s*$/.test(msg.text ?? '')) {
+    return tg('sendMessage', { chat_id, text: SUPPORT });
+  }
+  if (start && !(nonce && NONCE.test(nonce))) {
+    // Просто /start: привязанному — как написать в поддержку, остальным — как войти
     const linked = await checker('/api/telegram/known', { telegram_id: msg.from?.id })
       .then((r) => r.linked)
       .catch(() => false);
-    if (linked) return null;
-    return tg('sendMessage', { chat_id, text: HELP, disable_web_page_preview: true });
+    return tg('sendMessage', { chat_id, text: linked ? SUPPORT : `${HELP}\n\nЕсли что-то не получается — напишите сюда.`, disable_web_page_preview: true });
   }
+  // Всё остальное — поддержка: обращение или ответ администратора
+  if (!start) return onSupport(msg);
 
   let info;
   try {
@@ -170,13 +237,19 @@ async function onCallback(cb) {
 }
 
 async function setup() {
-  await tg('setMyShortDescription', { short_description: 'Вход в Чекер — учёт расходов по чекам' });
+  await tg('setMyShortDescription', { short_description: 'Вход в Чекер и поддержка — учёт расходов по чекам' });
   await tg('setMyDescription', {
     description:
       'Через этого бота входят в Чекер (checkeris.fun). Нажмите «Войти через Telegram» ' +
-      'на сайте — бот спросит, подтверждаете ли вы вход, и покажет, с какого устройства он запрошен.',
+      'на сайте — бот спросит, подтверждаете ли вы вход, и покажет, с какого устройства он запрошен.\n\n' +
+      'Что-то не так или есть идея — напишите сюда, ответим здесь же.',
   });
-  await tg('setMyCommands', { commands: [{ command: 'start', description: 'Как войти в Чекер' }] });
+  await tg('setMyCommands', {
+    commands: [
+      { command: 'start', description: 'Как войти в Чекер' },
+      { command: 'help', description: 'Написать в поддержку' },
+    ],
+  });
   console.log('описание и меню бота обновлены');
 }
 

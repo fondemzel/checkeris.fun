@@ -11,6 +11,7 @@
 // В подсчётах нет служебных пользователей демо-режима (логины «__…», войти под ними нельзя)
 // и администратора: это владелец проекта, а не бета-пользователь.
 import { sourceSlug } from './telegram.mjs';
+import { supportWaiting, supportOfUser } from './support.mjs';
 
 const DAY = 86_400_000;
 const dayAgo = (n) => new Date(Date.now() - n * DAY).toISOString().slice(0, 10);
@@ -185,6 +186,7 @@ export function overview(db) {
       shared: list.filter((u) => u.shared).length,
     },
     days: activeByDay(db),
+    support_waiting: supportWaiting(db),
     sources: sourceList(db, list),
     load: load(db),
     people: list,
@@ -221,7 +223,7 @@ export function personDetail(db, id) {
     )
     .all(base.id, `${dayAgo(365).slice(0, 7)}`);
   const scans = db.prepare('SELECT status, COUNT(*) AS n FROM scan_jobs WHERE user_id = ? GROUP BY status').all(base.id);
-  return { ...base, days, devices, budget: budget ? { name: budget.name, members } : null, months, scans };
+  return { ...base, days, devices, budget: budget ? { name: budget.name, members } : null, months, scans, support: supportOfUser(db, base.id) };
 }
 
 /** Новая метка ссылки. Название — для себя: «Пост в канале N», «Чат соседей». */

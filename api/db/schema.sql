@@ -711,3 +711,43 @@ CREATE TABLE IF NOT EXISTS tg_outbox (
   created_at TEXT NOT NULL,
   sent_at    TEXT
 );
+
+-- ── поддержка ──────────────────────────────────────────────────────────────
+-- Переписка с человеком через бота (support.mjs). Обращение — с одним Telegram: new — ждёт
+-- ответа, answered — ответили, closed — закрыто (следующее сообщение откроет новое).
+-- user_id пуст, если пишет человек без аккаунта в Чекере.
+CREATE TABLE IF NOT EXISTS support_threads (
+  id          INTEGER PRIMARY KEY,
+  user_id     INTEGER REFERENCES users (id) ON DELETE SET NULL,
+  telegram_id INTEGER NOT NULL,          -- куда отвечать
+  tg_name     TEXT,                      -- имя и ник из Telegram: у человека без аккаунта другого нет
+  tg_username TEXT,
+  status      TEXT NOT NULL DEFAULT 'new',
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_threads_tg ON support_threads (telegram_id, status);
+
+-- Сообщения обращения. Вложения не храним: kind говорит, что было (photo, voice…), файл
+-- остался в Telegram — администратору его копирует бот.
+CREATE TABLE IF NOT EXISTS support_messages (
+  id         INTEGER PRIMARY KEY,
+  thread_id  INTEGER NOT NULL REFERENCES support_threads (id) ON DELETE CASCADE,
+  from_admin INTEGER NOT NULL DEFAULT 0,
+  author_id  INTEGER REFERENCES users (id) ON DELETE SET NULL, -- кто из администраторов ответил
+  text       TEXT,                     -- текст или подпись к вложению
+  kind       TEXT NOT NULL DEFAULT 'text',
+  user_msg   INTEGER,                  -- номер сообщения в чате человека с ботом
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_messages_thread ON support_messages (thread_id);
+
+-- Сообщения бота администраторам с обращениями: ответ (reply) на такое сообщение — ответ человеку.
+CREATE TABLE IF NOT EXISTS support_relay (
+  admin_chat INTEGER NOT NULL,
+  admin_msg  INTEGER NOT NULL,
+  thread_id  INTEGER NOT NULL REFERENCES support_threads (id) ON DELETE CASCADE,
+  PRIMARY KEY (admin_chat, admin_msg)
+);

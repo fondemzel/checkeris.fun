@@ -89,6 +89,7 @@ const ICON = {
   gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
   bank: '<path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M12 2 20 7H4z"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  chat: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
 };
 const icon = (name) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
@@ -203,6 +204,7 @@ const PAGES = [
   { id: 'overview', title: 'Обзор', icon: 'home' },
   { id: 'people', title: 'Люди', icon: 'people', count: (d) => d.totals.people },
   { id: 'sources', title: 'Каналы прихода', icon: 'link' },
+  { id: 'support', title: 'Поддержка', icon: 'chat', count: (d) => d.support_waiting || null, bad: true },
   { group: 'Система' },
   { id: 'load', title: 'Нагрузка', icon: 'gauge' },
   { id: 'links', title: 'Подключения', icon: 'bank', count: (d) => brokenLinks(d).length || null, bad: true },
@@ -247,6 +249,7 @@ function pageOverview(d) {
   const attention = box(
     'Требует внимания',
     `<div class="box-row"><div class="grow"><div class="title">ФНС сегодня</div><div class="meter ${meterCls(share)}" style="margin-top:6px"><i style="width:${Math.min(100, share * 100)}%"></i></div></div><div class="num"><b>${d.load.fns.today}</b> из ${d.load.fns.limit}</div></div>
+     <div class="box-row"><div class="grow"><a href="#/support">Обращения ждут ответа</a></div><span class="label ${d.support_waiting ? 'bad' : 'ok'}">${d.support_waiting}</span></div>
      <div class="box-row"><div class="grow"><a href="#/links">Отвалившиеся подключения</a></div><span class="label ${broken ? 'bad' : 'ok'}">${broken}</span></div>
      <div class="box-row"><div class="grow"><a href="#/errors">Сканы с ошибкой за 7 дней</a></div><span class="label ${errors ? 'warn' : 'ok'}">${errors}</span></div>
      <div class="box-row"><div class="grow"><a href="#/people" data-activity="silent">Зарегистрировались и ничего не внесли</a></div><span class="label ${quiet ? 'warn' : 'ok'}">${quiet}</span></div>`,
@@ -405,7 +408,52 @@ function pagePerson(u) {
       { key: 'expires_at', label: 'Действует до', cell: (t) => esc(dateRu(t.expires_at)) },
     ], u.devices, { empty: 'Действующих входов нет' }),
   );
-  return head + stats + activity + `<div class="grid2">${summary}${budget}</div><div style="height:16px"></div>` + months + links + devices;
+  const support = u.support.length ? box('Обращения в поддержку', supportRows(u.support)) : '';
+  return head + stats + activity + `<div class="grid2">${summary}${budget}</div><div style="height:16px"></div>` + support + months + links + devices;
+}
+
+// ── поддержка ────────────────────────────────────────────
+
+const SUPPORT_STATUS = { new: ['ждёт ответа', 'bad'], answered: ['отвечено', 'ok'], closed: ['закрыто', ''] };
+const supportLabel = (s) => `<span class="label ${SUPPORT_STATUS[s]?.[1] ?? ''}">${esc(SUPPORT_STATUS[s]?.[0] ?? s)}</span>`;
+
+function supportRows(threads) {
+  return threads
+    .map((t) => `<div class="box-row"><div class="grow"><a href="#/support/${t.id}"><b>${esc(t.name)}</b></a>${t.user_id ? '' : ' <span class="label">без аккаунта</span>'}
+        <div class="muted" style="font-size:12px">${t.last_from_admin ? 'Вы: ' : ''}${esc(t.last)}</div></div>
+        <span class="muted nw">${esc(ago(t.updated_at))}</span>${supportLabel(t.status)}</div>`)
+    .join('');
+}
+
+function pageSupport(threads) {
+  const waiting = threads.filter((t) => t.status === 'new').length;
+  return subhead('Поддержка')
+    + '<p class="lead">Люди пишут боту @checker_costs_bot или из приложения («Настройки → Помощь»). Отвечать можно здесь или в Telegram — ответом на сообщение бота с обращением.</p>'
+    + box(`${threads.length} ${plural(threads.length, 'обращение', 'обращения', 'обращений')}${waiting ? ` <span class="muted">· ждут ответа ${waiting}</span>` : ''}`,
+      threads.length ? supportRows(threads) : blank('Обращений пока нет'));
+}
+
+function pageThread(t) {
+  if (!t) return '<a class="back" href="#/support">← Поддержка</a>' + blank('Нет такого обращения');
+  const who = t.user_id ? `<a href="#/people/${t.user_id}">${esc(t.name)}</a>` : `${esc(t.name)} <span class="label">без аккаунта</span>`;
+  const msgs = t.messages
+    .map((m) => {
+      const body = m.text ? esc(m.text) : '';
+      const att = m.kind !== 'text' ? `<div class="att">📎 ${esc(m.kind_name ?? 'вложение')} — смотрите в Telegram</div>` : '';
+      return `<div class="msg${m.from_admin ? ' mine' : ''}"><div class="msg-meta">${esc(m.from_admin ? (m.author ?? 'Поддержка') : t.name)} · ${esc(dateTimeRu(m.created_at))}</div>${body}${att}</div>`;
+    })
+    .join('');
+  const next = t.status === 'closed'
+    ? '<button class="btn sm" data-status="new">Открыть снова</button>'
+    : '<button class="btn sm" data-status="closed">Закрыть обращение</button>';
+  return '<a class="back" href="#/support">← Поддержка</a>'
+    + `<div class="subhead"><h2>Обращение #${t.id}</h2><div class="actions">${supportLabel(t.status)}${next}</div></div>`
+    + `<p class="lead">${who}${t.tg_username ? ` · <a href="https://t.me/${esc(t.tg_username)}" target="_blank" rel="noopener">@${esc(t.tg_username)}</a>` : ''} · с ${esc(dateTimeRu(t.created_at))}</p>`
+    + box('Переписка', `<div class="chat">${msgs}</div>`)
+    + box('Ответ', `<form class="box-body reply" id="reply-form" data-id="${t.id}">
+        <textarea class="input" name="text" rows="4" required placeholder="Ответ придёт человеку от бота в Telegram"></textarea>
+        <div class="reply-foot"><span class="muted">Ctrl+Enter — отправить</span><button class="btn primary" type="submit">Отправить</button></div>
+      </form>`);
 }
 
 function pageSources(d) {
@@ -523,7 +571,13 @@ async function route() {
   renderNav(known);
   const d = state.data;
   let html;
-  if (known === 'people' && arg) {
+  if (known === 'support') {
+    try {
+      html = arg ? pageThread(await api(`/api/admin/support/${encodeURIComponent(arg)}`)) : pageSupport((await api('/api/admin/support')).threads);
+    } catch (err) {
+      html = arg ? pageThread(null) : `<div class="flash bad">Не загрузилось: ${esc(err.message)}</div>`;
+    }
+  } else if (known === 'people' && arg) {
     try {
       state.person = await api(`/api/admin/people/${encodeURIComponent(arg)}`);
     } catch {
@@ -687,6 +741,18 @@ document.addEventListener('submit', async (e) => {
     stopLinkRefresh?.();
     return refresh();
   }
+  if (e.target.id === 'reply-form') {
+    const button = e.target.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      await api(`/api/admin/support/${e.target.dataset.id}/reply`, { method: 'POST', body: JSON.stringify({ text: form.get('text') }) });
+      await refresh(); // счётчик «ждут ответа» в меню и сама переписка
+    } catch (err) {
+      alert(err.message);
+      button.disabled = false;
+    }
+    return;
+  }
   if (e.target.id === 'source-form') {
     try {
       await api('/api/admin/sources', { method: 'POST', body: JSON.stringify({ slug: form.get('slug'), name: form.get('name') }) });
@@ -694,6 +760,14 @@ document.addEventListener('submit', async (e) => {
     } catch (err) {
       alert(err.message);
     }
+  }
+});
+
+// Ctrl+Enter в ответе — отправить
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.closest('#reply-form')) {
+    e.preventDefault();
+    e.target.closest('form').requestSubmit();
   }
 });
 
@@ -719,6 +793,13 @@ document.addEventListener('click', async (e) => {
     state.sort[id] = cur?.key === key ? { key, dir: -cur.dir } : { key, dir: -1 };
     if (id === 'people') rerenderPeopleTable();
     else route();
+    return;
+  }
+  const status = e.target.closest('[data-status]');
+  if (status) {
+    const id = location.hash.split('/')[2];
+    await api(`/api/admin/support/${id}/status`, { method: 'POST', body: JSON.stringify({ status: status.dataset.status }) }).catch((err) => alert(err.message));
+    await refresh();
     return;
   }
   // Ссылка из «Требует внимания» сразу с отбором

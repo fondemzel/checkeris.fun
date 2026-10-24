@@ -114,6 +114,7 @@ const UI = {
       '<path d="M8 2v3"/><path d="M2 8h3"/><path d="M16 19v3"/><path d="M19 16h3"/>',
   ),
   trash: svg('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
+  chat: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
   shield: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
@@ -6493,6 +6494,16 @@ function apiKept(path) {
   return Promise.resolve(had);
 }
 
+/**
+ * Ссылка «Написать в поддержку»: чат с ботом, start=support — бот подскажет, как написать.
+ * На телефоне — сразу в приложение Telegram (tg://; Android-оболочка открывает его снаружи),
+ * на компьютере — t.me, где есть и веб-версия.
+ */
+const supportLink = (bot) =>
+  /Android|iPhone|iPad/.test(navigator.userAgent) || inApp()
+    ? `tg://resolve?domain=${encodeURIComponent(bot)}&start=support`
+    : `https://t.me/${encodeURIComponent(bot)}?start=support`;
+
 async function screenSettings() {
   const [me, budget, bank] = settingsData = await Promise.all([
     apiKept('/api/session').catch(() => null),
@@ -6533,10 +6544,12 @@ async function screenSettings() {
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
       + link('incats', UI.income, S.cats.income, counts(meta?.income)))
-    // Помощь: что хранится и как удалить; демо-режим — год трат вымышленного человека
+    // Помощь: поддержка, что хранится и как удалить; демо-режим — год трат вымышленного человека
     + section(S.help.label, S.help.note,
+      // Поддержка — чат с ботом: приложение Telegram открывает tg://, остальное — t.me
+      (me?.bot ? srow({ icon: UI.chat, title: S.help.support, note: S.help.supportNote, href: supportLink(me.bot), end: GO }) : '')
       // «Данные» — сразу страница о данных, без промежуточного экрана
-      srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO })
+      + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO })
       + srow({ icon: UI.sparkle, title: S.help.demo, note: S.help.demoNote, end: toggle('data-demo-toggle', Boolean(meta?.demo), S.help.demo) }))
     + '</div>';
 }
@@ -6588,6 +6601,7 @@ function settingsIndex() {
   add(S.limits.on, S.limits.label, UI.limit, { toggle: 'limits' }, 'лимит включить выключить');
   add(S.limits.period, S.limits.label, UI.limit, { screen: 'set_limits', tg: '' }, 'лимит период месяц квартал неделя день');
   // Помощь
+  if (settingsData[0]?.bot) add(S.help.support, S.help.label, UI.chat, { href: supportLink(settingsData[0].bot) }, 'поддержка помощь вопрос ошибка написать связаться');
   add(S.data.label, S.help.label, UI.shield, { privacy: true }, 'данные хранение конфиденциальность приватность');
   add(S.help.demo, S.help.label, UI.sparkle, { toggle: 'demo' }, 'демо тестовый пример');
   // Справочник: группы и их категории, расходы и доходы
@@ -6646,7 +6660,8 @@ function settingsSearch() {
     const end = e.how.toggle ? settingsToggle(e.how.toggle, e.title) : '';
     return srow({
       icon: e.icon, bare: e.icon.startsWith('<span class="gic"'), title: esc(e.title), note: esc(e.where),
-      attrs: e.how.toggle ? '' : `data-sjump="${i}"`, end: end || (e.how.toggle ? '' : GO),
+      // Ссылка наружу (поддержка) — обычной ссылкой, без перехода по экранам
+      href: e.how.href ?? '', attrs: e.how.toggle || e.how.href ? '' : `data-sjump="${i}"`, end: end || (e.how.toggle ? '' : GO),
     });
   }).join('');
   results.innerHTML = rows ? section('', '', rows) : `<p class="sec-foot">Ничего не нашлось</p>`;
