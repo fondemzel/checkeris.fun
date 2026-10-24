@@ -2,8 +2,10 @@
 // GitHub: слева меню разделов с группами, справа раздел; адрес раздела — в #/…, поэтому
 // «назад» в браузере и ссылки на человека работают.
 //
-// С кабинетом и приложением не связана: свой вход по паролю администратора и свой токен
-// (checker.admin-token) — выход из кабинета её не трогает, и наоборот.
+// С кабинетом и приложением не связана: свой вход (Telegram или пароль администратора) и свой
+// токен (checker.admin-token) — выход из кабинета её не трогает, и наоборот. Вход через Telegram
+// с пометкой client = admin сервер пускает только к администратору и аккаунтов не заводит.
+import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 
 const $ = (id) => document.getElementById(id);
 const TOKEN_KEY = 'checker.admin-token';
@@ -541,20 +543,72 @@ function rerenderPeopleTable() {
 
 // ── вход и загрузка ──────────────────────────────────────
 
+let stopLinkRefresh = null;
+let stopWaiting = null;
+
 function showLogin(error = '') {
+  stopWaiting?.();
   $('layout').hidden = true;
   $('head-end').hidden = true;
   $('login').hidden = false;
-  $('login').innerHTML = `<form class="login" id="login-form">
+  $('login').innerHTML = `<div class="login">
       <span class="logo">Ч</span>
       <h1>Вход в центр управления</h1>
       ${error ? `<div class="flash bad">${esc(error)}</div>` : ''}
-      <div class="login-card">
-        <label class="field">Логин<input class="input" name="login" autocomplete="username" required autofocus /></label>
-        <label class="field">Пароль<input class="input" name="password" type="password" autocomplete="current-password" required /></label>
-        <button class="btn primary" type="submit">Войти</button>
+      <div class="login-card" id="tg-box">
+        <a class="btn primary tg disabled" id="tg-login">${TG_ICON}Войти через Telegram</a>
+        <div id="tg-wait" hidden>
+          <p style="margin:0 0 8px"><b>Подтвердите вход в Telegram</b></p>
+          <p class="muted" style="margin:0 0 12px">Бот покажет запрос — нажмите «Войти». Пустит только администратора.</p>
+          <div class="labels"><a class="btn sm" id="tg-again" target="_blank" rel="noopener">Открыть Telegram ещё раз</a><button class="btn sm" id="tg-cancel" type="button">Отмена</button></div>
+        </div>
       </div>
-    </form>`;
+      <details class="login-pass">
+        <summary class="muted">Войти по паролю</summary>
+        <form class="login-card" id="login-form" style="margin-top:12px">
+          <label class="field">Логин<input class="input" name="login" autocomplete="username" required /></label>
+          <label class="field">Пароль<input class="input" name="password" type="password" autocomplete="current-password" required /></label>
+          <button class="btn" type="submit">Войти</button>
+        </form>
+      </details>
+    </div>`;
+
+  stopLinkRefresh?.();
+  stopLinkRefresh = keepLinkReady($('tg-login'), {
+    client: 'admin',
+    onError: (err) => {
+      if (err.status === 503) $('tg-box').hidden = true; // вход через Telegram не настроен — только пароль
+    },
+  });
+  $('tg-login').addEventListener('click', (e) => {
+    if ($('tg-login').classList.contains('disabled')) return e.preventDefault();
+    awaitTelegram(markWaiting($('tg-login')));
+  });
+  $('tg-cancel').addEventListener('click', () => {
+    forgetLogin();
+    showLogin();
+  });
+
+  // Страница перезагрузилась, пока человек был в Telegram, — ждём дальше. Только свой вход:
+  // начатый в кабинете сюда не относится
+  const pending = pendingLogin();
+  if (pending?.client === 'admin') awaitTelegram(pending);
+}
+
+function awaitTelegram(login) {
+  $('tg-login').hidden = true;
+  $('tg-wait').hidden = false;
+  $('tg-again').href = login.url;
+  stopWaiting?.();
+  stopWaiting = waitLogin(login.nonce, {
+    onDone: (data) => {
+      token.set(data.token);
+      stopLinkRefresh?.();
+      refresh();
+    },
+    // used — токен забрала страница подтверждения в этом же браузере: он уже у нас
+    onFail: (message, status) => (status === 'used' && token.get() ? refresh() : showLogin(message)),
+  });
 }
 
 async function refresh() {
@@ -603,6 +657,7 @@ document.addEventListener('submit', async (e) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return showLogin(data.error ?? `HTTP ${res.status}`);
     token.set(data.token);
+    stopLinkRefresh?.();
     return refresh();
   }
   if (e.target.id === 'source-form') {

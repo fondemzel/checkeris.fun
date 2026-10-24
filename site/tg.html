@@ -86,10 +86,14 @@
 
     /** Вход состоялся: здороваемся и показываем, что теперь можно. */
     const welcome = (client) =>
-      show('ok', 'Вы вошли!', 'Чекер запомнит ваши траты и покажет, на что уходят деньги.',
-        appOf(client), { welcome: true, button: 'Начать' });
+      client === 'admin'
+        ? show('ok', 'Вход выполнен', 'Можно вернуться в центр управления.', appOf(client), { button: 'Открыть' })
+        : show('ok', 'Вы вошли!', 'Чекер запомнит ваши траты и покажет, на что уходят деньги.',
+          appOf(client), { welcome: true, button: 'Начать' });
 
-    const appOf = (client) => (client === 'cabinet' ? '/cabinet/' : '/m/');
+    const appOf = (client) => (client === 'cabinet' ? '/cabinet/' : client === 'admin' ? '/admin/' : '/m/');
+    // Админка хранит свой токен: с кабинетом и телефоном она не связана
+    const tokenKey = (client) => (client === 'admin' ? 'checker.admin-token' : 'checker.token');
     const code = new URLSearchParams(location.search).get('c');
     // Вход начат в этом же браузере — страница сама заберёт токен и откроет Чекер
     const pending = pendingLogin();
@@ -113,7 +117,7 @@
         waitLogin(pending.nonce, {
           // Токен у нас — дальше человек начинает пользоваться отсюда
           onDone: (login) => {
-            localStorage.setItem('checker.token', login.token);
+            localStorage.setItem(tokenKey(data.client), login.token);
             welcome(data.client);
           },
           // Токен успела забрать вкладка, где начат вход, — она уже внутри

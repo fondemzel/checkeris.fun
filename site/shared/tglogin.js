@@ -96,6 +96,7 @@ export function keepLinkReady(anchor, { onError, client = 'm' } = {}) {
       anchor.dataset.web = login.url;
       anchor.dataset.nonce = login.nonce;
       anchor.dataset.expires = login.expires_at;
+      anchor.dataset.client = client;
       anchor.classList.remove('disabled');
       timer = setTimeout(refresh, Math.max(60_000, Date.parse(login.expires_at) - Date.now() - 60_000));
     } catch (err) {
@@ -117,6 +118,7 @@ export function markWaiting(anchor) {
     url: anchor.href,
     web: anchor.dataset.web,
     expires_at: anchor.dataset.expires,
+    client: anchor.dataset.client,
     waiting: true,
   };
   remember(value);

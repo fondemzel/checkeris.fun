@@ -22,6 +22,9 @@ import { createBudget } from './budgets.mjs';
 import { loadEnv } from './llm.mjs';
 
 const TTL_MS = 10 * 60 * 1000; // сколько живёт код входа
+// Куда вернуть после подтверждения: телефон, кабинет или админка (site/admin — свой вход,
+// с кабинетом не связана; пускает только администратора и аккаунтов не заводит)
+const CLIENTS = ['m', 'cabinet', 'admin'];
 const SKEW_MS = 5 * 60 * 1000; // насколько время в подписи бота может расходиться с нашим
 
 const sha = (v) => createHash('sha256').update(String(v)).digest('hex');
@@ -75,7 +78,7 @@ export function startLogin(db, { ua, ip, linkUserId = null, client = null, sourc
   db.prepare(
     `INSERT INTO tg_logins (nonce_hash, status, device, ip, link_user_id, client, source, created_at, expires_at)
      VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(sha(nonce), deviceOf(ua), ip ?? null, linkUserId, client === 'cabinet' ? 'cabinet' : 'm', sourceSlug(source), iso(now), iso(now + TTL_MS));
+  ).run(sha(nonce), deviceOf(ua), ip ?? null, linkUserId, CLIENTS.includes(client) ? client : 'm', sourceSlug(source), iso(now), iso(now + TTL_MS));
 
   // Две ссылки на одного бота: tg:// открывает приложение сразу, без страницы t.me
   // с кнопкой «Open in Telegram»; https://t.me — запасная, если приложения нет
@@ -210,7 +213,12 @@ function settle(db, row, telegram, approve) {
   if (!Number.isSafeInteger(tgId) || tgId <= 0) return { ok: false, reply: 'Не удалось опознать аккаунт Telegram.' };
   const name = nameOf(telegram);
   const username = telegram.username ? String(telegram.username).slice(0, 64) : null;
-  const owner = db.prepare('SELECT id FROM users WHERE telegram_id = ?').get(tgId);
+  const owner = db.prepare('SELECT id, role FROM users WHERE telegram_id = ?').get(tgId);
+
+  // Вход в админку — только для администратора: незнакомый Telegram не регистрируется
+  if (row.client === 'admin' && !row.link_user_id && owner?.role !== 'admin') {
+    return close('rejected', 'Этот вход — только для администратора Чекера.');
+  }
 
   // Привязка к уже вошедшему аккаунту
   if (row.link_user_id) {
@@ -277,7 +285,7 @@ export function pollLogin(db, nonce) {
   if (row.link_user_id) return { status: 'linked' };
 
   const user = db.prepare('SELECT login, name FROM users WHERE id = ?').get(row.user_id);
-  const { token, expires_at } = issueToken(db, row.user_id, 'telegram');
+  const { token, expires_at } = issueToken(db, row.user_id, row.client === 'admin' ? 'админка' : 'telegram');
   return { status: 'ok', token, expires_at, login: user.name ?? user.login, created: Boolean(row.created) };
 }
 

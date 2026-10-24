@@ -376,6 +376,11 @@ table.t { width: 100%; border-collapse: collapse; }
 .login h1 { margin: 0; font-size: 24px; font-weight: 300; text-align: center; }
 .login .logo { width: 48px; height: 48px; margin: 0 auto; border-radius: 12px; font-size: 22px; }
 .login .btn { justify-content: center; }
+.btn.tg { height: 40px; background: #2aabee; border-color: #2aabee; font-size: 15px; }
+.btn.tg:hover { background: #229ed9; }
+.btn.tg svg { width: 18px; height: 18px; }
+.btn.disabled { opacity: 0.6; pointer-events: none; }
+.login-pass summary { cursor: pointer; text-align: center; font-size: 13px; }
 
 .tip {
   position: fixed;
