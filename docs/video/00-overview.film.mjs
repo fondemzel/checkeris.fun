@@ -6,40 +6,11 @@
 // Режиссура (с 22.10.2026): только ключевые экраны и анимации, без пауз «под голос» — темп и
 // растяжку сцен задаёт монтаж. Перед каждым нажатием выделение сначала ложится туда, куда нажмём
 // (press), важное на экране — тоже сначала выделяется (show). Ждём только конца анимаций.
-const TAB = (name) => `.tab[data-tab="${name}"]`;
-const FAB = '#fab';
-const TRANSPORT = '.ring-ic[data-ring="summary|transport"]';
-const MODE = '[data-mode-toggle]';
-const SORT = '[data-drop][aria-label="Сортировка"]';
-const FILTER = '[data-drop][aria-label="Фильтр"]';
-const VIEW = '[data-ana-view]';
-const BEAT = 450; // такт: выделение встало — нажатие (с --pace 2 — 0,9 с)
+import { BEAT, spotSoon, show, press, pressTab } from './film-kit.mjs';
 
-// Выделение — как только элемент появился в разметке (экран ещё выезжает): рамка едет с ним
-const spotSoon = async (f, target, opts) => {
-  const all = (Array.isArray(target) ? target : [target]).map((t) => `!!film.find(${JSON.stringify(t)})`).join(' && ');
-  await f.until(all, 3000);
-  return f.spot(target, opts);
-};
-/** Показать важное: выделить и дать задержаться взгляду. */
-const show = async (f, target, opts = {}, hold = BEAT * 2) => {
-  await spotSoon(f, target, { pad: 4, ...opts });
-  await f.wait(hold);
-};
-/** Нажать: сначала выделение на цели, такт — и нажатие. */
-const press = async (f, target, opts = {}) => {
-  await spotSoon(f, target, { pad: 4, ...opts });
-  await f.wait(BEAT);
-  await f.tap(target);
-};
-/** Кнопка острова с заданным видом экрана (кольцом, без отборов «Расхода») — как нажатие. */
-const pressTab = async (f, name, extra) => {
-  await spotSoon(f, TAB(name), { pad: 2 });
-  await f.wait(BEAT);
-  const r = await f.eval(`film.rect(${JSON.stringify(TAB(name))})`);
-  await f.eval(`(film.touch.down(${r.x}, ${r.y}), film.tab(${JSON.stringify(name)}, ${JSON.stringify(extra)}, true), setTimeout(() => film.touch.up(), 120), true)`);
-  await f.clear(); // экран сменился — выделение растворяется, следующее приходит уже на новом экране
-};
+const FAB = '#fab';
+const REST = '.ring-ic[data-ring^="summary|~"]'; // «Остальное» — мелкие группы, слитые в один сектор
+const MODE = '[data-mode-toggle]';
 
 // Скан без записи в базу. Чек — настоящий чек демо-семьи: «Лента», 15 мая — продукты, корм и
 // бытовая химия, шесть позиций (demo.mjs); строку QR собираем из его даты и суммы. Ответ сервера на
@@ -86,8 +57,8 @@ const AS_APP = `(window.Checker = {
 }, true)`;
 
 export default async (f) => {
-  // Перед кадром: «Расход» кольцом, графики — линиями, подмена скана
-  await f.eval(`localStorage.setItem('checker.mode', 'ring'), localStorage.setItem('checker.anaView', 'line'), true`);
+  // Перед кадром: «Расход» кольцом, сводка — столбиками, подмена скана
+  await f.eval(`localStorage.setItem('checker.mode', 'ring'), localStorage.setItem('checker.anaView', 'bars'), true`);
   await f.eval(FAKE_SCAN);
 
   // Вступление: май — в нём поездка; кольцо расходов заливается, выделение — на кольцо
@@ -114,71 +85,37 @@ export default async (f) => {
   await press(f, FAB);
   await show(f, ['[data-screen="manual"]', '[data-screen="income_add"]'], {}, BEAT * 3);
 
-  // Август — уже есть детские расходы. Кольцо — «Транспорт» — его кольцо — список: строк мало,
-  // разделы списка развёрнуты сразу
-  await pressTab(f, 'summary', { mode: 'ring', src: '', sg: '', from: '2026-08-01', to: '2026-08-31' });
+  // Ноябрь, «Остальное»: мелкие группы разом — покупки по чекам, с маркетплейсов и из банка в
+  // одном списке, как говорит голос. Кольцо — «Остальное» — его кольцо — список
+  await pressTab(f, 'summary', { mode: 'ring', src: '', sg: '', from: '2026-11-01', to: '2026-11-30' });
   await f.wait(1200);
-  await press(f, TRANSPORT, { pad: 2 });
-  await f.wait(900); // кольцо группы рисуется на месте общего
+  await press(f, REST, { pad: 2 });
+  await f.wait(900); // кольцо «Остального» рисуется на месте общего
   await press(f, MODE);
   await show(f, '#screen .list', { pad: 0 });
 
-  // Сортировка и фильтр: чеки и маркетплейсы; группы — одежда, дом и техника, дети. «Транспорт»
-  // выбран (список открыт из его кольца) — снимаем
-  await press(f, SORT);
-  await spotSoon(f, '.quick-menu', { pad: 2 }); // попап растёт из кнопки — рамка с ним
-  await f.wait(BEAT);
-  await press(f, 'text:По сумме', { up: 'button', pad: 2 });
-  await f.wait(500);
-  await press(f, FILTER);
-  // Плитки нажимаем, когда лист встал: пока выезжает, нажатие уходит мимо
-  await f.until(`(() => { const r = document.querySelector('.picker-box')?.getBoundingClientRect(); return r && Math.abs(r.bottom - innerHeight) < 2; })()`, 3000);
-  for (const tile of ['[data-fsrc="receipt"]', '[data-fsrc="market"]', '[data-fsg="transport"]', '[data-fsg="clothing"]', '[data-fsg="home"]', '[data-fsg="deti"]']) {
-    await press(f, tile, { pad: 2 });
-  }
-  await press(f, '[data-filt-apply]');
-  await f.wait(500);
-  await show(f, '.stuck-head .total-note', { pad: 6 }); // что отобрано
-
-  // Доход — кольцом
-  await pressTab(f, 'income', { mode: 'ring' });
-  await f.wait(1100);
-  await show(f, '.ring-box');
-
-  // Настройки: бюджет на двоих, банки, резервная копия, лимиты — как в приложении
+  // Настройки: бюджет на двоих и банки — как в приложении
   await f.eval(AS_APP);
   await pressTab(f, 'settings', {});
   await f.wait(500);
-  for (const row of ['Бюджет', 'Банки', 'Резервная копия', 'Лимиты']) await show(f, `text:${row}`, { up: 'button, a, .row', pad: 2 });
+  for (const row of ['Бюджет', 'Банки']) await show(f, `text:${row}`, { up: 'button, a, .row', pad: 2 });
   await f.eval(`(delete window.Checker, true)`); // дальше — снова браузер
 
-  // Аналитика: линии — подсказка пальцем — столбики — группы — перерасход — «Питание»
-  await pressTab(f, 'stats', { src: '', sg: '' }); // отборы «Расхода» общие с аналитикой — снимаем
-  await f.wait(1600); // шторки линий
-  // Период — 3 месяца (октябрь — декабрь): после рождения у «Детей» перерасход
-  await press(f, '#screen [data-period]');
-  await spotSoon(f, '.picker-box', { pad: 0 });
-  await f.wait(BEAT);
-  await press(f, 'text:3 месяца', { pad: 2 });
-  await f.clear();
-  await f.wait(1600); // шторки линий нового периода
-  // Сначала — столбики, по ним палец ведёт подсказку по дням
-  await press(f, VIEW);
-  await show(f, '.ana-card', { pad: 2 }, 1200); // столбики растут
+  // Сводка — сразу октябрь — декабрь столбиками: после рождения ребёнка неровные недели и перерасход
+  await pressTab(f, 'stats', { src: '', sg: '', from: '2026-10-01', to: '2026-12-31' }); // отборы «Расхода» общие со сводкой — снимаем
+  await f.wait(1300); // столбики растут
+  await spotSoon(f, '.ana-card', { pad: 2 });
   const plot = await f.eval(`film.rect('.ana-plot')`);
   await f.down({ x: plot.left + plot.w * 0.62, y: plot.y });
   await f.move({ x: plot.left + plot.w * 0.42, y: plot.y }, 1200); // подсказка едет по столбикам
   await f.wait(300);
   await f.up();
-  // Блок групп целиком не выделяем: он выше экрана — вырез шире экрана, и выделение будто пропадает
+  // Блок групп целиком не выделяем: он выше экрана — вырез шире экрана, и выделение будто пропадает.
   // «Питомцы» — с перерасходом: выделение сразу переезжает на эту строку и едет с ней, пока экран
-  // докручивает её на середину; затем нажатие — её категории и график
+  // докручивает её на середину. Финал — без раскрытия группы
   await f.spot('[data-ana="pets"]', { pad: 2 });
   await f.eval(`document.querySelector('[data-ana="pets"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), true`);
-  await f.wait(1400); // прокрутка — и взгляд на перерасход
-  await f.tap('[data-ana="pets"]');
-  await f.wait(1500);
+  await f.wait(2200);
   await f.clear();
-  await f.eval(`localStorage.setItem('checker.anaView', 'line'), true`); // вид графика — как был
   await f.wait(600);
 };

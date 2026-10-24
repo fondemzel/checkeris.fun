@@ -1,148 +1,118 @@
-// Ролик 1 «Куда уходят деньги» — действия по секундам (текст и раскадровка — 01-expenses.md).
-// node scripts/film.mjs run docs/video/01-expenses.film.mjs --today 2026-12-18 --rec out.mp4
-// f.at(с) ждёт отметки времени ролика: темп задаёт озвучка, а не скорость эмулятора.
-// Координаты свайпов — пиксели страницы (экран эмулятора ≈ 412×839); у краёв не начинать:
-// там системный жест «назад».
-const TAB = '.tab[data-tab="summary"]';
-const FOOD = '.ring-ic[data-ring="summary|food"]';
-const GROCERIES = '.ring-ic[data-ring="summary-cat|food.groceries"]';
-const MODE = '[data-mode-toggle]';
-const ICRA = 'text:Икра красная горбуши 140 г';
-const FOOD_LIST = '[data-section="food.groceries"]'; // раздел «Еда» в списке — раскрывается нажатием
+// Ролик 1 «Экран „Расход“» — действия подряд (текст и раскадровка — 01-expenses.md).
+// node scripts/film.mjs run docs/video/01-expenses.film.mjs --phone --token <токен> \
+//   --today 2026-12-18 --theme dark --pace 2 --phone-rec video/01-expenses/raw/прогон.mp4
+//
+// Режиссура (с 23.10.2026, как у ролика 0): ключевые экраны подряд, без пауз под голос — растяжку
+// задаёт монтаж; перед каждым нажатием — выделение на цели, смена экрана островом — растворение.
+// Данные — демо-семья Артёма и Кати, декабрь (ребёнку два месяца, Новый год на носу).
+// Координаты свайпов — пиксели страницы; у краёв экрана не начинать: там системный жест «назад».
+import { BEAT, TAB, spotSoon, show, press, sheetSettled } from './film-kit.mjs';
 
-const SEARCH = '#screen label.search'; // всё поле поиска, со значком
-const DINING = '[data-section="food.dining"]'; // раздел «Рестораны и кафе» в списке
+const FOOD = '.ring-ic[data-ring="summary|food"]';
+const TRANSPORT = '.ring-ic[data-ring="summary|transport"]';
+const GROCERIES = '.ring-ic[data-ring="summary-cat|food.groceries"]';
+const FOOD_LIST = '[data-section="food.groceries"]'; // раздел «Еда» в списке — раскрывается нажатием
+const DINING = '[data-section="food.dining"]'; // «Рестораны и кафе»
+const MODE = '[data-mode-toggle]';
 const SORT = '[data-drop][aria-label="Сортировка"]';
 const FILTER = '[data-drop][aria-label="Фильтр"]';
-
-// Выделение — на опережение: ставим, как только элемент появился в разметке (экран ещё
-// выезжает, лента ещё листается). Рамка едет вместе с ним и к остановке уже на месте
-const spotSoon = async (f, target, opts) => {
-  await f.until(`!!film.find(${JSON.stringify(target)})`, 3000);
-  return f.spot(target, opts);
-};
+const SEARCH = '#screen label.search'; // всё поле поиска, со значком
+const ICRA = 'text:Икра красная горбуши 140 г';
 
 export default async (f) => {
-  // Перед кадром: вид «кольцо», экран «Расход» за текущий месяц
+  // Перед кадром: вид «кольцо», «Расход» за декабрь без отборов
   await f.eval(`localStorage.setItem('checker.mode', 'ring'), true`);
 
-  // 0–3 с. «Куда уходят деньги? Чекер показывает это одним кольцом.»
-  await f.eval(`film.tab('summary', { mode: 'ring' })`); // экран рисуется заново — кольцо заливается в кадре
-  await f.at(1.4);
-  await f.spot('.ring-box', { pad: 4 });
+  // Кольцо расходов: группы
+  await f.eval(`film.tab('summary', { mode: 'ring', src: '', sg: '', from: '2026-12-01', to: '2026-12-31' })`);
+  await f.wait(1300); // заливка кольца
+  await show(f, '.ring-box');
 
-  // 3–8 с. «Нажмите на группу — и видно, из чего она сложилась.»
-  await f.at(3.2);
-  await f.spot(FOOD);
-  await f.at(4.4);
-  await f.tap(FOOD);
-  await f.wait(120);
-  await spotSoon(f, '.ring-box', { pad: 4 }); // кольцо группы рисуется на месте общего
+  // Группа → её кольцо: категории
+  await press(f, FOOD, { pad: 2 });
+  await f.wait(300);
+  await show(f, '.ring-box'); // кольцо группы рисуется на месте общего — рамка уже на нём
 
-  // 8–13 с. «Ещё нажатие — и вот каждая покупка, до пакета молока. Чеки Чекер разбирает сам.»
-  await f.at(8.0);
-  await f.spot(GROCERIES);
-  await f.at(9.0);
-  await f.tap(GROCERIES);
-  await spotSoon(f, FOOD_LIST, { pad: 2 }); // список выезжает — рамка едет с ним
-  await f.at(9.9);
-  await f.tap(FOOD_LIST); // раскрыть: видны сами покупки
-  await f.at(10.4);
+  // Категория → список покупок, раздел раскрыт
+  await press(f, GROCERIES, { pad: 2 });
+  await press(f, FOOD_LIST, { pad: 2 });
+  await f.wait(500);
   await f.clear(); // покупки — во весь экран
+  await f.wait(BEAT * 3);
 
-  // 13–18 с. «Свайп — соседний месяц. Декабрь, конечно, дороже: праздничный стол.»
-  // Назад — один раз, в кольцо «Питания» (экран плавно уезжает), и месяцы листаем в нём:
-  // второй «назад», к общему кольцу, переключал кольца резко
-  await f.at(13.0);
+  // Свайп — соседний месяц и обратно. Назад — один раз, в кольцо «Питания»: второй «назад»
+  // к общему кольцу переключал кольца резко
   await f.eval('history.back()');
-  await f.at(14.6); // после «назад» экран доигрывает переход — свайп раньше не примется
+  await f.wait(1600); // переход доигрывает — свайп раньше не примется
   await f.swipe({ x: 90, y: 600 }, { dx: 240 }, 360); // вправо — ноябрь
   await f.until(`location.search.includes('2026-11-01')`);
-  await f.at(16.8);
+  await f.wait(1500);
   await f.swipe({ x: 320, y: 600 }, { dx: -240 }, 360); // влево — снова декабрь
   // Под нагрузкой записи свайп иногда приходит, пока предыдущий ещё доигрывает, — тогда повтор
   if (!(await f.until(`location.search.includes('2026-12-01')`, 900))) await f.swipe({ x: 320, y: 600 }, { dx: -240 }, 360);
+  await f.wait(1200);
 
-  // 18–23 с. «Задержите палец на „Расходе“ — и сразу неделя, месяц или год.»
-  await f.at(18.5);
-  await f.spot(TAB, { pad: 2 });
-  await f.at(19.1);
-  await f.down(TAB);
+  // Долгое нажатие на «Расход» — попап периода, палец ведут к «Году»
+  await spotSoon(f, TAB('summary'), { pad: 2 });
+  await f.wait(BEAT);
+  await f.down(TAB('summary'));
   await spotSoon(f, '.quick', { pad: 2 }); // попап только начал расти — рамка растёт с ним
   await f.wait(700);
   await f.move('text:Год', 520);
   await f.wait(250);
   await f.up();
   await f.clear(); // попап уходит — и выделение с ним
+  await f.wait(1200);
 
-  // 23–29 с. «Кнопка справа переключает кольцо на список…» — список по категориям
-  await f.at(22.8);
-  await f.spot(MODE, { pad: 4 });
-  await f.at(23.6);
-  await f.tap(MODE); // списком
-  await spotSoon(f, '#screen .list', { pad: 0 }); // весь список разделов
-  await f.at(26.6);
-  await f.spot(DINING, { pad: 2 });
-  await f.at(27.2);
-  await f.tap(DINING); // раздел раскрывается
-  await f.at(28.4);
+  // Кольцо → список по категориям, раздел «Рестораны и кафе» раскрывается
+  await press(f, MODE);
+  await show(f, '#screen .list', { pad: 0 });
+  await press(f, DINING, { pad: 2 });
+  await f.wait(600);
   await f.clear();
 
-  // 29–33 с. «Сортировка меняет порядок…» — по дате: покупки по дням
-  await f.at(29.0);
-  await f.spot(SORT, { pad: 4 });
-  await f.at(29.6);
-  await f.tap(SORT);
-  await spotSoon(f, '.quick-menu', { pad: 2 }); // попап растёт из кнопки — рамка растёт с ним
-  await f.at(31.0);
-  await f.tap('text:По дате');
-  await f.wait(200);
+  // Сортировка: по дате — разделы становятся днями
+  await press(f, SORT);
+  await spotSoon(f, '.quick-menu', { pad: 2 }); // попап растёт из кнопки — рамка с ним
+  await f.wait(BEAT);
+  await press(f, 'text:По дате', { up: 'button', pad: 2 });
+  await f.wait(500);
   await f.clear();
 
-  // 33–37 с. «Фильтр оставляет покупки из одного источника…» — только чеки
-  await f.at(33.2);
-  await f.spot(FILTER, { pad: 4 });
-  await f.at(33.8);
-  await f.tap(FILTER);
-  await spotSoon(f, '.picker-box', { pad: 0 }); // лист фильтра (.picker) выезжает снизу
-  await f.at(35.2);
-  await f.tap('text:Только чеки'); // икра — из чека «Перекрёстка»: поиск ниже её найдёт
-  await f.wait(200);
-  await f.clear();
+  // Фильтр: только чеки — плиткой в листе, галочка показывает
+  await press(f, FILTER);
+  await sheetSettled(f);
+  await spotSoon(f, '.picker-box', { pad: 0 });
+  await f.wait(BEAT);
+  await press(f, '[data-fsrc="receipt"]', { pad: 2 });
+  await press(f, '[data-filt-apply]');
+  await f.wait(500);
+  await show(f, '.stuck-head .total-note', { pad: 6 }); // что отобрано
 
-  // 37–44 с. «Поиск находит покупки по названию… В карточке покупки…»
-  await f.at(37.2);
-  await f.spot(SEARCH, { pad: 3 });
+  // Поиск «икра» — карточка покупки с комментарием
+  await spotSoon(f, SEARCH, { pad: 3 });
   await f.tap('#q');
   await f.wait(300);
   await f.type('икра', { every: 140 });
   await f.wait(400);
   await f.hideKeyboard();
-  // По дате разделы — дни. Найденное — в свёрнутом «30 декабря»: дождаться, пока поиск
-  // обновит список (раньше — раскрылся бы другой день), и раскрыть
+  // По дате разделы — дни; найденное — в «30 декабря»: раскрыть, если свёрнут
   await f.until(`!!film.find('text:30 декабря')`, 3000);
   if (!(await f.until(`!!film.find(${JSON.stringify(ICRA)})`, 300))) await f.tap('text:30 декабря');
-  await spotSoon(f, ICRA, { up: '.row', pad: 2 }); // вся строка покупки
-  await f.at(40.8);
-  await f.tap(ICRA);
-  // Весь блок «Комментарий»; карточка выезжает — рамка едет с ней
-  await spotSoon(f, 'text:Не открывать до 31-го!', { up: '.card', pad: 2 });
+  await press(f, ICRA, { up: '.row', pad: 2 }); // вся строка покупки
+  await show(f, 'text:Не открывать до 31-го!', { up: '.card', pad: 2 }, BEAT * 3); // блок «Комментарий»
 
-  // 44–50 с. «Если для группы задан лимит…»
-  await f.at(44.0);
+  // Лимит: кольцо «Транспорта» за декабрь, без отборов — карточка лимита под кольцом. У «Питания» в
+  // декабре перерасход, и карточка показала бы его, а голос говорит «сколько можно в день»
   await f.clear();
   await f.eval(`localStorage.setItem('checker.mode', 'ring'), true`);
-  // Снова декабрь, кольцо; отбор по источнику снят — при отборе лимит не показывается
-  await f.eval(`film.tab('summary', { mode: 'ring', src: '', from: '2026-12-01', to: '2026-12-31' })`);
-  await f.at(45.6);
-  await f.tap(FOOD);
-  await f.wait(150);
+  await f.eval(`film.tab('summary', { mode: 'ring', src: '', sg: '', q: '', from: '2026-12-01', to: '2026-12-31' })`);
+  await f.wait(1300);
+  await press(f, TRANSPORT, { pad: 2 });
+  await f.wait(300);
   await spotSoon(f, '.lim-card', { pad: 4 }); // рамка — на лимит сразу, дальше едет с лентой
-  await f.at(46.6);
   await f.swipe({ x: 200, y: 650 }, { dx: 0, dy: -380 }, 700); // вниз, к карточке лимита
-
-  // 50–54 с. «Чекер. Учёт расходов по чекам и операциям банков.» — заставка при монтаже
-  await f.at(50.5);
+  await f.wait(BEAT * 4);
   await f.clear();
-  await f.at(53.5);
+  await f.wait(600);
 };

@@ -58,6 +58,10 @@ public class MainActivity extends android.app.Activity {
         // Без системной «резины» у краёв: Android 12+ растягивает при ней всё окно, и закреплённое
         // меню съезжает. Обновление свайпом вниз у страницы своё
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        // Свой отклик браузера на долгое нажатие выключен: приложение вибрирует само, когда жест
+        // сработал (попап острова — через 250 мс), а системный приходил ещё раз, через ~0,5 с.
+        // Вибрации страницы (navigator.vibrate) идут через вибромотор и от этого не зависят
+        web.setHapticFeedbackEnabled(false);
         setContentView(web);
 
         WebSettings s = web.getSettings();

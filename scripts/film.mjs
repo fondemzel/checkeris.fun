@@ -34,6 +34,9 @@ const DEVICE = process.env.FILM_DEVICE || 'emulator-5554';
 const PORT = 9333;
 const adb = (...args) => execFileSync(ADB, ['-s', DEVICE, ...args], { encoding: 'utf8' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** ffmpeg: из переменной FFMPEG или из пакета imageio-ffmpeg. */
+const ffmpeg = () => process.env.FFMPEG
+  || execFileSync('python', ['-c', 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())'], { encoding: 'utf8' }).trim();
 const PHONE_FILE = '/sdcard/checker-film.mp4'; // запись прогона на телефоне (--phone-rec), после — удаляется
 
 const argv = process.argv.slice(2);
@@ -437,9 +440,15 @@ try {
       }
       await Promise.race([new Promise((ok) => shot.on('close', ok)), sleep(8000)]);
       await sleep(1500);
-      adb('pull', PHONE_FILE, resolve(phoneRec));
+      // Запись телефона — с переменной частотой кадров (кадр, только когда экран меняется): монтаж на
+      // ней разъезжается. Переводим в постоянные 60 к/с, почти без потерь (CRF 12); исходник — удаляем
+      const vfr = `${resolve(phoneRec)}.vfr.mp4`;
+      adb('pull', PHONE_FILE, vfr);
       adb('shell', 'rm', PHONE_FILE);
-      console.log('запись прогона:', resolve(phoneRec));
+      execFileSync(ffmpeg(), ['-y', '-loglevel', 'error', '-i', vfr, '-vf', 'fps=60', '-fps_mode', 'cfr', '-c:v', 'libx264',
+        '-preset', 'slow', '-crf', '12', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', resolve(phoneRec)]);
+      rmSync(vfr);
+      console.log('запись прогона (60 к/с, постоянная частота):', resolve(phoneRec));
     });
     if (rec && PHONE) {
       // Запись остановить нечем, кроме предела времени: ждём его и режем ролик по сценарию
