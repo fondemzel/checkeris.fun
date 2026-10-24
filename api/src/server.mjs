@@ -64,7 +64,7 @@ import {
   noteBotMessage,
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
-import { overview, addSource, removeSource } from './admin.mjs';
+import { overview, personDetail, addSource, removeSource } from './admin.mjs';
 import {
   getTaxonomy,
   createGroup,
@@ -469,6 +469,11 @@ async function handleApi(req, res, url) {
   if (pathname.startsWith('/api/admin/')) {
     if (user.role !== 'admin') return sendJson(res, 403, { error: 'только для администратора' });
     if (pathname === '/api/admin/overview' && req.method === 'GET') return sendJson(res, 200, overview(db));
+    const personId = /^\/api\/admin\/people\/(\d+)$/.exec(pathname)?.[1];
+    if (personId && req.method === 'GET') {
+      const person = personDetail(db, personId);
+      return person ? sendJson(res, 200, person) : sendJson(res, 404, { error: 'нет такого человека' });
+    }
     if (pathname === '/api/admin/sources' && req.method === 'POST') {
       let body;
       try {

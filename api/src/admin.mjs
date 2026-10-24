@@ -191,6 +191,39 @@ export function overview(db) {
   };
 }
 
+/**
+ * Один человек подробно: то же, что в списке, плюс дни, когда заходил (90 дней), устройства
+ * (выданные входы, без самих токенов), участники бюджета и сколько чеков вносил по месяцам —
+ * числом, без сумм.
+ */
+export function personDetail(db, id) {
+  const base = people(db).find((u) => u.id === Number(id));
+  if (!base) return null;
+  const days = db
+    .prepare("SELECT day FROM usage_daily WHERE user_id = ? AND kind = 'active' AND day >= ? ORDER BY day")
+    .all(base.id, dayAgo(89))
+    .map((r) => r.day);
+  const devices = db
+    .prepare('SELECT label, created_at, used_at, expires_at FROM tokens WHERE user_id = ? ORDER BY COALESCE(used_at, created_at) DESC')
+    .all(base.id);
+  const own = db.prepare('SELECT COALESCE(demo_return, budget_id) AS b FROM users WHERE id = ?').get(base.id).b;
+  const budget = own ? db.prepare('SELECT name, owner_id FROM budgets WHERE id = ?').get(own) : null;
+  const members = own
+    ? db.prepare('SELECT id, COALESCE(name, login) AS name FROM users WHERE budget_id = ? ORDER BY id').all(own)
+      .map((m) => ({ ...m, owner: m.id === budget?.owner_id, me: m.id === base.id }))
+    : [];
+  const months = db
+    .prepare(
+      `SELECT substr(COALESCE(created_at, purchased_at), 1, 7) AS month,
+              SUM(fiscal_drive <> 'manual') AS receipts, SUM(fiscal_drive = 'manual') AS manual
+         FROM receipts WHERE added_by = ? AND COALESCE(created_at, purchased_at) >= ?
+        GROUP BY month ORDER BY month`,
+    )
+    .all(base.id, `${dayAgo(365).slice(0, 7)}`);
+  const scans = db.prepare('SELECT status, COUNT(*) AS n FROM scan_jobs WHERE user_id = ? GROUP BY status').all(base.id);
+  return { ...base, days, devices, budget: budget ? { name: budget.name, members } : null, months, scans };
+}
+
 /** Новая метка ссылки. Название — для себя: «Пост в канале N», «Чат соседей». */
 export function addSource(db, { slug, name }) {
   const key = sourceSlug(slug);

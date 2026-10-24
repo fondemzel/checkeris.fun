@@ -8,16 +8,29 @@
   <link rel="stylesheet" href="/admin/styles.css" />
 </head>
 <body>
-  <header class="bar">
-    <span class="brand">Чекер <span>Админка</span></span>
-    <span class="stamp" id="stamp"></span>
-    <button class="btn" id="refresh" type="button" hidden>Обновить</button>
-    <button class="btn" id="logout" type="button" hidden>Выйти</button>
+  <header class="head">
+    <span class="logo">Ч</span>
+    <span class="crumbs">Чекер <span class="sep">/</span> <span class="sub">Центр управления</span></span>
+    <div class="head-end" id="head-end" hidden>
+      <span class="stamp" id="stamp"></span>
+      <button class="btn sm" id="refresh" type="button">Обновить</button>
+      <button class="btn sm" id="logout" type="button">Выйти</button>
+    </div>
   </header>
 
-  <main class="page" id="page">
-    <p class="dim">Загрузка…</p>
-  </main>
+  <div class="layout" id="layout" hidden>
+    <div class="context">
+      <span class="logo">Ч</span>
+      <div>
+        <div class="context-title">checkeris.fun</div>
+        <div class="muted" id="context-note">Бета</div>
+      </div>
+    </div>
+    <aside class="side"><nav id="nav"></nav></aside>
+    <main id="main"></main>
+  </div>
+
+  <div id="login" hidden></div>
 
   <script type="module" src="/admin/app.js"></script>
 </body>
