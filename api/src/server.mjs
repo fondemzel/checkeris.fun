@@ -66,7 +66,10 @@ import {
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
 import { overview, personDetail, addSource, removeSource } from './admin.mjs';
-import { supportIncoming, supportRelayed, supportList, supportThread, supportReply, supportStatus } from './support.mjs';
+import {
+  supportIncoming, supportRelayed, supportList, supportThread, supportReply, supportStatus,
+  supportMine, supportMineThread, supportFromApp, supportUnread,
+} from './support.mjs';
 import {
   getTaxonomy,
   createGroup,
@@ -422,7 +425,7 @@ async function handleApi(req, res, url) {
   // Тестовая база общая — в ней ничего не меняется и ничего не загружается: правка одного
   // была бы видна всем, а настоящие операции из банка пропали бы в ней. Выйти из аккаунта,
   // удалить его и сменить имя — можно
-  if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session'].includes(pathname)
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session', '/api/support'].includes(pathname)
     && isDemo(db, user.budget_id)) {
     return sendJson(res, 409, { error: 'Это демо-режим — в нём ничего не меняется. Выключить его можно в настройках, в разделе «Помощь»', demo: true });
   }
@@ -457,7 +460,8 @@ async function handleApi(req, res, url) {
       role: user.role,
       telegram: user.telegram,
       telegram_login: telegramReady(),
-      bot: telegramConfig().bot, // поддержка: «Написать в поддержку» ведёт в этого бота
+      bot: telegramConfig().bot, // поддержка: вложения — через этого бота
+      support_unread: supportUnread(db, user.id), // ответы поддержки, которых человек ещё не видел
     });
   }
 
@@ -512,6 +516,24 @@ async function handleApi(req, res, url) {
     const slug = /^\/api\/admin\/sources\/([^/]+)$/.exec(pathname)?.[1];
     if (slug && req.method === 'DELETE') return sendJson(res, 200, removeSource(db, decodeURIComponent(slug)));
     return sendJson(res, 404, { error: 'not found' });
+  }
+
+  // Поддержка из приложения (support.mjs): свои обращения, переписка, новое сообщение
+  if (pathname === '/api/support' && req.method === 'GET') return sendJson(res, 200, { threads: supportMine(db, user) });
+  if (pathname === '/api/support' && req.method === 'POST') {
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = supportFromApp(db, user, body);
+    return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
+  }
+  const mySupport = /^\/api\/support\/(\d+)$/.exec(pathname)?.[1];
+  if (mySupport && req.method === 'GET') {
+    const thread = supportMineThread(db, user, mySupport);
+    return thread ? sendJson(res, 200, thread) : sendJson(res, 404, { error: 'нет такого обращения' });
   }
 
   if (pathname === '/api/logout') {

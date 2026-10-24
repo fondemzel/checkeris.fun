@@ -708,6 +708,7 @@ CREATE TABLE IF NOT EXISTS tg_outbox (
   text       TEXT NOT NULL,            -- что отправить; пусто — вместо отправки удалить сообщение
   delete_msg INTEGER,                  -- номер сообщения, которое надо убрать
   html       INTEGER NOT NULL DEFAULT 0, -- текст с HTML-разметкой (ссылка под словом)
+  support_thread INTEGER,              -- обращение в поддержку (support.mjs): бот сообщит, каким сообщением отправил
   created_at TEXT NOT NULL,
   sent_at    TEXT
 );
@@ -719,12 +720,13 @@ CREATE TABLE IF NOT EXISTS tg_outbox (
 CREATE TABLE IF NOT EXISTS support_threads (
   id          INTEGER PRIMARY KEY,
   user_id     INTEGER REFERENCES users (id) ON DELETE SET NULL,
-  telegram_id INTEGER NOT NULL,          -- куда отвечать
+  telegram_id INTEGER NOT NULL,          -- куда отвечать; 0 — у человека нет Telegram, ответ только в приложении
   tg_name     TEXT,                      -- имя и ник из Telegram: у человека без аккаунта другого нет
   tg_username TEXT,
   status      TEXT NOT NULL DEFAULT 'new',
   created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL
+  updated_at  TEXT NOT NULL,
+  user_seen_at TEXT                      -- человек открыл обращение в приложении: ответы до этого — прочитаны
 );
 
 CREATE INDEX IF NOT EXISTS idx_support_threads_tg ON support_threads (telegram_id, status);

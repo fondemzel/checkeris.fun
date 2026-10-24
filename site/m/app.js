@@ -331,6 +331,7 @@ const state = {
   tk: '', // настройка категорий: чей справочник — '' расходов, 'in' доходов
   tg: '', // настройка категорий: открытая группа
   tc: '', // настройка категорий: открытая категория
+  sup: '', // поддержка: открытое обращение — номер или new (новое)
   op: '', // операция банка, чья карточка открыта
   src: '', // фильтр ленты по источнику: '' | receipt | market | bank | manual
   q: '', // поиск в расходах и доходах: слова через пробел, все должны найтись
@@ -354,7 +355,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'income_add', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits', 'set_backup'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits', 'set_backup', 'set_support', 'set_ticket'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -787,6 +788,7 @@ function go(patch, replace = false) {
   if (state.bank) params.set('bank', state.bank);
   if (['set_group', 'set_limits'].includes(state.screen) && state.tg) params.set('tg', state.tg);
   if (state.screen === 'set_cat' && state.tc) params.set('tc', state.tc);
+  if (state.screen === 'set_ticket' && state.sup) params.set('sup', state.sup);
   if (['set_cats', 'set_group', 'set_cat'].includes(state.screen) && state.tk) params.set('tk', state.tk);
   if (state.op) params.set('op', state.op);
   // Отборы «Расхода» действуют и в «Аналитике»: в адресе — чтобы экран из памяти был с ними
@@ -831,6 +833,7 @@ function readUrl() {
   state.tk = p.get('tk') === 'in' ? 'in' : '';
   state.tg = p.get('tg') ?? '';
   state.tc = p.get('tc') ?? '';
+  state.sup = /^(\d+|new)$/.test(p.get('sup') ?? '') ? p.get('sup') : '';
   state.op = p.get('op') ?? '';
   state.src = (p.get('src') ?? '').split(',').filter((k) => ['receipt', 'market', 'bank', 'manual', 'failed'].includes(k)).join(',');
   state.inf = p.get('inf') ?? '';
@@ -4586,6 +4589,8 @@ const SCREENS = {
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
   set_limits: { title: T.settings.limits.label, render: screenSetLimits, after: limitsFocus },
   set_backup: { title: T.settings.backup.label, render: screenSetBackup },
+  set_support: { title: T.settings.support.title, render: screenSetSupport },
+  set_ticket: { title: () => (state.sup === 'new' ? T.settings.support.newTitle : T.settings.support.ticket), render: screenSetTicket, after: ticketAfter },
   set_budget: { title: T.settings.budget.label, render: screenSetBudget },
   set_banks: { title: T.settings.banks.label, render: screenSetBanks },
   privacy: { title: T.settings.data.label, render: screenPrivacy },
@@ -4625,7 +4630,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', income_add: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary', autolabel: 'summary',
-  set_profile: 'settings', set_motion: 'settings', set_limits: 'settings', set_backup: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
+  set_profile: 'settings', set_motion: 'settings', set_limits: 'settings', set_backup: 'settings', set_support: 'settings', set_ticket: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
 };
 
 /**
@@ -6495,14 +6500,111 @@ function apiKept(path) {
 }
 
 /**
- * Ссылка «Написать в поддержку»: чат с ботом, start=support — бот подскажет, как написать.
- * На телефоне — сразу в приложение Telegram (tg://; Android-оболочка открывает его снаружи),
- * на компьютере — t.me, где есть и веб-версия.
+ * Чат с ботом поддержки — чтобы прислать скриншот: из формы приложения вложить его нельзя.
+ * start=support — бот подскажет, как написать. На телефоне — сразу в приложение Telegram
+ * (tg://; Android-оболочка открывает его снаружи), на компьютере — t.me с веб-версией.
  */
 const supportLink = (bot) =>
   /Android|iPhone|iPad/.test(navigator.userAgent) || inApp()
     ? `tg://resolve?domain=${encodeURIComponent(bot)}&start=support`
     : `https://t.me/${encodeURIComponent(bot)}?start=support`;
+
+// ── поддержка ────────────────────────────────────────────
+// Свои обращения списком (как остальные разделы настроек) и переписка с полем ответа. Ответ
+// поддержки приходит и сюда, и в Telegram от бота. Сервер — api/src/support.mjs
+
+const ticketDate = (iso) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+async function screenSetSupport() {
+  const P = T.settings.support;
+  const [list, me] = await Promise.all([api('/api/support').catch(() => ({ threads: [] })), apiKept('/api/session').catch(() => null)]);
+  const status = (t) => (t.unread ? P.unread : P.status[t.status] ?? t.status);
+  const rows = list.threads
+    .map((t) => srow({
+      icon: UI.chat,
+      title: esc(t.title),
+      note: `${status(t)} · ${ticketDate(t.updated_at)}`,
+      attrs: `data-ticket="${t.id}"`,
+      end: `${t.unread ? `<span class="srow-count">${t.unread}</span>` : ''}${GO}`,
+    }))
+    .join('');
+  const bot = me?.bot ? `<a href="${supportLink(me.bot)}">@${esc(me.bot)}</a>` : '';
+  return section('', '', srow({ icon: UI.plus, title: P.new, note: P.newNote, attrs: 'data-ticket="new"', end: GO }))
+    + section(P.list, bot ? f(P.foot, { bot }) : P.footNoBot, rows || `<p class="note ticket-empty">${P.empty}</p>`);
+}
+
+/** Пузыри переписки: свои — справа, поддержки — слева. */
+function ticketBubbles(t) {
+  const P = T.settings.support;
+  return t.messages
+    .map((m) => {
+      const att = m.kind !== 'text' ? `<span class="bubble-att">📎 ${esc(m.kind_name ?? P.attachment)}</span>` : '';
+      const time = new Date(m.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return `<div class="bubble${m.from_admin ? '' : ' mine'}">${m.from_admin ? `<span class="bubble-who">${UI.chat} ${P.team}</span>` : ''}${m.text ? esc(m.text) : ''}${att}<span class="bubble-time">${time}</span></div>`;
+    })
+    .join('');
+}
+
+const composer = (placeholder, button) => `
+  <div class="composer">
+    <textarea id="ticket-text" rows="3" maxlength="4000" placeholder="${esc(placeholder)}"></textarea>
+    <button class="btn primary" type="button" data-ticket-send>${button}</button>
+  </div>`;
+
+async function screenSetTicket() {
+  const P = T.settings.support;
+  if (state.sup === 'new') {
+    return section('', P.newFoot, composer(P.placeholder, P.send));
+  }
+  let t;
+  try {
+    t = await api(`/api/support/${encodeURIComponent(state.sup)}`);
+  } catch {
+    return section('', '', `<p class="note ticket-empty">${P.notFound}</p>`);
+  }
+  // Открыли — ответы прочитаны: число в настройках обновится при следующем показе
+  kept.delete('/api/session');
+  const foot = t.status === 'closed' ? P.closed : t.telegram ? P.replyFoot : P.replyFootApp;
+  return `<div class="chat-list">${ticketBubbles(t)}</div>`
+    + (t.status === 'closed' ? `<p class="sec-foot">${foot}</p>` : section('', foot, composer(P.more, P.send)));
+}
+
+/** Переписка открылась — к последнему сообщению; новое обращение — сразу клавиатура. */
+function ticketAfter() {
+  if (state.sup === 'new') return document.getElementById('ticket-text')?.focus();
+  const last = document.querySelector('.chat-list .bubble:last-child');
+  last?.scrollIntoView({ block: 'end' });
+}
+
+async function sendTicket(button) {
+  const P = T.settings.support;
+  const field = document.getElementById('ticket-text');
+  const text = field?.value.trim();
+  if (!text) return field?.focus();
+  button.disabled = true;
+  try {
+    const res = await post('/api/support', { text, thread_id: state.sup === 'new' ? null : Number(state.sup) });
+    if (state.sup === 'new') {
+      toast(P.sent);
+      // Вместо формы — уже переписка этого обращения; «назад» вернёт к списку
+      return go({ screen: 'set_ticket', sup: String(res.thread_id) }, true);
+    }
+    render();
+  } catch (err) {
+    toast(err.message);
+    button.disabled = false;
+  }
+  return null;
+}
+
+$('screen').addEventListener('click', (e) => {
+  if (!['set_support', 'set_ticket'].includes(state.screen)) return;
+  const ticket = e.target.closest('[data-ticket]');
+  if (ticket) return go({ screen: 'set_ticket', sup: ticket.dataset.ticket });
+  const send = e.target.closest('[data-ticket-send]');
+  if (send) return sendTicket(send);
+  return null;
+});
 
 async function screenSettings() {
   const [me, budget, bank] = settingsData = await Promise.all([
@@ -6546,8 +6648,11 @@ async function screenSettings() {
       + link('incats', UI.income, S.cats.income, counts(meta?.income)))
     // Помощь: поддержка, что хранится и как удалить; демо-режим — год трат вымышленного человека
     + section(S.help.label, S.help.note,
-      // Поддержка — чат с ботом: приложение Telegram открывает tg://, остальное — t.me
-      (me?.bot ? srow({ icon: UI.chat, title: S.help.support, note: S.help.supportNote, href: supportLink(me.bot), end: GO }) : '')
+      // Поддержка — свои обращения и новое; непрочитанные ответы — числом
+      srow({
+        icon: UI.chat, title: S.help.support, note: me?.support_unread ? S.support.unread : S.help.supportNote, attrs: 'data-set="support"',
+        end: `${me?.support_unread ? `<span class="srow-count">${me.support_unread}</span>` : ''}${GO}`,
+      })
       // «Данные» — сразу страница о данных, без промежуточного экрана
       + srow({ icon: UI.shield, title: S.data.label, note: S.data.note, attrs: 'data-privacy', end: GO })
       + srow({ icon: UI.sparkle, title: S.help.demo, note: S.help.demoNote, end: toggle('data-demo-toggle', Boolean(meta?.demo), S.help.demo) }))
@@ -6601,7 +6706,7 @@ function settingsIndex() {
   add(S.limits.on, S.limits.label, UI.limit, { toggle: 'limits' }, 'лимит включить выключить');
   add(S.limits.period, S.limits.label, UI.limit, { screen: 'set_limits', tg: '' }, 'лимит период месяц квартал неделя день');
   // Помощь
-  if (settingsData[0]?.bot) add(S.help.support, S.help.label, UI.chat, { href: supportLink(settingsData[0].bot) }, 'поддержка помощь вопрос ошибка написать связаться');
+  add(S.help.support, S.help.label, UI.chat, { screen: 'set_support' }, 'поддержка помощь вопрос ошибка написать связаться обращение');
   add(S.data.label, S.help.label, UI.shield, { privacy: true }, 'данные хранение конфиденциальность приватность');
   add(S.help.demo, S.help.label, UI.sparkle, { toggle: 'demo' }, 'демо тестовый пример');
   // Справочник: группы и их категории, расходы и доходы
@@ -7390,8 +7495,8 @@ function srow({ icon = '', bare = false, title, note = '', wrap = false, attrs =
   let body =
     (icon ? `<span class="srow-ic${bare ? ' bare' : ''}">${icon}</span>` : '') +
     `<span class="srow-text"><span class="srow-title">${title}</span>${note ? `<small class="note srow-note">${note}</small>` : ''}</span>` +
-    (end === GO ? GO : ''); // стрелка «дальше» — часть строки: нажимается вместе с ней
-  if (end === GO) end = '';
+    (end.endsWith(GO) ? end : ''); // стрелка «дальше» (и число перед ней) — часть строки: нажимается вместе с ней
+  if (end.endsWith(GO)) end = '';
   const main = href
     ? `<a class="srow-main" href="${href}">${body}</a>`
     : attrs

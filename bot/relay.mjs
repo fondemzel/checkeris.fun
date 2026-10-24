@@ -117,8 +117,18 @@ async function onSupport(msg) {
 
   if (res.action === 'hint') return tg('sendMessage', { chat_id, text: res.text });
   if (res.action === 'reply') {
-    // Ответ администратора — человеку, копией: без «переслано от», как будто пишет бот
-    await tg('copyMessage', { chat_id: res.chat_id, from_chat_id: chat_id, message_id: msg.message_id });
+    // Ответ администратора — человеку от бота: заголовок, цитата вопроса и сам ответ. Текст —
+    // одним сообщением; вложение — заголовком и копией следом. chat_id 0 — у человека нет
+    // Telegram, ответ он увидит в приложении
+    if (res.chat_id) {
+      const text = kind === 'text' ? `${res.prefix}\n\n${esc(msg.text)}` : null;
+      if (text && text.length <= 4000) {
+        await tg('sendMessage', { chat_id: res.chat_id, text, parse_mode: 'HTML', disable_web_page_preview: true });
+      } else {
+        await tg('sendMessage', { chat_id: res.chat_id, text: res.prefix, parse_mode: 'HTML' });
+        await tg('copyMessage', { chat_id: res.chat_id, from_chat_id: chat_id, message_id: msg.message_id });
+      }
+    }
     return tg('setMessageReaction', { chat_id, message_id: msg.message_id, reaction: [{ type: 'emoji', emoji: '👍' }] })
       .catch(() => tg('sendMessage', { chat_id, text: 'Отправлено', reply_to_message_id: msg.message_id }));
   }
@@ -270,7 +280,11 @@ async function pumpOutbox() {
       ? tg('deleteMessage', { chat_id: m.chat_id, message_id: m.delete_msg })
       // html — уведомления с ссылкой под словом «Посмотреть»; остальное — обычным текстом
       : tg('sendMessage', { chat_id: m.chat_id, text: m.text, disable_web_page_preview: true, ...(m.html ? { parse_mode: 'HTML' } : {}) });
-    await call.catch((err) => console.error('outbox:', err.message));
+    const sent = await call.catch((err) => console.error('outbox:', err.message));
+    // Обращение из приложения: запомнить сообщение, чтобы ответ на него в Telegram лёг в обращение
+    if (m.support_thread && sent?.message_id) {
+      checker('/api/telegram/support-relayed', { thread_id: m.support_thread, admin_chat: m.chat_id, admin_msg: sent.message_id }).catch(() => {});
+    }
   }
 }
 
