@@ -1149,6 +1149,13 @@
     </div>
   </footer>
   <script>
+    // Метка ссылки ?from=…: откуда пришёл человек. Первая запоминается и уходит при
+    // регистрации (как в shared/tglogin.js)
+    try {
+      const from = new URLSearchParams(location.search).get('from');
+      if (from && !localStorage.getItem('checker.from')) localStorage.setItem('checker.from', from.slice(0, 32));
+    } catch {}
+
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {

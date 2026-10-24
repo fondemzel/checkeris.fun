@@ -33,7 +33,17 @@ CREATE TABLE IF NOT EXISTS users (
   budget_id      INTEGER REFERENCES budgets (id), -- текущий бюджет: его данные человек видит и правит
   home_budget_id INTEGER REFERENCES budgets (id), -- свой бюджет: в него человек вернётся, выйдя из общего
   demo_return    INTEGER,                         -- включена тестовая база: в какой бюджет вернуться (demo.mjs)
-  notify_members INTEGER NOT NULL DEFAULT 1       -- сообщать в Telegram, что другой участник внёс трату (members.mjs)
+  notify_members INTEGER NOT NULL DEFAULT 1,      -- сообщать в Telegram, что другой участник внёс трату (members.mjs)
+  source         TEXT                             -- откуда пришёл: метка ссылки ?from=… при регистрации (admin.mjs)
+);
+
+-- Метки ссылок, по которым приходят люди: checkeris.fun/?from=<slug>. Заводит администратор,
+-- чтобы видеть, сколько пришло из поста, чата, канала. Метка без записи здесь тоже
+-- запоминается человеку — в админке она покажется как есть, без названия.
+CREATE TABLE IF NOT EXISTS sources (
+  slug       TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );
 
 -- Бюджет — хозяин данных. Обычно в нём один человек; семья — несколько человек
@@ -80,17 +90,19 @@ CREATE TABLE IF NOT EXISTS tg_logins (
   tg_identity  TEXT,                   -- кому бот показал запрос: id и имя из Telegram, JSON
   bot_chat     INTEGER,                -- чат и сообщение бота с кнопками: после входа бот их удаляет,
   bot_msg      INTEGER,                -- чтобы в переписке не копился мусор
+  source       TEXT,                   -- метка ссылки, с которой человек пришёл: достанется новому аккаунту
   created_at   TEXT NOT NULL,
   expires_at   TEXT NOT NULL,
   confirmed_at TEXT
 );
 
 -- Личные суточные квоты: лимит ФНС и модель общие на всё приложение, и один активный
--- пользователь не должен выбрать их за всех.
+-- пользователь не должен выбрать их за всех. Здесь же отметка «был сегодня» (active, n = 1):
+-- по ней админка считает, сколько людей пользуются приложением день за днём.
 CREATE TABLE IF NOT EXISTS usage_daily (
   user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   day     TEXT NOT NULL,
-  kind    TEXT NOT NULL,                -- llm_names
+  kind    TEXT NOT NULL,                -- llm_names | active
   n       INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, day, kind)
 );

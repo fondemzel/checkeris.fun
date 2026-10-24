@@ -61,7 +61,10 @@ export function userByToken(db, token) {
   }
 
   // Отметка последнего использования: по ней видно живые устройства в списке токенов
-  db.prepare('UPDATE tokens SET used_at = ? WHERE hash = ?').run(new Date().toISOString(), row.hash);
+  const now = new Date().toISOString();
+  db.prepare('UPDATE tokens SET used_at = ? WHERE hash = ?').run(now, row.hash);
+  // «Был сегодня» — одна строка на человека в сутки: по ним админка считает активных по дням
+  db.prepare("INSERT OR IGNORE INTO usage_daily (user_id, day, kind, n) VALUES (?, ?, 'active', 1)").run(row.id, now.slice(0, 10));
   return {
     id: row.id,
     login: row.login,

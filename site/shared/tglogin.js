@@ -14,6 +14,25 @@
 
 const KEY = 'checker.tg-login';
 
+// Откуда человек пришёл: метка ссылки checkeris.fun/?from=<метка>. Запоминается первая —
+// пришёл из поста, потом открыл ссылку из чата, а засчитан пост. При регистрации через
+// Telegram метка достаётся новому аккаунту (админка, api/src/admin.mjs). Та же запись —
+// в site/index.html: ссылки могут вести и на главную
+const FROM_KEY = 'checker.from';
+try {
+  const from = new URLSearchParams(location.search).get('from');
+  if (from && !localStorage.getItem(FROM_KEY)) localStorage.setItem(FROM_KEY, from.slice(0, 32));
+} catch {
+  /* без хранилища метка проживёт только эту страницу — и потеряется */
+}
+const savedFrom = () => {
+  try {
+    return localStorage.getItem(FROM_KEY);
+  } catch {
+    return null;
+  }
+};
+
 export const TG_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/>' +
@@ -55,7 +74,7 @@ export async function requestLogin({ token = null, link = false, client = 'm' } 
   const res = await fetch('/api/auth/telegram/start', {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ link, client }),
+    body: JSON.stringify({ link, client, from: link ? null : savedFrom() }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(data.error ?? `HTTP ${res.status}`), { status: res.status });

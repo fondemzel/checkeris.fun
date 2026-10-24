@@ -37,6 +37,12 @@ export function telegramConfig() {
 
 export const telegramReady = () => telegramConfig().secret.length >= 32;
 
+/** Метка ссылки (?from=…): латиница, цифры, «-» и «_», до 32 знаков. Остальное не запоминаем. */
+export const sourceSlug = (v) => {
+  const slug = String(v ?? '').trim().toLowerCase();
+  return /^[a-z0-9_-]{1,32}$/.test(slug) ? slug : null;
+};
+
 /** Устройство по User-Agent — грубо, ровно чтобы человек узнал свой запрос. */
 export function deviceOf(ua = '') {
   const browser =
@@ -62,14 +68,14 @@ export function deviceOf(ua = '') {
  * Начало входа. Код — 32 символа base64url: столько и таких символов пропускает
  * параметр start в ссылке на бота. Хранится хеш: утечка базы не даёт перехватить вход.
  */
-export function startLogin(db, { ua, ip, linkUserId = null, client = null }) {
+export function startLogin(db, { ua, ip, linkUserId = null, client = null, source = null }) {
   const nonce = randomBytes(24).toString('base64url');
   const now = Date.now();
   db.prepare('DELETE FROM tg_logins WHERE expires_at < ?').run(iso(now - 86_400_000));
   db.prepare(
-    `INSERT INTO tg_logins (nonce_hash, status, device, ip, link_user_id, client, created_at, expires_at)
-     VALUES (?, 'pending', ?, ?, ?, ?, ?, ?)`,
-  ).run(sha(nonce), deviceOf(ua), ip ?? null, linkUserId, client === 'cabinet' ? 'cabinet' : 'm', iso(now), iso(now + TTL_MS));
+    `INSERT INTO tg_logins (nonce_hash, status, device, ip, link_user_id, client, source, created_at, expires_at)
+     VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(sha(nonce), deviceOf(ua), ip ?? null, linkUserId, client === 'cabinet' ? 'cabinet' : 'm', sourceSlug(source), iso(now), iso(now + TTL_MS));
 
   // Две ссылки на одного бота: tg:// открывает приложение сразу, без страницы t.me
   // с кнопкой «Open in Telegram»; https://t.me — запасная, если приложения нет
@@ -229,10 +235,10 @@ function settle(db, row, telegram, approve) {
     } else {
       const res = db
         .prepare(
-          `INSERT INTO users (login, password, created_at, telegram_id, tg_username, name, role)
-           VALUES (?, '!', ?, ?, ?, ?, 'user')`,
+          `INSERT INTO users (login, password, created_at, telegram_id, tg_username, name, role, source)
+           VALUES (?, '!', ?, ?, ?, ?, 'user', ?)`,
         )
-        .run(`tg:${tgId}`, now, tgId, username, name);
+        .run(`tg:${tgId}`, now, tgId, username, name, row.source ?? null);
       userId = Number(res.lastInsertRowid);
       createBudget(db, userId); // свой бюджет с копией системного справочника
       created = true;

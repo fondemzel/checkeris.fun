@@ -2266,6 +2266,7 @@ async function renderMe() {
   const shared = budget && budget.members > 1 ? ` · бюджет «${budget.name}», ${budget.members} уч.` : '';
   $('me').textContent = me.name + (me.telegram ? ' · Telegram' : '') + shared;
   $('tg-link').hidden = me.telegram || !me.telegram_login;
+  $('admin-link').hidden = me.role !== 'admin';
 }
 
 /**

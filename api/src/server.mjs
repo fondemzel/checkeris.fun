@@ -64,6 +64,7 @@ import {
   noteBotMessage,
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
+import { overview, addSource, removeSource } from './admin.mjs';
 import {
   getTaxonomy,
   createGroup,
@@ -339,7 +340,7 @@ async function handleApi(req, res, url) {
     return sendJson(
       res,
       200,
-      startLogin(db, { ua: req.headers['user-agent'], ip: clientIp(req), linkUserId, client: body.client }),
+      startLogin(db, { ua: req.headers['user-agent'], ip: clientIp(req), linkUserId, client: body.client, source: body.from }),
     );
   }
 
@@ -462,6 +463,25 @@ async function handleApi(req, res, url) {
     if (user.role === 'admin') return sendJson(res, 403, { error: 'аккаунт администратора удаляется только из консоли' });
     const result = deleteAccount(db, user.id);
     return result.error ? sendJson(res, result.status ?? 400, result) : sendJson(res, 200, result);
+  }
+
+  // Админка (admin.mjs): только служебное о людях беты — сколько, откуда, как пользуются
+  if (pathname.startsWith('/api/admin/')) {
+    if (user.role !== 'admin') return sendJson(res, 403, { error: 'только для администратора' });
+    if (pathname === '/api/admin/overview' && req.method === 'GET') return sendJson(res, 200, overview(db));
+    if (pathname === '/api/admin/sources' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const result = addSource(db, body);
+      return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
+    }
+    const slug = /^\/api\/admin\/sources\/([^/]+)$/.exec(pathname)?.[1];
+    if (slug && req.method === 'DELETE') return sendJson(res, 200, removeSource(db, decodeURIComponent(slug)));
+    return sendJson(res, 404, { error: 'not found' });
   }
 
   if (pathname === '/api/logout') {
