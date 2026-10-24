@@ -2362,14 +2362,40 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .chat-empty-ic { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--fill); color: var(--accent); }
 .chat-empty-ic svg { width: 26px; height: 26px; }
 
-/* Поле сообщения внизу, как в Telegram: скрепка, серая «таблетка», круглая кнопка со стрелкой */
-.composer-bar { display: flex; align-items: flex-end; gap: 6px; }
+/* Поле сообщения — второй остров над нижним меню: та же форма, фон и тень, что у .tabs.
+   Внутри, как в Telegram: скрепка, поле, круглая кнопка со стрелкой. Полоса #actions под ним
+   на этом экране прозрачна — плавает только остров */
+.actions:has(.composer-bar) {
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--tabs, 70px) + 2px);
+  padding: 0 0 8px;
+  border-top: 0;
+  background: transparent;
+  gap: 6px;
+}
+.composer-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-height: 52px;
+  padding: 4px;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: 0 6px 24px rgba(15, 20, 28, 0.14), 0 0 0 1px rgba(15, 20, 28, 0.06);
+}
+:root[data-theme="dark"] .composer-bar {
+  background: #24303d;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+/* Общее правило тёмной темы красит поля ввода — у поля в острове фон острова */
+:root[data-theme="dark"] .composer-bar textarea { background: transparent; }
 .clip-btn {
   display: grid;
   place-items: center;
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -2379,7 +2405,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .clip-btn:active { background: var(--press); }
 .clip-btn svg { width: 22px; height: 22px; }
 /* Картинка к отправке — над полем, с крестиком в углу */
-.attach-preview { position: relative; align-self: flex-start; margin: 0 0 2px 46px; }
+.attach-preview { position: relative; align-self: flex-start; margin: 0 0 4px 12px; filter: drop-shadow(0 4px 12px rgba(15, 20, 28, 0.18)); }
 .attach-preview[hidden] { display: none; }
 .attach-preview img { display: block; max-width: 140px; max-height: 110px; border-radius: 10px; object-fit: cover; }
 .attach-clear {
@@ -2402,12 +2428,12 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .bubble-img { display: block; max-width: 100%; max-height: 320px; margin: 2px 0 4px; border-radius: 10px; background: var(--fill); min-width: 120px; min-height: 80px; object-fit: cover; }
 .composer-bar textarea {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
   max-height: 132px;
-  padding: 9px 16px;
+  padding: 11px 4px;
   border: 0;
-  border-radius: 20px;
-  background: var(--fill);
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
   font: inherit;
   font-size: 16px; /* меньше — и iOS увеличит страницу при вводе */
@@ -2420,8 +2446,8 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   display: grid;
   place-items: center;
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 0;
   border-radius: 50%;
