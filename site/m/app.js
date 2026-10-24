@@ -939,6 +939,8 @@ const dropPopup = (el) => removePopup(el);
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 window.addEventListener('popstate', (e) => {
+  // «Назад» из сканера: камеру гасим, экран под ним остаётся как был
+  if (scanner && !e.state?.scanner) return closeScanner();
   // «Назад» над листом с несохранённым: лист остаётся (запись истории — обратно), а вопрос —
   // как при нажатии мимо. Окна поверх листа (тот же вопрос) «назад» закрывает
   const open = [...document.querySelectorAll(OPEN_POPUPS)];
@@ -950,7 +952,7 @@ window.addEventListener('popstate', (e) => {
     return;
   }
   // popup, sheet и scroll — пометки самой записи истории, в состоянии экрана им делать нечего
-  const { popup, sheet, scroll, ...screenState } = e.state ?? {};
+  const { popup, sheet, scroll, scanner: _scan, ...screenState } = e.state ?? {};
   if (e.state) Object.assign(state, screenState);
   else readUrl();
   // «Назад» закрывает открытый попап — и лист, и выбор категории, и календарь
@@ -3144,8 +3146,30 @@ function closeScanner() {
   scanner = null;
 }
 
+/** Закрыть сканер крестиком — как «назад»: снимаем его запись истории, камеру гасит обработчик. */
+function leaveScanner() {
+  if (history.state?.scanner) history.back();
+  else closeScanner();
+}
+
+/**
+ * Сканер уступает место переходу: его запись в истории занимает переход (go с replace
+ * или лист чека), иначе «назад» оттуда попадёт на пустую запись сканера.
+ */
+function scannerHandOff(popup = false) {
+  const own = Boolean(history.state?.scanner);
+  closeScanner();
+  if (own && popup) {
+    const { scanner: _, ...rest } = history.state;
+    history.replaceState({ ...rest, popup: true }, '', location.href);
+  }
+  return own;
+}
+
 function openScanner() {
   closeScanner();
+  // Своя запись в истории: системная «назад» закрывает сканер, а не всё приложение
+  if (!history.state?.scanner) history.pushState({ ...history.state, scanner: true }, '', location.href);
   const el = document.createElement('div');
   el.className = 'scanner';
   el.innerHTML = `
@@ -3166,17 +3190,14 @@ function openScanner() {
   scanner = current;
 
   el.addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]')) return closeScanner();
+    if (e.target.closest('[data-close]')) return leaveScanner();
     if (e.target.closest('[data-typed]')) {
       el.querySelector('#scanner-typed').hidden = false;
       el.querySelector('[data-typed]').hidden = true;
       return el.querySelector('textarea').focus();
     }
     if (e.target.closest('[data-again]')) return openScanner();
-    if (e.target.closest('[data-to-failed]')) {
-      closeScanner();
-      go({ screen: 'receipts', filter: 'failed' });
-    }
+    if (e.target.closest('[data-to-failed]')) go({ screen: 'receipts', filter: 'failed' }, scannerHandOff());
   });
 
   el.querySelector('#scanner-typed').addEventListener('submit', (e) => {
@@ -3404,7 +3425,7 @@ async function submitScan(current, qr) {
     const data = await post('/api/scan', { qr });
     job = data.job;
     if (data.known && job.receipt_id) {
-      closeScanner();
+      scannerHandOff(true);
       toast('Этот чек уже был в базе');
       return openReceiptSheet(job.receipt_id);
     }
@@ -3417,8 +3438,7 @@ async function submitScan(current, qr) {
   if (scanner !== current) return; // закрыли, не дождавшись: чек и так появится в списке
 
   if (job.status === 'done' && job.receipt_id) {
-    closeScanner();
-    go({ screen: 'added', added: String(job.receipt_id) });
+    go({ screen: 'added', added: String(job.receipt_id) }, scannerHandOff());
   } else if (job.status === 'failed') {
     current.el.classList.add('scan-failed');
     feedData.delete('/api/scan?state=failed');
