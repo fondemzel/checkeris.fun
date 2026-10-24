@@ -54,7 +54,6 @@ import { listAccounts, saveAccounts, rememberLoadedAccounts, mergePrefixedAccoun
 import { loadEnv } from './llm.mjs';
 import {
   telegramReady,
-  telegramConfig,
   startLogin,
   pollLogin,
   describeLogin,
@@ -466,7 +465,6 @@ async function handleApi(req, res, url) {
       role: user.role,
       telegram: user.telegram,
       telegram_login: telegramReady(),
-      bot: telegramConfig().bot, // поддержка: вложения — через этого бота
       support_unread: supportUnread(db, user.id), // ответы поддержки, которых человек ещё не видел
     });
   }

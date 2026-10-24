@@ -2365,11 +2365,13 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 /* Поле сообщения — второй остров над нижним меню: та же форма, фон и тень, что у .tabs.
    Внутри, как в Telegram: скрепка, поле, круглая кнопка со стрелкой. Полоса #actions под ним
    на этом экране прозрачна — плавает только остров */
+/* Меню на этом экране спрятано (body.no-tabs), остров с полем — на его месте и той же высоте */
+body.no-tabs .tabs { display: none; }
 .actions:has(.composer-bar) {
   left: 10px;
   right: 10px;
-  bottom: calc(var(--tabs, 70px) + 2px);
-  padding: 0 0 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  padding: 0;
   border-top: 0;
   background: transparent;
   gap: 6px;

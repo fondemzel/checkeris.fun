@@ -4647,15 +4647,25 @@ const TAB_OF = {
  * полоса кнопок есть не на всех экранах, а у телефонов разная безопасная зона снизу.
  */
 function updateDock() {
+  const root = document.documentElement.style;
+  // Экран без меню (переписка с поддержкой): внизу только своя полоса — место под ней от её верха
+  if (document.body.classList.contains('no-tabs')) {
+    const actions = $('actions').hidden ? 0 : Math.ceil(window.innerHeight - $('actions').getBoundingClientRect().top);
+    root.setProperty('--tabs', '0px');
+    root.setProperty('--dock', `${actions}px`);
+    return;
+  }
   // Меню — остров над низом экрана: место под ним считаем от его верха до низа экрана
   // «+» выступает над островом — считаем от того, что выше
   const top = Math.min(document.querySelector('.tabs').getBoundingClientRect().top, $('fab').getBoundingClientRect().top);
   const tabs = Math.ceil(window.innerHeight - top);
   const actions = $('actions').hidden ? 0 : $('actions').offsetHeight;
-  const root = document.documentElement.style;
   root.setProperty('--tabs', `${tabs}px`);
   root.setProperty('--dock', `${tabs + actions}px`);
 }
+
+// Экраны без нижнего меню: в переписке с поддержкой на его месте — остров с полем сообщения
+const NO_TABS = ['set_ticket'];
 
 if ('ResizeObserver' in window) {
   const watch = new ResizeObserver(updateDock);
@@ -4809,6 +4819,7 @@ async function render() {
   $('back').hidden = top;
 
   const actions = screen.actions?.() ?? '';
+  document.body.classList.toggle('no-tabs', NO_TABS.includes(state.screen));
   $('actions').innerHTML = actions;
   $('actions').hidden = !actions;
   updateDock();
@@ -6507,16 +6518,6 @@ function apiKept(path) {
   return Promise.resolve(had);
 }
 
-/**
- * Чат с ботом поддержки — чтобы прислать скриншот: из формы приложения вложить его нельзя.
- * start=support — бот подскажет, как написать. На телефоне — сразу в приложение Telegram
- * (tg://; Android-оболочка открывает его снаружи), на компьютере — t.me с веб-версией.
- */
-const supportLink = (bot) =>
-  /Android|iPhone|iPad/.test(navigator.userAgent) || inApp()
-    ? `tg://resolve?domain=${encodeURIComponent(bot)}&start=support`
-    : `https://t.me/${encodeURIComponent(bot)}?start=support`;
-
 // ── поддержка ────────────────────────────────────────────
 // Свои обращения списком (как остальные разделы настроек) и переписка с полем ответа. Ответ
 // поддержки приходит и сюда, и в Telegram от бота. Сервер — api/src/support.mjs
@@ -6536,9 +6537,9 @@ async function screenSetSupport() {
       end: `${t.unread ? `<span class="srow-count">${t.unread}</span>` : ''}${GO}`,
     }))
     .join('');
-  const bot = me?.bot ? `<a href="${supportLink(me.bot)}">@${esc(me.bot)}</a>` : '';
+  // Ответ приходит и в Telegram — если он привязан к аккаунту
   return section('', '', srow({ icon: UI.plus, title: P.new, note: P.newNote, attrs: 'data-ticket="new"', end: GO }))
-    + section(P.list, bot ? f(P.foot, { bot }) : P.footNoBot, rows || `<p class="note ticket-empty">${P.empty}</p>`);
+    + section(P.list, me?.telegram ? P.foot : P.footNoBot, rows || `<p class="note ticket-empty">${P.empty}</p>`);
 }
 
 /** Пузыри переписки: свои — справа, поддержки — слева. */

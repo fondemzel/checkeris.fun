@@ -342,7 +342,7 @@ export const en = {
       empty: 'No requests yet',
       unread: 'New reply',
       status: { new: 'Awaiting reply', answered: 'Answered', closed: 'Closed' },
-      foot: 'The reply will come here and in Telegram. You can send a screenshot to {bot}',
+      foot: 'The reply will come here and in Telegram',
       footNoBot: 'The reply will come here',
       placeholder: 'Message',
       newHint: 'Tell us what happened or what you would improve. We’ll reply here and in Telegram, usually within a day',
