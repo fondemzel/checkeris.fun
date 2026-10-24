@@ -5,22 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex" />
   <title>Админка — Чекер</title>
+  <link rel="icon" href="/m/icon-192.png" />
   <link rel="stylesheet" href="/admin/styles.css" />
+  <script>
+    // Тема — до отрисовки, чтобы страница не мигнула светлой: выбор из этого браузера, иначе системная
+    try {
+      const theme = localStorage.getItem('checker.admin-theme');
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    } catch {}
+  </script>
 </head>
 <body>
   <header class="head">
-    <span class="logo">Ч</span>
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#1f2735"/><path d="M10 7h12v17l-2-1.6-2 1.6-2-1.6-2 1.6-2-1.6-2 1.6z" fill="#fff"/><rect x="13" y="11" width="6" height="1.6" rx=".8" fill="#1f2735"/><rect x="13" y="14.4" width="4" height="1.6" rx=".8" fill="#1f2735"/><rect x="13" y="17.8" width="5" height="1.6" rx=".8" fill="#1f2735"/></svg>
     <span class="crumbs">Чекер <span class="sep">/</span> <span class="sub">Центр управления</span></span>
-    <div class="head-end" id="head-end" hidden>
-      <span class="stamp" id="stamp"></span>
-      <button class="btn sm" id="refresh" type="button">Обновить</button>
-      <button class="btn sm" id="logout" type="button">Выйти</button>
+    <div class="head-end">
+      <span id="head-end" hidden>
+        <span class="stamp" id="stamp"></span>
+        <button class="btn sm" id="refresh" type="button">Обновить</button>
+        <button class="btn sm" id="logout" type="button">Выйти</button>
+      </span>
+      <button class="theme-btn" id="theme" type="button" title="Светлая или тёмная тема" aria-label="Светлая или тёмная тема"></button>
     </div>
   </header>
 
   <div class="layout" id="layout" hidden>
     <div class="context">
-      <span class="logo">Ч</span>
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#1f2735"/><path d="M10 7h12v17l-2-1.6-2 1.6-2-1.6-2 1.6-2-1.6-2 1.6z" fill="#fff"/><rect x="13" y="11" width="6" height="1.6" rx=".8" fill="#1f2735"/><rect x="13" y="14.4" width="4" height="1.6" rx=".8" fill="#1f2735"/><rect x="13" y="17.8" width="5" height="1.6" rx=".8" fill="#1f2735"/></svg>
       <div>
         <div class="context-title">checkeris.fun</div>
         <div class="muted" id="context-note">Бета</div>

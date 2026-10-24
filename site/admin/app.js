@@ -9,6 +9,9 @@ import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLog
 
 const $ = (id) => document.getElementById(id);
 const TOKEN_KEY = 'checker.admin-token';
+const THEME_KEY = 'checker.admin-theme';
+// Значок чека — тот же, что в шапке (index.html) и у приложения
+const LOGO = document.querySelector('.head .logo').outerHTML;
 const SITE = location.origin;
 
 const token = {
@@ -552,7 +555,7 @@ function showLogin(error = '') {
   $('head-end').hidden = true;
   $('login').hidden = false;
   $('login').innerHTML = `<div class="login">
-      <span class="logo">Ч</span>
+      ${LOGO}
       <h1>Вход в центр управления</h1>
       ${error ? `<div class="flash bad">${esc(error)}</div>` : ''}
       <div class="login-card" id="tg-box">
@@ -635,6 +638,30 @@ async function refresh() {
     }
   }
 }
+
+// ── тема ─────────────────────────────────────────────────
+// Пока человек не выбрал, тема — как в системе. Значок показывает, куда переключит:
+// в светлой — месяц, в тёмной — солнце
+const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
+const isDark = () => (document.documentElement.dataset.theme ?? (systemDark.matches ? 'dark' : 'light')) === 'dark';
+const paintThemeButton = () => {
+  $('theme').innerHTML = isDark() ? SUN : MOON;
+  $('theme').title = isDark() ? 'Светлая тема' : 'Тёмная тема';
+};
+$('theme').addEventListener('click', () => {
+  const next = isDark() ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    /* выбор проживёт до перезагрузки */
+  }
+  paintThemeButton();
+});
+systemDark.addEventListener('change', paintThemeButton);
+paintThemeButton();
 
 window.addEventListener('hashchange', route);
 $('refresh').addEventListener('click', refresh);

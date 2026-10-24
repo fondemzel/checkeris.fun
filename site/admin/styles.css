@@ -29,9 +29,10 @@
   color-scheme: light;
 }
 
-/* Тёмная — палитра GitHub Dark dimmed: графитовый фон, светло-серый текст, всё приглушено */
+/* Тёмная — палитра GitHub Dark dimmed: графитовый фон, светло-серый текст, всё приглушено.
+   Дважды: по системе (если в шапке не выбрана светлая) и по выбору в шапке */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --fg: #adbac7;
     --muted: #768390;
     --canvas: #22272e;
@@ -58,6 +59,33 @@
     color-scheme: dark;
   }
 }
+
+:root[data-theme="dark"] {
+  --fg: #adbac7;
+  --muted: #768390;
+  --canvas: #22272e;
+  --subtle: #2d333b;
+  --inset: #1c2128;
+  --border: #444c56;
+  --border-muted: #373e47;
+  --accent: #539bf5;
+  --accent-soft: #4184e41a;
+  --nav-hover: #636e7b1f;
+  --nav-sel: #636e7b33;
+  --danger: #e5534b;
+  --danger-soft: #e5534b1a;
+  --attention: #c69026;
+  --attention-soft: #ae7c1426;
+  --success: #57ab5a;
+  --success-soft: #46954a26;
+  --bar: #3f6aa3;
+  --cell: #2d333b;
+  --cell-on: #46954a;
+  --meter: #347d39;
+  --head: #2d333b;
+  --num: #cdd9e5;
+  color-scheme: dark;
+  }
 
 * { box-sizing: border-box; }
 
@@ -94,16 +122,24 @@ a:hover { text-decoration: underline; }
   background: var(--head);
   border-bottom: 1px solid var(--border);
 }
-.logo {
+.logo { display: block; flex: none; width: 32px; height: 32px; border-radius: 8px; box-shadow: 0 0 0 1px var(--border-muted); }
+
+/* Переключатель темы — круглая кнопка со значком, как у GitHub */
+.theme-btn {
   display: grid;
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 700;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
 }
+.theme-btn:hover { background: var(--nav-hover); color: var(--fg); }
+.theme-btn svg { width: 16px; height: 16px; }
+#head-end { display: flex; align-items: center; gap: 8px; }
 .crumbs { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .crumbs .sep { color: var(--muted); font-weight: 400; }
 .crumbs .sub { font-weight: 400; }
@@ -159,9 +195,7 @@ label.field .note { color: var(--muted); font-size: 12px; font-weight: 400; }
   padding: 32px 24px 48px;
 }
 .context { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin-bottom: -8px; }
-.context .logo { width: 48px; height: 48px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-size: 20px; }
-/* Значок в шапке — в цвет текста, в рамке: как знак GitHub, не пятном */
-.head .logo { background: transparent; border: 1px solid var(--border); color: var(--fg); }
+.context .logo { width: 48px; height: 48px; border-radius: 12px; }
 .context-title { font-size: 20px; font-weight: 600; line-height: 1.2; }
 
 .side nav { display: flex; flex-direction: column; gap: 2px; }
@@ -382,7 +416,7 @@ table.t { width: 100%; border-collapse: collapse; }
 }
 .login-card { display: flex; flex-direction: column; gap: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--subtle); }
 .login h1 { margin: 0; font-size: 24px; font-weight: 300; text-align: center; }
-.login .logo { width: 48px; height: 48px; margin: 0 auto; border-radius: 12px; font-size: 22px; }
+.login .logo { width: 48px; height: 48px; margin: 0 auto; border-radius: 12px; }
 .login .btn { justify-content: center; }
 .btn.tg { height: 40px; background: #2aabee; border-color: #2aabee; font-size: 15px; }
 .btn.tg:hover { background: #229ed9; }
