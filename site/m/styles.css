@@ -2362,8 +2362,44 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .chat-empty-ic { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--fill); color: var(--accent); }
 .chat-empty-ic svg { width: 26px; height: 26px; }
 
-/* Поле сообщения внизу: серая «таблетка» и круглая кнопка со стрелкой */
-.composer-bar { display: flex; align-items: flex-end; gap: 8px; }
+/* Поле сообщения внизу, как в Telegram: скрепка, серая «таблетка», круглая кнопка со стрелкой */
+.composer-bar { display: flex; align-items: flex-end; gap: 6px; }
+.clip-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+.clip-btn:active { background: var(--press); }
+.clip-btn svg { width: 22px; height: 22px; }
+/* Картинка к отправке — над полем, с крестиком в углу */
+.attach-preview { position: relative; align-self: flex-start; margin: 0 0 2px 46px; }
+.attach-preview[hidden] { display: none; }
+.attach-preview img { display: block; max-width: 140px; max-height: 110px; border-radius: 10px; object-fit: cover; }
+.attach-clear {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 14px;
+  line-height: 1;
+}
+.attach-clear svg { width: 12px; height: 12px; }
+.bubble-img { display: block; max-width: 100%; max-height: 320px; margin: 2px 0 4px; border-radius: 10px; background: var(--fill); min-width: 120px; min-height: 80px; object-fit: cover; }
 .composer-bar textarea {
   flex: 1;
   min-height: 40px;

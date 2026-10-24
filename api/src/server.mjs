@@ -68,7 +68,7 @@ import { scanQuota } from './quota.mjs';
 import { overview, personDetail, addSource, removeSource } from './admin.mjs';
 import {
   supportIncoming, supportList, supportThread, supportReply, supportStatus,
-  supportMine, supportMineThread, supportFromApp, supportUnread,
+  supportMine, supportMineThread, supportFromApp, supportUnread, supportFile,
 } from './support.mjs';
 import {
   getTaxonomy,
@@ -213,6 +213,13 @@ async function readRaw(req, limit = 64 * 1024) {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString('utf8');
+}
+
+/** Картинка из поддержки (support.mjs): только своим — не кешировать в общих кешах. */
+function sendFile(res, file) {
+  if (!file) return sendJson(res, 404, { error: 'нет такой картинки' });
+  res.writeHead(200, { 'content-type': file.type, 'content-length': file.data.length, 'cache-control': 'private, max-age=86400' });
+  return res.end(file.data);
 }
 
 /** Тело запроса как JSON. */
@@ -493,8 +500,10 @@ async function handleApi(req, res, url) {
       const result = addSource(db, body);
       return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
     }
-    // Поддержка: обращения, переписка, ответ, состояние
+    // Поддержка: обращения, переписка, ответ, состояние, картинки
     if (pathname === '/api/admin/support' && req.method === 'GET') return sendJson(res, 200, { threads: supportList(db) });
+    const supFile = /^\/api\/admin\/support\/file\/(\d+)$/.exec(pathname)?.[1];
+    if (supFile && req.method === 'GET') return sendFile(res, supportFile(db, supFile));
     const sup = /^\/api\/admin\/support\/(\d+)(?:\/(reply|status))?$/.exec(pathname);
     if (sup) {
       if (!sup[2] && req.method === 'GET') {
@@ -522,13 +531,16 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/support' && req.method === 'POST') {
     let body;
     try {
-      body = await readJson(req);
+      body = await readJson(req, 8 * 1024 * 1024); // с картинкой: base64 раздувает её на треть
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
     const result = supportFromApp(db, user, body);
     return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
   }
+  // Картинка из своего обращения
+  const myFile = /^\/api\/support\/file\/(\d+)$/.exec(pathname)?.[1];
+  if (myFile && req.method === 'GET') return sendFile(res, supportFile(db, myFile, user.id));
   const mySupport = /^\/api\/support\/(\d+)$/.exec(pathname)?.[1];
   if (mySupport && req.method === 'GET') {
     const thread = supportMineThread(db, user, mySupport);

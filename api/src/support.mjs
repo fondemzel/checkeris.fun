@@ -9,14 +9,24 @@
 //
 // Уведомлений не больше одного на волну: пока человек пишет подряд (меньше 10 минут между
 // сообщениями) и ответа ещё нет, повторно не беспокоим. Из приложения (экран «Поддержка»)
-// уведомление уходит через очередь бота (tg_outbox), как остальные сообщения Чекера.
+// уведомление уходит через очередь бота (tg_outbox), как остальные сообщения Чекера. Картинку
+// (скрепка в приложении) храним сами — её видят только автор обращения и администратор.
 //
 // Ответ человеку оформлен одинаково: «💬 Поддержка Чекера», цитатой — его последний вопрос,
 // ниже ответ. Видит его и в Telegram, и в приложении.
 //
 // Обращение — переписка с одним человеком: new — ждёт ответа, answered — ответили,
 // closed — закрыто. Новое сообщение после закрытия начинает новое обращение.
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { notify } from './banks.mjs';
+import { DB_PATH } from './db.mjs';
+
+// Картинки из приложения: рядом с базой — туда сервису разрешена запись. Только картинки и
+// не больше 5 МБ: приложение само уменьшает снимок перед отправкой, так что хватает с запасом
+const FILES = join(dirname(DB_PATH), 'support');
+const IMAGE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const FILE_MAX = 5 * 1024 * 1024;
 
 const SITE = (process.env.SITE_ORIGIN || 'https://checkeris.fun').replace(/\/$/, '');
 const ACK = 'Спасибо! Получили ваше сообщение — ответим здесь же, обычно в течение дня.';
@@ -130,12 +140,28 @@ export function supportIncoming(db, { telegram, message_id, text, kind }) {
 }
 
 function addMessage(db, threadId, { fromAdmin, authorId = null, text = null, kind = 'text', userMsg = null }) {
-  db.prepare(
+  const id = Number(db.prepare(
     `INSERT INTO support_messages (thread_id, from_admin, author_id, text, kind, user_msg, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(threadId, fromAdmin ? 1 : 0, authorId, text, kind, userMsg, now());
+  ).run(threadId, fromAdmin ? 1 : 0, authorId, text, kind, userMsg, now()).lastInsertRowid);
   if (fromAdmin) db.prepare("UPDATE support_threads SET status = 'answered', updated_at = ? WHERE id = ?").run(now(), threadId);
   else db.prepare('UPDATE support_threads SET updated_at = ? WHERE id = ?').run(now(), threadId);
+  return id;
+}
+
+/**
+ * Картинка сообщения — автору обращения (userId) или администратору (userId не задан).
+ * { type, data } или null, если нет такой или она чужая.
+ */
+export function supportFile(db, messageId, userId = null) {
+  const m = db.prepare(
+    'SELECT m.file, t.user_id FROM support_messages m JOIN support_threads t ON t.id = m.thread_id WHERE m.id = ?',
+  ).get(Number(messageId));
+  if (!m?.file || (userId != null && m.user_id !== userId)) return null;
+  const path = join(FILES, m.file);
+  if (!existsSync(path)) return null;
+  const ext = m.file.split('.').pop();
+  return { type: Object.keys(IMAGE).find((k) => IMAGE[k] === ext) ?? 'application/octet-stream', data: readFileSync(path) };
 }
 
 // ── админка ──────────────────────────────────────────────
@@ -175,10 +201,10 @@ export function supportThread(db, id) {
   ).get(Number(id));
   if (!t) return null;
   const messages = db.prepare(
-    `SELECT m.id, m.from_admin, m.text, m.kind, m.created_at, COALESCE(a.name, a.login) AS author
+    `SELECT m.id, m.from_admin, m.text, m.kind, m.file IS NOT NULL AS file, m.created_at, COALESCE(a.name, a.login) AS author
        FROM support_messages m LEFT JOIN users a ON a.id = m.author_id
       WHERE m.thread_id = ? ORDER BY m.id`,
-  ).all(t.id).map((m) => ({ ...m, from_admin: Boolean(m.from_admin), kind_name: KIND_NAME[m.kind] ?? null }));
+  ).all(t.id).map((m) => ({ ...m, from_admin: Boolean(m.from_admin), file: Boolean(m.file), kind_name: KIND_NAME[m.kind] ?? null }));
   return {
     id: t.id,
     user_id: t.user_id,
@@ -258,8 +284,8 @@ export function supportMineThread(db, user, id) {
   const t = db.prepare('SELECT * FROM support_threads WHERE id = ? AND user_id = ?').get(Number(id), user.id);
   if (!t) return null;
   db.prepare('UPDATE support_threads SET user_seen_at = ? WHERE id = ?').run(now(), t.id);
-  const messages = db.prepare('SELECT id, from_admin, text, kind, created_at FROM support_messages WHERE thread_id = ? ORDER BY id').all(t.id)
-    .map((m) => ({ ...m, from_admin: Boolean(m.from_admin), kind_name: KIND_NAME[m.kind] ?? null }));
+  const messages = db.prepare('SELECT id, from_admin, text, kind, file IS NOT NULL AS file, created_at FROM support_messages WHERE thread_id = ? ORDER BY id').all(t.id)
+    .map((m) => ({ ...m, from_admin: Boolean(m.from_admin), file: Boolean(m.file), kind_name: KIND_NAME[m.kind] ?? null }));
   return { id: t.id, status: t.status, created_at: t.created_at, messages, telegram: Boolean(t.telegram_id) };
 }
 
@@ -267,9 +293,18 @@ export function supportMineThread(db, user, id) {
  * Сообщение из приложения: в своё открытое обращение (thread_id) или новое. Администраторам —
  * уведомление через очередь бота (с той же паузой, что из Telegram).
  */
-export function supportFromApp(db, user, { thread_id = null, text }) {
+export function supportFromApp(db, user, { thread_id = null, text, image = null }) {
   const body = String(text ?? '').trim().slice(0, 4000);
-  if (!body) return { error: 'пустое сообщение', status: 400 };
+  // Картинка — { type, data } (data — base64): проверяем до того, как что-то записать
+  let picture = null;
+  if (image) {
+    const ext = IMAGE[image.type];
+    const bytes = ext ? Buffer.from(String(image.data ?? ''), 'base64') : null;
+    if (!ext || !bytes?.length) return { error: 'можно приложить только картинку', status: 400 };
+    if (bytes.length > FILE_MAX) return { error: 'картинка больше 5 МБ', status: 413 };
+    picture = { ext, bytes };
+  }
+  if (!body && !picture) return { error: 'пустое сообщение', status: 400 };
   const hour = new Date(Date.now() - 3_600_000).toISOString();
   const recent = db.prepare(
     `SELECT COUNT(*) AS n FROM support_messages m JOIN support_threads t ON t.id = m.thread_id
@@ -290,11 +325,18 @@ export function supportFromApp(db, user, { thread_id = null, text }) {
     thread = db.prepare('SELECT * FROM support_threads WHERE id = ?').get(id);
   }
   const loud = created || worthNotice(db, thread);
-  addMessage(db, thread.id, { fromAdmin: false, text: body, kind: 'text' });
+  const kind = picture ? 'photo' : 'text';
+  const msgId = addMessage(db, thread.id, { fromAdmin: false, text: body || null, kind });
+  if (picture) {
+    const file = `${msgId}.${picture.ext}`;
+    mkdirSync(FILES, { recursive: true });
+    writeFileSync(join(FILES, file), picture.bytes);
+    db.prepare('UPDATE support_messages SET file = ? WHERE id = ?').run(file, msgId);
+  }
   db.prepare("UPDATE support_threads SET status = 'new', updated_at = ?, user_seen_at = ? WHERE id = ?").run(now(), now(), thread.id);
 
   if (loud) {
-    const text = notice(db, thread, { text: body, kind: 'text' }, { fromApp: true });
+    const text = notice(db, thread, { text: body || null, kind }, { fromApp: true });
     const add = db.prepare('INSERT INTO tg_outbox (chat_id, text, html, created_at) VALUES (?, ?, 1, ?)');
     for (const a of admins(db)) add.run(a.telegram_id, text, now());
   }

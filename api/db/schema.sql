@@ -730,8 +730,9 @@ CREATE TABLE IF NOT EXISTS support_threads (
 
 CREATE INDEX IF NOT EXISTS idx_support_threads_tg ON support_threads (telegram_id, status);
 
--- Сообщения обращения. Вложения не храним: kind говорит, что было (photo, voice…), файл
--- остался в Telegram — администратору его копирует бот. Отвечают из админки.
+-- Сообщения обращения. Вложения из бота не храним: kind говорит, что было (photo, voice…), файл
+-- остался в Telegram — администратору его копирует бот. Картинку из приложения храним сами
+-- (file) — её видят только автор обращения и администратор. Отвечают из админки.
 CREATE TABLE IF NOT EXISTS support_messages (
   id         INTEGER PRIMARY KEY,
   thread_id  INTEGER NOT NULL REFERENCES support_threads (id) ON DELETE CASCADE,
@@ -740,6 +741,7 @@ CREATE TABLE IF NOT EXISTS support_messages (
   text       TEXT,                     -- текст или подпись к вложению
   kind       TEXT NOT NULL DEFAULT 'text',
   user_msg   INTEGER,                  -- номер сообщения в чате человека с ботом
+  file       TEXT,                     -- картинка из приложения: имя файла в api/data/support
   created_at TEXT NOT NULL
 );
 

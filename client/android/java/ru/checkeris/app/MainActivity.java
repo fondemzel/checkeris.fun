@@ -13,6 +13,7 @@ import android.provider.Settings;
 import android.content.ComponentName;
 import android.view.View;
 import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -36,9 +37,12 @@ public class MainActivity extends android.app.Activity {
     private static final String SITE = "https://checkeris.fun/m/";
     private static final String HOST = "checkeris.fun";
     private static final int CAMERA_REQUEST = 1;
+    private static final int FILE_REQUEST = 2;
 
     private WebView web;
     private PermissionRequest pendingCamera;
+    // Страница попросила файл (скрепка в поддержке): ждём, что выберут в системном окне
+    private ValueCallback<Uri[]> pendingFiles;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -91,6 +95,22 @@ public class MainActivity extends android.app.Activity {
                     pendingCamera = request;
                     requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_REQUEST);
                 });
+            }
+
+            // <input type="file"> в WebView сам ничего не открывает: показываем системный выбор
+            // (галерея, файлы) с тем, что просит страница — в поддержке это картинки
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (pendingFiles != null) pendingFiles.onReceiveValue(null); // прошлый выбор так и не закончили
+                pendingFiles = callback;
+                try {
+                    startActivityForResult(params.createIntent(), FILE_REQUEST);
+                } catch (Exception e) {
+                    pendingFiles = null;
+                    callback.onReceiveValue(null);
+                    return false;
+                }
+                return true;
             }
         });
 
@@ -563,6 +583,15 @@ public class MainActivity extends android.app.Activity {
         if (granted) pendingCamera.grant(pendingCamera.getResources());
         else pendingCamera.deny();
         pendingCamera = null;
+    }
+
+    /** Выбор файла закончен: отдаём странице выбранное, отмену — пустым ответом. */
+    @Override
+    protected void onActivityResult(int code, int result, Intent data) {
+        super.onActivityResult(code, result, data);
+        if (code != FILE_REQUEST || pendingFiles == null) return;
+        pendingFiles.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result, data));
+        pendingFiles = null;
     }
 
     /** Вернулись из окна банка — страница должна перечитать состояние. */

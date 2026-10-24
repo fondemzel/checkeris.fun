@@ -439,8 +439,10 @@ function pageThread(t) {
   const msgs = t.messages
     .map((m) => {
       const body = m.text ? esc(m.text) : '';
-      const att = m.kind !== 'text' ? `<div class="att">📎 ${esc(m.kind_name ?? 'вложение')} — смотрите в Telegram</div>` : '';
-      return `<div class="msg${m.from_admin ? ' mine' : ''}"><div class="msg-meta">${esc(m.from_admin ? (m.author ?? 'Поддержка') : t.name)} · ${esc(dateTimeRu(m.created_at))}</div>${body}${att}</div>`;
+      const att = m.file
+        ? `<img class="msg-img" data-file="${m.id}" alt="картинка" title="Открыть" />`
+        : m.kind !== 'text' ? `<div class="att">📎 ${esc(m.kind_name ?? 'вложение')} — смотрите в Telegram</div>` : '';
+      return `<div class="msg${m.from_admin ? ' mine' : ''}"><div class="msg-meta">${esc(m.from_admin ? (m.author ?? 'Поддержка') : t.name)} · ${esc(dateTimeRu(m.created_at))}</div>${att}${body}</div>`;
     })
     .join('');
   const next = t.status === 'closed'
@@ -589,6 +591,19 @@ async function route() {
   }
   $('main').innerHTML = html;
   document.title = `${PAGES.find((p) => p.id === known)?.title ?? 'Админка'} — Чекер`;
+  loadImages();
+}
+
+/** Картинки из поддержки — по токену администратора: обычной ссылкой их не отдать. */
+async function loadImages() {
+  for (const img of $('main').querySelectorAll('img[data-file]:not([src])')) {
+    try {
+      const res = await fetch(`/api/admin/support/file/${img.dataset.file}`, { headers: { authorization: `Bearer ${token.get()}` } });
+      if (res.ok) img.src = URL.createObjectURL(await res.blob());
+    } catch {
+      /* не загрузилась — переписка читается и так */
+    }
+  }
 }
 
 function rerenderPeopleTable() {
@@ -808,6 +823,12 @@ document.addEventListener('click', async (e) => {
   const row = e.target.closest('tr[data-href]');
   if (row && !e.target.closest('a, button')) {
     location.hash = row.dataset.href;
+    return;
+  }
+  // Картинку из поддержки — во весь размер, в новой вкладке
+  const pic = e.target.closest('img.msg-img[src]');
+  if (pic) {
+    window.open(pic.src, '_blank');
     return;
   }
   const copy = e.target.closest('[data-copy]');

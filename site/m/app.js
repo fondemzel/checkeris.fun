@@ -116,6 +116,7 @@ const UI = {
   trash: svg('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
   chat: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
   send: svg('<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>'),
+  clip: svg('<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>'),
   shield: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
@@ -6545,19 +6546,73 @@ function ticketBubbles(t) {
   const P = T.settings.support;
   return t.messages
     .map((m) => {
-      const att = m.kind !== 'text' ? `<span class="bubble-att">📎 ${esc(m.kind_name ?? P.attachment)}</span>` : '';
+      // Картинка из приложения — сама картинка; вложение из бота — пометкой (файл в Telegram)
+      const att = m.file
+        ? `<img class="bubble-img" data-file="${m.id}" alt="" />`
+        : m.kind !== 'text' ? `<span class="bubble-att">📎 ${esc(m.kind_name ?? P.attachment)}</span>` : '';
       const time = new Date(m.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      return `<div class="bubble${m.from_admin ? '' : ' mine'}">${m.from_admin ? `<span class="bubble-who">${UI.chat} ${P.team}</span>` : ''}${m.text ? esc(m.text) : ''}${att}<span class="bubble-time">${time}</span></div>`;
+      return `<div class="bubble${m.from_admin ? '' : ' mine'}">${m.from_admin ? `<span class="bubble-who">${UI.chat} ${P.team}</span>` : ''}${att}${m.text ? esc(m.text) : ''}<span class="bubble-time">${time}</span></div>`;
     })
     .join('');
 }
 
-/** Поле сообщения, как в мессенджере: растёт с текстом, справа — круглая кнопка со стрелкой. */
-const composerBar = () => `
+/**
+ * Поле сообщения, как в Telegram: слева скрепка (картинка — скриншот), поле растёт с текстом,
+ * справа круглая кнопка со стрелкой. Выбранная картинка — над полем, с крестиком.
+ */
+let ticketImage = null; // { type, data (base64), url } — картинка к следующему сообщению
+const composerBar = () => {
+  ticketImage = null; // новый показ поля — без прошлой картинки
+  const P = T.settings.support;
+  return `
+  <div class="attach-preview" id="ticket-attach" hidden>
+    <img alt="" /><button class="attach-clear" type="button" data-attach-clear aria-label="${esc(P.attachClear)}">${UI.close ?? '×'}</button>
+  </div>
   <div class="composer-bar">
-    <textarea id="ticket-text" rows="1" maxlength="4000" placeholder="${esc(T.settings.support.placeholder)}" aria-label="${esc(T.settings.support.placeholder)}"></textarea>
-    <button class="send-btn" type="button" data-ticket-send disabled aria-label="${esc(T.settings.support.send)}">${UI.send}</button>
+    <button class="clip-btn" type="button" data-attach aria-label="${esc(P.attach)}">${UI.clip}</button>
+    <textarea id="ticket-text" rows="1" maxlength="4000" placeholder="${esc(P.placeholder)}" aria-label="${esc(P.placeholder)}"></textarea>
+    <button class="send-btn" type="button" data-ticket-send disabled aria-label="${esc(P.send)}">${UI.send}</button>
+    <input type="file" id="ticket-file" accept="image/*" hidden />
   </div>`;
+};
+
+/** Кнопка оживает, когда есть что отправить: текст или картинка. */
+const ticketReady = () => {
+  const send = $('actions').querySelector('[data-ticket-send]');
+  if (send) send.disabled = !(document.getElementById('ticket-text')?.value.trim() || ticketImage);
+};
+
+/**
+ * Картинку уменьшаем на телефоне: скриншот на 3–5 МБ превращается в JPEG до 1600 точек по
+ * длинной стороне — сотни килобайт. Сервер больше 5 МБ не примет.
+ */
+async function shrinkImage(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.85));
+  const data = await new Promise((ok) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(',')[1]);
+    r.readAsDataURL(blob);
+  });
+  return { type: 'image/jpeg', data, url: URL.createObjectURL(blob) };
+}
+
+/** Картинки в переписке — по токену: обычной ссылкой их не отдать (они только свои). */
+async function loadTicketImages(root = document) {
+  for (const img of root.querySelectorAll('img[data-file]:not([src])')) {
+    try {
+      const res = await fetch(`/api/support/file/${img.dataset.file}`, { headers: { authorization: `Bearer ${token.get()}` } });
+      if (res.ok) img.src = URL.createObjectURL(await res.blob());
+    } catch {
+      /* не загрузилась — останется пустое место, переписка читается и так */
+    }
+  }
+}
 
 async function screenSetTicket() {
   const P = T.settings.support;
@@ -6590,6 +6645,7 @@ function ticketAfter() {
     return;
   }
   document.querySelector('.chat-list .bubble:last-of-type')?.scrollIntoView({ block: 'end' });
+  loadTicketImages();
 }
 
 /** Поле растёт с текстом до пяти строк, кнопка оживает, когда есть что отправить. */
@@ -6598,23 +6654,51 @@ $('actions').addEventListener('input', (e) => {
   const field = e.target;
   field.style.height = 'auto';
   field.style.height = `${Math.min(field.scrollHeight, 132)}px`;
-  $('actions').querySelector('[data-ticket-send]').disabled = !field.value.trim();
+  ticketReady();
   updateDock();
 });
 
 $('actions').addEventListener('click', (e) => {
+  if (state.screen !== 'set_ticket') return;
   const send = e.target.closest('[data-ticket-send]');
-  if (send && state.screen === 'set_ticket') sendTicket(send);
+  if (send) return sendTicket(send);
+  if (e.target.closest('[data-attach]')) return document.getElementById('ticket-file')?.click();
+  if (e.target.closest('[data-attach-clear]')) {
+    ticketImage = null;
+    $('ticket-attach').hidden = true;
+    ticketReady();
+    updateDock();
+  }
+  return null;
+});
+
+// Выбрали картинку — уменьшаем и показываем над полем
+$('actions').addEventListener('change', async (e) => {
+  if (e.target.id !== 'ticket-file' || !e.target.files?.[0]) return;
+  try {
+    ticketImage = await shrinkImage(e.target.files[0]);
+  } catch {
+    toast(T.settings.support.attachFail);
+    return;
+  } finally {
+    e.target.value = ''; // та же картинка ещё раз — тоже событие
+  }
+  const box = $('ticket-attach');
+  box.querySelector('img').src = ticketImage.url;
+  box.hidden = false;
+  ticketReady();
+  updateDock();
 });
 
 async function sendTicket(button) {
   const P = T.settings.support;
   const field = document.getElementById('ticket-text');
   const text = field?.value.trim();
-  if (!text) return field?.focus();
+  if (!text && !ticketImage) return field?.focus();
   button.disabled = true;
   try {
-    const res = await post('/api/support', { text, thread_id: state.sup === 'new' ? null : Number(state.sup) });
+    const image = ticketImage ? { type: ticketImage.type, data: ticketImage.data } : null;
+    const res = await post('/api/support', { text, image, thread_id: state.sup === 'new' ? null : Number(state.sup) });
     if (state.sup === 'new') {
       toast(P.sent);
       // Вместо пустой — уже переписка этого обращения; «назад» вернёт к списку

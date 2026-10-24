@@ -420,6 +420,7 @@ table.t { width: 100%; border-collapse: collapse; }
 .msg.mine { align-self: flex-end; border-radius: 12px 12px 4px 12px; background: var(--accent-soft); }
 .msg-meta { margin-bottom: 2px; color: var(--muted); font-size: 12px; white-space: normal; }
 .att { color: var(--muted); font-size: 13px; }
+.msg-img { display: block; max-width: 320px; max-height: 260px; margin: 4px 0; border-radius: 8px; border: 1px solid var(--border-muted); cursor: zoom-in; }
 .reply { display: flex; flex-direction: column; gap: 8px; }
 .reply textarea { height: auto; padding: 8px 12px; resize: vertical; font: inherit; }
 .reply-foot { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
