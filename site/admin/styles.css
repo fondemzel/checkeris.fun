@@ -2,57 +2,59 @@
    шапка, слева меню разделов с группами, справа заголовок раздела под чертой и блоки
    в рамке (шапка блока на сером, строки через черту). На узком экране меню уходит наверх. */
 :root {
-  --fg: #1f2328;
-  --muted: #59636e;
+  /* Светлая — мягче стандартной GitHub: текст серее, рамки и метки бледнее */
+  --fg: #31363c;
+  --muted: #6e7781;
   --canvas: #ffffff;
   --subtle: #f6f8fa;
   --inset: #f6f8fa;
-  --border: #d1d9e0;
-  --border-muted: #d1d9e0b3;
-  --accent: #0969da;
-  --accent-soft: #ddf4ff;
-  --nav-hover: #818b981f;
-  --nav-sel: #818b9826;
-  --danger: #d1242f;
-  --danger-soft: #ffebe9;
-  --attention: #9a6700;
-  --attention-soft: #fff8c5;
-  --success: #1a7f37;
-  --success-soft: #dafbe1;
-  --bar: #54aeff;      /* приглушённый синий: столбик не должен кричать */
-  --cell: #ebedf0;     /* клетки дней — как график вкладов GitHub */
-  --cell-on: #40c463;
-  --meter: #1f883d;
+  --border: #d8dee4;
+  --border-muted: #eaeef2;
+  --accent: #2f6fbf;
+  --accent-soft: #e5f1fd;
+  --nav-hover: #818b9814;
+  --nav-sel: #818b981f;
+  --danger: #c4545b;
+  --danger-soft: #fdf0f0;
+  --attention: #9a7a2e;
+  --attention-soft: #fdf8e4;
+  --success: #3d8a55;
+  --success-soft: #e8f5ec;
+  --bar: #9ccaf2;      /* бледно-синий: столбик не должен кричать */
+  --cell: #eef1f4;     /* клетки дней — как график вкладов GitHub, но бледнее */
+  --cell-on: #8fd19e;
+  --meter: #5aa86f;
   --head: #f6f8fa;
-  --num: #1f2328;
+  --num: #31363c;
   color-scheme: light;
 }
 
+/* Тёмная — палитра GitHub Dark dimmed: графитовый фон, светло-серый текст, всё приглушено */
 @media (prefers-color-scheme: dark) {
   :root {
-    --fg: #e6edf3;
-    --muted: #8d96a0;
-    --canvas: #0d1117;
-    --subtle: #161b22;
-    --inset: #010409;
-    --border: #30363d;
-    --border-muted: #21262d;
-    --accent: #4493f8;
-    --accent-soft: #388bfd1a;
-    --nav-hover: #b1bac41f;
-    --nav-sel: #b1bac41f;
-    --danger: #f85149;
-    --danger-soft: #f851491a;
-    --attention: #d29922;
-    --attention-soft: #bb800926;
-    --success: #3fb950;
-    --success-soft: #2ea04326;
-    --bar: #316dca;
-    --cell: #161b22;
-    --cell-on: #26a641;
-    --meter: #238636;
-    --head: #161b22;
-    --num: #e6edf3;
+    --fg: #adbac7;
+    --muted: #768390;
+    --canvas: #22272e;
+    --subtle: #2d333b;
+    --inset: #1c2128;
+    --border: #444c56;
+    --border-muted: #373e47;
+    --accent: #539bf5;
+    --accent-soft: #4184e41a;
+    --nav-hover: #636e7b1f;
+    --nav-sel: #636e7b33;
+    --danger: #e5534b;
+    --danger-soft: #e5534b1a;
+    --attention: #c69026;
+    --attention-soft: #ae7c1426;
+    --success: #57ab5a;
+    --success-soft: #46954a26;
+    --bar: #3f6aa3;
+    --cell: #2d333b;
+    --cell-on: #46954a;
+    --meter: #347d39;
+    --head: #2d333b;
+    --num: #cdd9e5;
     color-scheme: dark;
   }
 }
@@ -393,8 +395,8 @@ table.t { width: 100%; border-collapse: collapse; }
   z-index: 10;
   padding: 4px 8px;
   border-radius: 6px;
-  background: #25292e;
-  color: #fff;
+  background: var(--fg);
+  color: var(--canvas);
   font-size: 12px;
   pointer-events: none;
 }
