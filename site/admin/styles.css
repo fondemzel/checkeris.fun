@@ -19,36 +19,40 @@
   --attention-soft: #fff8c5;
   --success: #1a7f37;
   --success-soft: #dafbe1;
-  --bar: #0969da;
-  --cell: #eff2f5;
-  --cell-on: #2da44e;
+  --bar: #54aeff;      /* приглушённый синий: столбик не должен кричать */
+  --cell: #ebedf0;     /* клетки дней — как график вкладов GitHub */
+  --cell-on: #40c463;
+  --meter: #1f883d;
   --head: #f6f8fa;
+  --num: #1f2328;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --fg: #f0f6fc;
-    --muted: #9198a1;
+    --fg: #e6edf3;
+    --muted: #8d96a0;
     --canvas: #0d1117;
-    --subtle: #151b23;
+    --subtle: #161b22;
     --inset: #010409;
-    --border: #3d444d;
-    --border-muted: #3d444db3;
+    --border: #30363d;
+    --border-muted: #21262d;
     --accent: #4493f8;
     --accent-soft: #388bfd1a;
-    --nav-hover: #656c7633;
-    --nav-sel: #656c7640;
+    --nav-hover: #b1bac41f;
+    --nav-sel: #b1bac41f;
     --danger: #f85149;
     --danger-soft: #f851491a;
     --attention: #d29922;
     --attention-soft: #bb800926;
     --success: #3fb950;
     --success-soft: #2ea04326;
-    --bar: #4493f8;
-    --cell: #151b23;
-    --cell-on: #2ea043;
-    --head: #010409;
+    --bar: #316dca;
+    --cell: #161b22;
+    --cell-on: #26a641;
+    --meter: #238636;
+    --head: #161b22;
+    --num: #e6edf3;
     color-scheme: dark;
   }
 }
@@ -122,7 +126,7 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
 }
 .btn:hover { background: var(--nav-hover); text-decoration: none; }
-.btn.primary { background: #1f883d; border-color: #1f883d; color: #fff; }
+.btn.primary { background: var(--meter); border-color: var(--meter); color: #fff; }
 .btn.primary:hover { background: #1c8139; }
 .btn.danger { color: var(--danger); }
 .btn.danger:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
@@ -153,7 +157,9 @@ label.field .note { color: var(--muted); font-size: 12px; font-weight: 400; }
   padding: 32px 24px 48px;
 }
 .context { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin-bottom: -8px; }
-.context .logo { width: 48px; height: 48px; border-radius: 12px; font-size: 20px; }
+.context .logo { width: 48px; height: 48px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-size: 20px; }
+/* Значок в шапке — в цвет текста, в рамке: как знак GitHub, не пятном */
+.head .logo { background: transparent; border: 1px solid var(--border); color: var(--fg); }
 .context-title { font-size: 20px; font-weight: 600; line-height: 1.2; }
 
 .side nav { display: flex; flex-direction: column; gap: 2px; }
@@ -199,7 +205,7 @@ label.field .note { color: var(--muted); font-size: 12px; font-weight: 400; }
   line-height: 18px;
   text-align: center;
 }
-.counter.bad { background: var(--danger); color: #fff; }
+.counter.bad { background: var(--danger-soft); color: var(--danger); }
 
 /* ── заголовок раздела ─────────────────────────────────── */
 
@@ -257,7 +263,7 @@ h3.section { margin: 32px 0 8px; font-size: 20px; font-weight: 400; padding-bott
 .stat:nth-child(4n) { border-right: 0; }
 .stat:nth-last-child(-n + 4) { border-bottom: 0; }
 .stat-label { color: var(--muted); font-size: 12px; }
-.stat-num { font-size: 28px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.stat-num { margin-top: 2px; color: var(--num); font-size: 24px; font-weight: 400; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .stat-note { color: var(--muted); font-size: 12px; }
 .stat a { color: inherit; }
 
@@ -317,7 +323,7 @@ table.t { width: 100%; border-collapse: collapse; }
 .chart-head b { color: var(--fg); font-weight: 600; }
 .cols { display: flex; align-items: flex-end; gap: 2px; height: 120px; border-bottom: 1px solid var(--border); }
 .col { flex: 1; height: 100%; display: flex; align-items: flex-end; }
-.col i { display: block; width: 100%; border-radius: 4px 4px 0 0; background: var(--bar); }
+.col i { display: block; width: 100%; border-radius: 3px 3px 0 0; background: var(--bar); }
 .col:hover i { filter: brightness(1.15); }
 .col.zero i { height: 0 !important; }
 .axis { display: flex; justify-content: space-between; margin-top: 4px; color: var(--muted); font-size: 12px; }
@@ -325,14 +331,14 @@ table.t { width: 100%; border-collapse: collapse; }
 
 /* Дни, когда человек заходил: сетка недель, как график вкладов на GitHub */
 .days { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 11px); gap: 3px; justify-content: start; }
-.day { width: 11px; height: 11px; border-radius: 2px; background: var(--cell); outline: 1px solid var(--border-muted); outline-offset: -1px; }
+.day { width: 11px; height: 11px; border-radius: 2px; background: var(--cell); outline: 1px solid #1b1f230f; outline-offset: -1px; }
 .day.on { background: var(--cell-on); outline: 0; }
 .day.pad { visibility: hidden; }
 .legend { display: flex; align-items: center; gap: 4px; margin-top: 8px; color: var(--muted); font-size: 12px; }
 .legend .day { display: inline-block; }
 
 .meter { height: 8px; border-radius: 4px; background: var(--cell); overflow: hidden; }
-.meter i { display: block; height: 100%; background: var(--success); }
+.meter i { display: block; height: 100%; background: var(--meter); }
 .meter.warn i { background: var(--attention); }
 .meter.bad i { background: var(--danger); }
 
@@ -357,7 +363,7 @@ table.t { width: 100%; border-collapse: collapse; }
 .kv > div { padding: 8px 16px; border-top: 1px solid var(--border-muted); }
 .kv > div:nth-child(-n + 2) { border-top: 0; }
 .kv .k { color: var(--muted); }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 .grid2 .box { margin-bottom: 0; }
 .back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 16px; font-size: 13px; }
 
