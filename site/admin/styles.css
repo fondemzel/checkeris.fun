@@ -172,4 +172,19 @@ a { color: var(--accent); text-decoration: none; }
 
 .empty { padding: 12px 16px; color: var(--muted); }
 
+.btn[hidden] { display: none; }
+
+.login { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.login-title { font-size: 17px; font-weight: 600; }
+.login input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.login .err { margin: 0; }
+
 .notice { max-width: 420px; margin: 60px auto; padding: 20px; border-radius: 12px; background: var(--surface); text-align: center; }

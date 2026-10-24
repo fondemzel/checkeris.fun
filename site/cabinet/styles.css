@@ -93,8 +93,7 @@ a { color: inherit; text-decoration: none; }
 
 .me { margin-top: 10px; color: #c4c9d2; }
 .me:empty { display: none; }
-#tg-link[hidden], #admin-link[hidden] { display: none; }
-a.nav-logout { display: block; }
+#tg-link[hidden] { display: none; }
 
 .nav-logout {
   margin-top: 10px;

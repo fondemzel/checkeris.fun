@@ -1,9 +1,26 @@
 // Админка: сколько людей, откуда пришли и как пользуются (api/src/admin.mjs).
-// Вход — тот же токен, что у кабинета и телефона: войти в кабинет под администратором,
-// и админка откроется в этом же браузере.
+// С кабинетом и приложением не связана: свой вход по паролю администратора и свой токен
+// (checker.admin-token) — выход из кабинета её не трогает, и наоборот.
 
 const $ = (id) => document.getElementById(id);
-const TOKEN_KEY = 'checker.token';
+const TOKEN_KEY = 'checker.admin-token';
+const token = {
+  get: () => {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set: (v) => {
+    try {
+      if (v) localStorage.setItem(TOKEN_KEY, v);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* без хранилища вход проживёт до перезагрузки */
+    }
+  },
+};
 const SITE = location.origin;
 
 const int = new Intl.NumberFormat('ru-RU');
@@ -38,11 +55,11 @@ const channelName = (slug, name) =>
   slug === 'direct' ? 'Напрямую' : slug === 'invite' ? 'По приглашению в бюджет' : name || slug;
 
 async function api(path, options = {}) {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (!token) throw Object.assign(new Error('нужен вход'), { status: 401 });
+  const t = token.get();
+  if (!t) throw Object.assign(new Error('нужен вход'), { status: 401 });
   const res = await fetch(path, {
     ...options,
-    headers: { authorization: `Bearer ${token}`, ...(options.body ? { 'content-type': 'application/json' } : {}) },
+    headers: { authorization: `Bearer ${t}`, ...(options.body ? { 'content-type': 'application/json' } : {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(data.error ?? `HTTP ${res.status}`), { status: res.status });
@@ -210,18 +227,45 @@ function notice(html) {
   $('page').innerHTML = `<div class="notice">${html}</div>`;
 }
 
+function showLogin(error = '') {
+  $('refresh').hidden = true;
+  $('logout').hidden = true;
+  $('stamp').textContent = '';
+  notice(`<form class="login" id="login-form">
+      <div class="login-title">Вход администратора</div>
+      <input name="login" placeholder="Логин" autocomplete="username" required />
+      <input name="password" type="password" placeholder="Пароль" autocomplete="current-password" required />
+      <button class="btn primary" type="submit">Войти</button>
+      ${error ? `<p class="err">${esc(error)}</p>` : ''}
+    </form>`);
+}
+
 async function refresh() {
   try {
     state.data = await api('/api/admin/overview');
+    $('refresh').hidden = false;
+    $('logout').hidden = false;
     render();
   } catch (err) {
-    if (err.status === 401) notice('Нужен вход. <a href="/cabinet">Войдите в кабинет</a> под администратором и вернитесь сюда.');
-    else if (err.status === 403) notice('Это раздел администратора. <a href="/cabinet">В кабинет</a>');
-    else notice(`Не загрузилось: ${esc(err.message)}`);
+    if (err.status === 401) {
+      token.set(null);
+      showLogin();
+    } else if (err.status === 403) {
+      // Вошёл не администратор: токен ему здесь ни к чему — гасим
+      await api('/api/logout', { method: 'POST' }).catch(() => {});
+      token.set(null);
+      showLogin('Это вход только для администратора');
+    } else notice(`Не загрузилось: ${esc(err.message)}`);
   }
 }
 
 $('refresh').addEventListener('click', refresh);
+
+$('logout').addEventListener('click', async () => {
+  await api('/api/logout', { method: 'POST' }).catch(() => {});
+  token.set(null);
+  showLogin();
+});
 
 document.addEventListener('input', (e) => {
   if (e.target.id !== 'search') return;
@@ -233,6 +277,19 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'login-form') {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const res = await fetch('/api/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ login: form.get('login'), password: form.get('password'), label: 'админка' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return showLogin(data.error ?? `HTTP ${res.status}`);
+    token.set(data.token);
+    return refresh();
+  }
   if (e.target.id !== 'source-form') return;
   e.preventDefault();
   const form = new FormData(e.target);
