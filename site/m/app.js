@@ -70,6 +70,7 @@ const svg = (shape) =>
 
 const UI = {
   logout: svg('<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>'),
+  torch: svg('<path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z"/><path d="M6 6h12"/><path d="M12 12v.01"/>'),
   scan: svg(
     '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>' +
       '<path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
@@ -3175,6 +3176,7 @@ function openScanner() {
   el.innerHTML = `
     <video playsinline muted autoplay poster="${NO_POSTER}"></video>
     <div class="scanner-frame"><p class="scanner-frame-status" id="scanner-frame-status"></p></div>
+    <button class="scanner-torch" type="button" data-torch aria-label="Фонарик" aria-pressed="false" hidden>${UI.torch}</button>
     <button class="scanner-close" type="button" data-close aria-label="Закрыть">×</button>
     <div class="scanner-bottom">
       <p class="scanner-status" id="scanner-status">Включаем камеру…</p>
@@ -3191,6 +3193,8 @@ function openScanner() {
 
   el.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) return leaveScanner();
+    const torch = e.target.closest('[data-torch]');
+    if (torch) return toggleTorch(current, torch);
     if (e.target.closest('[data-typed]')) {
       el.querySelector('#scanner-typed').hidden = false;
       el.querySelector('[data-typed]').hidden = true;
@@ -3244,6 +3248,7 @@ async function startCamera(current) {
     video.srcObject = current.stream;
     await video.play();
     scannerSay(current, 'Наведите на QR-код внизу чека');
+    torchReady(current);
   } catch (err) {
     scannerSay(current, `Камера недоступна: ${esc(err.message)}`, { error: true });
     return;
@@ -3265,6 +3270,29 @@ async function startCamera(current) {
       /* кадр не разобрался — просто пробуем следующий */
     }
     await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+/**
+ * Фонарик — только если камера умеет вспышку: на iPhone и фронтальной камере её нет, нет и кнопки.
+ * Некоторые телефоны сообщают об этом не сразу после первого кадра — спрашиваем ещё раз чуть позже.
+ */
+function torchReady(current, retry = true) {
+  if (scanner !== current) return;
+  const track = current.stream?.getVideoTracks()[0];
+  if (track?.getCapabilities?.().torch) current.el.querySelector('[data-torch]').hidden = false;
+  else if (retry) setTimeout(() => torchReady(current, false), 600);
+}
+
+/** Вспышка — только по нажатию. Гаснет сама вместе с камерой: код пойман или сканер закрыт. */
+async function toggleTorch(current, btn) {
+  const on = btn.getAttribute('aria-pressed') !== 'true';
+  try {
+    await current.stream.getVideoTracks()[0].applyConstraints({ advanced: [{ torch: on }] });
+    btn.setAttribute('aria-pressed', String(on));
+    navigator.vibrate?.(15);
+  } catch {
+    btn.hidden = true; // камера отказала во вспышке — кнопка без толку
   }
 }
 

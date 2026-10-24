@@ -1412,6 +1412,7 @@ button.bank-op { cursor: pointer; }
 
 /* Камера во весь экран поверх приложения: отдельной страницы у сканирования нет */
 .scanner {
+  --frame: min(64vw, 280px); /* сторона рамки: от неё же размер и место фонарика */
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -1425,7 +1426,7 @@ button.bank-op { cursor: pointer; }
   position: absolute;
   top: 38%;
   left: 50%;
-  width: min(64vw, 280px);
+  width: var(--frame);
   aspect-ratio: 1;
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 16px;
@@ -1460,6 +1461,30 @@ button.bank-op { cursor: pointer; }
 .scanner.scan-failed .scanner-qr { opacity: 0.35; }
 .scanner-frame-status.error { color: #ffb4ab; }
 .scanner-frame-status:empty, .scanner-status:empty { display: none; }
+
+/* Фонарик — крупно (¼ рамки), посередине между рамкой и нижней панелью (~90 px). Пойман код
+   или открыт ручной ввод — кнопка не нужна */
+.scanner-torch {
+  position: absolute;
+  top: calc((38% + var(--frame) / 2 + 100% - 90px - env(safe-area-inset-bottom)) / 2);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: max(56px, calc(var(--frame) / 4));
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  transform: translate(-50%, -50%);
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+.scanner-torch svg { width: 44%; height: 44%; }
+.scanner-torch[aria-pressed="true"] { background: #fff; color: #11151b; box-shadow: 0 0 28px rgba(255, 255, 255, 0.45); }
+.scanner-torch[hidden], .scanner.caught .scanner-torch,
+.scanner:has(.scanner-typed:not([hidden])) .scanner-torch { display: none; }
 
 .scanner-close {
   position: absolute;
