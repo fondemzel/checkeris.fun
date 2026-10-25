@@ -2459,3 +2459,18 @@ body.no-tabs .tabs { display: none; }
 }
 .send-btn:disabled { opacity: 0.35; }
 .send-btn svg { width: 20px; height: 20px; stroke-width: 2.4; }
+
+/* ── широкий экран (компьютер, планшет) ─────────────────────
+   Приложение — колонкой телефонной ширины посередине, по бокам — поля чуть темнее фона.
+   Всё, что приклеено к краям окна (остров, листы, панель действий, сканер), — в той же
+   колонке: --side — ширина поля. Полосу прокрутки прячем, иначе 100vw шире окна и
+   закреплённое разъехалось бы с колонкой; колесо и тачпад прокручивают как обычно */
+@media (min-width: 600px) {
+  :root { --app-w: 480px; --side: calc((100vw - var(--app-w)) / 2); --outside: #e2e5ea; }
+  :root[data-theme="dark"] { --outside: #080b0f; }
+  html { background: var(--outside); scrollbar-width: none; }
+  html::-webkit-scrollbar { display: none; }
+  body { max-width: var(--app-w); min-height: 100vh; margin: 0 auto; box-shadow: 0 0 0 1px var(--border); }
+  .tabs { left: calc(var(--side) + 10px); right: calc(var(--side) + 10px); }
+  .actions, .sheet, .picker, .scanner { left: var(--side); right: var(--side); }
+}
