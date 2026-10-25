@@ -4,8 +4,9 @@
 // вход, подписанным запросом (/api/telegram/support). Сохраняем его в обращение, а бот шлёт
 // администраторам уведомление: кто, начало сообщения, ссылка «Ответить в админке». Отвечают
 // только в админке: когда в Telegram приходит десяток сообщений, ответ «на сообщение» легко
-// отправить не тому. Вложения (скриншот, голосовое) бот копирует администраторам — в админке
-// их не показать, в базе только пометка, файл остаётся в Telegram.
+// отправить не тому. Картинку бот скачивает у Telegram и приносит сюда — она хранится и видна
+// в админке, как картинка из приложения. Остальные вложения (голосовое, видео, файл) бот
+// копирует администраторам в Telegram — в базе только пометка.
 //
 // Уведомлений не больше одного на волну: пока человек пишет подряд (меньше 10 минут между
 // сообщениями) и ответа ещё нет, повторно не беспокоим. Из приложения (экран «Поддержка»)
@@ -96,13 +97,14 @@ function threadFor(db, telegram, userId) {
 
 /**
  * Сообщение боту, которое не вход. Бот присылает: telegram (кто), message_id, text (текст или
- * подпись), kind. Ответ — что боту сделать:
+ * подпись), kind и image — картинку, скачанную у Telegram ({ type, data }). Ответ — что боту сделать:
  *   { action: 'notify', admins, text, copy, ack } — администраторам: text (уведомление; пусто —
- *       не беспокоить), copy — следом копия вложения; человеку — ack, если обращение новое
+ *       не беспокоить), copy — следом копия вложения (если его не сохранили сами); человеку —
+ *       ack, если обращение новое
  *   { action: 'hint', text }  — администратору: отвечать — в админке
  *   { action: 'ignore' }      — слишком много сообщений подряд
  */
-export function supportIncoming(db, { telegram, message_id, text, kind }) {
+export function supportIncoming(db, { telegram, message_id, text, kind, image = null }) {
   const tgId = Number(telegram?.id);
   if (!Number.isSafeInteger(tgId) || tgId <= 0) return { action: 'ignore' };
   const user = db.prepare('SELECT id, role FROM users WHERE telegram_id = ?').get(tgId);
@@ -123,11 +125,16 @@ export function supportIncoming(db, { telegram, message_id, text, kind }) {
 
   const { thread, created } = threadFor(db, { ...telegram, id: tgId }, user?.id ?? null);
   const loud = created || worthNotice(db, thread);
-  addMessage(db, thread.id, { fromAdmin: false, text: body, kind: type, userMsg: Number(message_id) || null });
+  const msgId = addMessage(db, thread.id, { fromAdmin: false, text: body, kind: type, userMsg: Number(message_id) || null });
+  // Картинка, скачанная ботом, — храним как из приложения: видна в админке. Не вышло (большая,
+  // не картинка) — останется копией в Telegram
+  const picture = image ? parseImage(image) : null;
+  const saved = Boolean(picture && !picture.error);
+  if (saved) saveImage(db, msgId, picture);
   // Человек написал после ответа — снова ждёт ответа
   db.prepare("UPDATE support_threads SET status = 'new', updated_at = ? WHERE id = ?").run(now(), thread.id);
   const full = { ...thread, user_id: thread.user_id ?? user?.id ?? null };
-  const copy = type !== 'text';
+  const copy = type !== 'text' && !saved;
   return {
     action: 'notify',
     admins: admins(db).map((a) => a.telegram_id),
@@ -147,6 +154,22 @@ function addMessage(db, threadId, { fromAdmin, authorId = null, text = null, kin
   if (fromAdmin) db.prepare("UPDATE support_threads SET status = 'answered', updated_at = ? WHERE id = ?").run(now(), threadId);
   else db.prepare('UPDATE support_threads SET updated_at = ? WHERE id = ?').run(now(), threadId);
   return id;
+}
+
+/** Картинка из запроса — { type, data (base64) } → { ext, bytes } или { error }. */
+function parseImage(image) {
+  const ext = IMAGE[image?.type];
+  const bytes = ext ? Buffer.from(String(image.data ?? ''), 'base64') : null;
+  if (!ext || !bytes?.length) return { error: 'можно приложить только картинку', status: 400 };
+  if (bytes.length > FILE_MAX) return { error: 'картинка больше 5 МБ', status: 413 };
+  return { ext, bytes };
+}
+
+function saveImage(db, msgId, picture) {
+  const file = `${msgId}.${picture.ext}`;
+  mkdirSync(FILES, { recursive: true });
+  writeFileSync(join(FILES, file), picture.bytes);
+  db.prepare('UPDATE support_messages SET file = ? WHERE id = ?').run(file, msgId);
 }
 
 /**
@@ -212,11 +235,12 @@ export function supportThread(db, id) {
     tg_username: t.tg_username,
     status: t.status,
     created_at: t.created_at,
+    telegram: Boolean(t.telegram_id), // ответ уйдёт и в Telegram
     messages,
   };
 }
 
-/** Ответ из админки: человеку — через очередь бота, администраторам в Telegram — копией для истории. */
+/** Ответ из админки: человеку — в приложение и через очередь бота в Telegram; другим администраторам — копией. */
 export function supportReply(db, admin, id, text) {
   const t = db.prepare('SELECT * FROM support_threads WHERE id = ?').get(Number(id));
   if (!t) return { error: 'нет такого обращения', status: 404 };
@@ -291,19 +315,13 @@ export function supportMineThread(db, user, id) {
 
 /**
  * Сообщение из приложения: в своё открытое обращение (thread_id) или новое. Администраторам —
- * уведомление через очередь бота (с той же паузой, что из Telegram).
+ * уведомление через очередь бота (с той же паузой, что из бота).
  */
 export function supportFromApp(db, user, { thread_id = null, text, image = null }) {
   const body = String(text ?? '').trim().slice(0, 4000);
   // Картинка — { type, data } (data — base64): проверяем до того, как что-то записать
-  let picture = null;
-  if (image) {
-    const ext = IMAGE[image.type];
-    const bytes = ext ? Buffer.from(String(image.data ?? ''), 'base64') : null;
-    if (!ext || !bytes?.length) return { error: 'можно приложить только картинку', status: 400 };
-    if (bytes.length > FILE_MAX) return { error: 'картинка больше 5 МБ', status: 413 };
-    picture = { ext, bytes };
-  }
+  const picture = image ? parseImage(image) : null;
+  if (picture?.error) return picture;
   if (!body && !picture) return { error: 'пустое сообщение', status: 400 };
   const hour = new Date(Date.now() - 3_600_000).toISOString();
   const recent = db.prepare(
@@ -327,12 +345,7 @@ export function supportFromApp(db, user, { thread_id = null, text, image = null 
   const loud = created || worthNotice(db, thread);
   const kind = picture ? 'photo' : 'text';
   const msgId = addMessage(db, thread.id, { fromAdmin: false, text: body || null, kind });
-  if (picture) {
-    const file = `${msgId}.${picture.ext}`;
-    mkdirSync(FILES, { recursive: true });
-    writeFileSync(join(FILES, file), picture.bytes);
-    db.prepare('UPDATE support_messages SET file = ? WHERE id = ?').run(file, msgId);
-  }
+  if (picture) saveImage(db, msgId, picture);
   db.prepare("UPDATE support_threads SET status = 'new', updated_at = ?, user_seen_at = ? WHERE id = ?").run(now(), now(), thread.id);
 
   if (loud) {

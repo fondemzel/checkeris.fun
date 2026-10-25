@@ -381,7 +381,8 @@ async function handleApi(req, res, url) {
     let raw;
     let body;
     try {
-      raw = await readRaw(req);
+      // Поддержка: бот приносит картинку из Telegram (до 5 МБ, base64 — на треть больше)
+      raw = await readRaw(req, pathname.endsWith('/support') ? 8 * 1024 * 1024 : undefined);
       body = JSON.parse(raw || '{}');
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });

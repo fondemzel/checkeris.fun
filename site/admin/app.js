@@ -428,10 +428,14 @@ function supportRows(threads) {
 function pageSupport(threads) {
   const waiting = threads.filter((t) => t.status === 'new').length;
   return subhead('Поддержка')
-    + '<p class="lead">Люди пишут боту @checker_costs_bot или из приложения («Настройки → Помощь»). В Telegram приходит уведомление со ссылкой сюда — отвечают здесь.</p>'
+    + '<p class="lead">Люди пишут из приложения («Настройки → Помощь → Поддержка») или боту @checker_costs_bot. Отвечают здесь: ответ придёт человеку в приложение и в Telegram. Вам в Telegram — только уведомления о новых сообщениях.</p>'
     + box(`${threads.length} ${plural(threads.length, 'обращение', 'обращения', 'обращений')}${waiting ? ` <span class="muted">· ждут ответа ${waiting}</span>` : ''}`,
       threads.length ? supportRows(threads) : blank('Обращений пока нет'));
 }
+
+/** Где человек увидит ответ: в приложении (есть аккаунт) и в Telegram (привязан). */
+const replyWhere = (t) =>
+  t.user_id ? (t.telegram ? 'Ответ придёт человеку в приложение и в Telegram' : 'Ответ придёт человеку в приложение') : 'Ответ придёт человеку в Telegram — аккаунта в Чекере у него нет';
 
 function pageThread(t) {
   if (!t) return '<a class="back" href="#/support">← Поддержка</a>' + blank('Нет такого обращения');
@@ -441,7 +445,7 @@ function pageThread(t) {
       const body = m.text ? esc(m.text) : '';
       const att = m.file
         ? `<img class="msg-img" data-file="${m.id}" alt="картинка" title="Открыть" />`
-        : m.kind !== 'text' ? `<div class="att">📎 ${esc(m.kind_name ?? 'вложение')} — смотрите в Telegram</div>` : '';
+        : m.kind !== 'text' ? `<div class="att">📎 ${esc(m.kind_name ?? 'вложение')} — копия пришла вам в Telegram</div>` : '';
       return `<div class="msg${m.from_admin ? ' mine' : ''}"><div class="msg-meta">${esc(m.from_admin ? (m.author ?? 'Поддержка') : t.name)} · ${esc(dateTimeRu(m.created_at))}</div>${att}${body}</div>`;
     })
     .join('');
@@ -453,7 +457,7 @@ function pageThread(t) {
     + `<p class="lead">${who}${t.tg_username ? ` · <a href="https://t.me/${esc(t.tg_username)}" target="_blank" rel="noopener">@${esc(t.tg_username)}</a>` : ''} · с ${esc(dateTimeRu(t.created_at))}</p>`
     + box('Переписка', `<div class="chat">${msgs}</div>`)
     + box('Ответ', `<form class="box-body reply" id="reply-form" data-id="${t.id}">
-        <textarea class="input" name="text" rows="4" required placeholder="Ответ придёт человеку от бота в Telegram"></textarea>
+        <textarea class="input" name="text" rows="4" required placeholder="${esc(replyWhere(t))}"></textarea>
         <div class="reply-foot"><span class="muted">Ctrl+Enter — отправить</span><button class="btn primary" type="submit">Отправить</button></div>
       </form>`);
 }

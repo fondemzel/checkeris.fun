@@ -90,8 +90,34 @@ const SUPPORT =
 const NOT_SENT = 'Не получилось передать сообщение. Попробуйте ещё раз через минуту.';
 const MEDIA = ['photo', 'document', 'voice', 'video', 'video_note', 'audio', 'sticker'];
 
-/** Что за сообщение: текст или вложение. Вложение не скачиваем — копируем как есть. */
+/** Что за сообщение: текст или вложение. */
 const kindOf = (msg) => (msg.text != null ? 'text' : MEDIA.find((k) => msg[k]) ?? 'other');
+
+const IMAGE_MAX = 5 * 1024 * 1024; // больше Чекер не примет — останется копией в Telegram
+
+/**
+ * Картинку (фото или файл-картинку) скачиваем у Telegram и отдаём Чекеру: там она хранится и
+ * видна в админке. Фото Telegram держит в нескольких размерах — берём самый крупный, что
+ * влезает в предел. Не вышло — null: администратор получит копию в Telegram, как раньше.
+ */
+async function imageOf(msg) {
+  const doc = msg.document?.mime_type?.startsWith('image/') ? msg.document : null;
+  const photo = msg.photo ? [...msg.photo].reverse().find((p) => !p.file_size || p.file_size <= IMAGE_MAX) : null;
+  const pick = doc && (!doc.file_size || doc.file_size <= IMAGE_MAX) ? doc : photo;
+  if (!pick) return null;
+  try {
+    const file = await tg('getFile', { file_id: pick.file_id });
+    const res = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) return null;
+    const data = Buffer.from(await res.arrayBuffer());
+    if (data.length > IMAGE_MAX) return null;
+    const type = doc?.mime_type ?? 'image/jpeg'; // фото Telegram всегда отдаёт в JPEG
+    return { type, data: data.toString('base64') };
+  } catch (err) {
+    console.error('поддержка: картинка', err.message);
+    return null;
+  }
+}
 
 /**
  * Поддержка: сообщение, которое не вход. Чекер сохраняет его в обращение и говорит, кого
@@ -107,6 +133,7 @@ async function onSupport(msg) {
       message_id: msg.message_id,
       text: msg.text ?? msg.caption ?? null,
       kind,
+      image: kind === 'photo' || kind === 'document' ? await imageOf(msg) : null,
     });
   } catch (err) {
     console.error('поддержка:', err.message);
@@ -116,8 +143,8 @@ async function onSupport(msg) {
   if (res.action === 'hint') return tg('sendMessage', { chat_id, text: res.text, disable_web_page_preview: true });
   if (res.action !== 'notify') return null;
 
-  // Администраторам: уведомление со ссылкой в админку (там и отвечают) и копия вложения —
-  // в админке его не показать
+  // Администраторам: уведомление со ссылкой в админку (там и отвечают) и копия вложения,
+  // которое Чекер не сохранил (голосовое, видео, файл) — в админке его не показать
   for (const admin of res.admins ?? []) {
     try {
       if (res.text) await tg('sendMessage', { chat_id: admin, text: res.text, parse_mode: 'HTML', disable_web_page_preview: true });
