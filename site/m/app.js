@@ -31,10 +31,27 @@ function shades(hex, n, from = 25, to = 85) {
 }
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
-import { T, f, pl } from '/m/i18n/index.js';
+import { T, f, pl, lang } from '/m/i18n/index.js';
 import qrcode from '/shared/qrcode.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Разметка index.html — по словарю: data-i18n — текст, data-i18n-html — разметка со ссылкой
+// внутри, data-i18n-attr="placeholder:login.name;aria-label:…" — атрибуты. Русский в самой
+// разметке — запасной, до загрузки скрипта
+{
+  const at = (path) => path.split('.').reduce((node, key) => node?.[key], T);
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = at(el.dataset.i18n) ?? el.textContent;
+  for (const el of document.querySelectorAll('[data-i18n-html]')) el.innerHTML = at(el.dataset.i18nHtml) ?? el.innerHTML;
+  for (const el of document.querySelectorAll('[data-i18n-attr]')) {
+    for (const pair of el.dataset.i18nAttr.split(';')) {
+      const [attr, path] = pair.split(':');
+      if (at(path)) el.setAttribute(attr, at(path));
+    }
+  }
+  document.documentElement.lang = lang;
+  document.title = T.shell.app;
+}
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
 const rubExact = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 });
 const int = new Intl.NumberFormat('ru-RU');
@@ -47,21 +64,11 @@ const esc = (v) =>
   String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
-function plural(n, one, few, many) {
-  const m100 = Math.abs(n) % 100;
-  const m10 = m100 % 10;
-  if (m100 >= 11 && m100 <= 14) return many;
-  if (m10 === 1) return one;
-  if (m10 >= 2 && m10 <= 4) return few;
-  return many;
-}
 
-const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
-  'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+const MONTHS = T.dates.months;
+const MONTHS_GEN = T.dates.monthsGen;
+const MONTHS_SHORT = T.dates.monthsShort;
+const WEEKDAYS = T.dates.weekdays;
 
 // Значки интерфейса — тот же набор Lucide, что у групп, но это не группы
 const svg = (shape) =>
@@ -182,8 +189,8 @@ async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers });
   if (res.status === 401) {
     token.clear();
-    showLogin('Сессия закончилась — войдите заново');
-    throw new Error('нужен вход');
+    showLogin(T.auth.expired);
+    throw new Error(T.auth.needLogin);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -257,7 +264,7 @@ function periodTitle(from, to) {
   const months = wholeMonths(from, to);
 
   if (months === 1) return cap(`${MONTHS[a.getMonth()]} ${a.getFullYear()}`);
-  if (months === 12 && a.getMonth() === 0) return `${a.getFullYear()} год`;
+  if (months === 12 && a.getMonth() === 0) return f(T.dates.year, { y: a.getFullYear() });
   if (months) {
     return sameYear
       ? cap(`${MONTHS[a.getMonth()]} – ${MONTHS[b.getMonth()]} ${a.getFullYear()}`)
@@ -283,16 +290,16 @@ function humanPeriod(from, to) {
   const today = isoDay(now);
   const days = Math.round((parseDay(to) - parseDay(from)) / 86400000) + 1;
   const monday = addDays(now, -((now.getDay() + 6) % 7));
-  if (from === isoDay(monday) && to === isoDay(addDays(monday, 6))) return 'Эта неделя';
-  if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, -1))) return 'Прошлая неделя';
-  if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, 6))) return 'Две недели';
+  const D = T.dates;
+  if (from === isoDay(monday) && to === isoDay(addDays(monday, 6))) return D.thisWeek;
+  if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, -1))) return D.lastWeek;
+  if (from === isoDay(addDays(monday, -7)) && to === isoDay(addDays(monday, 6))) return D.twoWeeks;
   if (to === today) {
-    if (days === 1) return 'Сегодня';
-    if (days === 7) return 'За неделю';
-    if (days % 7 === 0 && days <= 28) return `За ${['', '', 'две', 'три', 'четыре'][days / 7]} недели`;
-    return `За ${days} ${plural(days, 'день', 'дня', 'дней')}`;
+    if (days === 1) return D.today;
+    if (days % 7 === 0 && days <= 28) return D.lastWeeks[days / 7 - 1];
+    return f(D.lastDays, { n: days, w: pl(days, D.days) });
   }
-  if (from === to && from === isoDay(addDays(now, -1))) return 'Вчера';
+  if (from === to && from === isoDay(addDays(now, -1))) return D.yesterday;
   return periodTitle(from, to);
 }
 
@@ -364,10 +371,10 @@ const FILTERS = ['all', 'failed', 'pending', 'manual'];
 // операции банка. Направление, с которого начинается каждая: свежие и дорогие сверху,
 // названия по алфавиту. Каждый экран сам переводит ключ в параметры своего запроса
 const SORTS = {
-  date: ['По дате', 'desc', 'calendar'],
-  category: ['По категориям', 'asc', 'grid'],
-  name: ['По названию', 'asc', 'letters'],
-  sum: ['По сумме', 'desc', 'ruble'],
+  date: [T.feed.sorts.date, 'desc', 'calendar'],
+  category: [T.feed.sorts.category, 'asc', 'grid'],
+  name: [T.feed.sorts.name, 'asc', 'letters'],
+  sum: [T.feed.sorts.sum, 'desc', 'ruble'],
 };
 
 /** Сортировка по умолчанию: расходы, доходы и аналитика — по категориям, остальные списки — по дате. */
@@ -385,15 +392,15 @@ const defaultSort = (screen) => (['summary', 'income', 'stats'].includes(screen)
 const searchBox = () => `
   <label class="search">
     <span class="search-ic">${UI.search}</span>
-    <input id="q" type="search" value="${esc(state.q)}" placeholder="Поиск" enterkeyhint="search" autocomplete="off" />
-    <button class="search-x" type="button" data-q-clear aria-label="Очистить"${state.q ? '' : ' hidden'}>${UI.close}</button>
+    <input id="q" type="search" value="${esc(state.q)}" placeholder="${esc(T.feed.search)}" enterkeyhint="search" autocomplete="off" />
+    <button class="search-x" type="button" data-q-clear aria-label="${esc(T.feed.clear)}"${state.q ? '' : ' hidden'}>${UI.close}</button>
   </label>`;
 
-const searchNorm = (v) => String(v ?? '').toLowerCase().replace(/ё/g, 'е');
+const searchNorm = (v) => String(v ?? '').toLowerCase().replace(/ё/g, 'е'); // i18n-ok
 
 /** Ключ «такой же» — как у правил на сервере (ruleKey, incomeKey): без регистра, знаков и лишних пробелов. */
 const sameKey = (v) => {
-  const k = searchNorm(v).replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const k = searchNorm(v).replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); // i18n-ok
   return k.length >= 2 ? k : null;
 };
 
@@ -442,7 +449,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
         ${filters}
         ${extra}
         ${mode ? `<button class="drop-btn" type="button" data-mode-toggle
-          aria-label="${state.mode === 'ring' ? 'Показать списком' : 'Показать кольцом'}" title="${state.mode === 'ring' ? 'Списком' : 'Кольцом'}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
+          aria-label="${esc(state.mode === 'ring' ? T.feed.asList : T.feed.asRing)}" title="${esc(state.mode === 'ring' ? T.feed.listShort : T.feed.ringShort)}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
       </div>
     </div>
     <div class="head-line">
@@ -468,16 +475,11 @@ const dropRow = (attrs, icon, text, on, mark = UI.ok) => `
  * Фильтр расходов по источнику: только из банка, только чеки или только ручные записи.
  * Значки те же, что у сумм в ленте, — их уже узнают.
  */
-const SOURCE_FILTERS = [
-  ['receipt', 'Только чеки'],
-  ['market', 'Только маркетплейсы'],
-  ['bank', 'Только банк'],
-  ['manual', 'Только вручную'],
-  ['failed', 'Чеки с ошибкой'], // в фильтре — только когда такие есть (sourceChips)
-];
+// 'failed' в фильтре — только когда такие есть (sourceChips)
+const SOURCE_FILTERS = ['receipt', 'market', 'bank', 'manual', 'failed'].map((k) => [k, T.feed.only[k]]);
 
 /** Короткие подписи источников — плитки листа фильтров и подпись под суммой при нескольких. */
-const SOURCE_SHORT = { receipt: 'Чеки', market: 'Маркетплейсы', bank: 'Банк', manual: 'Вручную', failed: 'С ошибкой' };
+const SOURCE_SHORT = T.feed.short;
 /** Источник проходит отбор: ничего не выбрано — проходят все. */
 const srcOn = (kind) => !state.src || state.src.split(',').includes(kind);
 /** Подпись отбора по источникам: один — «только чеки», несколько — «чеки, банк». */
@@ -487,21 +489,21 @@ const srcNote = () => {
     : keys.map((k) => SOURCE_SHORT[k]?.toLowerCase()).filter(Boolean).join(', ');
 };
 
-const sourceChips = () => drop(UI.filter, 'Фильтр',
+const sourceChips = () => drop(UI.filter, T.feed.filter,
   // Что-то отобрано — первой строкой «Сбросить фильтры»: источник и группы разом
-  (state.src || state.sg ? dropRow('data-reset-filters', UI.close, 'Сбросить фильтры', false) + '<div class="drop-sep"></div>' : '')
-  + dropRow('data-src=""', UI.layers, 'Все источники', !state.src)
+  (state.src || state.sg ? dropRow('data-reset-filters', UI.close, T.feed.resetFilters, false) + '<div class="drop-sep"></div>' : '')
+  + dropRow('data-src=""', UI.layers, T.feed.allSources, !state.src)
   + SOURCE_FILTERS.filter(([key]) => key !== 'failed' || failedCount > 0 || state.src === 'failed')
     .map(([key, label]) => dropRow(`data-src="${key}"`, SOURCES[key].icon, label, state.src === key)).join('')
   // Группа: все покупки только её категорий. Повторное нажатие снимает. Внутри кольца группы
   // (и раскрытого «Остального») групп не предлагаем: другая группа дала бы пустое кольцо
   + (state.screen !== 'stats' && state.mode === 'ring' && (state.ringGroup || state.ringRest) ? '' : '<div class="drop-sep"></div>'
     + (meta?.categories ?? []).map((g) => dropRow(`data-sg="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, state.sg === g.slug)).join('')
-    + dropRow(`data-sg="${NONE}"`, groupIcon('none'), 'Без категории', state.sg === NONE)),
+    + dropRow(`data-sg="${NONE}"`, groupIcon('none'), T.feed.noCategory, state.sg === NONE)),
   Boolean(state.src || state.sg));
 
 /** Сортировка. Выбранная строка показывает направление; повторное нажатие его разворачивает. */
-const sortDrop = (keys = ['date', 'name', 'sum']) => drop(UI.sort, 'Сортировка', keys
+const sortDrop = (keys = ['date', 'name', 'sum']) => drop(UI.sort, T.feed.sort, keys
   .map((key) => {
     const [label, , icon] = SORTS[key];
     // Стрелка — значком, а не символом: символ ↓ телефон может нарисовать цветным эмодзи
@@ -521,7 +523,7 @@ document.addEventListener('click', (e) => {
   const menu = btn.nextElementSibling;
   // Сортировка — коротким попапом прямо из кнопки, как выбор периода на острове: пунктов
   // мало, лист снизу для них — лишнее движение через весь экран
-  if (btn.title === 'Сортировка' || 'pop' in btn.dataset) return dropPopOpen(btn, menu);
+  if (btn.title === T.feed.sort || 'pop' in btn.dataset) return dropPopOpen(btn, menu);
   if (menu.querySelector('[data-sg], [data-inf]')) return openFilterSheet(Boolean(menu.querySelector('[data-inf]'))); // источники и группы — плитками
   const sheet = openChoice(btn.title, `<div class="choice-list">${menu.innerHTML}</div>`, (ev, close) => {
     const row = ev.target.closest('.drop-row');
@@ -562,7 +564,7 @@ function openFilterSheet(income = false) {
   // Расходы: источники и группы расходов (src, sg). Доходы: банк или вручную и группы доходов (isrc, inf)
   const cfg = income
     ? { srcKey: 'isrc', groupKey: 'inf', sources: ['bank', 'manual'], none: '-', groups: meta?.income ?? [], noneName: T.income.noCategory }
-    : { srcKey: 'src', groupKey: 'sg', sources: Object.keys(SOURCE_SHORT), none: NONE, groups: meta?.categories ?? [], noneName: 'Без категории' };
+    : { srcKey: 'src', groupKey: 'sg', sources: Object.keys(SOURCE_SHORT), none: NONE, groups: meta?.categories ?? [], noneName: T.feed.noCategory };
   const src = new Set(state[cfg.srcKey] ? state[cfg.srcKey].split(',') : []);
   const sg = new Set(state[cfg.groupKey] ? state[cfg.groupKey].split(',') : []);
   const sources = cfg.sources.filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
@@ -572,9 +574,9 @@ function openFilterSheet(income = false) {
   const body = `<div class="filt-row">${sources}</div><div class="filt-sep"></div><div class="filt-grid">${groups}</div>`;
   // Вверху справа: крестик — сбросить всё и закрыть, галочка — показать выбранное
   const action = `<span class="picker-acts">
-    <button class="icon-btn soft" type="button" data-filt-reset aria-label="Сбросить фильтры" title="Сбросить">${UI.close}</button>
-    <button class="icon-btn primary" type="button" data-filt-apply aria-label="Показать" title="Показать">${UI.ok}</button></span>`;
-  const sheet = openChoice('Фильтр', body, (e, close) => {
+    <button class="icon-btn soft" type="button" data-filt-reset aria-label="${esc(T.feed.resetFilters)}" title="${esc(T.feed.reset)}">${UI.close}</button>
+    <button class="icon-btn primary" type="button" data-filt-apply aria-label="${esc(T.feed.show)}" title="${esc(T.feed.show)}">${UI.ok}</button></span>`;
+  const sheet = openChoice(T.feed.filter, body, (e, close) => {
     const t = e.target.closest('[data-fsrc], [data-fsg]');
     if (t) {
       const [set, key] = t.dataset.fsrc ? [src, t.dataset.fsrc] : [sg, t.dataset.fsg];
@@ -682,7 +684,7 @@ const holdsDrop = () => Boolean(dropHold?.held);
 document.addEventListener('pointerdown', (e) => {
   const btn = e.target.closest('[data-drop]');
   if (dropHold && !dropHold.held) clearTimeout(dropHold.timer);
-  if (!btn || btn.title !== 'Сортировка') {
+  if (!btn || btn.title !== T.feed.sort) {
     if (dropHold) dropHold.ate = false;
     return;
   }
@@ -981,17 +983,17 @@ window.addEventListener('popstate', (e) => {
 
 // ── общие куски экранов ──────────────────────────────────
 
-const loading = () => '<div class="empty">Загрузка…</div>';
+const loading = () => `<div class="empty">${esc(T.feed.loading)}</div>`;
 const failed = (err) => `<div class="empty error">${esc(err.message)}</div>`;
 
 /** Строка периода: стрелки листают, нажатие на даты открывает календарь. */
 const periodNav = (compact = false) => `
   <div class="month${compact ? ' compact' : ''}">
-    <button class="month-arrow" type="button" data-shift="-1" aria-label="Раньше">‹</button>
+    <button class="month-arrow" type="button" data-shift="-1" aria-label="${esc(T.feed.earlier)}">‹</button>
     <button class="month-name" type="button" data-period title="${esc(periodTitle(state.from, state.to))}">${UI.calendar}<span>${esc(
       compact ? periodShort(state.from, state.to) : periodTitle(state.from, state.to),
     )}</span></button>
-    <button class="month-arrow" type="button" data-shift="1" aria-label="Позже">›</button>
+    <button class="month-arrow" type="button" data-shift="1" aria-label="${esc(T.feed.later)}">›</button>
   </div>`;
 
 /**
@@ -1000,11 +1002,11 @@ const periodNav = (compact = false) => `
  */
 const expenseSwitch = () => `
   <div class="segments">
-    <button class="segment${state.screen === 'summary' ? ' on' : ''}" type="button" data-segment="summary">Категории</button>
-    <button class="segment${state.screen === 'receipts' ? ' on' : ''}" type="button" data-segment="receipts">Чеки${
+    <button class="segment${state.screen === 'summary' ? ' on' : ''}" type="button" data-segment="summary">${esc(T.spend.segments.categories)}</button>
+    <button class="segment${state.screen === 'receipts' ? ' on' : ''}" type="button" data-segment="receipts">${esc(T.spend.segments.receipts)}${
       failedCount ? `<i class="seg-badge">${failedCount > 99 ? '99+' : failedCount}</i>` : ''
     }</button>
-    ${bankLinked ? `<button class="segment${state.screen === 'bank' ? ' on' : ''}" type="button" data-segment="bank">Банк</button>` : ''}
+    ${bankLinked ? `<button class="segment${state.screen === 'bank' ? ' on' : ''}" type="button" data-segment="bank">${esc(T.spend.segments.bank)}</button>` : ''}
   </div>`;
 
 // Есть ли в бюджете операции банка (подключал кто угодно из участников): без них третья
@@ -1110,7 +1112,7 @@ async function screenSummary() {
   // операция из банка, и трата посчиталась бы дважды. Сумма и дата — из QR-кода
   const scanRows = srcOn('failed') && (!state.sg || picked.has(NONE) || picked.has(''))
     ? (failed?.jobs ?? []).filter((j) => j.purchased_at.slice(0, 10) >= state.from && j.purchased_at.slice(0, 10) <= state.to)
-      .filter((j) => matchesQ([SOURCES.failed.title, 'без категории'], [j.total_sum]))
+      .filter((j) => matchesQ([SOURCES.failed.title, T.feed.noCategory], [j.total_sum]))
     : [];
   const total = shownItems.reduce((s, r) => s + r.sum, 0) + shownOps.reduce((s, op) => s + op.amount, 0);
   const count = shownItems.reduce((s, r) => s + (r.positions ?? 1), 0) + shownOps.length;
@@ -1119,11 +1121,11 @@ async function screenSummary() {
   // Каждая часть помечена: после нажатия на значок изменившаяся часть подсвечивается
   const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
   const note = [
-    part('count', `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`),
+    part('count', `${int.format(count)} ${pl(count, T.common.purchases)}`),
     SORTS[state.sort] ? part('sort', SORTS[state.sort][0].toLowerCase()) : '',
     state.src ? part('src', srcNote()) : '',
-    state.sg ? part('src', [...picked].map((k) => (k === NONE ? 'без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
-    state.q ? part('q', state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
+    state.sg ? part('src', [...picked].map((k) => (k === NONE ? T.feed.noCategory.toLowerCase() : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
+    state.q ? part('q', f(state.same ? T.feed.onlyQ : T.feed.searchQ, { q: state.q.trim() })) : '',
     perDayNote(shownItems, shownOps, part),
   ].filter(Boolean).join(' · ');
 
@@ -1141,7 +1143,7 @@ async function screenSummary() {
 
 
   const selfRows = (state.sg ? [] : self?.rows ?? []).filter((op) => state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
-    T.sources.bank, bankById(op.bank)?.name, 'перевод себе'], [op.amount, op.orig_amount]));
+    T.sources.bank, bankById(op.bank)?.name, T.spend.self], [op.amount, op.orig_amount]));
   if (state.mode === 'ring') {
     // Кольцо: доли групп. Сумма группы — по категории каждой строки; без категории — серым
     const byGroup = new Map();
@@ -1178,8 +1180,8 @@ async function screenSummary() {
       key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0,
       single: catsOf.get(g.slug)?.size === 1 && !(meta?.limits?.[g.slug] > 0),
     }));
-    parts.push({ key: NONE, name: 'Без категории', color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
-    return `${head}${ringView(parts, total, `${int.format(count)} ${plural(count, 'покупка', 'покупки', 'покупок')}`, 'summary', null, limitCard(limits))}`;
+    parts.push({ key: NONE, name: T.feed.noCategory, color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
+    return `${head}${ringView(parts, total, `${int.format(count)} ${pl(count, T.common.purchases)}`, 'summary', null, limitCard(limits))}`;
   }
   return `${head}${await spendingFeed(shownItems, shownOps, selfRows, scanRows)}`;
 }
@@ -1197,14 +1199,14 @@ function ringTitle(base, nameOf) {
   const names = [];
   if (state.mode === 'ring') {
     if (state.ringGroup) names.push(nameOf(state.ringGroup));
-    if (state.ringRest) names.push('Остальное');
+    if (state.ringRest) names.push(T.spend.rest);
   } else {
     const filter = state.screen === 'summary' ? state.sg : state.screen === 'income' ? state.inf : '';
     const keys = filter ? filter.split(',') : [];
     // Отобрано несколько (фильтр с выбором или «Остальное» кольца) — названиями, а не «Остальное»:
     // две — обе, больше — две и сколько ещё
     const list = keys.map(nameOf).filter(Boolean);
-    if (list.length) names.push(list.length <= 2 ? list.join(', ') : `${list.slice(0, 2).join(', ')} и ещё ${list.length - 2}`);
+    if (list.length) names.push(list.length <= 2 ? list.join(', ') : f(T.feed.andMore, { list: list.slice(0, 2).join(', '), n: list.length - 2 }));
   }
   // Раскрытое — вместо названия раздела: рядом ещё период, а раздел видно по вкладке
   const shown = names.filter(Boolean);
@@ -1393,10 +1395,10 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
     const keys = new Set(state.ringRest.split(','));
     parts = parts.filter((p) => keys.has(p.key));
     total = parts.reduce((n, p) => n + p.sum, 0);
-    countText = 'Остальное';
+    countText = T.spend.rest;
   }
   const all = parts.filter((p) => p.sum > 0).sort((a, b) => b.sum - a.sum);
-  if (!all.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период ничего нет'}</div>`;
+  if (!all.length) return `<div class="empty">${esc(state.q ? T.feed.nothingFound : T.feed.emptyPeriod)}</div>`;
   // «Остальное» раскрывается всегда — его ключ: «~» и ключи слитых секторов
   const tap = (p) => {
     if (p.other) return ` data-ring="${esc(kind)}|~${esc(p.parts.map((x) => x.key).join(','))}"`;
@@ -1467,7 +1469,7 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
   while (!placed && items.length > 2) {
     const rest = items.filter((p) => !p.other);
     const take = other ? [rest.pop()] : [rest.pop(), rest.pop()];
-    other ??= { key: '', name: 'Остальное', color: '#dfe3e8', icon: 'blocks', sum: 0, other: true, parts: [] };
+    other ??= { key: '', name: T.spend.rest, color: '#dfe3e8', icon: 'blocks', sum: 0, other: true, parts: [] };
     for (const p of take) {
       other.parts.push(p);
       other.sum += p.sum;
@@ -1866,7 +1868,7 @@ async function screenGroup() {
   const data = await api(
     `/api/summary?by=category&group=${encodeURIComponent(state.group)}&from=${state.from}&to=${state.to}`,
   );
-  const g = state.group === NONE ? { name: 'Без категории' } : findGroup(state.group);
+  const g = state.group === NONE ? { name: T.feed.noCategory } : findGroup(state.group);
   const max = Math.max(1, ...data.rows.map((r) => r.sum));
 
   // Шапка как в «Расходе»: итог и период закреплены, период меняется прямо здесь
@@ -1875,7 +1877,7 @@ async function screenGroup() {
       ${listHead({ sum: money(data.totals.sum), note: esc(g?.name ?? ''), sorts: false })}
     </div>`;
 
-  if (!data.rows.length) return `${head}<div class="empty">В этой группе трат нет</div>`;
+  if (!data.rows.length) return `${head}<div class="empty">${esc(T.spend.groupEmpty)}</div>`;
 
   const rows = data.rows
     .map((r) =>
@@ -1883,8 +1885,8 @@ async function screenGroup() {
         href: `data-category="${esc(r.key ?? NONE)}"`,
         color: categoryColor(state.group, r.key),
         icon: r.key ? catIcon(findCategory(r.key)) : null,
-        title: r.name ?? 'Без категории',
-        note: `${int.format(r.count)} ${plural(r.count, 'позиция', 'позиции', 'позиций')}`,
+        title: r.name ?? T.feed.noCategory,
+        note: `${int.format(r.count)} ${pl(r.count, T.spend.positions)}`,
         sum: r.sum,
         share: r.sum / max,
       }),
@@ -1933,7 +1935,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       noted: Boolean(r.has_note),
     })),
     ...bankRows.map((op) => ({
-      name: opWho(op) ?? 'Без названия',
+      name: opWho(op) ?? T.spend.noName,
       at: op.at,
       sum: op.amount,
       source: 'bank',
@@ -1959,7 +1961,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       noted: false,
     })),
     ...selfRows.map((op) => ({
-      name: opWho(op) ?? 'Перевод',
+      name: opWho(op) ?? T.spend.transfer,
       at: op.at,
       sum: op.amount,
       source: 'bank',
@@ -1973,7 +1975,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       noted: Boolean(op.has_note),
     })),
   ];
-  if (!spendings.length) return `<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период трат нет'}</div>`;
+  if (!spendings.length) return `<div class="empty">${esc(state.q ? T.feed.nothingFound : T.spend.empty)}</div>`;
 
   // Порядок категорий — как в справочнике: так группы идут всегда в одном порядке
   const catOrder = new Map();
@@ -2042,10 +2044,10 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
     const title = state.sort === 'date'
       ? esc(dayTitle(key))
       : (() => {
-          if (key === SELF) return `<span class="op-cat" style="background:#c9ced6"></span>Перевод себе · вне суммы (${int.format(counts.get(key) ?? 0)})`;
+          if (key === SELF) return `<span class="op-cat" style="background:#c9ced6"></span>${esc(T.spend.selfOutside)} (${int.format(counts.get(key) ?? 0)})`;
           const found = key === NONE ? null : findCategory(key);
           const color = found ? categoryColor(found.group.slug, key) ?? found.group.color : '#c9ced6';
-          return `<span class="op-cat" style="background:${color}"></span>${esc(found?.category.name ?? 'Без категории')} (${int.format(counts.get(key) ?? 0)})`;
+          return `<span class="op-cat" style="background:${color}"></span>${esc(found?.category.name ?? T.feed.noCategory)} (${int.format(counts.get(key) ?? 0)})`;
         })();
     return `
       <button class="day section${isOpen ? ' open' : ''}" type="button" data-section="${esc(key)}">
@@ -2066,7 +2068,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
   let section;
   // В разделе «Без категории» первой строкой — авторазметка: товары по названию, траты банка
   // по продавцу
-  const autoBtn = `<button class="feed-auto" type="button" data-autolabel>${UI.sparkle} Разметить автоматически</button>`;
+  const autoBtn = `<button class="feed-auto" type="button" data-autolabel>${UI.sparkle} ${esc(T.spend.autolabel)}</button>`;
   const rows = spendings
     .map((r) => {
       const key = sectionOf(r);
@@ -2078,7 +2080,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       drawn += 1;
       if (drawn > limit) {
         return drawn === limit + 1
-          ? `${head}<button class="feed-more" type="button" data-feed-more>${f('Показать ещё · осталось {n}', { n: int.format(visible - limit) })}</button>`
+          ? `${head}<button class="feed-more" type="button" data-feed-more>${f(T.feed.moreLeft, { n: int.format(visible - limit) })}</button>`
           : head;
       }
 
@@ -2088,13 +2090,13 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       const isOpen = r.group && parts.has(r.group);
       // Стрелка — внутри подписи, в размер текста: как бы ни рисовался значок, строка не поплывёт
       const toggle = r.group
-        ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(r.group)}" role="button" aria-label="${isOpen ? 'Свернуть' : 'Показать покупки'}">${UI.chevron}</span>`
+        ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(r.group)}" role="button" aria-label="${esc(isOpen ? T.feed.collapse : T.spend.showPurchases)}">${UI.chevron}</span>`
         : '';
       const note = [
-        `<span class="op-cat" style="background:${dot}"></span>${esc(r.self ? 'Перевод себе' : found?.category.name ?? 'Без категории')}`,
+        `<span class="op-cat" style="background:${dot}"></span>${esc(r.self ? T.spend.self : found?.category.name ?? T.feed.noCategory)}`,
         // При сортировке по дате день уже в заголовке раздела, в остальных — нужен в строке
         state.sort === 'date' ? '' : dateRu(r.at.slice(0, 10)),
-        r.positions > 1 ? `${int.format(r.positions)} ${plural(r.positions, 'покупка', 'покупки', 'покупок')}` : '',
+        r.positions > 1 ? `${int.format(r.positions)} ${pl(r.positions, T.common.purchases)}` : '',
         r.orig ? esc(r.orig) : '', // покупка в валюте: в сумме — рубли, здесь — сколько было
       ].filter(Boolean).join(' · ');
 
@@ -2105,8 +2107,8 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
           <span class="row-title">${esc(r.name)}</span>
           <span class="row-note">${note}${toggle}</span>
         </span>
-        ${r.noted ? '<span class="noted" title="Есть комментарий"></span>' : ''}
-        <span class="row-sum${r.outside || r.self ? ' muted' : ''}">${r.outside && !r.scan ? 'вне суммы' : money(r.sum)}</span>
+        ${r.noted ? `<span class="noted" title="${esc(T.feed.hasNote)}"></span>` : ''}
+        <span class="row-sum${r.outside || r.self ? ' muted' : ''}">${r.outside && !r.scan ? esc(T.spend.outside) : money(r.sum)}</span>
         <span class="src" title="${SOURCES[r.source].title}">${SOURCES[r.source].icon}</span>
       </button>`;
       if (!isOpen) return row;
@@ -2120,13 +2122,13 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
               <span class="row-title">${dateRu(it.purchased_date ?? it.purchased_at.slice(0, 10))} · ${esc(timeRu(it.purchased_at))}</span>
               <span class="row-note">${esc(it.seller ?? '')}${it.quantity !== 1 ? ` · ${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''}</span>
             </span>
-            ${it.has_note ? '<span class="noted" title="Есть комментарий"></span>' : ''}
+            ${it.has_note ? `<span class="noted" title="${esc(T.feed.hasNote)}"></span>` : ''}
             <span class="row-sum">${money(it.sum)}</span>
           </button>`)
         .join('');
       // Показываем последние сто: дальше листать группу неудобно, а сумма в строке и так полная
       const more = part.totals.count > part.rows.length
-        ? `<div class="sub-more note">Показаны последние ${int.format(part.rows.length)} из ${int.format(part.totals.count)}</div>`
+        ? `<div class="sub-more note">${f(T.feed.lastOf, { n: int.format(part.rows.length), all: int.format(part.totals.count) })}</div>`
         : '';
       // Покупки группы — в общем блоке: он раскрывается и сворачивается «шторкой» по высоте
       return `${row}<div class="sub-wrap">${subs}${more}</div>`;
@@ -2156,7 +2158,7 @@ async function screenCategory() {
   ]);
   const bankRows = ops?.rows ?? [];
   const name = state.category === NONE || state.group === NONE
-    ? 'Без категории'
+    ? T.feed.noCategory
     : state.category
       ? findGroup(state.group)?.subcategories.find((s) => s.slug === state.category)?.name
       : findGroup(state.group)?.name;
@@ -2172,7 +2174,7 @@ async function screenCategory() {
       })}
     </div>`;
 
-  if (!data.rows.length && !bankRows.length) return `${head}<div class="empty">Ничего не найдено</div>`;
+  if (!data.rows.length && !bankRows.length) return `${head}<div class="empty">${esc(T.feed.notFound)}</div>`;
 
   return `${head}${await spendingFeed(data.rows, bankRows)}`;
 }
@@ -2197,19 +2199,21 @@ async function screenBank() {
     <div class="stuck-head">
       ${listHead({
         sum: money(data.totals.sum),
-        note: `${int.format(byKind.covered?.count ?? 0)} с чеком · ${int.format(byKind.expense?.count ?? 0)} без чека${
-          byKind.transfer ? ` · ${int.format(byKind.transfer.count)} переводов между своими` : ''}`,
+        note: [
+          f(T.spend.withReceipt, { n: int.format(byKind.covered?.count ?? 0) }),
+          f(T.spend.noReceipt, { n: int.format(byKind.expense?.count ?? 0) }),
+          byKind.transfer ? f(T.spend.ownTransfers, { n: int.format(byKind.transfer.count) }) : '',
+        ].filter(Boolean).join(' · '),
         sorts: data.rows.length > 0,
       })}
     </div>`;
 
   if (!data.rows.length) {
-    return `${head}<div class="empty">Операций за период нет</div>`;
+    return `${head}<div class="empty">${esc(T.spend.noOps)}</div>`;
   }
 
   // Покупка с чеком уже посчитана чеком: сумма в шапке — это оплата картой, а не «ещё расходы»
-  const hint = `<p class="note list-hint">Оплата картами Т-Банка. Покупки с чеком в расходах считаются
-    по чеку — дважды они не попадают. Переводы между своими счетами в список не входят.</p>`;
+  const hint = `<p class="note list-hint">${esc(T.spend.bankHint)}</p>`;
 
   const byDate = state.sort === 'date';
   let day = '';
@@ -2223,8 +2227,8 @@ async function screenBank() {
       const note = [
         timeRu(op.at),
         op.bank_category,
-        op.card ? `карта ·${op.card}` : '',
-        op.status === 'WAIT' ? 'в обработке' : '',
+        op.card ? f(T.spend.card, { card: op.card }) : '',
+        op.status === 'WAIT' ? T.spend.pending : '',
       ].filter(Boolean).join(' · ');
       // Операция с чеком ведёт в чек: там видно, что куплено. Трата без чека — в выбор
       // категории: иначе она нигде не учтётся
@@ -2233,15 +2237,15 @@ async function screenBank() {
         ? ''
         : found
           ? `<span class="op-cat" style="background:${found.group.color ?? 'var(--fill)'}"></span>${esc(found.category.name)}`
-          : '<span class="op-cat none"></span><span class="pick-hint">выбрать категорию</span>';
+          : `<span class="op-cat none"></span><span class="pick-hint">${esc(T.spend.pickCategory)}</span>`;
       const action = op.receipt_id ? `data-receipt="${op.receipt_id}"` : `data-op="${op.id}"`;
       return `${header}
         <button class="row bank-op" type="button" ${action}>
           <span class="row-main">
-            <span class="row-title">${esc(op.merchant ?? op.description ?? 'Без названия')}</span>
+            <span class="row-title">${esc(op.merchant ?? op.description ?? T.spend.noName)}</span>
             <span class="row-note">${cat}${cat ? ' · ' : ''}${esc(note)}</span>
           </span>
-          ${op.receipt_id ? `<span class="op-mark" title="Есть чек">${UI.receipt}</span>` : ''}
+          ${op.receipt_id ? `<span class="op-mark" title="${esc(T.spend.hasReceipt)}">${UI.receipt}</span>` : ''}
           <span class="row-sum">${money(op.amount)}</span>
         </button>`;
     })
@@ -2266,9 +2270,7 @@ function incomeFeeds(from, to) {
 
 async function screenIncome() {
   if (!incomeOn()) {
-    return soon(UI.income, 'Доходы', `${inApp()
-      ? 'Подключите банк в настройках — поступления появятся здесь сами.'
-      : 'Поступления берутся из банка. Подключить его можно в приложении для Android.'} Или впишите доход вручную: «+» → «Доход вручную».`);
+    return soon(UI.income, T.income.title, `${inApp() ? T.income.soonApp : T.income.soonWeb} ${T.income.soonManual}`);
   }
 
   const feeds = incomeFeeds(state.from, state.to);
@@ -2299,7 +2301,7 @@ async function screenIncome() {
       bankById(op.bank)?.name, incomeCat(op.category_slug)?.name], [op.amount, op.orig_amount])));
   const sum = narrowed ? rows.reduce((n, op) => n + op.amount, 0) : data.totals.sum;
   const count = narrowed ? rows.length : data.totals.count;
-  const filters = drop(UI.filter, 'Фильтр',
+  const filters = drop(UI.filter, T.feed.filter,
     dropRow('data-inf=""', UI.layers, T.income.all, !filter)
     + groups.map((g) => dropRow(`data-inf="${esc(g.slug)}"`, groupIcon(g.icon ?? 'none'), g.name, filter === g.slug)).join('')
     + dropRow('data-inf="-"', groupIcon('none'), T.income.noCategory, filter === '-'),
@@ -2314,8 +2316,8 @@ async function screenIncome() {
           SORTS[state.sort] ? SORTS[state.sort][0].toLowerCase() : '',
           state.isrc ? state.isrc.split(',').map((k) => SOURCE_SHORT[k]?.toLowerCase()).join(', ') : '',
           filter ? filterName.toLowerCase() : '',
-          state.q.trim() ? (state.same ? `только «${state.q.trim()}»` : `поиск «${state.q.trim()}»`) : '',
-          !filter && transfers ? `${int.format(transfers.count)} переводов между своими` : '',
+          state.q.trim() ? f(state.same ? T.feed.onlyQ : T.feed.searchQ, { q: state.q.trim() }) : '',
+          !filter && transfers ? f(T.spend.ownTransfers, { n: int.format(transfers.count) }) : '',
         ].filter(Boolean).map(esc).join(' · '),
         sorts: all.length > 0 ? ['category', 'date', 'name', 'sum'] : false,
         // Внутри кольца группы отбор по группам дал бы пустое кольцо — фильтра нет
@@ -2325,7 +2327,7 @@ async function screenIncome() {
       })}
     </div>`;
 
-  if (!rows.length) return `${head}<div class="empty">${filter ? T.income.emptyFilter : 'Поступлений за период нет'}</div>`;
+  if (!rows.length) return `${head}<div class="empty">${esc(filter ? T.income.emptyFilter : T.income.empty)}</div>`;
 
   if (state.mode === 'ring') {
     const byGroup = new Map();
@@ -2420,7 +2422,7 @@ async function screenIncome() {
         many ? `${int.format(ops.length)} ${pl(ops.length, T.income.many)}` : esc(op.account_name ?? ''),
       ].filter(Boolean).join(' · ');
       const toggle = many
-        ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(gk)}" role="button" aria-label="${isOpen ? 'Свернуть' : 'Показать поступления'}">${UI.chevron}</span>`
+        ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(gk)}" role="button" aria-label="${esc(isOpen ? T.feed.collapse : T.income.show)}">${UI.chevron}</span>`
         : '';
       const row = `${header}
         <button class="row item bank-op" type="button" data-op="${op.id}"${many ? ` data-long="${esc(gk)}"` : ''}>
@@ -2457,17 +2459,17 @@ const foreign = (op) =>
     ? `${(Math.abs(op.orig_amount) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${op.orig_currency}`
     : null;
 
-const opWho = (op) => (op.op_group === 'TRANSFER' && /банк|bank|^клиенту|^втб$/i.test(op.merchant ?? '')
+const opWho = (op) => (op.op_group === 'TRANSFER' && /банк|bank|^клиенту|^втб$/i.test(op.merchant ?? '') // i18n-ok
   ? op.description || op.merchant
   : op.merchant || op.description) || null;
 
 /** Откуда трата попала в Чекер: значок в строке отвечает на этот вопрос без слов. */
 const SOURCES = {
-  receipt: { title: 'Из чека', icon: UI.receipt },
-  market: { title: 'С маркетплейса', icon: UI.bag },
-  manual: { title: 'Вручную', icon: UI.keyboard }, // карандаш путали с кнопкой «редактировать»
-  bank: { title: 'Из банка', icon: UI.bank },
-  failed: { title: 'Чек с ошибкой', icon: UI.receipt }, // скан, который ФНС не отдала: сумма и дата — из QR
+  receipt: { title: T.spend.from.receipt, icon: UI.receipt },
+  market: { title: T.spend.from.market, icon: UI.bag },
+  manual: { title: T.spend.from.manual, icon: UI.keyboard }, // карандаш путали с кнопкой «редактировать»
+  bank: { title: T.spend.from.bank, icon: UI.bank },
+  failed: { title: T.spend.from.failed, icon: UI.receipt }, // скан, который ФНС не отдала: сумма и дата — из QR
 };
 
 // Какие разделы ленты (дни, категории) открыты. Ключ — всё, что меняет состав ленты:
@@ -2507,7 +2509,7 @@ async function screenItem() {
 async function screenOp() {
   const op = await api(`/api/bank/ops/${state.op}`);
   const income = op.direction === 'credit';
-  setTitle(income ? T.income.one : 'Товар'); // вид операции известен только теперь
+  setTitle(income ? T.income.one : T.item.title); // вид операции известен только теперь
   for (const tab of document.querySelectorAll('[data-tab]')) tab.classList.toggle('on', tab.dataset.tab === (income ? 'income' : 'summary'));
   return itemCard({
     id: op.id,
@@ -2516,7 +2518,7 @@ async function screenOp() {
     sum: op.amount,
     // У поступления главное — описание («Проценты на остаток», имя отправителя), а «продавец»
     // — лишь канал, которым оно пришло («Бонусы», «Входящий перевод»)
-    name: income ? op.description || op.sender || op.merchant || T.income.one : opWho(op) ?? 'Без названия',
+    name: income ? op.description || op.sender || op.merchant || T.income.one : opWho(op) ?? T.spend.noName,
     purchased_at: op.at,
     quantity: 1,
     seller: op.merchant && op.description && op.description !== op.merchant ? (income ? op.merchant : op.description) : null,
@@ -2566,25 +2568,25 @@ function itemCard(it) {
       <div class="card-sum${it.income ? ' income' : ''}">${it.income ? '+' : ''}${money(it.sum, true)}</div>
       <div class="card-name">${esc(it.name)}</div>
       ${kv([
-        ['Дата', `${dateRu(it.purchased_at)} ${esc(timeRu(it.purchased_at))}`],
+        [T.item.date, `${dateRu(it.purchased_at)} ${esc(timeRu(it.purchased_at))}`],
         // Покупка в валюте: сверху — рубли, которые ушли, здесь — сколько было в валюте
-        ['В валюте', esc(it.orig ?? '')],
-        ['Количество', it.quantity !== 1 ? `${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''],
+        [T.item.orig, esc(it.orig ?? '')],
+        [T.item.quantity, it.quantity !== 1 ? `${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''],
         // У ручной записи продавца нет — «Ручная запись» уже сказано строкой «Источник»
-        [it.income ? T.income.channel : 'Продавец', it.source === 'manual' ? '' : esc(it.seller ?? '')],
-        ['Точка', esc(it.retail_place ?? '')],
+        [it.income ? T.income.channel : T.item.seller, it.source === 'manual' ? '' : esc(it.seller ?? '')],
+        [T.item.place, esc(it.retail_place ?? '')],
         // Адрес текстом — когда карты нет. У интернет-покупки это адрес продавца, а не магазина
-        ['Адрес', !onMap && !it.internet_sign ? esc(it.retail_address ?? '') : ''],
-        ['Покупка', it.internet_sign ? 'в интернете' : ''],
+        [T.item.address, !onMap && !it.internet_sign ? esc(it.retail_address ?? '') : ''],
+        [T.item.purchase, it.internet_sign ? T.item.online : ''],
         // У траты из банка цифры карты стоят в строке «Счёт», отдельная строка не нужна
-        ['Карта', !bank && it.card ? `·${esc(it.card)}` : ''],
-        ['Счёт', esc(bank ? accountName(it) : it.account_name ?? '')],
-        ['Источник', it.manualIncome ? `${SOURCES.manual.icon} ${esc(T.sources.manual)}` : `${SOURCES[it.source].icon} ${esc(sourceName(it))}`],
+        [T.item.card, !bank && it.card ? `·${esc(it.card)}` : ''],
+        [T.item.account, esc(bank ? accountName(it) : it.account_name ?? '')],
+        [T.item.source, it.manualIncome ? `${SOURCES.manual.icon} ${esc(T.sources.manual)}` : `${SOURCES[it.source].icon} ${esc(sourceName(it))}`],
       ])}
     </div>
 
     <div class="card">
-      <div class="card-label">Категория</div>
+      <div class="card-label">${esc(T.item.category)}</div>
       <button class="cat-pick" id="item-cat" type="button" ${it.income ? `data-op-incat="${it.id}"` : bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`}>${it.income ? incomeButton(it.category_slug) : categoryButton(it.category_slug)}</button>
       <div class="pick-same">
       <p class="note" id="pick-note">${
@@ -2592,49 +2594,49 @@ function itemCard(it) {
           ? it.income
             ? f(T.income.affects, { n: int.format(it.same_name_count), word: pl(it.same_name_count, T.income.many) })
             : bank
-            ? `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'трату', 'траты', 'трат')} этого продавца`
-            : `Изменение категории затронет ${int.format(it.same_name_count)} ${plural(it.same_name_count, 'позицию', 'позиции', 'позиций')} с таким же названием`
+            ? f(T.item.affectsBank, { n: int.format(it.same_name_count), w: pl(it.same_name_count, T.item.spendsAcc) })
+            : f(T.item.affectsItem, { n: int.format(it.same_name_count), w: pl(it.same_name_count, T.item.positionsAcc) })
           : ''
       }</p>
       ${it.same_name_count > 1 ? `
       <button class="pick-same-go" type="button" data-same-go="${esc(it.income ? it.name : bank ? it.merchant ?? it.name : it.name)}"
         data-same="${esc(it.income ? `in|${sameKey(it.name)}` : bank ? `op|${sameKey(it.merchant ?? it.name)}` : `item|${it.name_norm}`)}"
-        data-same-screen="${it.income ? 'income' : 'summary'}" aria-label="Показать все такие же" title="Показать все такие же">${GO}</button>` : ''}
+        data-same-screen="${it.income ? 'income' : 'summary'}" aria-label="${esc(T.item.showSame)}" title="${esc(T.item.showSame)}">${GO}</button>` : ''}
       </div>
     </div>
 
     <div class="card">
-      <div class="card-label">Комментарий</div>
+      <div class="card-label">${esc(T.item.note)}</div>
       <div class="note-row">
-        <textarea class="note-input" id="item-note" rows="1" maxlength="1000" placeholder="Добавить комментарий"
+        <textarea class="note-input" id="item-note" rows="1" maxlength="1000" placeholder="${esc(T.item.notePlaceholder)}"
           data-note="${bank ? `/api/bank/ops/${it.id}/note` : `/api/items/${it.id}/note`}">${esc(it.note ?? '')}</textarea>
-        <button class="note-save" type="button" data-note-save aria-label="Сохранить" title="Сохранить">${UI.ok}</button>
+        <button class="note-save" type="button" data-note-save aria-label="${esc(T.item.save)}" title="${esc(T.item.save)}">${UI.ok}</button>
       </div>
     </div>
 
     <div class="settings-actions item-actions">
       ${it.manualIncome
-        ? `<button class="btn danger" type="button" data-op-del="${it.id}">Удалить запись</button>`
+        ? `<button class="btn danger" type="button" data-op-del="${it.id}">${esc(T.item.deleteRecord)}</button>`
         : bank
-        ? `<button class="btn danger" type="button" data-op-kind="excluded" data-id="${it.id}">Не учитывать</button>
-           <p class="note">${it.income ? T.income.transferHint : 'Перевод себе — например, на карту Озона — отмечается в выборе категории: расходом станут покупки, сделанные на эти деньги.'}</p>`
-        : `<button class="btn danger" type="button" data-item-hide="${it.id}">${it.source === 'manual' ? 'Удалить запись' : 'Убрать из расходов'}</button>`}
+        ? `<button class="btn danger" type="button" data-op-kind="excluded" data-id="${it.id}">${esc(T.item.exclude)}</button>
+           <p class="note">${esc(it.income ? T.income.transferHint : T.item.transferHint)}</p>`
+        : `<button class="btn danger" type="button" data-item-hide="${it.id}"${it.source === 'manual' ? ' data-manual' : ''}>${esc(it.source === 'manual' ? T.item.deleteRecord : T.item.hide)}</button>`}
     </div>
 
     ${it.source === 'receipt' || it.source === 'market' ? `
     <div class="card">
-      <div class="card-label">Чек</div>
+      <div class="card-label">${esc(T.item.receipt)}</div>
       <button class="cat-pick" type="button" data-item-receipt="${it.receipt_id}">
         <span class="pick-ic" style="background:var(--fill);color:var(--muted)">${UI.receipt}</span>
-        <span class="cat-name">${money(it.receipt_total, true)}<small>${int.format(it.receipt_items)} ${plural(it.receipt_items, 'позиция', 'позиции', 'позиций')} · ${dateRu(it.purchased_at)}</small></span>
+        <span class="cat-name">${money(it.receipt_total, true)}<small>${int.format(it.receipt_items)} ${pl(it.receipt_items, T.spend.positions)} · ${dateRu(it.purchased_at)}</small></span>
       </button>
     </div>` : ''}
 
     ${onMap ? `
     <div class="card place-card">
-      <div class="card-label">Где куплено</div>
-      <div class="map" id="item-map"><span class="map-wait">Загружаем карту…</span></div>
-      <p class="note">${esc(it.place_address ?? it.retail_address ?? '')}${it.place_qc > 1 ? ' · место примерное' : ''}</p>
+      <div class="card-label">${esc(T.item.where)}</div>
+      <div class="map" id="item-map"><span class="map-wait">${esc(T.item.mapLoading)}</span></div>
+      <p class="note">${esc(it.place_address ?? it.retail_address ?? '')}${it.place_qc > 1 ? ` · ${esc(T.item.approx)}` : ''}</p>
     </div>` : ''}`;
 }
 
@@ -2668,22 +2670,23 @@ function openPeriodPicker() {
   const now = new Date();
   const span = (from, to) => ({ from: isoDay(from), to: isoDay(to) });
   const monday = addDays(now, -((now.getDay() + 6) % 7));
+  const PR = T.period.presets;
   const presets = [
-    ['days', 'Сегодня', () => span(now, now)],
-    ['days', 'Вчера', () => span(addDays(now, -1), addDays(now, -1))],
-    ['days', '7 дней', () => span(addDays(now, -6), now)],
-    ['days', '30 дней', () => span(addDays(now, -29), now)],
-    ['weeks', 'Эта неделя', () => span(monday, addDays(monday, 6))],
-    ['weeks', 'Прошлая неделя', () => span(addDays(monday, -7), addDays(monday, -1))],
-    ['weeks', '2 недели', () => span(addDays(monday, -7), addDays(monday, 6))],
-    ['months', 'Этот месяц', () => monthPeriod(now.getFullYear(), now.getMonth())],
-    ['months', 'Прошлый месяц', () => monthPeriod(now.getFullYear(), now.getMonth() - 1)],
-    ['months', '3 месяца', () => monthPeriod(now.getFullYear(), now.getMonth() - 2, 3)],
-    ['years', 'Этот год', () => monthPeriod(now.getFullYear(), 0, 12)],
-    ['years', 'Прошлый год', () => monthPeriod(now.getFullYear() - 1, 0, 12)],
+    ['days', PR.today, () => span(now, now)],
+    ['days', PR.yesterday, () => span(addDays(now, -1), addDays(now, -1))],
+    ['days', PR.d7, () => span(addDays(now, -6), now)],
+    ['days', PR.d30, () => span(addDays(now, -29), now)],
+    ['weeks', PR.thisWeek, () => span(monday, addDays(monday, 6))],
+    ['weeks', PR.lastWeek, () => span(addDays(monday, -7), addDays(monday, -1))],
+    ['weeks', PR.w2, () => span(addDays(monday, -7), addDays(monday, 6))],
+    ['months', PR.thisMonth, () => monthPeriod(now.getFullYear(), now.getMonth())],
+    ['months', PR.lastMonth, () => monthPeriod(now.getFullYear(), now.getMonth() - 1)],
+    ['months', PR.m3, () => monthPeriod(now.getFullYear(), now.getMonth() - 2, 3)],
+    ['years', PR.thisYear, () => monthPeriod(now.getFullYear(), 0, 12)],
+    ['years', PR.lastYear, () => monthPeriod(now.getFullYear() - 1, 0, 12)],
   ];
   if (meta?.stats?.date_from) {
-    presets.push(['years', 'Всё время', () => ({ from: meta.stats.date_from.slice(0, 10), to: meta.stats.date_to.slice(0, 10) })]);
+    presets.push(['years', PR.all, () => ({ from: meta.stats.date_from.slice(0, 10), to: meta.stats.date_to.slice(0, 10) })]);
   }
 
   const el = document.createElement('div');
@@ -2714,8 +2717,8 @@ function openPeriodPicker() {
     }
 
     el.innerHTML = `
-      <div class="picker-box cal" role="dialog" aria-label="Выбор периода">
-        <div class="picker-top"><div class="picker-title">Период</div><button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button></div>
+      <div class="picker-box cal" role="dialog" aria-label="${esc(T.period.aria)}">
+        <div class="picker-top"><div class="picker-title">${esc(T.period.title)}</div><button class="icon-btn soft" data-close type="button" aria-label="${esc(T.common.close)}" title="${esc(T.common.close)}">${UI.close}</button></div>
         <div class="cal-presets">${['days', 'weeks', 'months', 'years'].map((row) => `
           <div class="cal-preset-row">${presets
             .map(([r, label, period], i) => {
@@ -2727,16 +2730,16 @@ function openPeriodPicker() {
             })
             .join('')}</div>`).join('')}</div>
         <div class="cal-head">
-          <button class="month-arrow" type="button" data-view="-1" aria-label="Предыдущий месяц">‹</button>
+          <button class="month-arrow" type="button" data-view="-1" aria-label="${esc(T.period.prevMonth)}">‹</button>
           <span>${cap(MONTHS[m])} ${y}</span>
-          <button class="month-arrow" type="button" data-view="1" aria-label="Следующий месяц">›</button>
+          <button class="month-arrow" type="button" data-view="1" aria-label="${esc(T.period.nextMonth)}">›</button>
         </div>
         <div class="cal-grid">
           ${WEEKDAYS.map((w) => `<span class="cal-wd">${w}</span>`).join('')}
           ${cells}
         </div>
-        <p class="note cal-note">${end ? 'Нажмите на день, чтобы выбрать заново' : 'Теперь последний день — или сразу «Показать»'}</p>
-        <button class="btn primary big" type="button" data-apply>Показать: ${esc(periodTitle(start, end ?? start))}</button>
+        <p class="note cal-note">${esc(end ? T.period.again : T.period.pickEnd)}</p>
+        <button class="btn primary big" type="button" data-apply>${esc(f(T.period.apply, { period: periodTitle(start, end ?? start) }))}</button>
       </div>`;
   };
 
@@ -2788,36 +2791,37 @@ const RECEIPTS_PER = 50;
 /** «ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ГАЗПРОМНЕФТЬ - ЦЕНТР"» → «ГАЗПРОМНЕФТЬ - ЦЕНТР». */
 function sellerName(r) {
   const quoted = /["«]([^"»]+)["»]/.exec(r.seller ?? '');
-  return (quoted?.[1] ?? r.seller ?? r.retail_place ?? '').trim() || 'Без продавца';
+  return (quoted?.[1] ?? r.seller ?? r.retail_place ?? '').trim() || T.receipts.noSeller;
 }
 
 const jobIsSync = (job) => ['455', '544'].includes(String(job.error_code ?? ''));
 const RETRIES = 4; // столько отложенных повторов делает сервер (scan.mjs, RETRY_HOURS)
 
 function jobNote(job) {
-  if (job.status === 'new') return 'в очереди';
-  if (job.status === 'sent') return 'ждём ответа ФНС';
-  if (job.next_at) return `ФНС ещё не знает чек · спросим ${whenRu(job.next_at)}`;
-  if (jobIsSync(job)) return 'ФНС так и не отдала чек';
-  return job.error ?? 'не вышло';
+  const J = T.receipts.job;
+  if (job.status === 'new') return J.queued;
+  if (job.status === 'sent') return J.sent;
+  if (job.next_at) return f(J.later, { when: whenRu(job.next_at) });
+  if (jobIsSync(job)) return J.gaveUp;
+  return job.error ?? J.failed;
 }
 
 /** Когда будет повтор — по-человечески, в часовом поясе телефона. */
 function whenRu(iso) {
   const d = new Date(iso);
-  if (d <= new Date()) return 'в ближайшие минуты';
+  if (d <= new Date()) return T.dates.soon;
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - parseDay(isoDay(new Date()))) / 86400000);
-  if (days <= 0) return `в ${time}`;
-  if (days === 1) return `завтра в ${time}`;
-  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]} в ${time}`;
+  if (days <= 0) return f(T.dates.todayAt, { time });
+  if (days === 1) return f(T.dates.tomorrowAt, { time });
+  return f(T.dates.dayAt, { d: d.getDate(), m: MONTHS_GEN[d.getMonth()], time });
 }
 
 const jobRow = (job) => `
   <button class="row" type="button" data-job="${job.id}">
     <span class="scan-dot ${esc(job.status)}${job.next_at && job.status === 'failed' ? ' waiting' : ''}"></span>
     <span class="row-main">
-      <span class="row-title">Скан от ${dateRu(job.purchased_at)} ${esc(timeRu(job.purchased_at))}</span>
+      <span class="row-title">${esc(f(T.receipts.job.row, { date: dateRu(job.purchased_at), time: timeRu(job.purchased_at) }))}</span>
       <span class="row-note">${esc(jobNote(job))}</span>
     </span>
     <span class="row-sum">${money(job.total_sum, true)}</span>
@@ -2849,9 +2853,9 @@ function receiptRows(rows) {
       lastDay = r.purchased_date;
       const marks = [
         timeRu(r.purchased_at),
-        `${int.format(r.item_count)} ${plural(r.item_count, 'позиция', 'позиции', 'позиций')}`,
-        r.manual ? 'вручную' : '',
-        r.operation_type === 2 ? 'возврат' : '',
+        `${int.format(r.item_count)} ${pl(r.item_count, T.spend.positions)}`,
+        r.manual ? T.receipts.manual : '',
+        r.operation_type === 2 ? T.receipts.refund : '',
         shared() && r.author ? r.author : '', // в общем бюджете видно, чья трата
       ].filter(Boolean);
       return `${heading}
@@ -2869,8 +2873,8 @@ function receiptRows(rows) {
 function dayTitle(iso) {
   const d = parseDay(iso);
   const today = isoDay(new Date());
-  if (iso === today) return 'Сегодня';
-  if (iso === isoDay(addDays(new Date(), -1))) return 'Вчера';
+  if (iso === today) return T.dates.today;
+  if (iso === isoDay(addDays(new Date(), -1))) return T.dates.yesterday;
   const year = d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '';
   return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}${year}`;
 }
@@ -2878,27 +2882,27 @@ function dayTitle(iso) {
 let receiptsPage = 1; // «Показать ещё» дописывает страницы, не перерисовывая экран
 
 async function screenReceipts() {
-  const f = state.filter;
-  const scanState = f === 'failed' || f === 'pending' ? `?state=${f}` : '';
+  const flt = state.filter;
+  const scanState = flt === 'failed' || flt === 'pending' ? `?state=${flt}` : '';
   const scans = await api(`/api/scan${scanState}`);
   updateBadge(scans.counts.failed);
 
   // Ошибки и очередь живут вне периода: застрявший скан важен, когда бы ни была покупка
-  if (f === 'failed' || f === 'pending') {
-    const back = '<button class="link" type="button" data-filter="all">Ко всем чекам</button>';
-    const hint = f === 'failed'
-      ? `<p class="note list-hint">Обычно это чек, который касса ещё не передала в ФНС. Мы переспрашиваем сами — через час, 6 часов, сутки и трое суток. ${back}</p>`
+  if (flt === 'failed' || flt === 'pending') {
+    const back = `<button class="link" type="button" data-filter="all">${esc(T.receipts.toAll)}</button>`;
+    const hint = flt === 'failed'
+      ? `<p class="note list-hint">${esc(T.receipts.failedHint)} ${back}</p>`
       : `<p class="note list-hint">${back}</p>`;
     return scans.jobs.length
       ? `${hint}<div class="list">${scans.jobs.map(jobRow).join('')}</div>`
-      : `${hint}<div class="empty">${f === 'failed' ? 'Сканов с ошибкой нет' : 'Очередь пуста'}</div>`;
+      : `${hint}<div class="empty">${esc(flt === 'failed' ? T.receipts.noFailed : T.receipts.queueEmpty)}</div>`;
   }
 
   receiptsPage = 1;
   lastDay = '';
   const data = await api(`/api/receipts?${receiptsQuery(1)}`);
   // В общем списке застрявшие сканы — те, что попадают в период
-  const stuck = f === 'all'
+  const stuck = flt === 'all'
     ? scans.jobs.filter((j) => j.purchased_at.slice(0, 10) >= state.from && j.purchased_at.slice(0, 10) <= state.to)
     : [];
 
@@ -2906,22 +2910,22 @@ async function screenReceipts() {
     <div class="stuck-head">
       ${listHead({
         sum: money(data.totals.sum),
-        note: `${int.format(data.totals.count)} ${plural(data.totals.count, 'чек', 'чека', 'чеков')}${
-          data.totals.excluded_count ? ` · ${int.format(data.totals.excluded_count)} вне суммы` : ''}`,
+        note: `${int.format(data.totals.count)} ${pl(data.totals.count, T.common.receipts)}${
+          data.totals.excluded_count ? ` · ${f(T.receipts.outside, { n: int.format(data.totals.excluded_count) })}` : ''}`,
       })}
     </div>`;
 
   if (!data.rows.length && !stuck.length) {
-    return `${head}<div class="empty">${f === 'manual' ? 'Ручных записей за период нет' : 'Чеков за период нет'}</div>`;
+    return `${head}<div class="empty">${esc(flt === 'manual' ? T.receipts.noManual : T.receipts.empty)}</div>`;
   }
 
   const more = data.totals.count > RECEIPTS_PER
-    ? '<button class="btn more" type="button" id="more">Показать ещё</button>'
+    ? `<button class="btn more" type="button" id="more">${esc(T.feed.more)}</button>`
     : '';
 
   return `${head}
     ${scans.counts.failed
-      ? `<p class="note list-hint"><button class="link" type="button" data-filter="failed">Сканы с ошибкой: ${int.format(scans.counts.failed)}</button></p>`
+      ? `<p class="note list-hint"><button class="link" type="button" data-filter="failed">${esc(f(T.receipts.failedLink, { n: int.format(scans.counts.failed) }))}</button></p>`
       : ''}
     ${stuck.length ? `<div class="list stuck">${stuck.map(jobRow).join('')}</div>` : ''}
     <div class="list" id="receipt-list">${receiptRows(data.rows)}</div>
@@ -2945,7 +2949,7 @@ async function loadMoreReceipts(button) {
     if (receiptsPage * RECEIPTS_PER >= data.totals.count) button.remove();
     else button.disabled = false;
   } catch (err) {
-    button.textContent = `Не загрузилось: ${err.message}`;
+    button.textContent = f(T.receipts.loadFailed, { error: err.message });
     button.disabled = false;
   }
 }
@@ -2956,7 +2960,7 @@ function updateBadge(count) {
   // Число пришло после отрисовки шапки — обновляем и переключатель «Категории | Чеки»
   const segment = document.querySelector('[data-segment="receipts"]');
   if (segment) {
-    segment.innerHTML = `Чеки${count ? `<i class="seg-badge">${count > 99 ? '99+' : count}</i>` : ''}`;
+    segment.innerHTML = `${esc(T.spend.segments.receipts)}${count ? `<i class="seg-badge">${count > 99 ? '99+' : count}</i>` : ''}`;
   }
 }
 
@@ -2978,39 +2982,37 @@ async function openScanSheet(jobId) {
     if (job.status !== 'failed') return jobNote(job);
     if (jobIsSync(job)) {
       if (job.next_at) {
-        return `ФНС пока не получила этот чек от кассы — так бывает, данные доходят до суток и дольше. Спросим сами ${whenRu(job.next_at)}.`;
+        return f(T.receipts.scan.notYet, { when: whenRu(job.next_at) });
       }
-      return job.retries >= RETRIES
-        ? 'ФНС так и не получила этот чек, автоповторы закончились. Можно спросить ещё раз или удалить скан.'
-        : 'ФНС не отдала этот чек. Данные могли уже дойти — спросите ещё раз или удалите скан.';
+      return job.retries >= RETRIES ? T.receipts.scan.noMoreRetries : T.receipts.scan.notGiven;
     }
-    return 'ФНС отказала. Если QR прочитался криво, проще удалить скан и отсканировать чек заново.';
+    return T.receipts.scan.refused;
   };
 
   const draw = (busy = '') => {
     sheet.innerHTML = `
-      <div class="sheet-box" role="dialog" aria-label="Скан чека">
+      <div class="sheet-box" role="dialog" aria-label="${esc(T.receipts.scan.aria)}">
         <div class="sheet-top">
           <div>
             <div class="sheet-sum-total">${money(job.total_sum, true)}</div>
-            <div class="note">Покупка ${dateRu(job.purchased_at)} в ${esc(timeRu(job.purchased_at))}</div>
+            <div class="note">${esc(f(T.receipts.scan.bought, { date: dateRu(job.purchased_at), time: timeRu(job.purchased_at) }))}</div>
           </div>
-          <button class="icon-btn primary" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.ok}</button>
+          <button class="icon-btn primary" data-close type="button" aria-label="${esc(T.common.close)}" title="${esc(T.common.close)}">${UI.ok}</button>
         </div>
         <div class="card sheet-card">
           <p class="scan-explain">${esc(explain())}</p>
-          ${job.status === 'failed' && job.error ? `<div class="kv"><span>Ответ ФНС</span><b>${esc(job.error)}${job.error_code ? ` (${esc(job.error_code)})` : ''}</b></div>` : ''}
-          <div class="kv"><span>ФН</span><b>${esc(job.fiscal_drive)}</b></div>
-          <div class="kv"><span>ФД / ФП</span><b>${esc(job.fiscal_doc)} / ${esc(job.fiscal_sign)}</b></div>
-          <div class="kv"><span>Отсканирован</span><b>${dateRu(job.created_at)}</b></div>
-          ${job.retries ? `<div class="kv"><span>Повторов</span><b>${int.format(job.retries)}</b></div>` : ''}
+          ${job.status === 'failed' && job.error ? `<div class="kv"><span>${esc(T.receipts.scan.answer)}</span><b>${esc(job.error)}${job.error_code ? ` (${esc(job.error_code)})` : ''}</b></div>` : ''}
+          <div class="kv"><span>${esc(T.receipts.scan.fn)}</span><b>${esc(job.fiscal_drive)}</b></div>
+          <div class="kv"><span>${esc(T.receipts.scan.fdfp)}</span><b>${esc(job.fiscal_doc)} / ${esc(job.fiscal_sign)}</b></div>
+          <div class="kv"><span>${esc(T.receipts.scan.scanned)}</span><b>${dateRu(job.created_at)}</b></div>
+          ${job.retries ? `<div class="kv"><span>${esc(T.receipts.scan.retries)}</span><b>${int.format(job.retries)}</b></div>` : ''}
         </div>
         ${busy ? `<p class="note sheet-hint">${esc(busy)}</p>` : ''}
         ${job.status === 'failed' ? `
           <div class="sheet-actions">
-            <button class="btn primary" type="button" data-retry${busy ? ' disabled' : ''}>Спросить ФНС сейчас</button>
-            <button class="btn" type="button" data-manual>Добавить вручную</button>
-            <button class="btn danger" type="button" data-delete${busy ? ' disabled' : ''}>Удалить скан</button>
+            <button class="btn primary" type="button" data-retry${busy ? ' disabled' : ''}>${esc(T.receipts.scan.retry)}</button>
+            <button class="btn" type="button" data-manual>${esc(T.receipts.scan.manual)}</button>
+            <button class="btn danger" type="button" data-delete${busy ? ' disabled' : ''}>${esc(T.receipts.scan.delete)}</button>
           </div>` : ''}
       </div>`;
   };
@@ -3033,13 +3035,13 @@ async function openScanSheet(jobId) {
     }
 
     if (e.target.closest('[data-delete]')) {
-      if (!(await ask('Удалить скан? Чек можно будет отсканировать заново.', { ok: T.common.delete, danger: true }))) return;
+      if (!(await ask(T.receipts.scan.deleteAsk, { ok: T.common.delete, danger: true }))) return;
       try {
         await api(`/api/scan/${job.id}`, { method: 'DELETE' });
-        toast('Скан удалён');
+        toast(T.receipts.scan.deleted);
         close();
       } catch (err) {
-        draw(`Не удалилось: ${err.message}`);
+        draw(f(T.receipts.scan.deleteFailed, { error: err.message }));
       }
       return;
     }
@@ -3048,7 +3050,7 @@ async function openScanSheet(jobId) {
       try {
         ({ job } = await post(`/api/scan/${job.id}/retry`));
       } catch (err) {
-        return draw(`Не вышло: ${err.message}`);
+        return draw(f(T.common.failedWhy, { error: err.message }));
       }
       job = await followScan(job, (j) => {
         job = j;
@@ -3058,7 +3060,7 @@ async function openScanSheet(jobId) {
         sheet.remove();
         await openReceiptSheet(job.receipt_id);
       } else {
-        draw(job.status === 'failed' ? 'ФНС снова не отдала чек' : 'Ответ задерживается — проверим позже');
+        draw(job.status === 'failed' ? T.receipts.scan.againFailed : T.receipts.scan.delayed);
       }
     }
   });
@@ -3072,9 +3074,8 @@ async function openScanSheet(jobId) {
 function welcome() {
   return `
     <div class="welcome">
-      <div class="welcome-title">Здесь будут ваши расходы</div>
-      <p class="note">Отсканируйте QR-код с любого кассового чека — позиции придут из ФНС
-        и сами разложатся по категориям. Покупку без чека можно вбить вручную.</p>
+      <div class="welcome-title">${esc(T.add.welcome)}</div>
+      <p class="note">${esc(T.add.welcomeNote)}</p>
     </div>
     ${screenAdd()}`;
 }
@@ -3084,15 +3085,15 @@ function screenAdd() {
     <div class="add">
       <button class="add-btn" type="button" data-scanner>
         <span class="add-ic">${UI.scan}</span>
-        <span class="add-text"><b>Сканировать чек</b><span>QR-код внизу чека — позиции придут из ФНС</span></span>
+        <span class="add-text"><b>${esc(T.add.scan)}</b><span>${esc(T.add.scanNote)}</span></span>
       </button>
       <button class="add-btn" type="button" data-screen="manual">
         <span class="add-ic">${UI.pen}</span>
-        <span class="add-text"><b>Вбить вручную</b><span>Трата без чека: рынок, перевод, наличные</span></span>
+        <span class="add-text"><b>${esc(T.add.manual)}</b><span>${esc(T.add.manualNote)}</span></span>
       </button>
       <button class="add-btn" type="button" data-screen="income_add">
         <span class="add-ic">${UI.income}</span>
-        <span class="add-text"><b>Доход вручную</b><span>Зарплата наличными, возврат долга, подработка</span></span>
+        <span class="add-text"><b>${esc(T.add.income)}</b><span>${esc(T.add.incomeNote)}</span></span>
       </button>
     </div>`;
 }
@@ -3110,21 +3111,21 @@ async function screenAdded() {
   const manual = receipt.fiscal_drive === 'manual';
   addedManual = manual;
   const again = $('actions').querySelector('[data-again]');
-  if (again) again.textContent = manual ? 'Вбить ещё' : 'Сканировать ещё';
+  if (again) again.textContent = manual ? T.add.manualAgain : T.add.scanAgain;
   const unknown = receipt.items.filter((i) => !i.category_slug).length;
 
   return `
     <div class="done">
       <span class="done-ic">${UI.check}</span>
-      <div class="done-title">${manual ? 'Трата записана' : 'Чек добавлен'}</div>
+      <div class="done-title">${esc(manual ? T.add.manualDone : T.add.receiptDone)}</div>
       <div class="done-sum">${money(receipt.total_sum, true)}</div>
-      <div class="note">${esc(manual ? 'Вручную' : sellerName(receipt))} · ${dateRu(receipt.purchased_at)} ${esc(timeRu(receipt.purchased_at))}</div>
+      <div class="note">${esc(manual ? T.add.manualSource : sellerName(receipt))} · ${dateRu(receipt.purchased_at)} ${esc(timeRu(receipt.purchased_at))}</div>
     </div>
 
     <p class="note list-hint">${
       unknown
-        ? `${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — нажмите и выберите`
-        : 'Нажмите на строку, чтобы поменять категорию'
+        ? f(T.add.unknown, { n: int.format(unknown), w: pl(unknown, T.spend.positions) })
+        : T.add.tapToChange
     }</p>
     <div class="list sheet-list">${receipt.items.map(sheetRow).join('')}</div>`;
 }
@@ -3182,15 +3183,15 @@ function openScanner() {
   el.innerHTML = `
     <video playsinline muted autoplay poster="${NO_POSTER}"></video>
     <div class="scanner-frame"><p class="scanner-frame-status" id="scanner-frame-status"></p></div>
-    <button class="scanner-torch" type="button" data-torch aria-label="Фонарик" aria-pressed="false" hidden>${UI.torch}</button>
-    <button class="scanner-close" type="button" data-close aria-label="Закрыть">×</button>
+    <button class="scanner-torch" type="button" data-torch aria-label="${esc(T.scanner.torch)}" aria-pressed="false" hidden>${UI.torch}</button>
+    <button class="scanner-close" type="button" data-close aria-label="${esc(T.common.close)}">×</button>
     <div class="scanner-bottom">
-      <p class="scanner-status" id="scanner-status">Включаем камеру…</p>
+      <p class="scanner-status" id="scanner-status">${esc(T.scanner.starting)}</p>
       <div class="scanner-actions" id="scanner-actions"></div>
-      <button class="scanner-link" type="button" data-typed>Ввести строку из QR вручную</button>
+      <button class="scanner-link" type="button" data-typed>${esc(T.scanner.typed)}</button>
       <form class="scanner-typed" id="scanner-typed" hidden>
         <textarea rows="3" placeholder="t=20250514T1830&amp;s=1234.00&amp;fn=…&amp;i=…&amp;fp=…&amp;n=1"></textarea>
-        <button class="btn primary" type="submit">Отправить</button>
+        <button class="btn primary" type="submit">${esc(T.scanner.send)}</button>
       </form>
     </div>`;
   document.body.appendChild(el);
@@ -3238,7 +3239,7 @@ function scannerSay(current, text, { error = false, actions = '' } = {}) {
 /** Камера и поиск QR в кадре. */
 async function startCamera(current) {
   if (!scanSupported()) {
-    scannerSay(current, 'Этот браузер не умеет читать QR — введите строку из чека вручную', { error: true });
+    scannerSay(current, esc(T.scanner.noDetector), { error: true });
     current.el.querySelector('[data-typed]').click();
     return;
   }
@@ -3253,10 +3254,10 @@ async function startCamera(current) {
     if (scanner !== current) return current.stream.getTracks().forEach((t) => t.stop());
     video.srcObject = current.stream;
     await video.play();
-    scannerSay(current, 'Наведите на QR-код внизу чека');
+    scannerSay(current, esc(T.scanner.aim));
     torchReady(current);
   } catch (err) {
-    scannerSay(current, `Камера недоступна: ${esc(err.message)}`, { error: true });
+    scannerSay(current, esc(f(T.scanner.noCamera, { error: err.message })), { error: true });
     return;
   }
 
@@ -3451,8 +3452,8 @@ async function submitScan(current, qr) {
     frame.insertAdjacentHTML('afterbegin', scannerQr(qr));
     scannerRun(current);
   }
-  const again = '<button class="btn" type="button" data-again>Сканировать ещё</button>';
-  scannerSay(current, 'Код прочитан, отправляем…');
+  const again = `<button class="btn" type="button" data-again>${esc(T.add.scanAgain)}</button>`;
+  scannerSay(current, esc(T.scanner.caught));
 
   let job;
   try {
@@ -3460,7 +3461,7 @@ async function submitScan(current, qr) {
     job = data.job;
     if (data.known && job.receipt_id) {
       scannerHandOff(true);
-      toast('Этот чек уже был в базе');
+      toast(T.scanner.known);
       return openReceiptSheet(job.receipt_id);
     }
   } catch (err) {
@@ -3479,15 +3480,15 @@ async function submitScan(current, qr) {
     apiFeed('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
     scannerSay(
       current,
-      `${esc(jobIsSync(job) ? 'ФНС пока не получила этот чек от кассы.' : `Не вышло: ${job.error ?? ''}`)}
-       ${job.next_at ? `Спросим сами ${esc(whenRu(job.next_at))}.` : ''}`,
+      `${esc(jobIsSync(job) ? T.scanner.notYet : f(T.common.failedWhy, { error: job.error ?? '' }))}
+       ${job.next_at ? esc(f(T.scanner.askLater, { when: whenRu(job.next_at) })) : ''}`,
       {
         error: true,
-        actions: `${again}<button class="btn" type="button" data-to-failed>Сканы с ошибкой</button>`,
+        actions: `${again}<button class="btn" type="button" data-to-failed>${esc(T.scanner.failedList)}</button>`,
       },
     );
   } else {
-    scannerSay(current, 'Ответ задерживается — чек появится в списке, когда ФНС ответит', { actions: again });
+    scannerSay(current, esc(T.scanner.delayed), { actions: again });
   }
 }
 
@@ -3536,7 +3537,7 @@ function incomeButton(slug) {
 async function markTransfer(id, only) {
   const res = await post(`/api/bank/ops/${id}/kind`, { kind: 'transfer', only });
   screenCache.clear();
-  toast(res.affected > 1 ? `Отмечено как перевод себе · ещё ${int.format(res.affected - 1)} таких же` : 'Отмечено как перевод себе');
+  toast(res.affected > 1 ? f(T.item.selfDoneMore, { n: int.format(res.affected - 1) }) : T.item.selfDone);
   // Карточка операции больше не трата и не доход — возвращаемся к списку
   if (state.screen === 'op') history.back();
   else render();
@@ -3547,10 +3548,10 @@ async function saveIncomeCategory(id, slug, { only = false } = {}) {
     if (slug === TRANSFER) return await markTransfer(id, only);
     const res = await post(`/api/bank/ops/${id}/category`, { category: slug, only });
     screenCache.clear();
-    toast(res.affected > 1 ? f(T.income.savedMore, { n: int.format(res.affected - 1) }) : only ? 'Категория выбрана · только для этого дохода' : T.income.saved);
+    toast(res.affected > 1 ? f(T.income.savedMore, { n: int.format(res.affected - 1) }) : only ? T.pick.savedOnlyIncome : T.income.saved);
     render();
   } catch (err) {
-    toast(`Не сохранилось: ${err.message}`);
+    toast(f(T.common.notSaved, { error: err.message }));
   }
 }
 
@@ -3558,7 +3559,7 @@ function categoryButton(slug) {
   const found = findCategory(slug);
   if (!found) {
     return `<span class="pick-ic" style="background:var(--fill);color:var(--muted)">${groupIcon('none')}</span>
-      <span class="cat-name muted">Выбрать категорию</span>`;
+      <span class="cat-name muted">${esc(T.pick.choose)}</span>`;
   }
   const color = found.group.color ?? 'var(--fill)';
   return `<span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(catIcon(found))}</span>
@@ -3569,34 +3570,32 @@ function screenManual() {
   const today = isoDay(new Date());
   const pre = manualPrefill;
   return `
-    ${pre ? `<p class="note list-hint">Чек от ${dateRu(pre.date)} на ${money(pre.total, true)}: ФНС его не отдала. ${
-      pre.left < pre.total
-        ? `Осталось записать ${money(pre.left, true)}.`
-        : 'Запишите покупки из него — одной суммой или по одной.'
+    ${pre ? `<p class="note list-hint">${esc(f(T.manual.prefill, { date: dateRu(pre.date), sum: money(pre.total, true) }))} ${
+      esc(pre.left < pre.total ? f(T.manual.prefillLeft, { sum: money(pre.left, true) }) : T.manual.prefillAll)
     }</p>` : ''}
     <form class="card form" id="manual-form" novalidate>
       <label class="field">
-        <span>Сумма, ₽</span>
+        <span>${esc(T.manual.sum)}</span>
         <input id="m-sum" class="sum-input" inputmode="decimal" autocomplete="off" placeholder="0" required value="${pre ? esc(pre.sum) : ''}" />
       </label>
       <label class="field">
-        <span>Что купили</span>
-        <input id="m-name" type="text" maxlength="200" autocomplete="off" placeholder="Необязательно" />
+        <span>${esc(T.manual.what)}</span>
+        <input id="m-name" type="text" maxlength="200" autocomplete="off" placeholder="${esc(T.common.optional)}" />
       </label>
       <label class="field">
-        <span>Дата</span>
+        <span>${esc(T.manual.date)}</span>
         <input id="m-date" type="date" value="${pre?.date ?? today}" max="${today}" required />
       </label>
       <div class="field">
-        <span>Категория</span>
+        <span>${esc(T.manual.category)}</span>
         <button class="cat-pick" id="m-cat" type="button">${categoryButton(manualCategory)}</button>
       </div>
       <label class="field">
-        <span>Комментарий</span>
-        <textarea id="m-note" class="m-note" rows="2" maxlength="1000" placeholder="Необязательно"></textarea>
+        <span>${esc(T.manual.note)}</span>
+        <textarea id="m-note" class="m-note" rows="2" maxlength="1000" placeholder="${esc(T.common.optional)}"></textarea>
       </label>
       <p class="note" id="m-note"></p>
-      <button class="btn primary big" id="m-save" type="submit">Записать</button>
+      <button class="btn primary big" id="m-save" type="submit">${esc(T.manual.save)}</button>
     </form>`;
 }
 
@@ -3608,27 +3607,27 @@ function screenIncomeAdd() {
   return `
     <form class="card form" id="income-form" novalidate>
       <label class="field">
-        <span>Сумма, ₽</span>
+        <span>${esc(T.manual.sum)}</span>
         <input id="i-sum" class="sum-input" inputmode="decimal" autocomplete="off" placeholder="0" required />
       </label>
       <label class="field">
-        <span>Откуда</span>
-        <input id="i-name" type="text" maxlength="200" autocomplete="off" placeholder="Зарплата, возврат долга" />
+        <span>${esc(T.manual.from)}</span>
+        <input id="i-name" type="text" maxlength="200" autocomplete="off" placeholder="${esc(T.manual.fromPlaceholder)}" />
       </label>
       <label class="field">
-        <span>Дата</span>
+        <span>${esc(T.manual.date)}</span>
         <input id="i-date" type="date" value="${today}" max="${today}" required />
       </label>
       <div class="field">
-        <span>Категория</span>
+        <span>${esc(T.manual.category)}</span>
         <button class="cat-pick" id="i-cat" type="button">${incomeButton(incomeAddCat)}</button>
       </div>
       <label class="field">
-        <span>Комментарий</span>
-        <textarea id="i-note" class="m-note" rows="2" maxlength="1000" placeholder="Необязательно"></textarea>
+        <span>${esc(T.manual.note)}</span>
+        <textarea id="i-note" class="m-note" rows="2" maxlength="1000" placeholder="${esc(T.common.optional)}"></textarea>
       </label>
       <p class="note" id="i-msg"></p>
-      <button class="btn primary big" id="i-save" type="submit">Записать</button>
+      <button class="btn primary big" id="i-save" type="submit">${esc(T.manual.save)}</button>
     </form>`;
 }
 
@@ -3638,26 +3637,26 @@ async function saveIncome() {
   const date = $('i-date').value;
   msg.classList.add('error');
   if (!(Number(sum.replace(/\s/g, '').replace(',', '.')) > 0)) {
-    msg.textContent = 'Укажите сумму';
+    msg.textContent = T.manual.needSum;
     return $('i-sum').focus();
   }
-  if (!date) return (msg.textContent = 'Укажите дату');
-  if (!incomeAddCat) return (msg.textContent = 'Выберите категорию');
+  if (!date) return (msg.textContent = T.manual.needDate);
+  if (!incomeAddCat) return (msg.textContent = T.manual.needCategory);
   const now = new Date();
   const time = date === isoDay(now) ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : '12:00';
   $('i-save').disabled = true;
   msg.classList.remove('error');
-  msg.textContent = 'Записываем…';
+  msg.textContent = T.manual.saving;
   try {
     await post('/api/income/manual', { sum, date, time, name: $('i-name').value, category: incomeAddCat, note: $('i-note').value });
     incomeManual = true;
-    toast('Доход записан');
+    toast(T.manual.savedIncome);
     // В «Доход» — за месяц этой записи: она там видна сразу
     const d = parseDay(date);
     openTab('income', monthPeriod(d.getFullYear(), d.getMonth()));
   } catch (err) {
     msg.classList.add('error');
-    msg.textContent = `Не записалось: ${err.message}`;
+    msg.textContent = f(T.manual.failed, { error: err.message });
   } finally {
     if ($('i-save')) $('i-save').disabled = false;
   }
@@ -3670,15 +3669,15 @@ async function saveManual() {
   note.classList.add('error');
 
   if (!(Number(sum.replace(/\s/g, '').replace(',', '.')) > 0)) {
-    note.textContent = 'Укажите сумму';
+    note.textContent = T.manual.needSum;
     return $('m-sum').focus();
   }
   if (!date) {
-    note.textContent = 'Укажите дату';
+    note.textContent = T.manual.needDate;
     return;
   }
   if (!manualCategory) {
-    note.textContent = 'Выберите категорию';
+    note.textContent = T.manual.needCategory;
     return;
   }
 
@@ -3690,7 +3689,7 @@ async function saveManual() {
 
   $('m-save').disabled = true;
   note.classList.remove('error');
-  note.textContent = 'Записываем…';
+  note.textContent = T.manual.saving;
   try {
     const saved = await post('/api/manual', {
       sum, date, time, name: $('m-name').value, category: manualCategory, note: $('m-note').value,
@@ -3701,7 +3700,7 @@ async function saveManual() {
     go({ screen: 'added', added: String(saved.id) });
   } catch (err) {
     note.classList.add('error');
-    note.textContent = `Не записалось: ${err.message}`;
+    note.textContent = f(T.manual.failed, { error: err.message });
   } finally {
     $('m-save').disabled = false;
   }
@@ -3733,7 +3732,7 @@ function sheetRow(item, { open = false } = {}) {
       <span class="pick-ic" style="background:${color};color:${readableText(color)}">${groupIcon(catIcon(findCategory(item.category_slug) ?? { group }))}</span>
       <span class="sheet-main">
         <span class="sheet-name">${esc(item.name)}</span>
-        <span class="sheet-cat">${esc(item.category_name ?? 'выбрать категорию')}</span>
+        <span class="sheet-cat">${esc(item.category_name ?? T.pick.chooseLow)}</span>
       </span>
       <span class="sheet-sum">${money(item.sum, true)}</span>`;
 
@@ -3743,7 +3742,7 @@ function sheetRow(item, { open = false } = {}) {
   return `
     <div class="sheet-row${guess}" data-row="${item.id}">
       <button class="sheet-open" type="button" data-open-item="${item.id}">${body}</button>
-      <button class="sheet-edit" type="button" data-pick="${item.id}" aria-label="Поменять категорию" title="Поменять категорию">${UI.tag}</button>
+      <button class="sheet-edit" type="button" data-pick="${item.id}" aria-label="${esc(T.pick.change)}" title="${esc(T.pick.change)}">${UI.tag}</button>
     </div>`;
 }
 
@@ -3765,23 +3764,23 @@ function sameFor(kind, id) {
   const shown = itemShown?.id === id ? itemShown : null;
   const ctx = shown ?? itemCtx.get(`${kind === 'item' ? 'item' : 'op'}:${id}`) ?? null;
   const count = shown ? shown.same_name_count : null;
-  const note = (word) => (count == null ? 'и для новых' : `${int.format(count)} ${word} · и для новых`);
+  const note = (word) => (count == null ? T.pick.andNew : f(T.pick.countAndNew, { n: int.format(count), w: word }));
   const many = count == null || count > 1;
 
   if (kind === 'op') {
     if (!many) return null;
     // Продавца нет (переводы, пополнения) — правило держится на описании, так и пишем
     const merchant = ctx ? Boolean(ctx.merchant) : true;
-    return [{ key: 'all', title: merchant ? 'Для всех трат этого продавца' : 'Для всех с таким описанием', note: note(plural(count ?? 0, 'трата', 'траты', 'трат')) }];
+    return [{ key: 'all', title: merchant ? T.pick.allSeller : T.pick.allDescr, note: note(pl(count ?? 0, T.pick.spends)) }];
   }
   if (kind === 'income') {
-    return many ? [{ key: 'all', title: 'Для всех с таким описанием', note: note(pl(count ?? 0, T.income.many)) }] : null;
+    return many ? [{ key: 'all', title: T.pick.allDescr, note: note(pl(count ?? 0, T.income.many)) }] : null;
   }
   const out = [];
-  if (many) out.push({ key: 'all', title: 'Для всех с таким названием', note: note(plural(count ?? 0, 'позиция', 'позиции', 'позиций')) });
+  if (many) out.push({ key: 'all', title: T.pick.allName, note: note(pl(count ?? 0, T.spend.positions)) });
   // Продавец — магазин, а не площадка: у маркетплейса в чеке сама площадка
   if (ctx?.seller_inn && !ctx.market) {
-    out.push({ key: 'seller', title: 'Все товары этого продавца', note: `${ctx.seller ? `${sellerName(ctx)} · ` : ''}и новые покупки у него` });
+    out.push({ key: 'seller', title: T.pick.sellerAll, note: `${ctx.seller ? `${sellerName(ctx)} · ` : ''}${T.pick.sellerNew}` });
   }
   return out.length ? out : null;
 }
@@ -3819,19 +3818,19 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
   // note — своё пояснение под заголовком (например, зачем выбирать при удалении категории)
   const subtitle = note
     ? `<small class="picker-for full">${esc(note)}</small>`
-    : name ? `<small class="picker-for">${f(income ? T.income.pickFor : 'Выберите категорию для расхода «{name}»', { name: esc(name) })}</small>` : '';
-  const closeBtn = `<button class="icon-btn soft" data-close type="button" aria-label="Отмена" title="Отмена">${UI.close}</button>`;
+    : name ? `<small class="picker-for">${f(income ? T.income.pickFor : T.pick.forExpense, { name: esc(name) })}</small>` : '';
+  const closeBtn = `<button class="icon-btn soft" data-close type="button" aria-label="${esc(T.common.cancel)}" title="${esc(T.common.cancel)}">${UI.close}</button>`;
 
   const showGroups = () => {
     picker.innerHTML = `
-      <div class="picker-box" role="dialog" aria-label="Выбор группы">
-        <div class="picker-top"><div class="picker-title">${esc(title || 'Группа')}${subtitle}</div>${closeBtn}</div>
+      <div class="picker-box" role="dialog" aria-label="${esc(T.pick.groupAria)}">
+        <div class="picker-top"><div class="picker-title">${esc(title || T.pick.group)}${subtitle}</div>${closeBtn}</div>
         ${sameRow()}
         ${transfer ? `
         <div class="picker-list picker-special">
           <button class="picker-item" type="button" data-category="${TRANSFER}">
             <span class="pick-ic" style="background:var(--fill);color:var(--muted)">${UI.swap}</span>
-            <span class="picker-special-text">Перевод себе<small class="note">не расход и не доход: на свою карту, в копилку</small></span>
+            <span class="picker-special-text">${esc(T.pick.self)}<small class="note">${esc(T.pick.selfNote)}</small></span>
           </button>
         </div>` : ''}
         <div class="filt-grid">${groups.map((g) => pickTile(`data-group="${esc(g.slug)}"`, groupTileIc(g), g.name)).join('')}</div>
@@ -3841,9 +3840,9 @@ function openCategoryPicker(itemId, onPick, groups = meta?.categories ?? [], sam
   const showCategories = (group) => {
     const tones = shades(group.color ?? '', group.subcategories.length, group.shade_from, group.shade_to);
     picker.innerHTML = `
-      <div class="picker-box" role="dialog" aria-label="Выбор категории">
+      <div class="picker-box" role="dialog" aria-label="${esc(T.pick.categoryAria)}">
         <div class="picker-top">
-          <button class="picker-back" data-back type="button" aria-label="Назад">‹</button>
+          <button class="picker-back" data-back type="button" aria-label="${esc(T.common.back)}">‹</button>
           <div class="picker-title">${esc(group.name)}${subtitle}</div>
           ${closeBtn}
         </div>
@@ -3890,7 +3889,7 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
   try {
     receipt = await api(`/api/receipts/${receiptId}`);
   } catch (err) {
-    return toast(`Чек не открылся: ${err.message}`);
+    return toast(f(T.receiptSheet.openFailed, { error: err.message }));
   }
 
   const manual = receipt.fiscal_drive === 'manual';
@@ -3898,17 +3897,17 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
   sheet.innerHTML = `
-    <div class="sheet-box" role="dialog" aria-label="Разбор чека">
+    <div class="sheet-box" role="dialog" aria-label="${esc(T.receiptSheet.aria)}">
       <div class="sheet-top">
         <div>
           <div class="sheet-sum-total">${money(receipt.total_sum, true)}</div>
-          <div class="note">${esc(manual ? 'Записано вручную' : sellerName(receipt))} · ${dateRu(receipt.purchased_at)} ${esc(timeRu(receipt.purchased_at))}${
+          <div class="note">${esc(manual ? T.receiptSheet.manual : sellerName(receipt))} · ${dateRu(receipt.purchased_at)} ${esc(timeRu(receipt.purchased_at))}${
             shared() && receipt.author ? ` · ${esc(receipt.author)}` : ''
           }</div>
         </div>
-        <button class="icon-btn primary" data-close type="button" aria-label="Готово" title="Готово">${UI.ok}</button>
+        <button class="icon-btn primary" data-close type="button" aria-label="${esc(T.common.done)}" title="${esc(T.common.done)}">${UI.ok}</button>
       </div>
-      ${unknown ? `<p class="note sheet-hint">${int.format(unknown)} ${plural(unknown, 'позиция', 'позиции', 'позиций')} без категории — выберите значком справа</p>` : ''}
+      ${unknown ? `<p class="note sheet-hint">${esc(f(T.receiptSheet.unknown, { n: int.format(unknown), w: pl(unknown, T.spend.positions) }))}</p>` : ''}
       <div class="sheet-list">${receipt.items.map((i) => sheetRow(i, { open: true })).join('')}</div>
     </div>`;
 
@@ -3946,10 +3945,10 @@ async function saveOpCategory(id, slug, { only = false } = {}) {
   try {
     if (slug === TRANSFER) return await markTransfer(id, only);
     const res = await post(`/api/bank/ops/${id}/category`, { category: slug, only });
-    toast(res.affected > 1 ? `Категория выбрана · ещё ${int.format(res.affected - 1)} у этого продавца` : only ? 'Категория выбрана · только для этой траты' : 'Категория выбрана');
+    toast(res.affected > 1 ? f(T.pick.savedSeller, { n: int.format(res.affected - 1) }) : only ? T.pick.savedOnly : T.pick.saved);
     render();
   } catch (err) {
-    toast(`Не сохранилось: ${err.message}`);
+    toast(f(T.common.notSaved, { error: err.message }));
   }
 }
 
@@ -3961,7 +3960,7 @@ async function saveCategory(itemId, slug, { only = false, seller = false } = {})
 
   try {
     const data = await post(`/api/items/${itemId}/category`, { category: slug, only, seller });
-    if (data.seller_affected > 1) toast(`У продавца теперь «${data.category?.name ?? ''}»: ${int.format(data.seller_affected)} ${plural(data.seller_affected, 'позиция', 'позиции', 'позиций')}`);
+    if (data.seller_affected > 1) toast(f(T.pick.sellerNow, { name: data.category?.name ?? '', n: int.format(data.seller_affected), w: pl(data.seller_affected, T.spend.positions) }));
 
     const group = findCategory(slug)?.group;
     const color = group?.color ?? 'var(--fill)';
@@ -3971,8 +3970,8 @@ async function saveCategory(itemId, slug, { only = false, seller = false } = {})
     ic.innerHTML = groupIcon(catIcon(findCategory(slug)));
     row.classList.remove('guess'); // выбор человека, точку снимаем
     row.querySelector('.sheet-cat').textContent =
-      (data.category?.name ?? 'выбрать категорию') +
-      (data.affected > 1 ? ` · и ещё ${int.format(data.affected - 1)}` : '');
+      (data.category?.name ?? T.pick.chooseLow) +
+      (data.affected > 1 ? f(T.pick.andMore, { n: int.format(data.affected - 1) }) : '');
 
     row.classList.add('picked');
     meta = await api('/api/meta'); // счётчики категорий изменились
@@ -4173,8 +4172,8 @@ const WIZ_SCREENS = {
       <p class="note wiz-hint">${T.wizard.load.keepOpen}</p>
       ${w.started ? `
       <div class="card wiz-fresh">
-        <div class="card-label">Что уже загрузили <span id="wiz-fresh-count"></span></div>
-        <p class="note">Свежие — сверху. Нажмите на строку, чтобы поменять категорию, не дожидаясь конца загрузки; зелёная точка — категорию предложил Чекер.</p>
+        <div class="card-label">${esc(T.wizard.fresh.label)} <span id="wiz-fresh-count"></span></div>
+        <p class="note">${esc(T.wizard.fresh.note)}</p>
         <div class="sheet-list" id="wiz-fresh"></div>
       </div>` : ''}`;
   },
@@ -4252,7 +4251,7 @@ function wizResultShop(r) {
 /** Итог мастера: всё загруженное можно сразу посмотреть по категориям и поправить. */
 const wizReview = () =>
   wiz?.started
-    ? `<div class="card"><button class="btn big" type="button" data-fresh-open="${esc(wiz.bank)}" data-since="${esc(wiz.started)}">Посмотреть загруженное и поправить категории</button></div>`
+    ? `<div class="card"><button class="btn big" type="button" data-fresh-open="${esc(wiz.bank)}" data-since="${esc(wiz.started)}">${esc(T.wizard.fresh.open)}</button></div>`
     : '';
 
 /** Магазин: годы с числом заказов (Озон) или чеков (WB) вместо счетов. */
@@ -4367,7 +4366,7 @@ function wizTick() {
   const measured = p.runStart && p.runDone > 0 ? ((Date.now() - p.runStart) / 1000 / p.runDone) * left : null;
   const eta = measured ?? (p.byOps ? null : left * WIZ_PART_SEC);
   $('wiz-eta').textContent =
-    !left || eta == null ? '—' : eta < 60 ? `${Math.max(1, Math.round(eta))} с` : `${Math.ceil(eta / 60)} мин`;
+    !left || eta == null ? '—' : eta < 60 ? f(T.wizard.eta.sec, { n: Math.max(1, Math.round(eta)) }) : f(T.wizard.eta.min, { n: Math.ceil(eta / 60) });
   $('wiz-now').textContent =
     waitLeft > 0
       ? f(T.wizard.load.waiting, { sec: waitLeft })
@@ -4413,7 +4412,7 @@ async function onWizardClick(button) {
       wiz.started = started.started_at ?? null;
     } catch (err) {
       button.disabled = false;
-      return toast(`Не вышло: ${err.message}`);
+      return toast(f(T.common.failedWhy, { error: err.message }));
     }
     wiz.progress = { stage: 'load', done: 0, total: 0, ops: 0, runStart: Date.now(), runDone: 0 };
     wizGo('load');
@@ -4421,7 +4420,7 @@ async function onWizardClick(button) {
   }
   if (action === 'stop') {
     button.disabled = true;
-    button.textContent = 'Останавливаем…';
+    button.textContent = T.wizard.stopping;
     return histNative(wiz.bank).stop();
   }
   if (action === 'resume') {
@@ -4532,7 +4531,7 @@ $('screen').addEventListener('change', async (e) => {
     toast(box.checked ? T.bankCard.accounts.on : T.bankCard.accounts.off);
   } catch (err) {
     box.checked = !box.checked;
-    toast(`Не сохранилось: ${err.message}`);
+    toast(f(T.common.notSaved, { error: err.message }));
   } finally {
     box.disabled = false;
   }
@@ -4554,39 +4553,39 @@ $('screen').addEventListener('change', (e) => {
 
 const SCREENS = {
   summary: {
-    title: () => ringTitle('Расходы', (k) => (k === NONE ? 'Без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name)),
+    title: () => ringTitle(T.screens.expenses, (k) => (k === NONE ? T.feed.noCategory : findGroup(k)?.name ?? findCategory(k)?.category.name)),
     render: screenSummary,
   },
-  receipts: { title: 'Чеки', render: screenReceipts },
-  add: { title: 'Добавить', render: screenAdd },
+  receipts: { title: T.screens.receipts, render: screenReceipts },
+  add: { title: T.add.title, render: screenAdd },
   // form — на экране поля, которые человек заполняет: закрытие попапа его не перерисовывает
-  manual: { title: 'Вручную', render: screenManual, after: () => $('m-sum')?.focus(), form: true },
-  income_add: { title: 'Доход вручную', render: screenIncomeAdd, after: () => $('i-sum')?.focus(), form: true },
+  manual: { title: T.screens.manual, render: screenManual, after: () => $('m-sum')?.focus(), form: true },
+  income_add: { title: T.add.income, render: screenIncomeAdd, after: () => $('i-sum')?.focus(), form: true },
   added: {
-    title: 'Добавлено',
+    title: T.add.added,
     render: screenAdded,
     // Главные кнопки живут в каркасе, а не в содержимом: длинный чек не должен
     // уводить их за край экрана
     // Одна главная кнопка и под ней неприметная ссылка «ещё»: чаще всего человек
     // закончил, а следующий чек — сразу сканер, без промежуточного экрана
     actions: () => `
-      <button class="btn primary big" type="button" data-back-home>ОК</button>
-      <button class="link more-link" type="button" data-again>Сканировать ещё</button>`,
+      <button class="btn primary big" type="button" data-back-home>${esc(T.add.ok)}</button>
+      <button class="link more-link" type="button" data-again>${esc(T.add.scanAgain)}</button>`,
   },
   group: {
-    title: () => (state.group === NONE ? 'Без категории' : findGroup(state.group)?.name ?? 'Группа'),
+    title: () => (state.group === NONE ? T.feed.noCategory : findGroup(state.group)?.name ?? T.screens.group),
     render: screenGroup,
   },
   // Название категории, как у других экранов раздела (рядом — период)
-  category: { title: () => (state.category === NONE ? 'Без категории' : findCategory(state.category)?.category.name ?? 'Расходы'), render: screenCategory },
-  item: { title: 'Товар', render: screenItem, after: () => { mountItemMap(); fitNote(); } },
-  bank: { title: 'Операции банка', render: screenBank },
+  category: { title: () => (state.category === NONE ? T.feed.noCategory : findCategory(state.category)?.category.name ?? T.screens.expenses), render: screenCategory },
+  item: { title: T.item.title, render: screenItem, after: () => { mountItemMap(); fitNote(); } },
+  bank: { title: T.screens.bank, render: screenBank },
   income: {
-    title: () => ringTitle('Доход', (k) => (k === '-' ? T.income.noCategory : (meta?.income ?? []).find((g) => g.slug === k)?.name ?? incomeCat(k)?.name)),
+    title: () => ringTitle(T.screens.income, (k) => (k === '-' ? T.income.noCategory : (meta?.income ?? []).find((g) => g.slug === k)?.name ?? incomeCat(k)?.name)),
     render: screenIncome,
   },
-  stats: { title: 'Сводка', render: screenAnalytics, after: () => animateAnalytics() },
-  settings: { title: 'Настройки', render: screenSettings, after: () => settingsSearch() },
+  stats: { title: T.screens.stats, render: screenAnalytics, after: () => animateAnalytics() },
+  settings: { title: T.screens.settings, render: screenSettings, after: () => settingsSearch() },
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
   set_limits: { title: T.settings.limits.label, render: screenSetLimits, after: limitsFocus },
@@ -4605,11 +4604,11 @@ const SCREENS = {
   set_cats: { title: () => (state.tk === 'in' ? T.settings.cats.incomeTitle : T.settings.cats.expenseTitle), render: screenSetCats },
   set_group: { title: T.settings.cats.group, render: screenSetGroup, after: focusNew },
   set_cat: { title: T.settings.cats.category, render: screenSetCat, after: focusNew },
-  bank_card: { title: () => bankById(state.bank)?.name ?? 'Банк', render: screenBankCard },
+  bank_card: { title: () => bankById(state.bank)?.name ?? T.screens.bankName, render: screenBankCard },
   bank_add: { title: T.bankAdd.title, render: screenBankAdd },
   bank_safety: { title: T.bankCard.safety.label, render: screenBankSafety },
   bank_wizard: {
-    title: () => bankById(state.bank)?.name ?? 'Банк',
+    title: () => bankById(state.bank)?.name ?? T.screens.bankName,
     render: screenBankWizard,
     // Кнопки зависят от шага, а он известен только после загрузки мастера
     after: () => {
@@ -4621,15 +4620,15 @@ const SCREENS = {
       wizStartTimer();
     },
   },
-  op: { title: 'Товар', render: screenOp, after: () => fitNote() },
-  autolabel: { title: 'Авторазметка', render: screenAutolabel, after: () => autoRun() },
+  op: { title: T.item.title, render: screenOp, after: () => fitNote() },
+  autolabel: { title: T.screens.autolabel, render: screenAutolabel, after: () => autoRun() },
 };
 
 /** Раздела ещё нет, а вкладка уже на месте: навигация не будет меняться потом. */
 const soon = (icon, title, text) => `
   <div class="soon">
     <span class="soon-ic">${icon}</span>
-    <div class="soon-title">${title} — скоро</div>
+    <div class="soon-title">${esc(f(T.screens.soon, { title }))}</div>
     <p class="note">${text}</p>
   </div>`;
 
@@ -5171,7 +5170,7 @@ function perDayNote(items, ops, part) {
   ops.forEach((op) => add(op.category_slug, op.amount));
   const left = keys.reduce((n, k) => n + limitForRange(lim[k], meta.limit_period ?? 'month', month.from, month.to), 0) - spent;
   const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
-  return part('day', left > 0 ? `≈ ${money(left / daysLeft)} в день` : 'лимиты превышены');
+  return part('day', left > 0 ? f(T.limitsDay.perDay, { sum: money(left / daysLeft) }) : T.limitsDay.over);
 }
 
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
@@ -5771,7 +5770,7 @@ async function onScreenClick(e) {
   }
 
   const freshOpen = e.target.closest('[data-fresh-open]');
-  if (freshOpen) return openFresh(freshOpen.dataset.freshOpen, freshOpen.dataset.since, 'Загруженная история');
+  if (freshOpen) return openFresh(freshOpen.dataset.freshOpen, freshOpen.dataset.since, T.wizard.fresh.title);
 
   if (e.target.closest('[data-q-clear]')) {
     e.preventDefault(); // не фокусировать поле: очистили — значит, искать больше не собираются
@@ -5900,28 +5899,28 @@ async function onScreenClick(e) {
   // Убрать товар из расходов: задвоенный или учтённый где-то ещё
   const hide = e.target.closest('[data-item-hide]');
   if (hide) {
-    const manual = hide.textContent.includes('Удалить');
-    if (!(await ask(manual ? 'Удалить эту запись?' : 'Убрать товар из расходов? Он перестанет учитываться в суммах.',
+    const manual = 'manual' in hide.dataset;
+    if (!(await ask(manual ? T.item.deleteAsk : T.item.hideAsk,
       { ok: manual ? T.common.delete : T.common.remove, danger: true }))) return;
     try {
       await post(`/api/items/${hide.dataset.itemHide}/hide`, {});
-      toast(manual ? 'Запись удалена' : 'Товар убран из расходов');
+      toast(manual ? T.item.deleted : T.item.hidden);
       return history.back(); // карточки больше нет — возвращаемся к ленте
     } catch (err) {
-      return toast(`Не вышло: ${err.message}`);
+      return toast(f(T.common.failedWhy, { error: err.message }));
     }
   }
 
   // Ручной доход — удалить
   const opDel = e.target.closest('[data-op-del]');
   if (opDel) {
-    if (!(await ask('Удалить эту запись?', { ok: T.common.delete, danger: true }))) return;
+    if (!(await ask(T.item.deleteAsk, { ok: T.common.delete, danger: true }))) return;
     try {
       await api(`/api/income/manual/${opDel.dataset.opDel}`, { method: 'DELETE' });
-      toast('Запись удалена');
+      toast(T.item.deleted);
       return history.back();
     } catch (err) {
-      return toast(`Не вышло: ${err.message}`);
+      return toast(f(T.common.failedWhy, { error: err.message }));
     }
   }
 
@@ -5931,15 +5930,15 @@ async function onScreenClick(e) {
     const transfer = opKind.dataset.opKind === 'transfer';
     const income = itemShown?.income;
     if (!(await ask(transfer
-      ? income ? T.income.transferConfirm : 'Отметить как перевод себе? Он не будет считаться расходом.'
-      : income ? T.income.excludeConfirm : 'Не учитывать эту трату? Она пропадёт из расходов.',
+      ? income ? T.income.transferConfirm : T.item.selfAsk
+      : income ? T.income.excludeConfirm : T.item.excludeAsk,
     { ok: transfer ? T.common.mark : T.common.skip }))) return;
     try {
       await post(`/api/bank/ops/${opKind.dataset.id}/kind`, { kind: opKind.dataset.opKind });
-      toast(transfer ? 'Отмечено как перевод себе' : income ? T.income.excluded : 'Трата больше не учитывается');
+      toast(transfer ? T.item.selfDone : income ? T.income.excluded : T.item.excluded);
       return history.back();
     } catch (err) {
-      return toast(`Не вышло: ${err.message}`);
+      return toast(f(T.common.failedWhy, { error: err.message }));
     }
   }
 
@@ -6099,21 +6098,23 @@ async function saveItemCategory(itemId, slug, { only = false, seller = false } =
   const note = $('pick-note');
   const button = $('item-cat');
   note.classList.remove('error');
-  note.textContent = 'Сохранение…';
+  note.textContent = T.pick.savingNote;
   button.disabled = true;
   try {
     const data = await post(`/api/items/${itemId}/category`, { category: slug, only, seller });
     button.innerHTML = categoryButton(slug);
     note.textContent = data.only
       ? data.category
-        ? `«${data.category.name}» — ${data.seller_affected ? `у продавца: ${int.format(data.seller_affected)} ${plural(data.seller_affected, 'позиция', 'позиции', 'позиций')}` : 'только для этой покупки'}`
-        : 'Категория снята у этой покупки'
+        ? data.seller_affected
+          ? f(T.pick.sellerSet, { name: data.category.name, n: int.format(data.seller_affected), w: pl(data.seller_affected, T.spend.positions) })
+          : f(T.pick.onlyThis, { name: data.category.name })
+        : T.pick.cleared
       : data.category
-      ? `«${data.category.name}» — обновлено ${int.format(data.affected)} ${plural(data.affected, 'позиция', 'позиции', 'позиций')}`
-      : `Категория снята, затронуто ${int.format(data.affected)}`;
+      ? f(T.pick.updated, { name: data.category.name, n: int.format(data.affected), w: pl(data.affected, T.spend.positions) })
+      : f(T.pick.clearedMany, { n: int.format(data.affected) });
     meta = await api('/api/meta'); // счётчики и цвета могли измениться
   } catch (err) {
-    note.textContent = `Не удалось сохранить: ${err.message}`;
+    note.textContent = f(T.pick.saveFailed, { error: err.message });
     note.classList.add('error');
   } finally {
     button.disabled = false;
@@ -6383,7 +6384,7 @@ window.addEventListener('popstate', () => quickClose(true));
  * Аккаунт: кто вошёл, выход и удаление. Удаление — насовсем и со всеми данными,
  * поэтому спрашиваем дважды и говорим, что именно пропадёт.
  */
-const DEFAULT_BUDGET = 'Мой бюджет';
+const DEFAULT_BUDGET = 'Мой бюджет'; // i18n-ok — имя, которое даёт сервер
 
 /** Общий ли бюджет: тогда у чеков показывается автор. */
 const shared = () => (meta?.budget?.members ?? 1) > 1;
@@ -6441,11 +6442,12 @@ async function shareInvite(button) {
     invite = await api('/api/budget/invites', { method: 'POST' });
   } catch (err) {
     button.disabled = false;
-    return toast(`Не вышло: ${err.message}`);
+    return toast(f(T.common.failedWhy, { error: err.message }));
   }
   button.disabled = false;
 
-  const text = 'Присоединяйся к нашему бюджету в Чекере';
+  const I = T.invite;
+  const text = I.text;
   const both = `${text}: ${invite.url}`;
   const enc = encodeURIComponent;
   // Логотипы мессенджеров — официальные, файлами: у Макса он градиентный и тяжёлый для кода
@@ -6454,20 +6456,20 @@ async function shareInvite(button) {
     // Сайты Telegram и WhatsApp из России открываются не всегда — ссылки сразу в приложения, как у входа
     ['Telegram', logo('telegram'), `tg://msg_url?url=${enc(invite.url)}&text=${enc(text)}`],
     ['WhatsApp', logo('whatsapp'), `whatsapp://send?text=${enc(both)}`],
-    ['Макс', logo('max'), `https://max.ru/:share?text=${enc(both)}`],
-    ['Почта', `<span class="share-ic">${UI.mail}</span>`, `mailto:?subject=${enc('Приглашение в Чекер')}&body=${enc(`${text}:\n${invite.url}`)}`],
+    [I.max, logo('max'), `https://max.ru/:share?text=${enc(both)}`],
+    [I.mail, `<span class="share-ic">${UI.mail}</span>`, `mailto:?subject=${enc(I.subject)}&body=${enc(`${text}:\n${invite.url}`)}`],
   ];
 
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
   sheet.innerHTML = `
-    <div class="sheet-box" role="dialog" aria-label="Пригласить в бюджет">
+    <div class="sheet-box" role="dialog" aria-label="${esc(I.aria)}">
       <div class="sheet-top">
         <div>
-          <div class="sheet-sum-total">Пригласить</div>
-          <div class="note">Выберите, куда отправить ссылку</div>
+          <div class="sheet-sum-total">${esc(I.title)}</div>
+          <div class="note">${esc(I.where)}</div>
         </div>
-        <button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button>
+        <button class="icon-btn soft" data-close type="button" aria-label="${esc(T.common.close)}" title="${esc(T.common.close)}">${UI.close}</button>
       </div>
       <div class="picker-list share-list">
         ${targets
@@ -6477,10 +6479,10 @@ async function shareInvite(button) {
             </a>`)
           .join('')}
         <button class="picker-item share-item" type="button" data-copy>
-          <span class="share-ic">${UI.copy}</span><span>Скопировать ссылку</span>
+          <span class="share-ic">${UI.copy}</span><span>${esc(I.copy)}</span>
         </button>
       </div>
-      ${navigator.share ? '<button class="link share-more" type="button" data-more>Другое…</button>' : ''}
+      ${navigator.share ? `<button class="link share-more" type="button" data-more>${esc(I.more)}</button>` : ''}
     </div>`;
   openPopup(sheet);
 
@@ -6489,12 +6491,12 @@ async function shareInvite(button) {
     if (e.target.closest('[data-share]')) return setTimeout(() => closePopup(sheet), 300); // ссылка уже открывается
     if (e.target.closest('[data-copy]')) {
       await navigator.clipboard?.writeText(invite.url).catch(() => {});
-      toast('Ссылка скопирована — отправьте её тому, кого приглашаете');
+      toast(I.copied);
       return closePopup(sheet);
     }
     if (e.target.closest('[data-more]')) {
       closePopup(sheet);
-      await navigator.share({ title: 'Чекер', text, url: invite.url }).catch(() => {});
+      await navigator.share({ title: I.app, text, url: invite.url }).catch(() => {});
     }
   });
 }
@@ -6522,7 +6524,7 @@ function apiKept(path) {
 // Свои обращения списком (как остальные разделы настроек) и переписка с полем ответа. Ответ
 // поддержки приходит и сюда, и в Telegram от бота. Сервер — api/src/support.mjs
 
-const ticketDate = (iso) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+const ticketDate = (iso) => new Date(iso).toLocaleDateString(T.locale, { day: 'numeric', month: 'short' });
 
 async function screenSetSupport() {
   const P = T.settings.support;
@@ -6551,7 +6553,7 @@ function ticketBubbles(t) {
       const att = m.file
         ? `<img class="bubble-img" data-file="${m.id}" alt="" />`
         : m.kind !== 'text' ? `<span class="bubble-att">📎 ${esc(m.kind_name ?? P.attachment)}</span>` : '';
-      const time = new Date(m.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const time = new Date(m.created_at).toLocaleString(T.locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
       return `<div class="bubble${m.from_admin ? '' : ' mine'}">${m.from_admin ? `<span class="bubble-who">${UI.chat} ${P.team}</span>` : ''}${att}${m.text ? esc(m.text) : ''}<span class="bubble-time">${time}</span></div>`;
     })
     .join('');
@@ -6742,8 +6744,8 @@ async function screenSettings() {
   return `
     <div class="stuck-head"><label class="search set-search">
       <span class="search-ic">${UI.search}</span>
-      <input id="sq" type="search" value="${esc(settingsQ)}" placeholder="Поиск по настройкам и категориям" enterkeyhint="search" autocomplete="off" />
-      <button class="search-x" type="button" data-sq-clear aria-label="Очистить"${settingsQ ? '' : ' hidden'}>${UI.close}</button>
+      <input id="sq" type="search" value="${esc(settingsQ)}" placeholder="${esc(T.settings.search)}" enterkeyhint="search" autocomplete="off" />
+      <button class="search-x" type="button" data-sq-clear aria-label="${esc(T.feed.clear)}"${settingsQ ? '' : ' hidden'}>${UI.close}</button>
     </label></div>
     <div id="set-results" hidden></div>
     <div id="set-main">`
@@ -6793,43 +6795,44 @@ function settingsIndex() {
   const add = (title, where, icon, how, words = '') => out.push({ title, where, icon, how, words });
   // Основные: разделы и то, что внутри них (находится сам пункт, а не его раздел)
   add(S.profile.label, S.menu.label, UI.user, { screen: 'set_profile' });
-  add(S.profile.nameLabel, S.profile.label, UI.user, { screen: 'set_profile' }, 'имя как вас видят');
-  add(S.profile.logout, S.profile.label, UI.logout, { screen: 'set_profile' }, 'выход выйти');
-  add(T.settings.deleteAccount, S.profile.label, UI.trash, { screen: 'set_profile' }, 'удалить аккаунт');
+  const W = S.words;
+  add(S.profile.nameLabel, S.profile.label, UI.user, { screen: 'set_profile' }, W.name);
+  add(S.profile.logout, S.profile.label, UI.logout, { screen: 'set_profile' }, W.logout);
+  add(T.settings.deleteAccount, S.profile.label, UI.trash, { screen: 'set_profile' }, W.deleteAccount);
   add(B.label, S.menu.label, UI.wallet, { screen: 'set_budget' });
-  add(B.export.title, B.label, UI.upload, { screen: 'set_budget' }, 'экспорт выгрузка excel csv таблица архив поделиться');
+  add(B.export.title, B.label, UI.upload, { screen: 'set_budget' }, W.export);
   add(B.nameLabel, B.label, UI.wallet, { screen: 'set_budget' });
-  add(B.members, B.label, UI.user, { screen: 'set_budget' }, 'семья участник');
-  if (budget?.is_owner) add(B.invite, B.label, UI.userPlus, { screen: 'set_budget' }, 'приглашение семья ссылка');
+  add(B.members, B.label, UI.user, { screen: 'set_budget' }, W.members);
+  if (budget?.is_owner) add(B.invite, B.label, UI.userPlus, { screen: 'set_budget' }, W.invite);
   if (budget && !budget.is_home) add(B.leave, B.label, UI.logout, { screen: 'set_budget' });
-  if (budget?.members.length > 1) add(B.notify, B.label, UI.telegram, { toggle: 'notify' }, 'уведомления сообщения бот телеграм');
+  if (budget?.members.length > 1) add(B.notify, B.label, UI.telegram, { toggle: 'notify' }, W.notify);
   if (inApp()) {
     add(S.banks.label, S.menu.label, UI.bank, { screen: 'set_banks' });
-    if (backupInfo()) add(S.backup.label, S.menu.label, UI.history, { screen: 'set_backup' }, 'резервная копия бэкап бекап сохранить восстановить архив');
-    add(S.banks.add, S.banks.label, UI.bank, { screen: 'set_banks' }, 'т-банк тинькофф сбер сбербанк озон ozon wildberries вб подключить');
+    if (backupInfo()) add(S.backup.label, S.menu.label, UI.history, { screen: 'set_backup' }, W.backup);
+    add(S.banks.add, S.banks.label, UI.bank, { screen: 'set_banks' }, W.banks);
   }
   // Внешний вид
-  add(S.menu.dark, L.label, UI.moon, { toggle: 'theme' }, 'тема ночная темная оформление');
+  add(S.menu.dark, L.label, UI.moon, { toggle: 'theme' }, W.dark);
   add(L.motion, L.label, groupIcon('zap'), { screen: 'set_motion' });
-  add(L.allLabel, `${L.label} · ${L.motion}`, groupIcon('zap'), { toggle: 'motion' }, 'анимация движение');
-  for (const k of MOTION_KINDS) add(L.kinds[k], `${L.label} · ${L.motion}`, groupIcon('zap'), { toggle: `kind:${k}` }, `${L.kindNotes[k]} анимация`);
+  add(L.allLabel, `${L.label} · ${L.motion}`, groupIcon('zap'), { toggle: 'motion' }, W.motion);
+  for (const k of MOTION_KINDS) add(L.kinds[k], `${L.label} · ${L.motion}`, groupIcon('zap'), { toggle: `kind:${k}` }, `${L.kindNotes[k]} ${W.motion}`);
   // Категории
-  add(S.cats.expense, S.cats.label, UI.wallet, { screen: 'set_cats', tk: '' }, 'группы категории расходов справочник');
-  add(S.cats.income, S.cats.label, UI.income, { screen: 'set_cats', tk: 'in' }, 'группы категории доходов справочник');
-  add(S.limits.label, S.menu.label, UI.limit, { screen: 'set_limits', tg: '' }, 'лимит бюджет ограничение');
-  add(S.limits.on, S.limits.label, UI.limit, { toggle: 'limits' }, 'лимит включить выключить');
-  add(S.limits.period, S.limits.label, UI.limit, { screen: 'set_limits', tg: '' }, 'лимит период месяц квартал неделя день');
+  add(S.cats.expense, S.cats.label, UI.wallet, { screen: 'set_cats', tk: '' }, `${W.cats} ${W.expense}`);
+  add(S.cats.income, S.cats.label, UI.income, { screen: 'set_cats', tk: 'in' }, `${W.cats} ${W.income}`);
+  add(S.limits.label, S.menu.label, UI.limit, { screen: 'set_limits', tg: '' }, W.limits);
+  add(S.limits.on, S.limits.label, UI.limit, { toggle: 'limits' }, W.limitsOn);
+  add(S.limits.period, S.limits.label, UI.limit, { screen: 'set_limits', tg: '' }, W.limitsPeriod);
   // Помощь
-  add(S.help.support, S.help.label, UI.chat, { screen: 'set_support' }, 'поддержка помощь вопрос ошибка написать связаться обращение');
-  add(S.data.label, S.help.label, UI.shield, { privacy: true }, 'данные хранение конфиденциальность приватность');
-  add(S.help.demo, S.help.label, UI.sparkle, { toggle: 'demo' }, 'демо тестовый пример');
+  add(S.help.support, S.help.label, UI.chat, { screen: 'set_support' }, W.support);
+  add(S.data.label, S.help.label, UI.shield, { privacy: true }, W.data);
+  add(S.help.demo, S.help.label, UI.sparkle, { toggle: 'demo' }, W.demo);
   // Справочник: группы и их категории, расходы и доходы
   for (const [groups, tk, where] of [[meta?.categories ?? [], '', S.cats.expense], [meta?.income ?? [], 'in', S.cats.income]]) {
     for (const g of groups) {
       const color = g.color ?? 'var(--fill)';
       const badge = (icon) => `<span class="gic" style="background:${color};color:${readableText(color)}">${groupIcon(icon || 'none')}</span>`;
-      add(g.name, `${S.cats.label} · ${where.toLowerCase()}`, badge(g.icon), { screen: 'set_group', tg: g.slug, tk }, 'группа');
-      for (const c of g.subcategories) add(c.name, `${where} · ${g.name}`, badge(c.icon || g.icon), { screen: 'set_cat', tc: c.slug, tk }, 'категория');
+      add(g.name, `${S.cats.label} · ${where.toLowerCase()}`, badge(g.icon), { screen: 'set_group', tg: g.slug, tk }, W.group);
+      for (const c of g.subcategories) add(c.name, `${where} · ${g.name}`, badge(c.icon || g.icon), { screen: 'set_cat', tc: c.slug, tk }, W.category);
     }
   }
   return out;
@@ -6883,7 +6886,7 @@ function settingsSearch() {
       href: e.how.href ?? '', attrs: e.how.toggle || e.how.href ? '' : `data-sjump="${i}"`, end: end || (e.how.toggle ? '' : GO),
     });
   }).join('');
-  results.innerHTML = rows ? section('', '', rows) : `<p class="sec-foot">Ничего не нашлось</p>`;
+  results.innerHTML = rows ? section('', '', rows) : `<p class="sec-foot">${esc(T.settings.nothing)}</p>`;
   results.dataset.found = JSON.stringify(found.slice(0, 40).map((e) => e.how));
   results.hidden = false;
   main.hidden = true;
@@ -7145,9 +7148,9 @@ const BACKUP_EVERY = [1, 2, 3, 7]; // дней
 function backupLast(info) {
   const B = T.settings.backup;
   if (!info?.last) return B.never;
-  const when = new Date(info.last).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  const when = new Date(info.last).toLocaleString(T.locale, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   const mb = info.size / 1048576;
-  const size = mb >= 1 ? `${mb.toFixed(1).replace('.', ',')} МБ` : `${Math.max(1, Math.round(info.size / 1024))} КБ`;
+  const size = mb >= 1 ? f(T.dates.mb, { n: share.format(mb) }) : f(T.dates.kb, { n: Math.max(1, Math.round(info.size / 1024)) });
   return `${when} · ${size}`;
 }
 
@@ -7361,7 +7364,7 @@ function openChoice(title, body, onClick, { action = '', dirty = null, note = ''
   el.innerHTML = `
     <div class="picker-box" role="dialog" aria-label="${esc(title)}">
       <div class="picker-top"><div class="picker-title">${esc(title)}${note ? `<small class="note picker-note">${esc(note)}</small>` : ''}</div>
-        ${action || `<button class="icon-btn soft" data-close type="button" aria-label="Закрыть" title="Закрыть">${UI.close}</button>`}</div>
+        ${action || `<button class="icon-btn soft" data-close type="button" aria-label="${esc(T.common.close)}" title="${esc(T.common.close)}">${UI.close}</button>`}</div>
       ${body}
     </div>`;
   el.guard = dirty;
@@ -7660,13 +7663,13 @@ const forgetAppInfo = () => {
  */
 const BANKS = [
   // from — название после «из»: «загрузим историю из Т-Банка»
-  { id: 'tbank', name: 'Т-Банк', from: 'Т-Банка', logo: '/shared/brand/tbank.png', ready: true },
-  { id: 'vtb', name: 'ВТБ', from: 'ВТБ', logo: '/shared/brand/vtb.svg' },
-  { id: 'alfa', name: 'Альфа-Банк', from: 'Альфа-Банка', logo: '/shared/brand/alfa.svg' },
-  { id: 'sber', name: 'Сбербанк', from: 'Сбербанка', logo: '/shared/brand/sber.svg', ready: true },
+  { id: 'tbank', ...T.banks.tbank, logo: '/shared/brand/tbank.png', ready: true },
+  { id: 'vtb', ...T.banks.vtb, logo: '/shared/brand/vtb.svg' },
+  { id: 'alfa', ...T.banks.alfa, logo: '/shared/brand/alfa.svg' },
+  { id: 'sber', ...T.banks.sber, logo: '/shared/brand/sber.svg', ready: true },
   // Не банк, а магазин: вместо выписки — чеки заказов с товарами. Подключается так же
-  { id: 'ozon', name: 'Озон', from: 'Озона', logo: '/shared/brand/ozon.svg', ready: true, shop: true },
-  { id: 'wb', name: 'Wildberries', from: 'Wildberries', logo: '/shared/brand/wb.svg', ready: Boolean(window.Checker?.wbSync), shop: true },
+  { id: 'ozon', ...T.banks.ozon, logo: '/shared/brand/ozon.svg', ready: true, shop: true },
+  { id: 'wb', ...T.banks.wb, logo: '/shared/brand/wb.svg', ready: Boolean(window.Checker?.wbSync), shop: true },
 ];
 
 // Состояние банка на этом устройстве: active | expired | off. У каждого банка своё —
@@ -7781,7 +7784,7 @@ const act = (what, bank, title, icon, danger = false) =>
   });
 
 // Названия платёжных систем — для подсказки у значка карты
-const NETWORKS = { mastercard: 'Mastercard', visa: 'Visa', mir: 'Мир' };
+const NETWORKS = T.networks;
 
 /**
  * Значок счёта: у карты — знак платёжной системы, у остального — значок вида счёта.
@@ -8033,7 +8036,7 @@ async function onSettingsClick(e) {
         await api('/api/budget/leave', { method: 'POST' });
         location.reload();
       } catch (err) {
-        toast(`Не вышло: ${err.message}`);
+        toast(f(T.common.failedWhy, { error: err.message }));
       }
       return;
     }
@@ -8046,7 +8049,7 @@ async function onSettingsClick(e) {
         meta = await api('/api/meta');
         render();
       } catch (err) {
-        toast(`Не вышло: ${err.message}`);
+        toast(f(T.common.failedWhy, { error: err.message }));
       }
       return;
     }
@@ -8066,7 +8069,7 @@ async function onSettingsClick(e) {
         token.clear();
         location.reload();
       } catch (err) {
-        toast(`Не удалилось: ${err.message}`);
+        toast(f(T.common.notDeleted, { error: err.message }));
       }
     }
 }
@@ -8095,12 +8098,12 @@ function inlineEdit(field, value, { cls = '', label = '', placeholder = '', max 
     <div class="inline-multi">
       <span class="inline-view${value ? '' : ' empty'}" data-inline-view>${esc(value || placeholder)}</span>
       <textarea class="inline-input multi ${cls}" data-inline="${field}" rows="4" maxlength="${max}" enterkeyhint="done"
-        readonly placeholder="${esc(placeholder)}" aria-label="${esc(label)} — нажмите, чтобы изменить">${esc(value)}</textarea>
+        readonly placeholder="${esc(placeholder)}" aria-label="${esc(f(T.inline.aria, { label }))}">${esc(value)}</textarea>
     </div>`;
   }
   return `
     <input class="inline-input ${cls}" data-inline="${field}" type="text" maxlength="${max}" enterkeyhint="done"
-      readonly value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(label)} — нажмите, чтобы изменить" />`;
+      readonly value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(f(T.inline.aria, { label }))}" />`;
 }
 
 // Куда сохранять каждое поле. Возвращают сохранённое значение — сервер его чистит
@@ -8111,7 +8114,7 @@ const INLINE_SAVE = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    toast('Имя сохранено');
+    toast(T.inline.nameSaved);
     meta = await api('/api/meta'); // у чеков общего бюджета автор — это имя
     return data.name;
   },
@@ -8163,7 +8166,7 @@ $('screen').addEventListener('focusout', async (e) => {
     input.value = input.defaultValue = await INLINE_SAVE[input.dataset.inline](value);
   } catch (err) {
     input.value = input.defaultValue;
-    toast(`Не сохранилось: ${err.message}`);
+    toast(f(T.common.notSaved, { error: err.message }));
   }
   // Строка-показ у многострочного поля — с новым текстом
   const view = input.previousElementSibling;
@@ -8292,9 +8295,9 @@ $('screen').addEventListener('focusout', async (e) => {
   try {
     const res = await post(el.dataset.note, { note: el.value });
     el.value = el.defaultValue = res.note ?? '';
-    toast(res.note ? 'Комментарий сохранён' : 'Комментарий удалён');
+    toast(res.note ? T.item.noteSaved : T.item.noteDeleted);
   } catch (err) {
-    toast(`Не сохранилось: ${err.message}`);
+    toast(f(T.common.notSaved, { error: err.message }));
   }
 });
 
@@ -8413,13 +8416,13 @@ const loadFresh = (bank, since) => api(`/api/fresh?bank=${encodeURIComponent(ban
 
 /** Как показать строку нового: название раздела, цвет и значок. */
 function freshLook(r) {
-  if (r.kind === 'covered') return { name: 'С чеком', note: 'по товарам чека', color: 'var(--fill)', icon: 'receipt' };
+  if (r.kind === 'covered') return { name: T.wizard.fresh.covered, note: T.wizard.fresh.coveredNote, color: 'var(--fill)', icon: 'receipt' };
   if (r.kind === 'income') {
     const c = r.category_slug ? incomeCat(r.category_slug) : null;
-    return { name: c?.name ?? 'Доход без категории', color: c?.color ?? 'var(--fill)', icon: catIcon(c) };
+    return { name: c?.name ?? T.wizard.fresh.incomeNone, color: c?.color ?? 'var(--fill)', icon: catIcon(c) };
   }
   const found = r.category_slug ? findCategory(r.category_slug) : null;
-  return { name: found?.category.name ?? 'Без категории', color: found?.group.color ?? 'var(--fill)', icon: catIcon(found) };
+  return { name: found?.category.name ?? T.feed.noCategory, color: found?.group.color ?? 'var(--fill)', icon: catIcon(found) };
 }
 
 /** Одна строка нового: значок категории (с зелёной точкой, если её предложил Чекер), название, сумма. */
@@ -8503,7 +8506,7 @@ function onFreshClick(e, { collapsed, redraw, refresh }) {
       else await post(path, { category: slug, only, seller });
       await refresh();
     } catch (err) {
-      toast(`Не сохранилось: ${err.message}`);
+      toast(f(T.common.notSaved, { error: err.message }));
     }
   };
   if (type === 'item') openCategoryPicker(id, save(`/api/items/${id}/category`), undefined, sameFor('item', id));
@@ -8518,7 +8521,7 @@ async function openFresh(bank, since, title) {
   try {
     data = await loadFresh(bank, since);
   } catch (err) {
-    return toast(`Не открылось: ${err.message}`);
+    return toast(f(T.wizard.fresh.openFailed, { error: err.message }));
   }
   if (!data.rows.length) return toast(b?.shop ? T.bankCard.sync.noneShop : T.bankCard.sync.none);
 
@@ -8531,17 +8534,17 @@ async function openFresh(bank, since, title) {
     const box = sheet.querySelector('.sheet-list');
     const scroll = box?.scrollTop ?? 0;
     const n = data.total;
-    const word = b?.shop ? plural(n, 'позиция', 'позиции', 'позиций') : pl(n, T.common.ops);
+    const word = b?.shop ? pl(n, T.spend.positions) : pl(n, T.common.ops);
     sheet.innerHTML = `
       <div class="sheet-box" role="dialog" aria-label="${esc(title)}">
         <div class="sheet-top">
           <div>
             <div class="sheet-sum-total">${esc(title)}</div>
-            <div class="note">${esc(b?.name ?? '')} · ${int.format(n)} ${word}${data.cut ? ' (показаны последние)' : ''}</div>
+            <div class="note">${esc(b?.name ?? '')} · ${int.format(n)} ${word}${data.cut ? ` ${esc(T.wizard.fresh.cut)}` : ''}</div>
           </div>
-          <button class="icon-btn primary" data-close type="button" aria-label="Готово" title="Готово">${UI.ok}</button>
+          <button class="icon-btn primary" data-close type="button" aria-label="${esc(T.common.done)}" title="${esc(T.common.done)}">${UI.ok}</button>
         </div>
-        <p class="note sheet-hint">Нажмите на строку, чтобы поменять категорию. Зелёная точка у значка — категорию предложил Чекер.</p>
+        <p class="note sheet-hint">${esc(T.wizard.fresh.hint)}</p>
         <div class="sheet-list">${freshSections(data, collapsed, seen)}</div>
       </div>`;
     sheet.querySelector('.sheet-list').scrollTop = scroll;
@@ -8580,8 +8583,8 @@ function wizFreshDraw() {
   // искать по категориям. Разделы — в итоге, когда всё загружено
   const rows = wizFresh.data.rows.slice(0, WIZ_FRESH_ROWS);
   box.innerHTML = n
-    ? rows.map(freshRow).join('') + (n > rows.length ? `<p class="note wiz-fresh-empty">Ещё ${int.format(n - rows.length)} — в итоге загрузки</p>` : '')
-    : `<p class="note wiz-fresh-empty">${isShop(wiz.bank) ? 'Товары появятся здесь по мере загрузки' : 'Операции появятся здесь по мере загрузки'}</p>`;
+    ? rows.map(freshRow).join('') + (n > rows.length ? `<p class="note wiz-fresh-empty">${esc(f(T.wizard.fresh.more, { n: int.format(n - rows.length) }))}</p>` : '')
+    : `<p class="note wiz-fresh-empty">${esc(isShop(wiz.bank) ? T.wizard.fresh.waitGoods : T.wizard.fresh.waitOps)}</p>`;
 }
 
 /**
@@ -8627,7 +8630,7 @@ async function screenAutolabel() {
       tried: new Set(), done: new Set(), running: false, quotaOut: false, error: null,
     });
   }
-  if (!auto.rows.length) return '<div class="empty">Всё за этот период разложено по категориям</div>';
+  if (!auto.rows.length) return `<div class="empty">${esc(T.autolabel.allDone)}</div>`;
   return `
     <div class="stuck-head"><div class="card auto-head" id="auto-head">${autoHead()}</div></div>
     <div class="list sheet-list auto-list">${auto.rows.map(autoRow).join('')}</div>`;
@@ -8638,17 +8641,18 @@ function autoHead() {
   const labeled = auto.rows.filter((r) => r.category_slug).length;
   const left = auto.rows.filter((r) => !auto.tried.has(r.uid) && !r.category_slug).length;
   const missed = auto.rows.filter((r) => auto.tried.has(r.uid) && !r.category_slug).length;
-  const status = auto.error
-    ? `Не получилось: ${esc(auto.error)}. Откройте экран ещё раз, чтобы продолжить.`
+  const A = T.autolabel;
+  const status = esc(auto.error
+    ? f(A.failed, { error: auto.error })
     : auto.quotaOut
-    ? 'Лимит разметки на сегодня закончился — продолжим завтра: откройте этот экран снова.'
+    ? A.quota
     : left
-    ? 'Размечаем… Строку можно разложить и руками, не дожидаясь.'
+    ? A.running
     : missed
-    ? `Готово. Не узнали ${int.format(missed)} — их можно разложить руками.`
-    : 'Готово: всё разложено.';
+    ? f(A.missed, { n: int.format(missed) })
+    : A.done);
   return `
-    <div class="auto-top"><b>Размечено ${int.format(labeled)} из ${int.format(total)}${auto.cut ? '+' : ''}</b></div>
+    <div class="auto-top"><b>${esc(f(A.progress, { n: int.format(labeled), all: int.format(total) }))}${auto.cut ? '+' : ''}</b></div>
     <div class="wiz-bar"><span style="width:${total ? Math.round(((total - left) / total) * 100) : 100}%"></span></div>
     <p class="note">${status}</p>`;
 }
@@ -8756,7 +8760,7 @@ function autoPickRow(type, id) {
       }
       autoRedraw(touched);
     } catch (err) {
-      toast(`Не сохранилось: ${err.message}`);
+      toast(f(T.common.notSaved, { error: err.message }));
     }
   }, undefined, sameFor(op ? 'op' : 'item', id), { transfer: op });
 }
@@ -8774,7 +8778,7 @@ function showLogin(note) {
   $('login').hidden = false;
   $('app').hidden = true;
   $('login-note').textContent =
-    note ?? (pendingInvite.get() ? 'Войдите, чтобы принять приглашение в общий бюджет' : 'Учёт расходов по чекам');
+    note ?? (pendingInvite.get() ? T.login.invite : T.login.tagline);
   $('login-note').classList.toggle('error', Boolean(note));
   $('tg-ic').innerHTML = TG_ICON;
   setWaiting(null);
@@ -8811,10 +8815,10 @@ function awaitTelegram(login) {
       token.set(data.token);
       stopLinkRefresh?.();
       await start();
-      if (data.created) toast(`Добро пожаловать, ${data.login}!`);
+      if (data.created) toast(f(T.login.welcome, { login: data.login }));
     },
     // Токен забрала страница подтверждения в соседней вкладке — он уже у нас
-    onFail: (message, status) => (status === 'used' && token.get() ? start() : showLogin(message)),
+    onFail: (message, status) => (status === 'used' && token.get() ? start() : showLogin(T.login.fail[status] ?? T.login.fail.other)),
   });
 }
 
@@ -8866,7 +8870,7 @@ $('login-form').addEventListener('submit', async (e) => {
     const res = await fetch('/api/token', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ login: $('login-name').value, password: $('login-pass').value, label: 'телефон' }),
+      body: JSON.stringify({ login: $('login-name').value, password: $('login-pass').value, label: T.login.device }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -8923,34 +8927,35 @@ async function offerInvite() {
     info = await api(`/api/invites/${encodeURIComponent(code)}`);
   } catch (err) {
     pendingInvite.set(null);
-    return toast(`Приглашение не сработало: ${err.message}`);
+    return toast(f(T.invite.failed, { error: err.message }));
   }
   if (info.already) {
     pendingInvite.set(null);
-    return toast(`Вы уже в бюджете «${info.budget}»`);
+    return toast(f(T.invite.already, { budget: info.budget }));
   }
+  const I = T.invite;
 
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
-  const who = info.owner ? `${esc(info.owner)} приглашает вас` : 'Вас приглашают';
+  const who = esc(info.owner ? f(I.who, { owner: info.owner }) : I.whoNone);
   // «Мой бюджет» — имя по умолчанию, со стороны приглашённого оно звучит странно
-  const where = info.budget === DEFAULT_BUDGET ? 'в общий бюджет' : `в бюджет «${esc(info.budget)}»`;
+  const where = esc(info.budget === DEFAULT_BUDGET ? I.toShared : f(I.toBudget, { budget: info.budget }));
   sheet.innerHTML = `
-    <div class="sheet-box" role="dialog" aria-label="Приглашение в бюджет">
+    <div class="sheet-box" role="dialog" aria-label="${esc(I.joinAria)}">
       <div class="sheet-top">
         <div>
-          <div class="sheet-sum-total">Общий бюджет</div>
-          <div class="note">${who} ${where} · ${int.format(info.members)} ${plural(info.members, 'участник', 'участника', 'участников')}</div>
+          <div class="sheet-sum-total">${esc(I.joinTitle)}</div>
+          <div class="note">${who} ${where} · ${int.format(info.members)} ${pl(info.members, I.members)}</div>
         </div>
       </div>
-      <p class="note sheet-hint">Вы будете видеть и добавлять траты вместе. Выйти можно в любой момент — вы вернётесь в свой бюджет.</p>
+      <p class="note sheet-hint">${esc(I.hint)}</p>
       ${info.blocked ? `<p class="note error">${esc(info.blocked)}</p>` : ''}
       <div class="sheet-actions">
         ${info.blocked ? '' : info.own_receipts
-          ? `<button class="btn primary" type="button" data-join="move">Перенести мои чеки (${int.format(info.own_receipts)})</button>
-             <button class="btn" type="button" data-join="fresh">Начать с общего — мои останутся у меня</button>`
-          : '<button class="btn primary" type="button" data-join="fresh">Присоединиться</button>'}
-        <button class="btn" type="button" data-decline>Отказаться</button>
+          ? `<button class="btn primary" type="button" data-join="move">${esc(f(I.move, { n: int.format(info.own_receipts) }))}</button>
+             <button class="btn" type="button" data-join="fresh">${esc(I.fresh)}</button>`
+          : `<button class="btn primary" type="button" data-join="fresh">${esc(I.join)}</button>`}
+        <button class="btn" type="button" data-decline>${esc(I.decline)}</button>
       </div>
     </div>`;
   sheet.classList.add('opening'); // выезжает, как остальные листы (openPopup тут не нужен: без записи истории)
@@ -8976,10 +8981,10 @@ async function offerInvite() {
       // Новый бюджет — новые данные: показываем его последний месяц с тратами
       const last = meta.stats.date_to ? parseDay(meta.stats.date_to.slice(0, 10)) : new Date();
       go({ screen: 'summary', ...monthPeriod(last.getFullYear(), last.getMonth()) }, true);
-      toast(res.moved ? `Вы в общем бюджете, перенесено чеков: ${res.moved}` : 'Вы в общем бюджете');
+      toast(res.moved ? f(I.joinedMoved, { n: res.moved }) : I.joined);
     } catch (err) {
       sheet.querySelectorAll('button').forEach((b) => (b.disabled = false));
-      toast(`Не вышло: ${err.message}`);
+      toast(f(T.common.failedWhy, { error: err.message }));
     }
   });
 }
@@ -8995,9 +9000,9 @@ readUrl();
 // Решено по макетам 22.10.2026 (первая версия — линии всех групп на одном графике — не читалась)
 
 const ANA_USUAL = 3; // прошлых периодов для прогноза (сам прогноз «обычно» не рисуется)
-const ANA_IN = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
-const ANA_NAME = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-const ANA_TO = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню', 'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
+const ANA_IN = T.dates.monthsIn;
+const ANA_NAME = T.dates.months;
+const ANA_TO = T.dates.monthsTo;
 
 function anaFeeds(from, to) {
   const items = new URLSearchParams({ from, to, collapse: 'day', per: '20000', sort: 'date', dir: 'asc' });
@@ -9107,13 +9112,13 @@ function anaBarsStep(from, to) {
   return days <= 62 ? 'd' : days <= 186 ? 'w' : anaMonths(from, to).length <= 36 ? 'm' : '';
 }
 
-const ANA_STEP_NAMES = { d: 'по дням', w: 'по неделям', m: 'по месяцам', q: 'по кварталам', y: 'по годам' };
+const ANA_STEP_NAMES = T.stats.steps;
 
 /** Кнопка деления в карточке графика: попап, как у сортировки, — варианты под длину периода. */
 function anaStepDrop(from, to, current) {
   const rows = anaSteps(from, to).map((k) => dropRow(`data-ana-step="${k}"`, UI.calendar, cap(ANA_STEP_NAMES[k]), k === current)).join('');
   return `<div class="drop ana-step">
-    <button class="ana-step-btn" type="button" data-drop data-pop aria-label="Деление графика" title="Деление графика">${esc(ANA_STEP_NAMES[current])}${UI.chevron}</button>
+    <button class="ana-step-btn" type="button" data-drop data-pop aria-label="${esc(T.stats.stepAria)}" title="${esc(T.stats.stepAria)}">${esc(ANA_STEP_NAMES[current])}${UI.chevron}</button>
     <div class="drop-menu" role="menu" hidden>${rows}</div>
   </div>`;
 }
@@ -9145,9 +9150,9 @@ function anaPrevNames(prev) {
   const months = wholeMonths(prev.from, prev.to);
   if (months === 1) {
     const m = parseDay(prev.from).getMonth();
-    return { in: `в ${ANA_IN[m]}`, to: `к ${ANA_TO[m]}`, key: ANA_NAME[m] };
+    return { in: f(T.stats.inMonth, { m: ANA_IN[m] }), to: f(T.stats.toMonth, { m: ANA_TO[m] }), key: ANA_NAME[m] };
   }
-  return { in: 'в прошлом периоде', to: 'к прошлому периоду', key: 'прошлый период' };
+  return { in: T.stats.inPrev, to: T.stats.toPrev, key: T.stats.prev };
 }
 
 async function screenAnalytics() {
@@ -9189,11 +9194,11 @@ async function screenAnalytics() {
   const cut = from > today ? -1 : to < today ? n - 1 : B.of(today);
   // Вид графика — накопительные линии или столбики по дням (неделям, месяцам); помним на телефоне
   const bars = anaView() === 'bars';
-  const viewBtn = `<button class="drop-btn" type="button" data-ana-view aria-label="${bars ? 'Показать линиями' : 'Показать столбиками'}"
-    title="${bars ? 'Линиями' : 'Столбиками'}">${bars ? UI.chartLine : UI.chartBars}</button>`;
+  const viewBtn = `<button class="drop-btn" type="button" data-ana-view aria-label="${esc(bars ? T.stats.asLines : T.stats.asBars)}"
+    title="${esc(bars ? T.stats.lines : T.stats.bars)}">${bars ? UI.chartLine : UI.chartBars}</button>`;
   const head = (sum, note) => `<div class="stuck-head">${listHead({ sum: money(sum), note, sorts: ANA_SORTS, filters: sourceChips(), search: true, extra: viewBtn })}</div>`;
   const sort = ANA_SORTS.includes(state.sort) ? state.sort : 'category';
-  if (cut < 0) return `${head(0, '')}<div class="empty">Период ещё не начался</div>`;
+  if (cut < 0) return `${head(0, '')}<div class="empty">${esc(T.stats.notStarted)}</div>`;
 
   const all = anaCum(cur.total);
   // Линия прошлого периода на графике — по номеру деления, рядом с этим днём
@@ -9242,7 +9247,7 @@ async function screenAnalytics() {
   const names = anaPrevNames(prev);
   // Этот период словами: у календарного месяца — его название, «к концу месяца»
   const month = wholeMonths(from, to) === 1;
-  names.cur = month ? ANA_NAME[parseDay(from).getMonth()] : 'этот период';
+  names.cur = month ? ANA_NAME[parseDay(from).getMonth()] : T.stats.cur;
   const now = all[cut];
   // Прошлый период — целиком: сколько ушло за весь прошлый месяц, а не к этому же дню
   const prevRows = spend(history[0]?.rows ?? [], history[1]?.rows ?? []);
@@ -9257,15 +9262,15 @@ async function screenAnalytics() {
   const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
   const picked = state.sg ? state.sg.split(',') : [];
   const note = [
-    part('count', going ? `по ${ANA_DAY.format(parseDay(today))}` : `${int.format(curRows.length)} ${plural(curRows.length, 'покупка', 'покупки', 'покупок')}`),
+    part('count', going ? f(T.stats.until, { date: ANA_DAY.format(parseDay(today)) }) : `${int.format(curRows.length)} ${pl(curRows.length, T.common.purchases)}`),
     part('sort', SORTS[sort][0].toLowerCase()),
     open ? part('src', open.name) : '',
     state.src ? part('src', srcNote()) : '',
-    picked.length && !open ? part('src', picked.map((k) => (k === NONE ? 'без категории' : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
-    state.q ? part('q', `поиск «${state.q.trim()}»`) : '',
-    forecast ? part('forecast', `прогноз ${anaShort(forecast[n - 1])} ₽`) : '',
+    picked.length && !open ? part('src', picked.map((k) => (k === NONE ? T.feed.noCategory.toLowerCase() : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).join(', ')) : '',
+    state.q ? part('q', f(T.feed.searchQ, { q: state.q.trim() })) : '',
+    forecast ? part('forecast', f(T.stats.forecast, { sum: anaShort(forecast[n - 1]) })) : '',
   ].filter(Boolean).join(' · ');
-  if (!curRows.length && !was) return `${head(0, note)}<div class="empty">${state.q ? 'Ничего не нашлось' : 'За этот период трат нет'}</div>`;
+  if (!curRows.length && !was) return `${head(0, note)}<div class="empty">${esc(state.q ? T.feed.nothingFound : T.spend.empty)}</div>`;
 
   // Под графиком — пришло и потрачено, в скобках — к прошлому периоду целиком. Больше трат —
   // красным, больше доходов — зелёным
@@ -9277,8 +9282,8 @@ async function screenAnalytics() {
     return ` <span class="${(d > 0) === good ? 'ana-less' : 'ana-more'}">(${d > 0 ? '+' : '−'}${Math.abs(d)}%)</span>`;
   };
   const sums = [
-    income ? `Пришло <span class="ana-sum"><b>${anaShort(incNow)} ₽</b>${pct(incNow, incWas, true)}</span>` : '',
-    `потрачено <span class="ana-sum"><b>${anaShort(now)} ₽</b>${pct(now, was, false)}</span>`,
+    income ? `${esc(T.stats.came)} <span class="ana-sum"><b>${anaShort(incNow)} ₽</b>${pct(incNow, incWas, true)}</span>` : '',
+    `${esc(T.stats.spent)} <span class="ana-sum"><b>${anaShort(now)} ₽</b>${pct(now, was, false)}</span>`,
   ].filter(Boolean).join(' · ');
 
   // Сортировка: по сумме этого периода, по названию или как в настройках (без категории — в конце)
@@ -9300,7 +9305,7 @@ async function screenAnalytics() {
     const cat = open ? findCategory(k) : null;
     return {
       key: k,
-      name: open ? cat?.category.name ?? 'Без категории' : g?.name ?? 'Без категории',
+      name: open ? cat?.category.name ?? T.feed.noCategory : g?.name ?? T.feed.noCategory,
       icon: open ? cat?.category.icon || open.icon || 'none' : g?.icon ?? 'none',
       color: open ? categoryColor(open.slug, k) ?? open.color : g?.color ?? '#9aa3ad',
       now: c ? anaCum(c)[cut] : 0,
@@ -9314,15 +9319,15 @@ async function screenAnalytics() {
     + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color, stepBtn: anaStepDrop(from, to, B.step) }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
     + `<div class="ana-income-row">${sums.charAt(0).toUpperCase()}${sums.slice(1)}</div>`
     + '</div>'
-    + section(open ? open.name : 'Группы', open ? 'Нажмите на категорию, чтобы открыть её траты' : 'Нажмите на группу, чтобы увидеть её категории',
+    + section(open ? open.name : T.stats.groups, open ? T.stats.catsHint : T.stats.groupsHint,
       groupsRows.map((r) => anaRow(r, names)).join(''));
 }
 
 /** Подпись суммы: 12 тыс., 1,2 млн. */
 function anaShort(kop) {
   const r = kop / 100;
-  if (r >= 1e6) return `${(r / 1e6).toFixed(r >= 1e7 ? 0 : 1).replace('.', ',')} млн`;
-  if (r >= 1e3) return `${Math.round(r / 1e3)} тыс.`;
+  if (r >= 1e6) return f(T.dates.million, { n: (r / 1e6).toFixed(r >= 1e7 ? 0 : 1).replace('.', ',') });
+  if (r >= 1e3) return f(T.dates.thousand, { n: Math.round(r / 1e3) });
   return `${Math.round(r)}`;
 }
 
@@ -9331,7 +9336,7 @@ function anaTick(B, i) {
   const k = B.keys[i];
   // Форматы — готовые: toLocaleDateString на каждое деление заметно тормозил листание
   if (B.monthly) return ANA_MONTH.format(new Date(`${k}-01T12:00:00`));
-  if (B.span === 'quarter') return `${k.slice(6)} кв. ${k.slice(0, 4)}`;
+  if (B.span === 'quarter') return f(T.dates.quarter, { q: k.slice(6), y: k.slice(0, 4) });
   if (B.span === 'year') return k;
   if (B.weekly) {
     const end = B.ends[i];
@@ -9341,8 +9346,8 @@ function anaTick(B, i) {
   }
   return ANA_DAY.format(new Date(`${k}T12:00:00`));
 }
-const ANA_MONTH = new Intl.DateTimeFormat('ru-RU', { month: 'short' });
-const ANA_DAY = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' });
+const ANA_MONTH = new Intl.DateTimeFormat(T.locale, { month: 'short' });
+const ANA_DAY = new Intl.DateTimeFormat(T.locale, { day: 'numeric', month: 'short' });
 
 /** Круглый шаг шкалы не меньше v: 1, 2 или 5 × 10ⁿ (в копейках — от рубля). */
 function anaNiceStep(v) {
@@ -9460,7 +9465,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${axis}</div>
-    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? '<span><i class="k-fc"></i>прогноз</span>' : ''}${incAll || incPrevAll ? '<span><i class="k-inc"></i>доходы</span>' : ''}</div>`;
+    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? `<span><i class="k-fc"></i>${esc(T.stats.forecastKey)}</span>` : ''}${incAll || incPrevAll ? `<span><i class="k-inc"></i>${esc(T.stats.incomeKey)}</span>` : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
 let anaClipSeq = 0; // номера шторок графиков
@@ -9560,9 +9565,9 @@ function anaRow(r, names) {
   const clip = (wd, html) => `<span class="ana-clip" data-w="${wd.toFixed(1)}">${html}</span>`;
   const d = r.now - r.was;
   const diff = Math.abs(d) < 50000
-    ? `<span class="ana-same">как ${esc(names.in)}</span>`
+    ? `<span class="ana-same">${esc(f(T.stats.same, { when: names.in }))}</span>`
     : `<span class="${d > 0 ? 'ana-more' : 'ana-less'}">${d > 0 ? '+' : '−'}${anaShort(Math.abs(d))} ₽ ${esc(names.to)}</span>`;
-  const overNote = over ? ` · <span class="ana-more">сверх лимита ${anaShort(r.now - r.limit)} ₽</span>` : '';
+  const overNote = over ? ` · <span class="ana-more">${esc(f(T.stats.overLimit, { sum: anaShort(r.now - r.limit) }))}</span>` : '';
   return `<button class="ana-row" type="button" data-ana="${esc(r.key)}">
     <span class="ic" style="background:${r.color};color:${readableText(r.color)}">${groupIcon(r.icon)}</span>
     <span class="ana-mid">
@@ -9674,8 +9679,8 @@ function anaPoint(clientX) {
   tip.innerHTML = `<div class="ana-tip-day">${esc(anaTip.ticks[i])}</div>`
     + `<div><i class="${anaTip.bars ? 'k-col' : 'k-now'}"></i>${esc(anaTip.curName)}<b>${money(anaTip.all[i])}</b></div>`
     + `<div><i class="${anaTip.bars ? 'k-col k-col-prev' : 'k-prev'}"></i>${esc(anaTip.prevName)}<b>${money(anaTip.prev[Math.min(i, anaTip.prev.length - 1)] ?? 0)}</b></div>`
-    + (anaTip.inc ? `<div><i class="k-inc"></i>доходы, ${esc(anaTip.curName)}<b>${money(anaTip.inc[i])}</b></div>` : '')
-    + (anaTip.incPrev ? `<div><i class="k-inc-prev"></i>доходы, ${esc(anaTip.prevName)}<b>${money(anaTip.incPrev[i] ?? 0)}</b></div>` : '');
+    + (anaTip.inc ? `<div><i class="k-inc"></i>${esc(f(T.stats.incomeTip, { name: anaTip.curName }))}<b>${money(anaTip.inc[i])}</b></div>` : '')
+    + (anaTip.incPrev ? `<div><i class="k-inc-prev"></i>${esc(f(T.stats.incomeTip, { name: anaTip.prevName }))}<b>${money(anaTip.incPrev[i] ?? 0)}</b></div>` : '');
   tip.hidden = false;
   // Сбоку от курсора, где больше места, и не за краями графика
   const w = tip.offsetWidth;

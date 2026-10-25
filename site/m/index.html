@@ -24,31 +24,31 @@
 <body>
   <div class="login" id="login" hidden>
     <div class="login-box">
-      <div class="login-title">Чекер</div>
+      <div class="login-title" data-i18n="shell.app">Чекер</div>
       <p class="note" id="login-note">Учёт расходов по чекам</p>
 
       <!-- Готовая ссылка на бота: код входа получен заранее, см. shared/tglogin.js -->
       <a class="btn tg disabled" id="tg-login">
-        <span class="tg-ic" id="tg-ic"></span>Войти через Telegram
+        <span class="tg-ic" id="tg-ic"></span><span data-i18n="login.tg">Войти через Telegram</span>
       </a>
 
       <div class="tg-wait" id="tg-wait" hidden>
-        <p class="tg-wait-title">Подтвердите вход в Telegram</p>
-        <p class="note">Бот покажет, с какого устройства запрошен вход, — нажмите «Войти» и вернитесь сюда.</p>
-        <a class="btn" id="tg-again">Открыть Telegram ещё раз</a>
-        <a class="tg-web" id="tg-web" target="_blank" rel="noopener">Не открывается? Через сайт Telegram</a>
-        <button class="link" id="tg-cancel" type="button">Отмена</button>
+        <p class="tg-wait-title" data-i18n="login.waitTitle">Подтвердите вход в Telegram</p>
+        <p class="note" data-i18n="login.waitNote">Бот покажет, с какого устройства запрошен вход, — нажмите «Войти» и вернитесь сюда.</p>
+        <a class="btn" id="tg-again" data-i18n="login.again">Открыть Telegram ещё раз</a>
+        <a class="tg-web" id="tg-web" target="_blank" rel="noopener" data-i18n="login.web">Не открывается? Через сайт Telegram</a>
+        <button class="link" id="tg-cancel" type="button" data-i18n="common.cancel">Отмена</button>
       </div>
 
-      <p class="note consent">Входя, вы соглашаетесь на <a href="/privacy.html">обработку данных</a>:
+      <p class="note consent" data-i18n-html="login.consentHtml">Входя, вы соглашаетесь на <a href="/privacy.html">обработку данных</a>:
         храним имя и id из Telegram и чеки, которые вы добавите.</p>
 
       <details class="login-pass" id="login-pass-block">
-        <summary>Войти по паролю</summary>
+        <summary data-i18n="login.password">Войти по паролю</summary>
         <form id="login-form">
-          <input id="login-name" type="text" placeholder="Логин" autocomplete="username" required />
-          <input id="login-pass" type="password" placeholder="Пароль" autocomplete="current-password" required />
-          <button class="btn primary" id="login-submit" type="submit">Войти</button>
+          <input id="login-name" type="text" placeholder="Логин" autocomplete="username" required data-i18n-attr="placeholder:login.name" />
+          <input id="login-pass" type="password" placeholder="Пароль" autocomplete="current-password" required data-i18n-attr="placeholder:login.pass" />
+          <button class="btn primary" id="login-submit" type="submit" data-i18n="login.submit">Войти</button>
         </form>
       </details>
     </div>
@@ -56,7 +56,7 @@
 
   <div class="app" id="app" hidden>
     <header class="bar">
-      <button class="bar-back" id="back" type="button" hidden aria-label="Назад">‹</button>
+      <button class="bar-back" id="back" type="button" hidden aria-label="Назад" data-i18n-attr="aria-label:common.back">‹</button>
       <div class="bar-title" id="title">Расходы</div>
       <span class="bar-action" aria-hidden="true"></span><!-- держит заголовок по центру -->
       <!-- Включена тестовая база — видно на любом экране; нажатие предлагает выключить -->
@@ -67,15 +67,15 @@
 
     <div class="actions" id="actions" hidden></div>
 
-    <nav class="tabs" aria-label="Разделы">
+    <nav class="tabs" aria-label="Разделы" data-i18n-attr="aria-label:shell.tabsAria">
       <button class="tab" type="button" data-tab="summary">
-        <span class="tab-ic" id="tab-summary-ic"></span>Расход<i class="badge" id="tab-badge" hidden></i>
+        <span class="tab-ic" id="tab-summary-ic"></span><span data-i18n="shell.tabs.summary">Расход</span><i class="badge" id="tab-badge" hidden></i>
       </button>
-      <button class="tab" type="button" data-tab="income"><span class="tab-ic" id="tab-income-ic"></span>Доход</button>
+      <button class="tab" type="button" data-tab="income"><span class="tab-ic" id="tab-income-ic"></span><span data-i18n="shell.tabs.income">Доход</span></button>
       <!-- Добавление — посередине острова, круглой кнопкой -->
-      <button class="tab-add" id="fab" type="button" aria-label="Добавить трату">+</button>
-      <button class="tab" type="button" data-tab="settings"><span class="tab-ic" id="tab-settings-ic"></span>Настройки</button>
-      <button class="tab" type="button" data-tab="stats"><span class="tab-ic" id="tab-stats-ic"></span>Сводка</button>
+      <button class="tab-add" id="fab" type="button" aria-label="Добавить трату" data-i18n-attr="aria-label:shell.add">+</button>
+      <button class="tab" type="button" data-tab="settings"><span class="tab-ic" id="tab-settings-ic"></span><span data-i18n="shell.tabs.settings">Настройки</span></button>
+      <button class="tab" type="button" data-tab="stats"><span class="tab-ic" id="tab-stats-ic"></span><span data-i18n="shell.tabs.stats">Сводка</span></button>
     </nav>
   </div>
 
