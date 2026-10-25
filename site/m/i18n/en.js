@@ -8,10 +8,10 @@
 export const en = {
   island: {
     periods: {
-      today: '', // Сегодня
-      week: '', // Неделя
-      month: '', // Месяц
-      year: '', // Год
+      today: 'Today',
+      week: 'Week',
+      month: 'Month',
+      year: 'Year',
     },
   },
   common: {
@@ -21,8 +21,8 @@ export const en = {
     purchases: ['purchase', 'purchases', 'purchases'],
     years: ['year', 'years', 'years'],
     failed: 'Didn’t work',
-    unsaved: '', // Изменения не сохранены. Закрыть без сохранения?
-    discard: '', // Не сохранять
+    unsaved: 'Changes aren’t saved. Close without saving?',
+    discard: 'Don’t save',
     cancel: 'Cancel',
     yes: 'Yes',
     delete: 'Delete',
@@ -88,7 +88,7 @@ export const en = {
       catsW: ['category', 'categories', 'categories'],
       spendsW: ['expense', 'expenses', 'expenses'],
       unused: 'empty so far',
-      listNote: '', // Категории общие: их видят и меняют все участники бюджета
+      listNote: 'Categories are shared: all budget members see and edit them',
       groupsBlock: 'Groups',
       manage: 'Manage',
       addGroup: 'Add a new group',
@@ -131,8 +131,8 @@ export const en = {
       block: 'Account',
       viaTelegram: 'Signed in with Telegram',
       viaPassword: 'Signed in with a password',
-      footTelegram: '', // Вы входите в Чекер через Telegram
-      footPassword: '', // Вы входите в Чекер по паролю
+      footTelegram: 'You sign in to Checker with Telegram',
+      footPassword: 'You sign in to Checker with a password',
       nameLabel: 'Name',
       namePlaceholder: 'Your name',
       nameNote: 'how budget members see you',
@@ -143,8 +143,8 @@ export const en = {
       label: 'Budget',
       main: 'General',
       members: 'Members',
-      noteShared: '', // Все участники видят траты этого бюджета и могут добавлять свои
-      noteAlone: '', // Пригласите семью, чтобы вести один бюджет на всех
+      noteShared: 'All members see this budget’s spending and can add their own',
+      noteAlone: 'Invite your family to keep one budget together',
       nameLabel: 'Budget name',
       nameNote: 'budget name',
       nameSaved: 'Name saved',
@@ -158,21 +158,21 @@ export const en = {
       leave: 'Leave shared budget',
       leaveNote: 'you return to your own; your expenses stay here',
       notify: 'Notify about members’ spending',
-      notifyNote: '', // Бот сообщит в Telegram, когда другой участник внесёт трату или доход
+      notifyNote: 'The bot will message you in Telegram when another member adds spending or income',
       notifyNoTelegram: 'Link Telegram in your profile to get messages about other members’ spending',
       leaveConfirm: 'Leave the shared budget? You will return to your own. Your expenses stay in the shared one.',
       export: {
-        label: '', // Данные
-        title: '', // Экспорт
-        note: '', // Архив с тратами, доходами и категориями бюджета откроется в Excel. Его можно сохранить или отправить в любое приложение
-        busy: '', // Готовлю архив…
-        oldApp: '', // Чтобы поделиться архивом, обновите приложение
+        label: 'Data',
+        title: 'Export',
+        note: 'An archive with the budget’s spending, income and categories opens in Excel. Save it or send it to any app',
+        busy: 'Preparing the archive…',
+        oldApp: 'Update the app to share the archive',
       },
     },
     banks: {
       label: 'Banks',
       block: 'Connected',
-      note: '', // Операции приходят через этот телефон, а пароль банка Чекер не видит
+      note: 'Transactions come through this phone, and Checker never sees your bank password',
       add: 'Connect a bank',
       addNote: 'available: {names}',
       addNoteSoon: 'coming soon: {names}',
@@ -185,56 +185,56 @@ export const en = {
       connect: 'Connect',
     },
     backup: {
-      label: '', // Резервная копия
-      every: '', // Как часто
+      label: 'Backup',
+      every: 'How often',
       everyOpts: {
-        1: '', // каждый день
-        2: '', // раз в два дня
-        3: '', // раз в три дня
-        7: '', // раз в неделю
+        1: 'every day',
+        2: 'every two days',
+        3: 'every three days',
+        7: 'once a week',
       },
-      last: '', // Последняя копия
-      never: '', // ещё не было
-      failed: '', // Не вышло: {error}
-      now: '', // Сделать копию сейчас
-      share: '', // Поделиться последней копией
-      note: '', // Копии сохраняются на телефоне в папке {folder} и не удаляются. В них все траты, доходы, категории и настройки бюджета
-      noApp: '', // Резервные копии делает приложение Чекер для Android
-      busy: '', // Делаю копию…
-      done: '', // Копия готова
-      noFile: '', // Копии ещё нет
+      last: 'Last backup',
+      never: 'none yet',
+      failed: 'Didn’t work: {error}',
+      now: 'Back up now',
+      share: 'Share the latest backup',
+      note: 'Backups are saved on the phone in the {folder} folder and are never deleted. They contain all spending, income, categories and budget settings',
+      noApp: 'Backups are made by the Checker app for Android',
+      busy: 'Backing up…',
+      done: 'Backup is ready',
+      noFile: 'No backup yet',
     },
     perm: {
-      label: '', // Разрешения
-      note: '', // Чтобы траты из банков появлялись сами и вовремя, необходимо выдать Чекеру разрешения
-      bg: '', // Работа в фоне без ограничений
-      bgOk: '', // разрешено
-      bgNo: '', // не разрешено
-      autostart: '', // Автозапуск
-      autostartNote: '', // на Xiaomi включите его для Чекера
-      autostartOk: '', // включён
-      autostartNo: '', // выключен
+      label: 'Permissions',
+      note: 'For bank spending to show up on its own and on time, give Checker these permissions',
+      bg: 'Unrestricted background work',
+      bgOk: 'allowed',
+      bgNo: 'not allowed',
+      autostart: 'Autostart',
+      autostartNote: 'on Xiaomi, turn it on for Checker',
+      autostartOk: 'on',
+      autostartNo: 'off',
     },
     sync: {
-      label: '', // Синхронизация
-      all: '', // Для всех банков
-      every: '', // Как часто обновлять
-      everyNote: '', // Выберите период повторной синхронизации
+      label: 'Sync',
+      all: 'For all banks',
+      every: 'How often to update',
+      everyNote: 'Choose how often to sync again',
       everyOpts: {
-        0: '', // только вручную
-        15: '', // каждые 15 минут
-        30: '', // каждые 30 минут
-        60: '', // раз в час
-        180: '', // раз в 3 часа
+        0: 'manually only',
+        15: 'every 15 minutes',
+        30: 'every 30 minutes',
+        60: 'every hour',
+        180: 'every 3 hours',
       },
-      wifi: '', // Только по Wi-Fi
-      allNote: '', // Единые настройки синхронизации на все банки и магазины
-      allOffNote: '', // Сейчас у каждого банка свои настройки, их можно поменять в его карточке
-      lockedNote: '', // Сейчас действуют общие настройки, а эти заработают, если выключить «Для всех банков»
-      ownNote: '', // Эти настройки действуют только для этого банка
-      remind: '', // Напоминать о входе
-      remindNote: '', // Если сессия банка устарела, пришлем напоминание в бот.
-      remindNoTg: '', // Нужен вход через Telegram: напоминания приходят в бот
+      wifi: 'Wi-Fi only',
+      allNote: 'The same sync settings for all banks and stores',
+      allOffNote: 'Each bank has its own settings now; change them in its card',
+      lockedNote: 'Shared settings apply now; these take effect if you turn off “For all banks”',
+      ownNote: 'These settings apply to this bank only',
+      remind: 'Remind me to sign in',
+      remindNote: 'If the bank session expires, we’ll send a reminder to the bot.',
+      remindNoTg: 'Requires Telegram sign-in: reminders come to the bot',
     },
     data: {
       label: 'Data',
@@ -255,16 +255,16 @@ export const en = {
       allOff: 'off',
       some: '{n} of {total}',
       kindsLabel: 'What to animate',
-      kindsNote: '', // Без анимации элементы появляются сразу, без движения
-      systemNote: '', // Анимаций не будет, пока в настройках телефона включено «Уменьшить движение»
+      kindsNote: 'Without animation, elements appear at once, without motion',
+      systemNote: 'There will be no animations while “Reduce motion” is on in the phone settings',
       kindNotes: {
         ring: 'Smooth fill of rings and progress bars',
         counter: 'Smooth change of the total',
         sheets: 'Smooth display of menus and dialogs',
         sections: 'Smooth opening of list categories',
         swipe: 'Smooth list slide on period change',
-        screens: '', // Плавный сдвиг при переходе на другой экран или вкладку
-        peek: '', // Показывать стрелку при смене экранов и периодов
+        screens: 'A smooth slide when moving to another screen or tab',
+        peek: 'Show an arrow when switching screens and periods',
       },
       kinds: {
         ring: 'Ring and bar fill',
@@ -272,65 +272,65 @@ export const en = {
         sheets: 'Sheets and dialogs',
         sections: 'Opening sections',
         swipe: 'Slide on period swipe',
-        screens: '', // Переходы между экранами
-        peek: '', // Подсказка при свайпе
+        screens: 'Screen transitions',
+        peek: 'Swipe hint',
       },
     },
     limits: {
-      label: '', // Лимиты
-      none: '', // не заданы
-      manage: '', // Управлять лимитами
-      on: '', // Включить лимиты
-      off: '', // выключены
-      offTitle: '', // Лимиты выключены
-      offNote: '', // Заданные лимиты сохранены — включите их снова в настройках
-      offFoot: '', // Пока лимиты выключены, они нигде не показываются, но суммы сохраняются
-      period: '', // Период
-      periodNote: '', // Если сменить период, заданные лимиты пересчитаются пропорционально
+      label: 'Limits',
+      none: 'not set',
+      manage: 'Manage limits',
+      on: 'Turn on limits',
+      off: 'off',
+      offTitle: 'Limits are off',
+      offNote: 'Your limits are kept — turn them back on in settings',
+      offFoot: 'While limits are off they aren’t shown anywhere, but the amounts are kept',
+      period: 'Period',
+      periodNote: 'If you change the period, the limits are recalculated proportionally',
       periods: {
-        month: '', // Месяц
-        quarter: '', // Квартал
-        week: '', // Неделя
-        day: '', // День
+        month: 'Month',
+        quarter: 'Quarter',
+        week: 'Week',
+        day: 'Day',
       },
       per: {
-        month: '', // в месяц
-        quarter: '', // в квартал
-        week: '', // в неделю
-        day: '', // в день
+        month: 'a month',
+        quarter: 'a quarter',
+        week: 'a week',
+        day: 'a day',
       },
-      groups: '', // Группы
-      groupsNote: '', // Чтобы задать лимит, нажмите на группу
-      totalNote: '', // Всего на лимиты отведено {sum} {per}
-      fixed: '', // зафиксирован
-      cardTitle: '', // Лимит
-      cardTitleAll: '', // Лимиты всех групп
-      notSetShort: '', // не задан
-      groupsWith: '', // с лимитом: {n} {w}
-      edit: '', // Изменить
-      set: '', // Задать
-      setup: '', // Настроить
-      limit: '', // Лимит
-      spent: '', // Потрачено
-      left: '', // Осталось
-      overBy: '', // перерасход
-      perDay: '', // в день до конца периода
-      exceeded: '', // Лимит превышен
-      forecast: '', // прогноз
-      notStarted: '', // Период ещё не начался
-      result: '', // Итог
-      fit: '', // уложились
-      saved: '', // сэкономили
-      notSet: '', // Лимит не задан
-      usually: '', // обычно
-      noneNote: '', // Лимиты не заданы — задайте их в настройках
-      toggle: '', // Лимит
-      turnOn: '', // Включить
-      fixShort: '', // Зафиксировать
-      fix: '', // Зафиксировать лимит
-      fixNote: '', // Не меняется, когда двигают лимиты других групп
-      save: '', // Сохранить
-      sheetNote: '', // Лимит общий для всех участников бюджета
+      groups: 'Groups',
+      groupsNote: 'Tap a group to set its limit',
+      totalNote: 'Limits total {sum} {per}',
+      fixed: 'locked',
+      cardTitle: 'Limit',
+      cardTitleAll: 'All group limits',
+      notSetShort: 'not set',
+      groupsWith: 'with a limit: {n} {w}',
+      edit: 'Edit',
+      set: 'Set',
+      setup: 'Set up',
+      limit: 'Limit',
+      spent: 'Spent',
+      left: 'Left',
+      overBy: 'overspent',
+      perDay: 'a day until the period ends',
+      exceeded: 'Limit exceeded',
+      forecast: 'forecast',
+      notStarted: 'The period hasn’t started yet',
+      result: 'Result',
+      fit: 'within limit',
+      saved: 'saved',
+      notSet: 'No limit set',
+      usually: 'usually',
+      noneNote: 'No limits set — set them in settings',
+      toggle: 'Limit',
+      turnOn: 'Turn on',
+      fixShort: 'Lock',
+      fix: 'Lock the limit',
+      fixNote: 'Doesn’t change when other groups’ limits are moved',
+      save: 'Save',
+      sheetNote: 'The limit is shared by all budget members',
     },
     support: {
       title: 'Support',
@@ -341,7 +341,11 @@ export const en = {
       list: 'Requests',
       empty: 'No requests yet',
       unread: 'New reply',
-      status: { new: 'Awaiting reply', answered: 'Answered', closed: 'Closed' },
+      status: {
+        new: 'Awaiting reply',
+        answered: 'Answered',
+        closed: 'Closed',
+      },
       foot: 'The reply will come here and in Telegram',
       footNoBot: 'The reply will come here',
       placeholder: 'Message',
@@ -364,7 +368,7 @@ export const en = {
       supportNote: 'Questions, bugs, wishes',
       demo: 'Demo mode',
       demoNote: 'A year of a made-up person’s spending',
-      note: '', // В демо-режиме показаны траты вымышленной семьи, и менять их нельзя
+      note: 'Demo mode shows a fictional family’s spending, and it can’t be changed',
       pill: 'demo mode',
       offConfirm: 'Turn off demo mode and return to your own data?',
       off: 'Turn off',
@@ -376,14 +380,14 @@ export const en = {
     ready: 'ready to connect',
     soon: 'coming soon',
     allConnected: 'All banks are already connected.',
-    hint: '', // Вход проходит в окне банка на вашем телефоне, и пароль Чекер не видит
+    hint: 'You sign in in the bank’s own window on your phone, and Checker never sees the password',
   },
   bankCard: {
-    main: '', // Основные
+    main: 'Main',
     limits: {
-      sber: '', // Сбер не даёт обновлять операции без вас: вход длится час, и каждый раз нужен пин-код. Снова осуществите вход, когда захотите увидеть свежие траты
+      sber: 'Sber doesn’t let transactions update without you: a sign-in lasts an hour and needs a PIN every time. Sign in again whenever you want to see fresh spending',
     },
-    expired: '', // Сессия устарела. Банк просит войти заново.
+    expired: 'The session has expired. The bank asks you to sign in again.',
     notConnected: 'Not connected',
     soon: 'Connection coming later',
     connected: 'Connected · {ops} {opsWord}',
@@ -392,7 +396,7 @@ export const en = {
       label: 'Data safety',
       rowNote: 'how sign-in works and what Checker sees',
       block: 'How it works',
-      note: '', // Так устроено одинаково для всех банков
+      note: 'It works the same way for all banks',
       loginBold: 'You sign in on your own phone',
       loginText: 'The app opens the bank’s window; you type the phone number, the SMS code and the password yourself',
       passwordBold: 'The password is never stored',
@@ -404,7 +408,7 @@ export const en = {
     },
     accounts: {
       label: 'Accounts',
-      hint: '', // Чекер берёт операции только с включённых счетов, выключенные в учёт не идут
+      hint: 'Checker takes transactions only from accounts that are on; accounts that are off aren’t counted',
       toggle: 'Count this account’s operations',
       kind: 'account',
       kinds: {

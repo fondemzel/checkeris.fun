@@ -14,6 +14,12 @@
 // Запуск:
 //   node scripts/i18n_sync.mjs            — свериться и переписать en.js
 //   node scripts/i18n_sync.mjs --check    — только показать расхождения, ничего не менять
+//   node scripts/i18n_sync.mjs --todo f.json — выгрузить непереведённое: { "путь": русский текст }
+//   node scripts/i18n_sync.mjs --fill f.json — вписать переводы { "путь": перевод } и переписать en.js
+//
+// Заодно ищет русский текст в коде приложения (site/m/app.js) вне словаря: все надписи
+// живут в ru.js. Строка, где русский нужен самому коду (поиск по русским словам, разбор
+// ответа банка), помечается комментарием `// i18n-ok`.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -24,6 +30,12 @@ const EN_FILE = join(DIR, 'en.js');
 const SOURCE_FILE = join(DIR, '.en-source.json');
 
 const checkOnly = process.argv.includes('--check');
+const argFile = (flag) => {
+  const i = process.argv.indexOf(flag);
+  return i > 0 ? process.argv[i + 1] : null;
+};
+const todoFile = argFile('--todo');
+const fillFile = argFile('--fill');
 
 const { ru } = await import(pathToFileURL(join(DIR, 'ru.js')));
 const { en } = existsSync(EN_FILE) ? await import(pathToFileURL(EN_FILE)) : { en: {} };
@@ -31,6 +43,22 @@ const source = existsSync(SOURCE_FILE) ? JSON.parse(readFileSync(SOURCE_FILE, 'u
 
 const at = (obj, path) => path.split('.').reduce((node, key) => node?.[key], obj);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// Готовые переводы — поверх en.js; свежие, раз переведены с нынешнего русского
+if (fillFile) {
+  for (const [path, value] of Object.entries(JSON.parse(readFileSync(fillFile, 'utf8')))) {
+    if (at(ru, path) === undefined) {
+      console.log(`нет в ru.js, пропущено: ${path}`);
+      continue;
+    }
+    const keys = path.split('.');
+    const last = keys.pop();
+    let node = en;
+    for (const k of keys) node = node[k] && typeof node[k] === 'object' ? node[k] : (node[k] = {});
+    node[last] = value;
+    source[path] = at(ru, path);
+  }
+}
 
 const added = [];
 const changed = [];
@@ -135,3 +163,21 @@ show('новые, нужен перевод', added);
 show('русский изменился, перевод устарел', changed);
 show('удалены из русского', removed);
 if (!added.length && !changed.length && !removed.length) console.log('всё сходится');
+
+if (todoFile) {
+  const todo = Object.fromEntries([...added, ...changed].map((path) => [path, at(ru, path)]));
+  writeFileSync(todoFile, `${JSON.stringify(todo, null, 1)}\n`, 'utf8');
+  console.log(`\nнепереведённое — в ${todoFile}`);
+}
+
+// ── русский текст в коде, мимо словаря ────────────────────
+// Комментарии не в счёт; строка с `// i18n-ok` — русский нужен самому коду
+const APP = join(HERE, '..', 'site', 'm', 'app.js');
+const stray = [];
+readFileSync(APP, 'utf8').split('\n').forEach((line, i) => {
+  if (/\/\/\s*i18n-ok/.test(line)) return;
+  const code = line.replace(/(^|[^:'"`])\/\/.*$/, '$1');
+  if (/^\s*(\*|\/\*)/.test(code)) return;
+  if (/[А-Яа-яЁё]/.test(code)) stray.push(`${i + 1}: ${line.trim().slice(0, 110)}`);
+});
+show('русский текст в app.js мимо словаря', stray);
