@@ -708,6 +708,7 @@ CREATE TABLE IF NOT EXISTS tg_outbox (
   text       TEXT NOT NULL,            -- что отправить; пусто — вместо отправки удалить сообщение
   delete_msg INTEGER,                  -- номер сообщения, которое надо убрать
   html       INTEGER NOT NULL DEFAULT 0, -- текст с HTML-разметкой (ссылка под словом)
+  markup     TEXT,                     -- кнопки под сообщением: reply_markup в JSON («Открыть обращение»)
   created_at TEXT NOT NULL,
   sent_at    TEXT
 );

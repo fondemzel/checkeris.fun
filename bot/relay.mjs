@@ -6,8 +6,8 @@
 //
 // Что он делает: подтверждает вход, доставляет сообщения Чекера (например, «Т-Банк
 // отключился — войдите заново»): у основного сервера доступа к Telegram нет, — и ведёт
-// поддержку: всё, что человек пишет боту помимо входа, — обращение; администраторам приходит
-// уведомление со ссылкой в админку, отвечают там (support.mjs).
+// поддержку меню: «🆘 Поддержка» → обращения → переписка, «Новое обращение», «Ответить».
+// Администраторам приходит уведомление со ссылкой в админку, отвечают там (support.mjs).
 //   /start <код>  → готовит подтверждение в Чекере (prepare): тот запоминает, кому
 //                   показан запрос, и отдаёт код для ссылки. Сообщение с устройством:
 //                   «Войти в Чекер? Запрос с iPhone · Safari» — [Войти] [Это не я]
@@ -80,15 +80,16 @@ async function checker(path, payload) {
   return data;
 }
 
-const HELP =
-  'Это бот входа в Чекер — учёт расходов по чекам.\n\n' +
-  `Откройте ${CHECKER}/m и нажмите «Войти через Telegram».`;
 const TROUBLE = 'Не получилось связаться с Чекером. Попробуйте ещё раз через минуту.';
-const SUPPORT =
-  'Напишите сюда, что случилось или что хотелось бы улучшить, — можно приложить скриншот. ' +
-  'Ответим здесь же.';
-const NOT_SENT = 'Не получилось передать сообщение. Попробуйте ещё раз через минуту.';
 const MEDIA = ['photo', 'document', 'voice', 'video', 'video_note', 'audio', 'sticker'];
+const NONCE = /^[A-Za-z0-9_-]{20,64}$/;
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const when = (iso) =>
+  new Date(iso).toLocaleString('ru-RU', {
+    timeZone: 'Europe/Moscow', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+  });
+const day = (iso) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'short' });
 
 /** Что за сообщение: текст или вложение. */
 const kindOf = (msg) => (msg.text != null ? 'text' : MEDIA.find((k) => msg[k]) ?? 'other');
@@ -98,7 +99,7 @@ const IMAGE_MAX = 5 * 1024 * 1024; // больше Чекер не примет 
 /**
  * Картинку (фото или файл-картинку) скачиваем у Telegram и отдаём Чекеру: там она хранится и
  * видна в админке. Фото Telegram держит в нескольких размерах — берём самый крупный, что
- * влезает в предел. Не вышло — null: администратор получит копию в Telegram, как раньше.
+ * влезает в предел. Не вышло — null: администратор получит копию в Telegram.
  */
 async function imageOf(msg) {
   const doc = msg.document?.mime_type?.startsWith('image/') ? msg.document : null;
@@ -119,11 +120,116 @@ async function imageOf(msg) {
   }
 }
 
+// ── меню ──────────────────────────────────────────────────────────────────────
+// Бот — одна «панель»: сообщение с кнопками, которое меняется на месте. Главное меню →
+// «🆘 Поддержка» → обращения → переписка. Писать в поддержку можно только после «Новое
+// обращение» или «Ответить»: просто так текст в обращение не уходит, иначе непонятно, куда он.
+// Что человек сейчас пишет и где его панель — в памяти: после перезапуска бота он просто
+// начнёт с меню.
+
+const BTN_BACK = '← Назад';
+const STATUS = {
+  new: ['🔴', 'ждёт ответа'],
+  answered: ['🟡', 'есть ответ'],
+  closed: ['🟢', 'закрыто'],
+};
+const PER_PAGE = 5;
+const SHOWN = 15; // сообщений в переписке: Telegram не примет больше 4096 знаков
+
+const chats = new Map(); // chat_id → { panel: номер сообщения-панели, mode: 'new' | 'reply', thread }
+const chatState = (id) => {
+  if (!chats.has(id)) chats.set(id, {});
+  return chats.get(id);
+};
+
 /**
- * Поддержка: сообщение, которое не вход. Чекер сохраняет его в обращение и говорит, кого
- * уведомить; бот делает это в Telegram.
+ * Показать панель: по нажатию кнопки — на месте того же сообщения; после текста человека —
+ * новым сообщением внизу, а прежнюю панель убрать, чтобы кнопки не висели выше переписки.
  */
-async function onSupport(msg) {
+async function panel(chat_id, text, keyboard, { edit = null } = {}) {
+  const st = chatState(chat_id);
+  const body = { chat_id, text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: keyboard } };
+  if (edit) {
+    try {
+      await tg('editMessageText', { ...body, message_id: edit });
+      st.panel = edit;
+      return;
+    } catch (err) {
+      if (/not modified/.test(err.message)) return; // нажали ту же кнопку — всё и так на месте
+      // сообщение слишком старое или удалено — покажем новым
+    }
+  }
+  if (st.panel && st.panel !== edit) await tg('deleteMessage', { chat_id, message_id: st.panel }).catch(() => {});
+  const sent = await tg('sendMessage', body);
+  st.panel = sent.message_id;
+}
+
+async function showMenu(chat_id, from, opts) {
+  chatState(chat_id).mode = null;
+  const linked = await checker('/api/telegram/known', { telegram_id: from.id }).then((r) => r.linked).catch(() => false);
+  const text = linked
+    ? '🧾 <b>Чекер</b> — учёт расходов по чекам\n\nВыберите раздел:'
+    : '🧾 <b>Чекер</b> — учёт расходов по чекам\n\n' +
+      `Чтобы войти, откройте Чекер и нажмите «Войти через Telegram». Что-то не получается — напишите в поддержку.`;
+  await panel(chat_id, text, [
+    [{ text: '🆘 Поддержка', callback_data: 'sup' }],
+    [{ text: '📱 Открыть Чекер', url: `${CHECKER}/m` }],
+  ], opts);
+}
+
+async function showList(chat_id, from, page = 0, opts) {
+  chatState(chat_id).mode = null;
+  const { threads = [] } = await checker('/api/telegram/support-list', { telegram_id: from.id });
+  const pages = Math.max(1, Math.ceil(threads.length / PER_PAGE));
+  page = Math.max(0, Math.min(page, pages - 1)); // список мог сократиться, а кнопка — старая
+  const rows = [[{ text: '➕ Новое обращение', callback_data: 'new' }]];
+  for (const t of threads.slice(page * PER_PAGE, (page + 1) * PER_PAGE)) {
+    const mark = t.unread ? '💬' : STATUS[t.status]?.[0] ?? '•';
+    rows.push([{ text: `${mark} ${t.title} · ${day(t.updated_at)}`, callback_data: `t:${t.id}` }]);
+  }
+  if (pages > 1) {
+    const nav = [];
+    if (page > 0) nav.push({ text: '‹', callback_data: `sp:${page - 1}` });
+    nav.push({ text: `${page + 1}/${pages}`, callback_data: 'noop' }); // кнопка — потому что «немых» Telegram не умеет
+    if (page < pages - 1) nav.push({ text: '›', callback_data: `sp:${page + 1}` });
+    rows.push(nav);
+  }
+  rows.push([{ text: BTN_BACK, callback_data: 'menu' }]);
+  const text = threads.length
+    ? '🆘 <b>Поддержка</b>\n\nВаши обращения — их видно и в приложении Чекера. 💬 — есть новый ответ.'
+    : '🆘 <b>Поддержка</b>\n\nОбращений пока нет. Что-то не так или есть идея — создайте обращение, ответим здесь же, обычно в течение дня.';
+  await panel(chat_id, text, rows, opts);
+}
+
+/** Переписка текстом: последние сообщения, вложения — пометкой. */
+function threadText(t, top = '') {
+  const [emoji, label] = STATUS[t.status] ?? ['•', t.status];
+  const lines = t.messages.slice(-SHOWN).map((m) => {
+    const who = m.from_admin ? '🛟 Поддержка' : '🙋 Вы';
+    const att = m.kind !== 'text' ? `[${m.kind_name ?? 'вложение'}]` : '';
+    const body = [att, esc(m.text ?? '')].filter(Boolean).join(' ');
+    return `<b>${who}</b>, ${day(m.created_at)}:\n${body}`;
+  });
+  const skipped = t.messages.length > SHOWN ? `…ранние сообщения — в приложении Чекера\n\n` : '';
+  let text = `${top}🆘 <b>«${esc(t.title)}»</b>\nСтатус: ${emoji} ${label}\n\n${skipped}${lines.join('\n\n')}`;
+  if (text.length > 4000) text = `${top}🆘 <b>«${esc(t.title)}»</b>\n\n…${text.slice(-3800)}`;
+  return text;
+}
+
+async function showThread(chat_id, from, id, opts = {}) {
+  const st = chatState(chat_id);
+  st.mode = null;
+  const t = await checker('/api/telegram/support-thread', { telegram_id: from.id, id });
+  if (t.error) return showList(chat_id, from, 0, opts);
+  const rows = t.status === 'closed'
+    ? []
+    : [[{ text: '💬 Ответить', callback_data: `r:${t.id}` }, { text: '✅ Закрыть', callback_data: `c:${t.id}` }]];
+  rows.push([{ text: '← Обращения', callback_data: 'sup' }]);
+  return panel(chat_id, threadText(t, opts.top ?? ''), rows, opts);
+}
+
+/** Текст или картинка после «Новое обращение» / «Ответить» — в Чекер, потом переписка. */
+async function sendToSupport(msg, st) {
   const chat_id = msg.chat.id;
   const kind = kindOf(msg);
   let res;
@@ -134,14 +240,15 @@ async function onSupport(msg) {
       text: msg.text ?? msg.caption ?? null,
       kind,
       image: kind === 'photo' || kind === 'document' ? await imageOf(msg) : null,
+      fresh: st.mode === 'new',
+      thread_id: st.mode === 'reply' ? st.thread : null,
     });
   } catch (err) {
     console.error('поддержка:', err.message);
-    return tg('sendMessage', { chat_id, text: NOT_SENT });
+    return tg('sendMessage', { chat_id, text: 'Не получилось отправить. Попробуйте ещё раз через минуту.' });
   }
-
-  if (res.action === 'hint') return tg('sendMessage', { chat_id, text: res.text, disable_web_page_preview: true });
-  if (res.action !== 'notify') return null;
+  if (res.action === 'ignore') return tg('sendMessage', { chat_id, text: 'Слишком много сообщений подряд — попробуйте через час.' });
+  if (res.action === 'closed') return showList(chat_id, msg.from);
 
   // Администраторам: уведомление со ссылкой в админку (там и отвечают) и копия вложения,
   // которое Чекер не сохранил (голосовое, видео, файл) — в админке его не показать
@@ -153,36 +260,26 @@ async function onSupport(msg) {
       console.error('поддержка → администратору:', err.message);
     }
   }
-  if (res.ack) await tg('sendMessage', { chat_id, text: res.ack, disable_web_page_preview: true });
-  return null;
+  const top = res.created ? '✅ Обращение создано — ответим здесь же, обычно в течение дня.\n\n' : '✅ Отправлено.\n\n';
+  return showThread(chat_id, msg.from, res.thread_id, { top });
 }
 
-const NONCE = /^[A-Za-z0-9_-]{20,64}$/;
-
-const when = (iso) =>
-  new Date(iso).toLocaleString('ru-RU', {
-    timeZone: 'Europe/Moscow', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
-  });
-
-/** /start <код> — показываем, что за запрос, и ждём решения. */
+/** /start <код> — вход; /start, /menu — меню; /support, /help, /start support — обращения; ввод — поддержка. */
 async function onMessage(msg) {
   if (msg.chat?.type !== 'private') return; // в группах бот не участвует
   const chat_id = msg.chat.id;
-  const start = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/.exec(msg.text ?? '');
+  const text = msg.text ?? '';
+  const start = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/.exec(text);
   const nonce = start?.[1];
-  // «Написать в поддержку» из приложения (start=support) и /help — подсказка, как написать
-  if (nonce === 'support' || /^\/help(?:@\w+)?\s*$/.test(msg.text ?? '')) {
-    return tg('sendMessage', { chat_id, text: SUPPORT });
+  const st = chatState(chat_id);
+
+  if (nonce === 'support' || /^\/(help|support)(?:@\w+)?\s*$/.test(text)) return showList(chat_id, msg.from);
+  if ((start && !(nonce && NONCE.test(nonce))) || /^\/menu(?:@\w+)?\s*$/.test(text)) return showMenu(chat_id, msg.from);
+  if (!start) {
+    if (st.mode && !text.startsWith('/')) return sendToSupport(msg, st);
+    // Просто текст — не в обращение: непонятно, куда. Меню с подсказкой
+    return showMenu(chat_id, msg.from);
   }
-  if (start && !(nonce && NONCE.test(nonce))) {
-    // Просто /start: привязанному — как написать в поддержку, остальным — как войти
-    const linked = await checker('/api/telegram/known', { telegram_id: msg.from?.id })
-      .then((r) => r.linked)
-      .catch(() => false);
-    return tg('sendMessage', { chat_id, text: linked ? SUPPORT : `${HELP}\n\nЕсли что-то не получается — напишите сюда.`, disable_web_page_preview: true });
-  }
-  // Всё остальное — поддержка: обращение или ответ администратора
-  if (!start) return onSupport(msg);
 
   let info;
   try {
@@ -196,13 +293,13 @@ async function onMessage(msg) {
   }
   if (!info.ok) return tg('sendMessage', { chat_id, text: info.reply });
 
-  const text = info.link
+  const ask = info.link
     ? `Привязать этот Telegram к аккаунту Чекера?\n\nЗапрос с устройства: ${info.device}, ${when(info.created_at)}.`
     : `Войти в Чекер?\n\nЗапрос с устройства: ${info.device}, ${when(info.created_at)}.\n` +
       'Если вход начинали не вы — нажмите «Это не я».';
   const sent = await tg('sendMessage', {
     chat_id,
-    text,
+    text: ask,
     reply_markup: {
       inline_keyboard: [[
         // Ссылка, а не кнопка-ответ: открывает Чекер — в приложении, если оно стоит
@@ -217,10 +314,48 @@ async function onMessage(msg) {
   checker('/api/telegram/sent', { nonce, chat_id, message_id: sent.message_id }).catch(() => {});
 }
 
-/** Нажатие кнопки. Подтверждает тот, кто нажал, и только в своём личном чате с ботом. */
+/** Кнопки меню поддержки: меняют панель на месте. */
+async function onMenuButton(cb) {
+  const chat_id = cb.message.chat.id;
+  const edit = cb.message.message_id;
+  const [action, arg] = String(cb.data).split(':');
+  const st = chatState(chat_id);
+  await tg('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
+  try {
+    if (action === 'menu') return await showMenu(chat_id, cb.from, { edit });
+    if (action === 'sup') return await showList(chat_id, cb.from, 0, { edit });
+    if (action === 'sp') return await showList(chat_id, cb.from, Number(arg) || 0, { edit });
+    if (action === 't') return await showThread(chat_id, cb.from, Number(arg), { edit });
+    if (action === 'new') {
+      st.mode = 'new';
+      return await panel(chat_id, '➕ <b>Новое обращение</b>\n\nОпишите, что случилось или что хотелось бы улучшить, одним сообщением — можно приложить скриншот:',
+        [[{ text: BTN_BACK, callback_data: 'sup' }]], { edit });
+    }
+    if (action === 'r') {
+      st.mode = 'reply';
+      st.thread = Number(arg);
+      return await panel(chat_id, '💬 Напишите ответ одним сообщением — можно приложить скриншот:',
+        [[{ text: '← Обращение', callback_data: `t:${arg}` }]], { edit });
+    }
+    if (action === 'c') {
+      await checker('/api/telegram/support-close', { telegram_id: cb.from.id, id: Number(arg) });
+      return await showThread(chat_id, cb.from, Number(arg), { edit, top: '✅ Обращение закрыто.\n\n' });
+    }
+  } catch (err) {
+    console.error('меню:', err.message);
+    return tg('sendMessage', { chat_id, text: TROUBLE });
+  }
+  return null; // noop — счётчик страниц
+}
+
+/** Нажатие кнопки. Вход подтверждает тот, кто нажал, и только в своём личном чате с ботом. */
 async function onCallback(cb) {
   const [action, nonce] = String(cb.data ?? '').split(':');
   const chat = cb.message?.chat;
+  if (action !== 'no' && action !== 'ok') {
+    if (!chat || chat.type !== 'private') return tg('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
+    return onMenuButton(cb);
+  }
   let reply;
   if (!chat || chat.type !== 'private' || chat.id !== cb.from.id || !NONCE.test(nonce ?? '')) {
     reply = 'Подтвердить вход можно только в личном чате с ботом.';
@@ -255,12 +390,12 @@ async function setup() {
     description:
       'Через этого бота входят в Чекер (checkeris.fun). Нажмите «Войти через Telegram» ' +
       'на сайте — бот спросит, подтверждаете ли вы вход, и покажет, с какого устройства он запрошен.\n\n' +
-      'Что-то не так или есть идея — напишите сюда, ответим здесь же.',
+      'Что-то не так или есть идея — «🆘 Поддержка» в меню бота, ответим здесь же.',
   });
   await tg('setMyCommands', {
     commands: [
-      { command: 'start', description: 'Как войти в Чекер' },
-      { command: 'help', description: 'Написать в поддержку' },
+      { command: 'menu', description: 'Главное меню' },
+      { command: 'support', description: 'Поддержка: обращения' },
     ],
   });
   console.log('описание и меню бота обновлены');
@@ -281,8 +416,14 @@ async function pumpOutbox() {
   for (const m of messages) {
     const call = m.delete_msg
       ? tg('deleteMessage', { chat_id: m.chat_id, message_id: m.delete_msg })
-      // html — уведомления с ссылкой под словом «Посмотреть»; остальное — обычным текстом
-      : tg('sendMessage', { chat_id: m.chat_id, text: m.text, disable_web_page_preview: true, ...(m.html ? { parse_mode: 'HTML' } : {}) });
+      // html — уведомления с ссылкой под словом «Посмотреть»; markup — кнопки («Открыть обращение»)
+      : tg('sendMessage', {
+        chat_id: m.chat_id,
+        text: m.text,
+        disable_web_page_preview: true,
+        ...(m.html ? { parse_mode: 'HTML' } : {}),
+        ...(m.markup ? { reply_markup: JSON.parse(m.markup) } : {}),
+      });
     await call.catch((err) => console.error('outbox:', err.message));
   }
 }

@@ -67,7 +67,7 @@ import { scanQuota } from './quota.mjs';
 import { overview, personDetail, addSource, removeSource } from './admin.mjs';
 import {
   supportIncoming, supportList, supportThread, supportReply, supportStatus,
-  supportMine, supportMineThread, supportFromApp, supportUnread, supportFile,
+  supportMine, supportMineThread, supportFromApp, supportUnread, supportFile, supportBotList, supportBotThread, supportBotClose,
 } from './support.mjs';
 import {
   getTaxonomy,
@@ -376,7 +376,8 @@ async function handleApi(req, res, url) {
 
   // Бот с зарубежного сервера. Открыто наружу, но без верной подписи не принимается
   if (['/api/telegram/describe', '/api/telegram/prepare', '/api/telegram/confirm', '/api/telegram/outbox',
-       '/api/telegram/sent', '/api/telegram/known', '/api/telegram/support'].includes(pathname)) {
+       '/api/telegram/sent', '/api/telegram/known', '/api/telegram/support', '/api/telegram/support-list',
+       '/api/telegram/support-thread', '/api/telegram/support-close'].includes(pathname)) {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     let raw;
     let body;
@@ -393,8 +394,11 @@ async function handleApi(req, res, url) {
     // Сообщения, которые Чекер хочет отправить людям: бот забирает их и отправляет сам
     if (pathname.endsWith('/outbox')) return sendJson(res, 200, { messages: takeOutbox(db) });
     if (pathname.endsWith('/sent')) return sendJson(res, 200, noteBotMessage(db, body));
-    // Поддержка (support.mjs): сообщение боту, которое не вход
+    // Поддержка (support.mjs): меню бота — список, переписка, закрытие — и новое сообщение
     if (pathname.endsWith('/support')) return sendJson(res, 200, supportIncoming(db, body));
+    if (pathname.endsWith('/support-list')) return sendJson(res, 200, supportBotList(db, body));
+    if (pathname.endsWith('/support-thread')) return sendJson(res, 200, supportBotThread(db, body));
+    if (pathname.endsWith('/support-close')) return sendJson(res, 200, supportBotClose(db, body));
     // Привязан ли этот Telegram к аккаунту: привязанным бот на случайные сообщения не отвечает
     if (pathname.endsWith('/known')) {
       const id = Number(body.telegram_id);
