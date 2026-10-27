@@ -785,6 +785,7 @@ function go(patch, replace = false) {
   // запоминаем его здесь же: «назад» из карточки вернёт к той же выборке
   if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY, q: state.q, same: state.same, mode: state.mode, ringGroup: state.ringGroup, ringRest: state.ringRest }, '', location.href);
   Object.assign(state, patch);
+  rememberPeriod();
   const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
   if (state.category) params.set('category', state.category);
@@ -829,6 +830,9 @@ function readUrl() {
     // старые ссылки и ярлыки хранили месяц
     const [y, m] = p.get('month').split('-').map(Number);
     Object.assign(state, monthPeriod(y, m - 1));
+  } else if (tabPeriods[TAB_OF[state.screen]]) {
+    // Запуск без периода в адресе — с тем, что был у вкладки в прошлый раз
+    Object.assign(state, tabPeriods[TAB_OF[state.screen]]);
   }
   state.group = p.get('group') ?? '';
   state.category = p.get('category') ?? '';
@@ -6228,13 +6232,35 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
 });
 
 // Период у каждой вкладки свой: сменили период в «Сводке» — «Расход» и «Доход» остаются на своих.
-// Помним до перезапуска; вкладка, у которой своего ещё нет, открывается с текущим периодом
-const tabPeriods = {};
+// Помним и после перезапуска (checker.tabPeriods); вкладка, у которой своего ещё нет,
+// открывается с текущим периодом
+const TAB_PERIODS_KEY = 'checker.tabPeriods';
+const tabPeriods = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TAB_PERIODS_KEY) || '{}');
+    return Object.fromEntries(Object.entries(saved).filter(([, p]) => isDay(p?.from) && isDay(p?.to) && p.from <= p.to));
+  } catch {
+    return {}; // хранилище недоступно — помним до перезапуска
+  }
+})();
+
+/** Период открытого экрана — его вкладке: смена периода переживёт и переход, и перезапуск. */
+function rememberPeriod() {
+  const tab = TAB_OF[state.screen];
+  if (!tab || !state.from || !state.to) return;
+  const was = tabPeriods[tab];
+  if (was?.from === state.from && was?.to === state.to) return;
+  tabPeriods[tab] = { from: state.from, to: state.to };
+  try {
+    localStorage.setItem(TAB_PERIODS_KEY, JSON.stringify(tabPeriods));
+  } catch {
+    // не сохранилось — до перезапуска всё равно помним
+  }
+}
 
 function openTab(name, extra = {}, tapped = true) {
   if (tapped) pillTap(TAB_OF[state.screen], name);
-  const was = TAB_OF[state.screen];
-  if (was && state.from && state.to) tabPeriods[was] = { from: state.from, to: state.to };
+  rememberPeriod();
   // Период не задан явно (попап острова, сценарий) — свой у вкладки
   if (!('from' in extra) && tabPeriods[name]) extra = { ...tabPeriods[name], ...extra };
   const sort = defaultSort(name);
