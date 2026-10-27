@@ -6227,19 +6227,16 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   openTab(tab.dataset.tab, {}, e.isTrusted);
 });
 
-// Период у каждой вкладки свой: заглянули в «Сводку» (она открывается годом) — «Расход» и «Доход»
-// остаются на своих месяцах. Помним до перезапуска
+// Период у каждой вкладки свой: сменили период в «Сводке» — «Расход» и «Доход» остаются на своих.
+// Помним до перезапуска; вкладка, у которой своего ещё нет, открывается с текущим периодом
 const tabPeriods = {};
 
 function openTab(name, extra = {}, tapped = true) {
   if (tapped) pillTap(TAB_OF[state.screen], name);
   const was = TAB_OF[state.screen];
   if (was && state.from && state.to) tabPeriods[was] = { from: state.from, to: state.to };
-  // Период не задан явно (попап острова, сценарий) — свой у вкладки; «Сводка» впервые — год (по месяцам)
-  if (!('from' in extra)) {
-    const own = tabPeriods[name] ?? (name === 'stats' ? monthPeriod(new Date().getFullYear(), 0, 12) : null);
-    if (own) extra = { ...own, ...extra };
-  }
+  // Период не задан явно (попап острова, сценарий) — свой у вкладки
+  if (!('from' in extra) && tabPeriods[name]) extra = { ...tabPeriods[name], ...extra };
   const sort = defaultSort(name);
   go({ screen: name, group: '', category: '', item: '', bank: '', sort, dir: SORTS[sort][1], q: '', same: '', ringGroup: '', ringRest: '', sg: '', ...extra }, true);
 }
