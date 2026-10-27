@@ -32,6 +32,29 @@
         <span class="tg-ic" id="tg-ic"></span><span data-i18n="login.tg">Войти через Telegram</span>
       </a>
 
+      <!-- Вход по почте: код из письма (api/src/emailauth.mjs). Кнопка — только когда почта настроена -->
+      <button class="btn mail-btn" id="mail-login" type="button" hidden>
+        <span class="mail-ic" id="mail-ic"></span><span data-i18n="login.mail.button">Войти по почте</span>
+      </button>
+      <div class="mail-box" id="mail-box" hidden>
+        <form id="mail-form" novalidate>
+          <input id="mail-email" type="email" inputmode="email" autocomplete="email" enterkeyhint="send" placeholder="Почта" data-i18n-attr="placeholder:login.mail.email" />
+          <div id="mail-captcha"></div>
+          <button class="btn primary" id="mail-send" type="submit" data-i18n="login.mail.send">Получить код</button>
+        </form>
+        <form id="mail-code-form" novalidate hidden>
+          <p class="note" id="mail-sent"></p>
+          <input id="mail-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" enterkeyhint="done" placeholder="Код из письма" data-i18n-attr="placeholder:login.mail.code" />
+          <button class="btn primary" id="mail-verify" type="submit" data-i18n="login.submit">Войти</button>
+          <div class="mail-links">
+            <button class="link" id="mail-resend" type="button" disabled></button>
+            <button class="link" id="mail-change" type="button" data-i18n="login.mail.change">Другая почта</button>
+          </div>
+        </form>
+        <p class="note error" id="mail-error" hidden></p>
+        <button class="link" id="mail-cancel" type="button" data-i18n="common.cancel">Отмена</button>
+      </div>
+
       <div class="tg-wait" id="tg-wait" hidden>
         <p class="tg-wait-title" data-i18n="login.waitTitle">Подтвердите вход в Telegram</p>
         <p class="note" data-i18n="login.waitNote">Бот покажет, с какого устройства запрошен вход, — нажмите «Войти» и вернитесь сюда.</p>
@@ -41,7 +64,7 @@
       </div>
 
       <p class="note consent" data-i18n-html="login.consentHtml">Входя, вы соглашаетесь на <a href="/privacy.html">обработку данных</a>:
-        храним имя и id из Telegram и чеки, которые вы добавите.</p>
+        храним имя, почту или id из Telegram и чеки, которые вы добавите.</p>
 
       <details class="login-pass" id="login-pass-block">
         <summary data-i18n="login.password">Войти по паролю</summary>

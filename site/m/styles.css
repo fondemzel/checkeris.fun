@@ -159,6 +159,31 @@ button, input, select { font: inherit; color: inherit; }
 .tg-wait-title { margin: 0; font-weight: 600; }
 .tg-wait .btn { display: flex; align-items: center; justify-content: center; color: var(--text); text-decoration: none; }
 
+/* Вход по почте — вторая кнопка, спокойная: главный вход — Telegram */
+.btn.mail-btn { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text); }
+.btn.mail-btn[hidden] { display: none; }
+.mail-ic svg { width: 20px; height: 20px; display: block; }
+.mail-box { display: flex; flex-direction: column; gap: 10px; }
+.mail-box[hidden], .mail-box form[hidden], .mail-box .note[hidden] { display: none; }
+.mail-box form { display: flex; flex-direction: column; gap: 10px; }
+#mail-code { letter-spacing: 6px; font-size: 22px; text-align: center; }
+/* Разрядка — для цифр кода; подсказка в пустом поле — обычным текстом */
+#mail-code:placeholder-shown, .link-email-box .mail-code:placeholder-shown { letter-spacing: normal; font-size: 16px; }
+.mail-links { display: flex; justify-content: space-between; gap: 12px; }
+.mail-box .note.error { margin: 0; color: var(--danger); }
+.mail-box .link:disabled { color: var(--muted); }
+
+/* Кнопка в конце строки настроек: «Привязать» */
+.srow .btn.small { flex: none; height: 32px; margin-right: 12px; padding: 0 14px; font-size: 14px; }
+
+/* Почта в профиле: те же поля, что на экране входа */
+.link-email-box { padding: 12px 0 14px; }
+.link-email-box .mail-box { margin: 0; }
+.link-email-box input { height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: 16px; }
+.link-email-box .mail-code { letter-spacing: 6px; font-size: 22px; text-align: center; }
+.link-email-box .note.error { margin: 10px 0 0; color: var(--danger); }
+.link-email-box .note.error[hidden] { display: none; }
+
 .consent { font-size: 12px; }
 .consent a { color: inherit; }
 

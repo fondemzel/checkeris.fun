@@ -65,6 +65,8 @@ import {
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
 import { overview, personDetail, addSource, removeSource } from './admin.mjs';
+import { emailConfig, sendCode, loginByCode, linkByCode } from './emailauth.mjs';
+import { mailReady } from './mail.mjs';
 import {
   supportIncoming, supportList, supportThread, supportReply, supportStatus,
   supportMine, supportMineThread, supportFromApp, supportUnread, supportFile, supportBotList, supportBotThread, supportBotClose,
@@ -329,6 +331,25 @@ async function handleApi(req, res, url) {
     return handleToken(req, res);
   }
 
+  // ── вход по почте (emailauth.mjs) ──
+  // Есть ли вход по почте и ключ капчи для страницы
+  if (pathname === '/api/auth/email' && req.method === 'GET') return sendJson(res, 200, emailConfig());
+  // Письмо с кодом: капча и лимиты — внутри; здесь — грубый предел частоты с одного адреса
+  if (pathname === '/api/auth/email/start' || pathname === '/api/auth/email/verify') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    if (tooOften(`mail:${clientIp(req)}`, 30, 10 * 60_000)) return sendJson(res, 429, { error: 'слишком много попыток, подождите', code: 'limit' });
+    let body = {};
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = pathname.endsWith('/start')
+      ? await sendCode(db, { email: body.email, captcha: body.captcha, ip: clientIp(req), lang: body.lang })
+      : loginByCode(db, { email: body.email, code: body.code, label: body.label, source: body.from });
+    return result.error ? sendJson(res, result.status, result) : sendJson(res, 200, result);
+  }
+
   // ── вход через Telegram ──
   // Начало: браузер получает одноразовый код. С токеном и link=true — привязка
   // Telegram к уже вошедшему аккаунту, а не вход
@@ -435,7 +456,7 @@ async function handleApi(req, res, url) {
   // Тестовая база общая — в ней ничего не меняется и ничего не загружается: правка одного
   // была бы видна всем, а настоящие операции из банка пропали бы в ней. Выйти из аккаунта,
   // удалить его и сменить имя — можно
-  if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session', '/api/support'].includes(pathname)
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session', '/api/support', '/api/account/email/start', '/api/account/email/verify'].includes(pathname)
     && isDemo(db, user.budget_id)) {
     return sendJson(res, 409, { error: 'Это демо-режим — в нём ничего не меняется. Выключить его можно в настройках, в разделе «Помощь»', demo: true });
   }
@@ -469,6 +490,8 @@ async function handleApi(req, res, url) {
       name: user.name ?? user.login,
       role: user.role,
       telegram: user.telegram,
+      email: user.email,
+      email_login: mailReady(), // почта на сервере настроена — можно входить и привязывать
       telegram_login: telegramReady(),
       support_unread: supportUnread(db, user.id), // ответы поддержки, которых человек ещё не видел
     });
@@ -548,6 +571,22 @@ async function handleApi(req, res, url) {
   if (mySupport && req.method === 'GET') {
     const thread = supportMineThread(db, user, mySupport);
     return thread ? sendJson(res, 200, thread) : sendJson(res, 404, { error: 'нет такого обращения' });
+  }
+
+  // Привязать почту к аккаунту: код на неё, потом код обратно (emailauth.mjs). Капча не нужна —
+  // человек уже вошёл, а лимиты те же
+  if (pathname === '/api/account/email/start' || pathname === '/api/account/email/verify') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    let body = {};
+    try {
+      body = await readJson(req);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request body' });
+    }
+    const result = pathname.endsWith('/start')
+      ? await sendCode(db, { email: body.email, purpose: 'link', userId: user.id, ip: clientIp(req), lang: body.lang })
+      : linkByCode(db, user, body);
+    return result.error ? sendJson(res, result.status, result) : sendJson(res, 200, result);
   }
 
   if (pathname === '/api/logout') {

@@ -34,8 +34,26 @@ CREATE TABLE IF NOT EXISTS users (
   home_budget_id INTEGER REFERENCES budgets (id), -- свой бюджет: в него человек вернётся, выйдя из общего
   demo_return    INTEGER,                         -- включена тестовая база: в какой бюджет вернуться (demo.mjs)
   notify_members INTEGER NOT NULL DEFAULT 1,      -- сообщать в Telegram, что другой участник внёс трату (members.mjs)
-  source         TEXT                             -- откуда пришёл: метка ссылки ?from=… при регистрации (admin.mjs)
+  source         TEXT,                            -- откуда пришёл: метка ссылки ?from=… при регистрации (admin.mjs)
+  email          TEXT                             -- почта: вход по коду из письма и привязка (emailauth.mjs); уникальна (индекс — в migrate)
 );
+
+-- Коды из писем: вход по почте и привязка почты (emailauth.mjs). Код — хешем вместе с почтой,
+-- живёт 10 минут, 5 попыток; адрес отправителя запроса — хешем, только для лимитов.
+CREATE TABLE IF NOT EXISTS email_codes (
+  id         INTEGER PRIMARY KEY,
+  email      TEXT NOT NULL,
+  code_hash  TEXT NOT NULL,
+  purpose    TEXT NOT NULL,            -- login | link
+  user_id    INTEGER REFERENCES users (id) ON DELETE CASCADE, -- привязка: к чьему аккаунту
+  ip_hash    TEXT,
+  attempts   INTEGER NOT NULL DEFAULT 0,
+  used       INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_codes_email ON email_codes (email, created_at);
 
 -- Метки ссылок, по которым приходят люди: checkeris.fun/?from=<slug>. Заводит администратор,
 -- чтобы видеть, сколько пришло из поста, чата, канала. Метка без записи здесь тоже

@@ -25,7 +25,7 @@ try {
 } catch {
   /* без хранилища метка проживёт только эту страницу — и потеряется */
 }
-const savedFrom = () => {
+export const savedFrom = () => {
   try {
     return localStorage.getItem(FROM_KEY);
   } catch {

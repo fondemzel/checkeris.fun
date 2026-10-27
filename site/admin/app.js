@@ -284,7 +284,7 @@ function filterPeople(list) {
   const { q, channel, activity } = state.filter;
   const needle = q.trim().toLowerCase();
   return list.filter((u) => {
-    if (needle && ![u.name, u.tg_username, channelName(u.channel), u.invited_by].some((v) => String(v ?? '').toLowerCase().includes(needle))) return false;
+    if (needle && ![u.name, u.tg_username, u.email, channelName(u.channel), u.invited_by].some((v) => String(v ?? '').toLowerCase().includes(needle))) return false;
     if (channel && u.channel !== channel) return false;
     if (activity === 'week' && daysSince(u.last_seen) > 7) return false;
     if (activity === 'gone' && daysSince(u.last_seen) <= 7) return false;
@@ -301,7 +301,7 @@ const PEOPLE_COLS = [
     key: 'name',
     label: 'Человек',
     value: (u) => u.name.toLowerCase(),
-    cell: (u) => `<div class="who">${esc(u.name)}</div>${u.tg_username ? `<div class="sub">@${esc(u.tg_username)}</div>` : ''}`,
+    cell: (u) => `<div class="who">${esc(u.name)}</div>${u.tg_username ? `<div class="sub">@${esc(u.tg_username)}</div>` : ''}${u.email ? `<div class="sub">${esc(u.email)}</div>` : ''}`,
   },
   {
     key: 'created_at',
@@ -368,7 +368,7 @@ function pagePerson(u) {
     `<div class="kv">
       <div class="k">Зарегистрирован</div><div>${esc(dateTimeRu(u.created_at))}</div>
       <div class="k">Откуда</div><div>${esc(from)}</div>
-      <div class="k">Вход</div><div>${u.telegram ? 'Telegram' : 'пароль'}</div>
+      <div class="k">Вход</div><div>${esc([u.telegram && 'Telegram', u.email && `почта ${u.email}`].filter(Boolean).join(', ') || 'пароль')}</div>
       <div class="k">Сканы</div><div>${esc(scans)}</div>
       <div class="k">Лимиты</div><div>${u.limits ? 'заданы' : 'нет'}</div>
       <div class="k">Демо-режим</div><div>${u.in_demo ? 'включён сейчас' : 'выключен'}</div>

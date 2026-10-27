@@ -29,7 +29,7 @@ function shades(hex, n, from = 25, to = 85) {
   if (n === 1) return [mix((from + to) / 2)];
   return Array.from({ length: n }, (_, i) => mix(from + ((to - from) * i) / (n - 1)));
 }
-import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin } from '/shared/tglogin.js';
+import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin, savedFrom, requestLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
 import { T, f, pl, lang } from '/m/i18n/index.js';
 import qrcode from '/shared/qrcode.js';
@@ -364,7 +364,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'income_add', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits', 'set_backup', 'set_support', 'set_ticket'];
+  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits', 'set_backup', 'set_support', 'set_ticket', 'set_email'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -4591,6 +4591,7 @@ const SCREENS = {
   set_limits: { title: T.settings.limits.label, render: screenSetLimits, after: limitsFocus },
   set_backup: { title: T.settings.backup.label, render: screenSetBackup },
   set_support: { title: T.settings.support.title, render: screenSetSupport },
+  set_email: { title: T.settings.profile.emailTitle, render: screenSetEmail, after: () => document.getElementById('link-email')?.focus() },
   // Поле сообщения — внизу, над меню, как в мессенджере (полоса #actions)
   set_ticket: {
     title: () => (state.sup === 'new' ? T.settings.support.newTitle : T.settings.support.ticket),
@@ -4637,7 +4638,7 @@ const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', income_add: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary', autolabel: 'summary',
-  set_profile: 'settings', set_motion: 'settings', set_limits: 'settings', set_backup: 'settings', set_support: 'settings', set_ticket: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
+  set_profile: 'settings', set_motion: 'settings', set_limits: 'settings', set_backup: 'settings', set_support: 'settings', set_ticket: 'settings', set_email: 'settings', set_budget: 'settings', set_banks: 'settings', privacy: 'settings', set_cats: 'settings', set_group: 'settings', set_cat: 'settings',
 };
 
 /**
@@ -6918,7 +6919,18 @@ $('screen').addEventListener('click', (e) => {
 async function screenSetProfile() {
   const me = await apiKept('/api/session').catch(() => null);
   const P = T.settings.profile;
-  return section(P.block, me?.telegram ? P.footTelegram : P.footPassword,
+  linkEmail = ''; // недоделанная привязка почты не ждёт кода вечно — с профиля начинаем заново
+  // Способы входа: Telegram и почта — в один и тот же аккаунт. Не привязан — привязать отсюда
+  const tgRow = me?.telegram
+    ? srow({ icon: TG_ICON, title: P.tg, note: P.linked })
+    : me?.telegram_login
+      ? srow({ icon: TG_ICON, title: P.tg, note: P.notLinked, end: `<button class="btn small" type="button" data-tg-link>${P.link}</button>` })
+      : '';
+  // Почта на сервере не настроена — сменить или добавить пока нельзя, только показать
+  const mailRow = me?.email
+    ? srow({ icon: UI.mail, title: esc(me.email), note: P.emailNote, ...(me.email_login ? { attrs: 'data-set="email"', end: GO } : {}) })
+    : me?.email_login ? srow({ icon: UI.mail, title: P.emailAdd, note: P.emailAddNote, attrs: 'data-set="email"', end: GO }) : '';
+  return section(P.block, '',
     srow({
       icon: UI.user,
       title: inlineEdit('name', me?.name ?? '', { cls: 'srow-input', label: P.nameLabel, placeholder: P.namePlaceholder, max: 60 }),
@@ -6926,8 +6938,117 @@ async function screenSetProfile() {
     }) + srow({ icon: UI.logout, title: P.logout, attrs: 'data-logout' })
       + (me?.role === 'admin'
         ? ''
-        : srow({ icon: UI.trash, title: T.settings.deleteAccount, note: T.settings.data.deleteNote, attrs: 'data-delete-account', danger: true })));
+        : srow({ icon: UI.trash, title: T.settings.deleteAccount, note: T.settings.data.deleteNote, attrs: 'data-delete-account', danger: true })))
+    + section(P.ways, P.waysFoot, tgRow + mailRow);
 }
+
+// ── почта в профиле: добавить или сменить ────────────────
+// Тем же кодом из письма, что и вход (api/src/emailauth.mjs): код пришёл на почту — значит,
+// почта человека. Капча не нужна — он уже вошёл; лимиты на письма те же.
+
+let linkEmail = ''; // куда ушёл код
+
+function screenSetEmail() {
+  const P = T.settings.profile;
+  const M = T.login.mail;
+  const step = linkEmail ? 'code' : 'email';
+  const body = step === 'email'
+    ? `<form class="mail-box" id="link-email-form" novalidate>
+        <input id="link-email" type="email" inputmode="email" autocomplete="email" enterkeyhint="send" placeholder="${esc(M.email)}" />
+        <button class="btn primary" type="submit">${M.send}</button>
+      </form>`
+    : `<form class="mail-box" id="link-code-form" novalidate>
+        <p class="note">${esc(f(M.sent, { email: linkEmail }))}</p>
+        <input id="link-email" class="mail-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" enterkeyhint="done" placeholder="${esc(M.code)}" />
+        <button class="btn primary" type="submit">${P.emailConfirm}</button>
+        <button class="link" type="button" data-link-again>${M.change}</button>
+      </form>`;
+  return section('', P.emailFoot, `<div class="link-email-box">${body}<p class="note error" id="link-error" hidden></p></div>`);
+}
+
+function linkError(data) {
+  const M = T.login.mail;
+  const text = data ? (data.code === 'wrong' ? f(M.err.wrong, { left: data.left }) : M.err[data.code] ?? M.err.other) : '';
+  const el = document.getElementById('link-error');
+  if (!el) return;
+  el.textContent = text;
+  el.hidden = !text;
+}
+
+/** Запрос с токеном; ошибка — с кодом причины, текст — из словаря. */
+async function linkPost(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token.get()}` },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `HTTP ${res.status}`), { data: { code: data.code ?? 'other', left: data.left } });
+  return data;
+}
+
+$('screen').addEventListener('submit', async (e) => {
+  if (!['link-email-form', 'link-code-form'].includes(e.target.id)) return;
+  e.preventDefault();
+  const button = e.target.querySelector('button[type="submit"]');
+  const value = document.getElementById('link-email').value.trim();
+  button.disabled = true;
+  try {
+    if (e.target.id === 'link-email-form') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) throw Object.assign(new Error('bad'), { data: { code: 'bad_email' } });
+      const res = await linkPost('/api/account/email/start', { email: value, lang });
+      linkEmail = res.email;
+      return render();
+    }
+    if (value.replace(/\D/g, '').length !== 6) throw Object.assign(new Error('short'), { data: { code: 'short' } });
+    await linkPost('/api/account/email/verify', { email: linkEmail, code: value });
+    linkEmail = '';
+    kept.delete('/api/session');
+    toast(T.settings.profile.emailDone);
+    return history.back(); // в профиль — там уже новая почта
+  } catch (err) {
+    linkError(err.data ?? { code: 'other' });
+    button.disabled = false;
+  }
+  return null;
+});
+
+// Код набрали целиком (или телефон вставил его из письма) — подтверждаем сразу
+$('screen').addEventListener('input', (e) => {
+  if (e.target.id === 'link-email' && document.getElementById('link-code-form') && e.target.value.replace(/\D/g, '').length === 6) {
+    document.getElementById('link-code-form').requestSubmit();
+  }
+});
+
+$('screen').addEventListener('click', async (e) => {
+  if (e.target.closest('[data-link-again]')) {
+    linkEmail = '';
+    return render();
+  }
+  // Привязать Telegram к аккаунту с почтой: вход через бота в режиме привязки
+  const tg = e.target.closest('[data-tg-link]');
+  if (!tg) return null;
+  tg.disabled = true;
+  try {
+    const login = await requestLogin({ token: token.get(), link: true, client: 'm' });
+    location.href = login.app_url ?? login.url;
+    waitLogin(login.nonce, {
+      onDone: () => {
+        kept.delete('/api/session');
+        toast(T.settings.profile.tgDone);
+        render();
+      },
+      onFail: (message) => {
+        toast(message);
+        tg.disabled = false;
+      },
+    });
+  } catch (err) {
+    toast(f(T.common.failedWhy, { error: err.message }));
+    tg.disabled = false;
+  }
+  return null;
+});
 
 async function screenSetBudget() {
   return budgetSection(await apiKept('/api/budget').catch(() => null)) + exportSection();
@@ -8796,7 +8917,177 @@ function showLogin(note) {
   // Вернулись из Telegram, а страница перезагрузилась — продолжаем ждать тот же вход
   const pending = pendingLogin();
   if (pending) awaitTelegram(pending);
+  mailLoginReady();
 }
+
+// ── вход по почте ────────────────────────────────────────
+// Почта — такой же способ войти, как Telegram: код из письма (api/src/emailauth.mjs). Перед
+// письмом — невидимая Яндекс SmartCaptcha: письмо можно заказать на любой адрес, и без
+// проверки нас заваливали бы рассылкой. Кнопка видна, только когда почта на сервере настроена.
+
+let mailCfg = null; // { ready, captcha } — с сервера
+let mailEmail = ''; // куда ушёл код
+let captchaWidget = null;
+let captchaWaiter = null; // ждём токен от капчи
+let resendTimer = null;
+
+async function mailLoginReady() {
+  $('mail-ic').innerHTML = UI.mail;
+  try {
+    mailCfg = await fetch('/api/auth/email').then((r) => r.json());
+  } catch {
+    mailCfg = null;
+  }
+  $('mail-login').hidden = !mailCfg?.ready || !$('tg-wait').hidden || !$('mail-box').hidden;
+}
+
+/** Капча Яндекса — скрипт грузим, только когда человек выбрал вход по почте. */
+function loadCaptcha() {
+  if (!mailCfg?.captcha || captchaWidget !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    window.onSmartCaptchaReady = () => {
+      captchaWidget = window.smartCaptcha.render('mail-captcha', {
+        sitekey: mailCfg.captcha,
+        invisible: true,
+        hl: lang,
+        hideShield: false, // надпись об обработке данных обязательна в невидимом режиме
+        callback: (token) => {
+          captchaWaiter?.(token);
+          captchaWaiter = null;
+        },
+      });
+      resolve();
+    };
+    const s = document.createElement('script');
+    s.src = 'https://smartcaptcha.yandexcloud.net/captcha.js?render=onload&onload=onSmartCaptchaReady';
+    s.defer = true;
+    s.onerror = () => resolve(); // не загрузилась — сервер сам решит, пускать ли без неё
+    document.head.append(s);
+  });
+}
+
+/** Токен капчи: невидимая проверка, при сомнениях Яндекс покажет задание. */
+function captchaToken() {
+  if (captchaWidget === null || !window.smartCaptcha) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    captchaWaiter = resolve;
+    window.smartCaptcha.reset(captchaWidget); // токен одноразовый — каждый раз новый
+    window.smartCaptcha.execute(captchaWidget);
+  });
+}
+
+function mailError(data) {
+  const M = T.login.mail;
+  const text = data ? (data.code === 'wrong' ? f(M.err.wrong, { left: data.left }) : M.err[data.code] ?? M.err.other) : '';
+  $('mail-error').textContent = text;
+  $('mail-error').hidden = !text;
+}
+
+const mailPost = async (path, body) => {
+  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `HTTP ${res.status}`), { data: { code: data.code ?? 'other', left: data.left } });
+  return data;
+};
+
+/** Шаг: почта или код. */
+function mailStep(step) {
+  $('mail-form').hidden = step !== 'email';
+  $('mail-code-form').hidden = step !== 'code';
+  if (step === 'code') {
+    $('mail-sent').textContent = f(T.login.mail.sent, { email: mailEmail });
+    $('mail-code').value = '';
+    $('mail-code').focus();
+    resendIn(60);
+  } else {
+    $('mail-email').focus();
+  }
+}
+
+/** «Отправить ещё раз» — через минуту, с обратным отсчётом. */
+function resendIn(sec) {
+  clearInterval(resendTimer);
+  const btn = $('mail-resend');
+  const tick = () => {
+    btn.disabled = sec > 0;
+    btn.textContent = sec > 0 ? f(T.login.mail.resendIn, { sec }) : T.login.mail.resend;
+    if (sec-- <= 0) clearInterval(resendTimer);
+  };
+  tick();
+  resendTimer = setInterval(tick, 1000);
+}
+
+async function sendMailCode(email) {
+  mailError(null);
+  $('mail-send').disabled = true;
+  $('mail-resend').disabled = true;
+  try {
+    await loadCaptcha();
+    const captcha = await captchaToken();
+    const res = await mailPost('/api/auth/email/start', { email, captcha, lang });
+    mailEmail = res.email;
+    mailStep('code');
+  } catch (err) {
+    mailError(err.data ?? { code: 'other' });
+    if (!$('mail-code-form').hidden) resendIn(0);
+  } finally {
+    $('mail-send').disabled = false;
+  }
+}
+
+$('mail-login').addEventListener('click', async () => {
+  $('mail-login').hidden = true;
+  $('tg-login').hidden = true;
+  $('mail-box').hidden = false;
+  mailError(null);
+  mailStep('email');
+  loadCaptcha(); // заранее — к нажатию «Получить код» уже будет готова
+});
+
+$('mail-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const email = $('mail-email').value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return mailError({ code: 'bad_email' });
+  return sendMailCode(email);
+});
+
+$('mail-resend').addEventListener('click', () => sendMailCode(mailEmail));
+$('mail-change').addEventListener('click', () => {
+  mailError(null);
+  mailStep('email');
+});
+$('mail-cancel').addEventListener('click', () => {
+  clearInterval(resendTimer);
+  $('mail-box').hidden = true;
+  $('tg-login').hidden = false;
+  mailError(null);
+  mailLoginReady();
+});
+
+$('mail-code-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = $('mail-code').value.replace(/\D/g, '');
+  if (code.length !== 6) return mailError({ code: 'short' });
+  $('mail-verify').disabled = true;
+  try {
+    const data = await mailPost('/api/auth/email/verify', { email: mailEmail, code, label: T.login.device, from: savedFrom() });
+    token.set(data.token);
+    clearInterval(resendTimer);
+    $('mail-box').hidden = true;
+    stopLinkRefresh?.();
+    await start();
+  } catch (err) {
+    mailError(err.data ?? { code: 'other' });
+  } finally {
+    $('mail-verify').disabled = false;
+  }
+  return null;
+});
+
+// Код набрали целиком (или телефон вставил его из письма) — входим сразу
+$('mail-code').addEventListener('input', () => {
+  if ($('mail-code').value.replace(/\D/g, '').length === 6) $('mail-code-form').requestSubmit();
+});
 
 function setWaiting(login) {
   $('tg-wait').hidden = !login;

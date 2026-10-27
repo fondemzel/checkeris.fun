@@ -48,7 +48,7 @@ export function userByToken(db, token) {
   if (!token) return null;
   const row = db
     .prepare(
-      `SELECT t.hash, t.expires_at, u.id, u.login, u.name, u.role, u.telegram_id, u.budget_id, u.home_budget_id
+      `SELECT t.hash, t.expires_at, u.id, u.login, u.name, u.role, u.telegram_id, u.email, u.budget_id, u.home_budget_id
          FROM tokens t JOIN users u ON u.id = t.user_id
         WHERE t.hash = ?`,
     )
@@ -71,6 +71,7 @@ export function userByToken(db, token) {
     name: row.name,
     role: row.role,
     telegram: Boolean(row.telegram_id),
+    email: row.email ?? null,
     budget_id: row.budget_id,
     home_budget_id: row.home_budget_id,
   };

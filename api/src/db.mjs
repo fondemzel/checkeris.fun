@@ -87,6 +87,8 @@ function addUserColumns(db) {
   db.exec('DROP TABLE IF EXISTS support_relay');
   if (db.prepare("SELECT 1 FROM pragma_table_info('tg_outbox') WHERE name = 'support_thread'").get()) db.exec('ALTER TABLE tg_outbox DROP COLUMN support_thread');
   addColumn(db, 'users', 'source', 'TEXT');
+  addColumn(db, 'users', 'email', 'TEXT'); // вход по почте (emailauth.mjs)
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL');
   addColumn(db, 'tg_outbox', 'delete_msg', 'INTEGER');
   addColumn(db, 'tg_outbox', 'html', 'INTEGER NOT NULL DEFAULT 0'); // разметка: ссылка под словом
   addColumn(db, 'receipts', 'place_key', 'TEXT');

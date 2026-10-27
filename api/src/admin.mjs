@@ -34,7 +34,7 @@ function people(db) {
   const since30 = dayAgo(29);
   const rows = db
     .prepare(
-      `SELECT u.id, u.name, u.tg_username, u.created_at, u.source, u.telegram_id IS NOT NULL AS telegram,
+      `SELECT u.id, u.name, u.tg_username, u.email, u.created_at, u.source, u.telegram_id IS NOT NULL AS telegram,
               u.demo_return IS NOT NULL AS in_demo,
               (SELECT MAX(t.used_at) FROM tokens t WHERE t.user_id = u.id) AS last_seen,
               (SELECT COUNT(*) FROM usage_daily a WHERE a.user_id = u.id AND a.kind = 'active' AND a.day >= :since30) AS active_days,
@@ -79,6 +79,7 @@ function people(db) {
     id: u.id,
     name: u.name ?? `#${u.id}`,
     tg_username: u.tg_username,
+    email: u.email,
     telegram: Boolean(u.telegram),
     created_at: u.created_at,
     channel: channelOf(u),
