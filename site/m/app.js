@@ -8523,14 +8523,17 @@ window.addEventListener('checker-bank-ready', (e) => {
 window.addEventListener('checker-bank', (e) => {
   forgetAppInfo();
   feedData.clear(); // пришли новые операции или чеки
+  // Сбер в приложениях до 0.7.16 не называет себя в итоге — тогда банк тот, что обновляли
+  const r = { ...e.detail };
+  r.bank ??= bankSyncing ?? 'tbank';
   bankSyncing = null;
-  const r = e.detail ?? {};
   // Пришло новое и известно, с какого момента, — показываем, что именно и куда легло
-  const since = syncSince.get(r.bank ?? 'tbank');
-  syncSince.delete(r.bank ?? 'tbank');
+  const since = syncSince.get(r.bank);
+  syncSince.delete(r.bank);
   if (r.ok && !r.error && r.ops && since) {
     if (state.screen === 'set_banks' || state.screen === 'bank_card') render();
-    return openFresh(r.bank ?? 'tbank', since, f(bankById(r.bank)?.shop ? T.bankCard.sync.addedShop : T.bankCard.sync.added, { n: int.format(r.ops) }));
+    const title = f(bankById(r.bank)?.shop ? T.bankCard.sync.addedShop : T.bankCard.sync.added, { n: int.format(r.ops) });
+    return openFresh(r.bank, since, title, title);
   }
   // Показываем новое, а не всё проверенное: банк каждый раз отдаёт и последние дни
   toast(
@@ -8659,7 +8662,7 @@ function onFreshClick(e, { collapsed, redraw, refresh }) {
   return true;
 }
 
-async function openFresh(bank, since, title) {
+async function openFresh(bank, since, title, empty) {
   const b = bankById(bank);
   let data;
   try {
@@ -8667,7 +8670,8 @@ async function openFresh(bank, since, title) {
   } catch (err) {
     return toast(f(T.wizard.fresh.openFailed, { error: err.message }));
   }
-  if (!data.rows.length) return toast(b?.shop ? T.bankCard.sync.noneShop : T.bankCard.sync.none);
+  // Пусто: в мастере — нечего показать; после обновления новое оказалось переводами между своими
+  if (!data.rows.length) return toast(empty ?? (b?.shop ? T.bankCard.sync.noneShop : T.bankCard.sync.none));
 
   const sheet = document.createElement('div');
   sheet.className = 'sheet';

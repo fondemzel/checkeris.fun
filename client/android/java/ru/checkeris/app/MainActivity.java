@@ -327,7 +327,7 @@ public class MainActivity extends android.app.Activity {
                 LinkReport.send(checkerToken, "sber", result, SberSync.expired(MainActivity.this), false);
                 String json;
                 try {
-                    json = result.json().toString();
+                    json = result.json().put("bank", "sber").toString();
                 } catch (Exception e) {
                     json = "{\"ok\":false,\"error\":\"сбой\"}";
                 }
