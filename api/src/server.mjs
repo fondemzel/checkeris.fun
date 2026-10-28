@@ -64,7 +64,7 @@ import {
   noteBotMessage,
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
-import { overview, personDetail, addSource, removeSource } from './admin.mjs';
+import { overview, personDetail, addSource, removeSource, budgetDetail, changePlan } from './admin.mjs';
 import { emailConfig, sendCode, loginByCode, linkByCode } from './emailauth.mjs';
 import { mailReady } from './mail.mjs';
 import {
@@ -511,6 +511,22 @@ async function handleApi(req, res, url) {
   if (pathname.startsWith('/api/admin/')) {
     if (user.role !== 'admin') return sendJson(res, 403, { error: 'только для администратора' });
     if (pathname === '/api/admin/overview' && req.method === 'GET') return sendJson(res, 200, overview(db));
+    // Бюджет («пользователь» в админке) и его тариф
+    const budgetId = /^\/api\/admin\/budgets\/(\d+)(\/plan)?$/.exec(pathname);
+    if (budgetId && !budgetId[2] && req.method === 'GET') {
+      const budget = budgetDetail(db, budgetId[1]);
+      return budget ? sendJson(res, 200, budget) : sendJson(res, 404, { error: 'нет такого бюджета' });
+    }
+    if (budgetId && budgetId[2] && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return sendJson(res, 400, { error: 'bad request body' });
+      }
+      const result = changePlan(db, budgetId[1], body);
+      return result.error ? sendJson(res, result.status, { error: result.error }) : sendJson(res, 200, result);
+    }
     const personId = /^\/api\/admin\/people\/(\d+)$/.exec(pathname)?.[1];
     if (personId && req.method === 'GET') {
       const person = personDetail(db, personId);
@@ -980,7 +996,7 @@ async function handleApi(req, res, url) {
       if (!fnsReady()) return sendJson(res, 503, { error: 'доступ к ФНС не настроен' });
       const quota = scanQuota(db, user);
       if (quota.left <= 0) {
-        return sendJson(res, 429, { error: `на сегодня сканов больше нет (${quota.limit} в сутки) — завтра снова можно` });
+        return sendJson(res, 429, { error: `на сегодня сканов больше нет (${quota.limit} в сутки по тарифу) — завтра снова можно`, code: 'plan_scans', plan: quota.plan });
       }
 
       const result = addScan(db, user.budget_id, user.id, body.qr);

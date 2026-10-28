@@ -7,6 +7,7 @@
 //
 // Владелец бюджета приглашает и исключает участников, переименовывает бюджет.
 // Участники добавляют траты, правят категории и могут выйти сами.
+import { newBudgetPlan, planOf, budgetMembers } from './plans.mjs';
 import { randomBytes, createHash } from 'node:crypto';
 import { provisionTaxonomy } from './taxonomy.mjs';
 import { provisionIncome } from './incomecats.mjs';
@@ -27,7 +28,8 @@ const membersOf = (db, id) => db.prepare('SELECT COUNT(*) c FROM users WHERE bud
  * не открывает — её держит вызывающий (регистрация через Telegram, users.mjs).
  */
 export function createBudget(db, userId, name = 'Мой бюджет') {
-  const res = db.prepare('INSERT INTO budgets (name, owner_id, created_at) VALUES (?, ?, ?)').run(name, userId, now());
+  const { plan, label } = newBudgetPlan(); // в бету — Премиум с пометкой «бета» (plans.mjs)
+  const res = db.prepare('INSERT INTO budgets (name, owner_id, created_at, plan, plan_label) VALUES (?, ?, ?, ?, ?)').run(name, userId, now(), plan, label);
   const budgetId = Number(res.lastInsertRowid);
   provisionTaxonomy(db, budgetId);
   provisionIncome(db, budgetId);
@@ -108,6 +110,12 @@ export function renameBudget(db, user, name) {
 export function createInvite(db, user, origin) {
   const budget = budgetRow(db, user.budget_id);
   if (budget?.owner_id !== user.id) return fail(403, 'приглашать может только владелец бюджета');
+  const plan = planOf(db, budget.id);
+  if (budgetMembers(db, budget.id) >= plan.members) {
+    return fail(403, plan.members === 1
+      ? `на тарифе «${plan.title}» бюджет — на одного: пригласить семью можно с тарифом «Плюс»`
+      : `на тарифе «${plan.title}» в бюджете до ${plan.members} человек`);
+  }
   const code = randomBytes(18).toString('base64url');
   const expires = new Date(Date.now() + INVITE_DAYS * 86_400_000).toISOString();
   const res = db
@@ -234,6 +242,9 @@ export function acceptInvite(db, user, code, { move = false } = {}) {
   if (info.blocked) return fail(409, info.blocked);
 
   const { invite } = liveInvite(db, code);
+  // Приглашение выдали, а места по тарифу уже нет (тариф сменился или пришли другие)
+  const plan = planOf(db, invite.budget_id);
+  if (budgetMembers(db, invite.budget_id) >= plan.members) return fail(409, 'в этом бюджете больше нет мест по тарифу — попросите владельца');
   let result = { moved: 0, skipped: 0 };
   db.exec('BEGIN');
   try {

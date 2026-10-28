@@ -73,7 +73,10 @@ CREATE TABLE IF NOT EXISTS budgets (
   name       TEXT NOT NULL,
   owner_id   INTEGER REFERENCES users (id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
-  demo       INTEGER NOT NULL DEFAULT 0  -- 1 — общая тестовая база (demo.mjs): только для чтения
+  demo       INTEGER NOT NULL DEFAULT 0, -- 1 — общая тестовая база (demo.mjs): только для чтения
+  plan       TEXT NOT NULL DEFAULT 'free', -- тариф (plans.mjs): free | plus | premium
+  plan_until TEXT,                         -- до какого дня; пусто у платного — навсегда
+  plan_label TEXT                          -- откуда тариф: beta, founder, paid, gift
 );
 
 -- Приглашение в бюджет: одноразовая ссылка со сроком жизни, в базе — хеш кода.

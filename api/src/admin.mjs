@@ -12,6 +12,7 @@
 // и администратора: это владелец проекта, а не бета-пользователь.
 import { sourceSlug } from './telegram.mjs';
 import { supportWaiting, supportOfUser } from './support.mjs';
+import { planOf, setPlan, PLANS, LABELS } from './plans.mjs';
 
 const DAY = 86_400_000;
 const dayAgo = (n) => new Date(Date.now() - n * DAY).toISOString().slice(0, 10);
@@ -37,6 +38,7 @@ function people(db) {
   const rows = db
     .prepare(
       `SELECT u.id, u.name, u.role, u.tg_username, u.email, u.created_at, u.source, u.telegram_id IS NOT NULL AS telegram,
+              ${OWN} AS budget_id,
               u.demo_return IS NOT NULL AS in_demo,
               (SELECT MAX(t.used_at) FROM tokens t WHERE t.user_id = u.id) AS last_seen,
               (SELECT COUNT(*) FROM usage_daily a WHERE a.user_id = u.id AND a.kind = 'active' AND a.day >= :since30) AS active_days,
@@ -81,6 +83,7 @@ function people(db) {
     id: u.id,
     name: u.name ?? `#${u.id}`,
     admin: u.role === 'admin', // в списке — с пометкой, в подсчёты не входит
+    budget_id: u.budget_id,
     tg_username: u.tg_username,
     email: u.email,
     telegram: Boolean(u.telegram),
@@ -171,10 +174,88 @@ function load(db) {
   };
 }
 
+/** Тариф бюджета для админки: действующий и как записан (срок, пометка). */
+const planInfo = (db, b) => {
+  const p = planOf(db, b.id);
+  return { id: p.id, title: p.title, until: b.plan_until, label: b.plan_label, label_title: LABELS[b.plan_label] ?? null, expired: p.expired, was: p.was };
+};
+
+/**
+ * «Пользователи» — бюджеты, которыми пользуются: строка — по владельцу, внутри — участники.
+ * Участник чужого бюджета виден в нём, а не отдельной строкой; свой пустой бюджет, из которого
+ * человек ушёл в семейный, не показываем. Числа — по бюджету целиком, без сумм.
+ */
+function budgetsOf(db, everyone) {
+  const since30 = dayAgo(29);
+  const rows = db.prepare(
+    `SELECT b.id, b.name, b.owner_id, b.created_at, b.plan, b.plan_until, b.plan_label,
+            (SELECT COUNT(*) FROM receipts r WHERE r.budget_id = b.id AND r.fiscal_drive <> 'manual') AS receipts,
+            (SELECT COUNT(*) FROM receipts r WHERE r.budget_id = b.id AND r.fiscal_drive = 'manual') AS manual,
+            (SELECT COUNT(*) FROM scan_jobs s WHERE s.budget_id = b.id) AS scans,
+            (SELECT COUNT(*) FROM scan_jobs s WHERE s.budget_id = b.id AND s.status = 'failed') AS scans_failed,
+            (SELECT COUNT(*) FROM bank_ops o WHERE o.budget_id = b.id) AS bank_ops,
+            (SELECT COUNT(DISTINCT a.day) FROM usage_daily a JOIN users u ON u.id = a.user_id
+              WHERE a.kind = 'active' AND a.day >= ? AND COALESCE(u.demo_return, u.budget_id) = b.id) AS active_days
+       FROM budgets b WHERE b.demo = 0`,
+  ).all(since30);
+  const out = [];
+  for (const b of rows) {
+    const members = everyone.filter((u) => u.budget_id === b.id);
+    if (!members.length) continue;
+    const owner = members.find((m) => m.id === b.owner_id) ?? members[0];
+    const seen = members.map((m) => m.last_seen).filter(Boolean).sort().at(-1) ?? null;
+    out.push({
+      id: b.id,
+      name: b.name,
+      plan: planInfo(db, b),
+      owner: { id: owner.id, name: owner.name, tg_username: owner.tg_username, email: owner.email, telegram: owner.telegram, admin: owner.admin, channel: owner.channel, invited_by: owner.invited_by, created_at: owner.created_at },
+      members: members.map((m) => ({ id: m.id, name: m.name, admin: m.admin, owner: m.id === owner.id, last_seen: m.last_seen, in_demo: m.in_demo })),
+      admin: owner.admin,
+      created_at: owner.created_at,
+      last_seen: seen,
+      active_days: b.active_days,
+      receipts: b.receipts,
+      manual: b.manual,
+      scans: b.scans,
+      scans_failed: b.scans_failed,
+      bank_ops: b.bank_ops,
+      banks: members.flatMap((m) => m.banks.map((l) => ({ ...l, person: m.name }))),
+      in_demo: members.some((m) => m.in_demo),
+    });
+  }
+  return out.sort((a, c) => (c.created_at > a.created_at ? 1 : -1));
+}
+
+/** Бюджет подробно: участники, дни, когда кто-то заходил (90), внесено по месяцам, обращения. */
+export function budgetDetail(db, id) {
+  const everyone = people(db);
+  const base = budgetsOf(db, everyone).find((b) => b.id === Number(id));
+  if (!base) return null;
+  const days = db.prepare(
+    `SELECT DISTINCT a.day FROM usage_daily a JOIN users u ON u.id = a.user_id
+      WHERE a.kind = 'active' AND a.day >= ? AND COALESCE(u.demo_return, u.budget_id) = ? ORDER BY a.day`,
+  ).all(dayAgo(89), base.id).map((r) => r.day);
+  const months = db.prepare(
+    `SELECT substr(COALESCE(created_at, purchased_at), 1, 7) AS month,
+            SUM(fiscal_drive <> 'manual') AS receipts, SUM(fiscal_drive = 'manual') AS manual
+       FROM receipts WHERE budget_id = ? AND COALESCE(created_at, purchased_at) >= ?
+      GROUP BY month ORDER BY month`,
+  ).all(base.id, dayAgo(365).slice(0, 7));
+  const members = everyone.filter((u) => u.budget_id === base.id);
+  const support = members.flatMap((m) => supportOfUser(db, m.id)).sort((a, c) => (c.updated_at > a.updated_at ? 1 : -1));
+  return { ...base, people: members, days, months, support, plans: Object.values(PLANS).map((p) => ({ id: p.id, title: p.title })), labels: LABELS };
+}
+
+/** Сменить тариф бюджета из админки. */
+export const changePlan = (db, id, body) => setPlan(db, id, body ?? {});
+
 /** Всё для страницы админки одним ответом: людей пока немного. */
 export function overview(db) {
   const everyone = people(db);
   const list = everyone.filter((u) => !u.admin); // подсчёты — без администратора
+  const budgets = budgetsOf(db, everyone);
+  const plans = { free: 0, plus: 0, premium: 0 };
+  for (const b of budgets) if (!b.admin) plans[b.plan.id] += 1;
   const since = (n) => dayAgo(n - 1);
   const seen = (n) => list.filter((u) => u.last_seen && u.last_seen.slice(0, 10) >= since(n)).length;
   const joined = (n) => list.filter((u) => u.created_at.slice(0, 10) >= since(n)).length;
@@ -195,6 +276,8 @@ export function overview(db) {
     sources: sourceList(db, list),
     load: load(db),
     people: everyone,
+    budgets,
+    plans,
   };
 }
 

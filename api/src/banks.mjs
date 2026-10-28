@@ -5,6 +5,7 @@
 //
 // Пока банк один — Т-Банк (tbank.mjs). Сессия живёт, пока её пингуют; умерла —
 // подключение помечается expired, а человеку уходит сообщение в Telegram: войти заново.
+import { linkAllowed } from './plans.mjs';
 import { notifyBankOps } from './members.mjs';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { loadEnv } from './llm.mjs';
@@ -149,6 +150,8 @@ function opUpsert(db) {
 export function importOps(db, userId, bank, ops, { defer = false } = {}) {
   const budgetId = db.prepare('SELECT budget_id FROM users WHERE id = ?').get(userId)?.budget_id;
   if (!budgetId) return { ops: 0 };
+  // Новое подключение — по тарифу (plans.mjs); уже заведённое обновляется всегда
+  if (!linkAllowed(db, userId, bank)) return { ops: 0, error: 'на вашем тарифе больше подключений нет', code: 'plan_links' };
   const at = now();
   db.prepare(
     `INSERT INTO bank_links (user_id, bank, session_enc, status, login_at, last_ok_at, synced_at)
@@ -374,6 +377,7 @@ export function reportLink(db, userId, { bank, state, detail = null, background 
   const link = db.prepare('SELECT id, dev_state, status FROM bank_links WHERE user_id = ? AND bank = ?').get(userId, bank);
   if (!link) {
     if (state === 'off') return { ok: true };
+    if (!linkAllowed(db, userId, bank)) return { ok: true, code: 'plan_links' }; // сверх тарифа — не заводим
     db.prepare(`INSERT INTO bank_links (user_id, bank, session_enc, status, login_at) VALUES (?, ?, NULL, 'device', ?)`).run(userId, bank, at);
   }
   const was = link?.dev_state ?? null;

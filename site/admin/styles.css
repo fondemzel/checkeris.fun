@@ -474,3 +474,29 @@ table.t { width: 100%; border-collapse: collapse; }
   .head { padding: 0 16px; }
   .stamp { display: none; }
 }
+
+/* ── «Пользователи»: список и правая панель выбранного ── */
+.users-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.side-panel { position: sticky; top: 16px; }
+.t tbody tr.sel td { background: var(--accent-soft); }
+.t .who { color: var(--fg); }
+a.who:hover { color: var(--accent); }
+.pp-head { display: flex; align-items: center; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border-muted); }
+.pp-head .avatar { width: 48px; height: 48px; font-size: 18px; }
+.pp-name { font-size: 16px; font-weight: 600; }
+.pp-body { padding: 4px 16px; }
+.pp-row { display: grid; grid-template-columns: 96px 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border-muted); font-size: 13px; }
+.pp-row:first-child { border-top: 0; }
+.pp-foot { padding: 12px 16px; border-top: 1px solid var(--border-muted); }
+
+/* Тарифы метками: Премиум — золотистый, Плюс — синий, Бесплатно — серый */
+.label.plan-premium { border-color: var(--attention); color: var(--attention); }
+.label.plan-plus { border-color: var(--accent); color: var(--accent); }
+.label.plan-free { color: var(--muted); }
+.plan-form { display: flex; flex-direction: column; gap: 12px; }
+.plan-form .note { color: var(--muted); font-size: 12px; font-weight: 400; }
+
+@media (max-width: 1100px) {
+  .users-layout { grid-template-columns: minmax(0, 1fr); }
+  .side-panel { position: static; }
+}

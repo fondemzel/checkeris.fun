@@ -42,6 +42,18 @@ export function migrate(db) {
   addColumn(db, 'receipts', 'prepay_kind', 'TEXT');
   addColumn(db, 'receipts', 'prepaid_by', 'INTEGER');
   addColumn(db, 'budgets', 'demo', 'INTEGER NOT NULL DEFAULT 0'); // тестовая база (demo.mjs)
+  // Тарифы (plans.mjs). Колонки появились впервые — раздаём один раз: всем бюджетам, что уже
+  // есть, — Премиум на время беты; бюджетам администратора — «Основатель», Премиум навсегда
+  const plansNew = tableExists(db, 'budgets') && !db.prepare("SELECT 1 FROM pragma_table_info('budgets') WHERE name = 'plan'").get();
+  addColumn(db, 'budgets', 'plan', "TEXT NOT NULL DEFAULT 'free'");
+  addColumn(db, 'budgets', 'plan_until', 'TEXT');
+  addColumn(db, 'budgets', 'plan_label', 'TEXT');
+  if (plansNew) {
+    db.exec("UPDATE budgets SET plan = 'premium', plan_label = 'beta' WHERE demo = 0");
+    if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'role'").get()) {
+      db.exec("UPDATE budgets SET plan_label = 'founder' WHERE demo = 0 AND owner_id IN (SELECT id FROM users WHERE role = 'admin')");
+    }
+  }
   addColumn(db, 'users', 'demo_return', 'INTEGER');
   addColumn(db, 'users', 'notify_members', 'INTEGER NOT NULL DEFAULT 1'); // сообщения о тратах участников
   addColumn(db, 'users', 'perm_warned', 'TEXT'); // о каких разрешениях телефона бот уже предупредил (banks.mjs warnPerms)

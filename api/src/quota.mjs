@@ -1,30 +1,21 @@
-// Личные суточные квоты.
+// Суточные квоты — по тарифу бюджета (plans.mjs).
 //
-// Лимит ФНС (1000 обращений в сутки) и платная модель — общие на всё приложение.
-// Регистрация открытая, поэтому одному активному пользователю нельзя дать выбрать
-// их за всех. Администратор квот не имеет: это владелец проекта, и его расход
-// ограничен общими лимитами.
-//
-//   USER_DAILY_SCANS        — сканов в сутки на пользователя (по умолчанию 30)
-//   USER_DAILY_MODEL_NAMES  — незнакомых названий на разметку моделью (по умолчанию 100)
-import { loadEnv } from './llm.mjs';
+// Лимит ФНС (1000 обращений в сутки) и платная модель — общие на всё приложение, поэтому
+// и у «без ограничений» есть предохранитель. Сканы считаются на бюджет (тариф — у бюджета:
+// семья делит их), названия для модели — на человека. Администратор квот не имеет: это
+// владелец проекта, и его расход ограничен общими лимитами.
+import { planOf, planOfUser } from './plans.mjs';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function limitOf(name, fallback) {
-  loadEnv();
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
-/** Сколько сканов осталось на сегодня. Считаются задания, созданные за сутки по UTC. */
+/** Сколько сканов осталось бюджету на сегодня. Считаются задания, созданные за сутки по UTC. */
 export function scanQuota(db, user) {
   if (user.role === 'admin') return { limit: Infinity, used: 0, left: Infinity };
-  const limit = limitOf('USER_DAILY_SCANS', 30);
+  const plan = planOf(db, user.budget_id);
   const used = db
-    .prepare('SELECT COUNT(*) c FROM scan_jobs WHERE user_id = ? AND created_at >= ?')
-    .get(user.id, today()).c;
-  return { limit, used, left: limit - used };
+    .prepare('SELECT COUNT(*) c FROM scan_jobs WHERE budget_id = ? AND created_at >= ?')
+    .get(user.budget_id, today()).c;
+  return { limit: plan.scans, used, left: plan.scans - used, plan: plan.id };
 }
 
 /**
@@ -37,7 +28,7 @@ export function modelQuotaLeft(db, userId) {
   if (!user) return 0;
   if (user.role === 'admin') return Infinity;
   const used = db.prepare("SELECT n FROM usage_daily WHERE user_id = ? AND day = ? AND kind = 'llm_names'").get(userId, today())?.n ?? 0;
-  return Math.max(0, limitOf('USER_DAILY_MODEL_NAMES', 100) - used);
+  return Math.max(0, planOfUser(db, userId).names - used);
 }
 
 export function takeModelQuota(db, userId, wanted) {
@@ -45,7 +36,7 @@ export function takeModelQuota(db, userId, wanted) {
   if (!user) return 0; // сканировавший удалил аккаунт — платить за него некому
   if (user.role === 'admin') return wanted;
 
-  const limit = limitOf('USER_DAILY_MODEL_NAMES', 100);
+  const limit = planOfUser(db, userId).names;
   const day = today();
   const used = db.prepare("SELECT n FROM usage_daily WHERE user_id = ? AND day = ? AND kind = 'llm_names'").get(userId, day)?.n ?? 0;
   const allowed = Math.max(0, Math.min(wanted, limit - used));

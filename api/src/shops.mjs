@@ -7,6 +7,7 @@
 // Учёт — как у любого предоплаченного заказа: авансовый чек (оплата) — трата, чек о получении
 // с «зачётом предоплаты» — те же деньги, второй раз не считается. Это уже делает учёт чеков.
 
+import { linkAllowed } from './plans.mjs';
 import { parseOzonPdf } from './ozonpdf.mjs';
 import { parseWbHtml } from './wbreceipt.mjs';
 import { saveReceipt, importStatements } from './import.mjs';
@@ -60,6 +61,8 @@ export async function importCheque(db, user, shop, body) {
     return { error: err.message, status: 422 };
   }
 
+  // Новый магазин — по тарифу (plans.mjs); уже подключённый обновляется всегда
+  if (!linkAllowed(db, user.id, shop)) return { error: 'на вашем тарифе больше подключений нет', code: 'plan_links', status: 403 };
   const linkId = link(db, user.id, shop);
   const remember = db.prepare(
     `INSERT INTO shop_cheques (link_id, cheque_id, receipt_id, purchased_at, created_at) VALUES (?, ?, ?, ?, ?)

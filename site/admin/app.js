@@ -69,12 +69,13 @@ function ago(iso) {
 const daysSince = (iso) => (iso ? (Date.now() - Date.parse(iso)) / 86_400_000 : Infinity);
 
 const BANKS = { tbank: 'Т-Банк', sber: 'Сбер', ozon: 'Озон', wb: 'Wildberries' };
-const LINK_STATUS = { active: 'работает', expired: 'отвалился', demo: 'демо' };
+// device — подключение на телефоне: операции присылает приложение, сессии на сервере нет
+const LINK_STATUS = { active: 'работает', device: 'с телефона', expired: 'отвалился', demo: 'демо' };
 const SCAN_STATUS = { new: 'в очереди', sent: 'ждёт ФНС', done: 'готов', failed: 'с ошибкой' };
 const bankName = (b) => BANKS[b] ?? b;
 // withBank=false — в таблице, где банк уже стоит своей колонкой
 const linkLabel = (l, withBank = true) =>
-  `<span class="label ${l.status === 'active' ? 'ok' : l.status === 'expired' ? 'bad' : ''}">${withBank ? `${esc(bankName(l.bank))} · ` : ''}${esc(LINK_STATUS[l.status] ?? l.status)}</span>`;
+  `<span class="label ${l.status === 'active' || l.status === 'device' ? 'ok' : l.status === 'expired' ? 'bad' : ''}">${withBank ? `${esc(bankName(l.bank))} · ` : ''}${esc(LINK_STATUS[l.status] ?? l.status)}</span>`;
 
 const channelName = (slug) =>
   slug === 'direct' ? 'Напрямую' : slug === 'invite' ? 'По приглашению' : state.names.get(slug) || slug;
@@ -114,8 +115,9 @@ const state = {
   data: null,
   names: new Map(),
   person: null,
-  sort: { people: { key: 'created_at', dir: -1 }, links: { key: 'synced_at', dir: -1 } },
-  filter: { q: '', channel: '', activity: '' },
+  sort: { users: { key: 'created_at', dir: -1 }, links: { key: 'synced_at', dir: -1 } },
+  filter: { q: '', channel: '', activity: '', plan: '' },
+  selBudget: null, // «Пользователи»: выбранная строка — её кратко показывает правая панель
 };
 
 // ── части страницы ───────────────────────────────────────
@@ -134,7 +136,7 @@ const blank = (text) => `<div class="blank">${esc(text)}</div>`;
  * Таблица с сортировкой по щелчку на заголовок. cols: { key, label, value(row) для сортировки,
  * cell(row) — разметка, r — по правому краю }. href(row) — строка ведёт на страницу.
  */
-function table(id, cols, rows, { href = null, empty = 'Пусто' } = {}) {
+function table(id, cols, rows, { href = null, select = null, selected = null, empty = 'Пусто' } = {}) {
   const sort = state.sort[id];
   if (sort) {
     const col = cols.find((c) => c.key === sort.key);
@@ -157,7 +159,7 @@ function table(id, cols, rows, { href = null, empty = 'Пусто' } = {}) {
     })
     .join('');
   const body = rows
-    .map((r) => `<tr${href ? ` class="link" data-href="${esc(href(r))}"` : ''}>${cols.map((c) => `<td class="${c.r ? 'r' : ''}${c.nw ? ' nw' : ''}">${c.cell ? c.cell(r) : esc(r[c.key] ?? '—')}</td>`).join('')}</tr>`)
+    .map((r) => `<tr${select ? ` class="link${select(r) === selected ? ' sel' : ''}" data-select="${select(r)}" data-open="${esc(href?.(r) ?? '')}"` : href ? ` class="link" data-href="${esc(href(r))}"` : ''}>${cols.map((c) => `<td class="${c.r ? 'r' : ''}${c.nw ? ' nw' : ''}">${c.cell ? c.cell(r) : esc(r[c.key] ?? '—')}</td>`).join('')}</tr>`)
     .join('');
   return rows.length
     ? `<div class="table-wrap"><table class="t"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
@@ -202,7 +204,8 @@ const meterCls = (share) => (share >= 0.9 ? 'bad' : share >= 0.7 ? 'warn' : '');
 const PAGES = [
   { group: 'Наблюдение' },
   { id: 'overview', title: 'Обзор', icon: 'home' },
-  { id: 'people', title: 'Люди', icon: 'people', count: (d) => d.totals.people },
+  { id: 'users', title: 'Пользователи', icon: 'people', count: (d) => d.budgets.length },
+  { id: 'people', title: 'Человек', hidden: true, under: 'users' }, // страница участника — из бюджета
   { id: 'sources', title: 'Каналы прихода', icon: 'link' },
   { id: 'support', title: 'Поддержка', icon: 'chat', count: (d) => d.support_waiting || null, bad: true },
   { group: 'Система' },
@@ -216,25 +219,27 @@ const brokenLinks = (d) => allLinks(d).filter((l) => l.status === 'expired');
 const silent = (d) => d.people.filter((u) => !u.receipts && !u.manual && !u.banks.length && daysSince(u.created_at) >= 1);
 
 function renderNav(current) {
+  const lit = PAGES.find((p) => p.id === current)?.under ?? current; // страница участника — подсветить «Пользователи»
   $('nav').innerHTML = PAGES.map((p) => {
+    if (p.hidden) return '';
     if (p.group) return `<div class="nav-group">${esc(p.group)}</div>`;
     const n = p.count?.(state.data);
     const counter = n ? `<span class="counter${p.bad ? ' bad' : ''}">${int.format(n)}</span>` : '';
-    return `<a class="nav-item" href="#/${p.id}"${p.id === current ? ' aria-current="page"' : ''}>${icon(p.icon)}${esc(p.title)}${counter}</a>`;
+    return `<a class="nav-item" href="#/${p.id}"${p.id === lit ? ' aria-current="page"' : ''}>${icon(p.icon)}${esc(p.title)}${counter}</a>`;
   }).join('');
 }
 
 function pageOverview(d) {
   const t = d.totals;
   const stats = `<div class="box"><div class="stats">
-      ${stat('Людей', t.people, `+${t.joined_today} сегодня`, '#/people')}
+      ${stat('Людей', t.people, `+${t.joined_today} сегодня`, '#/users')}
       ${stat('Новых за 7 дней', t.joined_7)}
       ${stat('Заходили сегодня', t.active_today)}
       ${stat('Заходили за 7 дней', t.active_7, t.people ? `${Math.round((t.active_7 / t.people) * 100)}% от всех` : '')}
       ${stat('Заходили за 30 дней', t.active_30)}
       ${stat('Внесли чеки или траты', t.with_receipts)}
       ${stat('Подключили банк', t.with_bank, '', '#/links')}
-      ${stat('В общем бюджете', t.shared)}
+      ${stat('Платные тарифы', d.plans.plus + d.plans.premium, `Премиум ${d.plans.premium} · Плюс ${d.plans.plus} · бесплатно ${d.plans.free}`, '#/users')}
     </div></div>`;
   const charts = box(
     'Активность за 30 дней',
@@ -252,7 +257,7 @@ function pageOverview(d) {
      <div class="box-row"><div class="grow"><a href="#/support">Обращения ждут ответа</a></div><span class="label ${d.support_waiting ? 'bad' : 'ok'}">${d.support_waiting}</span></div>
      <div class="box-row"><div class="grow"><a href="#/links">Отвалившиеся подключения</a></div><span class="label ${broken ? 'bad' : 'ok'}">${broken}</span></div>
      <div class="box-row"><div class="grow"><a href="#/errors">Сканы с ошибкой за 7 дней</a></div><span class="label ${errors ? 'warn' : 'ok'}">${errors}</span></div>
-     <div class="box-row"><div class="grow"><a href="#/people" data-activity="silent">Зарегистрировались и ничего не внесли</a></div><span class="label ${quiet ? 'warn' : 'ok'}">${quiet}</span></div>`,
+     <div class="box-row"><div class="grow"><a href="#/users" data-activity="silent">Зарегистрировались и ничего не внесли</a></div><span class="label ${quiet ? 'warn' : 'ok'}">${quiet}</span></div>`,
   );
   const top = d.sources.slice(0, 6);
   const channels = box(
@@ -263,9 +268,9 @@ function pageOverview(d) {
     { end: '<a href="#/sources">Все каналы</a>' },
   );
   const fresh = box(
-    'Новые люди',
-    d.people.slice(0, 5).map((u) => `<div class="box-row"><span class="avatar sm">${esc(initials(u.name))}</span><div class="grow"><a href="#/people/${u.id}">${esc(u.name)}</a> <span class="muted">· ${esc(channelName(u.channel))}</span></div><span class="muted">${esc(dateRu(u.created_at))}</span></div>`).join('') || blank('Пока никого'),
-    { end: '<a href="#/people">Все люди</a>' },
+    'Новые пользователи',
+    d.budgets.slice(0, 5).map((b) => `<div class="box-row"><span class="avatar sm">${esc(initials(b.owner.name))}</span><div class="grow"><a href="#/users/${b.id}">${esc(b.owner.name)}</a> <span class="muted">· ${esc(channelName(b.owner.channel))}</span></div>${planLabel(b.plan)}<span class="muted">${esc(dateRu(b.created_at))}</span></div>`).join('') || blank('Пока никого'),
+    { end: '<a href="#/users">Все пользователи</a>' },
   );
   return subhead('Обзор') + stats + charts + `<div class="grid2">${attention}${channels}</div><div style="height:16px"></div>` + fresh;
 }
@@ -276,81 +281,173 @@ const ACTIVITY = {
   gone: 'Не заходят 7+ дней',
   silent: 'Ничего не внесли',
   bank: 'С банком',
-  shared: 'В общем бюджете',
+  shared: 'Семья (несколько человек)',
   demo: 'Сейчас в демо',
 };
+const PLAN_FILTER = { '': 'Все тарифы', free: 'Бесплатно', plus: 'Плюс', premium: 'Премиум' };
 
-function filterPeople(list) {
-  const { q, channel, activity } = state.filter;
+/** Тариф меткой: Премиум — золотистый, Плюс — синий, Бесплатно — серый; ниже — откуда и до когда. */
+function planLabel(p, { sub = false } = {}) {
+  const tag = `<span class="label plan-${p.id}">${esc(p.title)}</span>`;
+  if (!sub) return tag;
+  const note = p.expired
+    ? `закончился ${dateRu(p.until)}`
+    : [p.label_title, p.id === 'free' ? '' : p.until ? `до ${dateRu(p.until)}` : 'навсегда'].filter(Boolean).join(' · ');
+  return `${tag}${note ? `<div class="sub${p.expired ? ' warn-t' : ''}">${esc(note)}</div>` : ''}`;
+}
+
+function filterBudgets(list) {
+  const { q, channel, activity, plan } = state.filter;
   const needle = q.trim().toLowerCase();
-  return list.filter((u) => {
-    if (needle && ![u.name, u.tg_username, u.email, channelName(u.channel), u.invited_by].some((v) => String(v ?? '').toLowerCase().includes(needle))) return false;
-    if (channel && u.channel !== channel) return false;
-    if (activity === 'week' && daysSince(u.last_seen) > 7) return false;
-    if (activity === 'gone' && daysSince(u.last_seen) <= 7) return false;
-    if (activity === 'silent' && (u.receipts || u.manual || u.banks.length)) return false;
-    if (activity === 'bank' && !u.banks.length) return false;
-    if (activity === 'shared' && !u.shared) return false;
-    if (activity === 'demo' && !u.in_demo) return false;
+  return list.filter((b) => {
+    const hay = [b.owner.name, b.owner.tg_username, b.owner.email, channelName(b.owner.channel), b.owner.invited_by, ...b.members.map((m) => m.name)];
+    if (needle && !hay.some((v) => String(v ?? '').toLowerCase().includes(needle))) return false;
+    if (channel && b.owner.channel !== channel) return false;
+    if (plan && b.plan.id !== plan) return false;
+    if (activity === 'week' && daysSince(b.last_seen) > 7) return false;
+    if (activity === 'gone' && daysSince(b.last_seen) <= 7) return false;
+    if (activity === 'silent' && (b.receipts || b.manual || b.banks.length || daysSince(b.created_at) < 1)) return false;
+    if (activity === 'bank' && !b.banks.length) return false;
+    if (activity === 'shared' && b.members.length < 2) return false;
+    if (activity === 'demo' && !b.in_demo) return false;
     return true;
   });
 }
 
-const PEOPLE_COLS = [
+const dash = '<span class="muted">—</span>';
+const USER_COLS = [
   {
     key: 'name',
-    label: 'Человек',
-    value: (u) => u.name.toLowerCase(),
-    cell: (u) => `<div class="who">${esc(u.name)}${u.admin ? ' <span class="label accent">администратор</span>' : ''}</div>${u.tg_username ? `<div class="sub">@${esc(u.tg_username)}</div>` : ''}${u.email ? `<div class="sub">${esc(u.email)}</div>` : ''}`,
+    label: 'Пользователь',
+    value: (b) => b.owner.name.toLowerCase(),
+    cell: (b) => `<a class="who" href="#/users/${b.id}">${esc(b.owner.name)}</a>${b.admin ? ' <span class="label accent">администратор</span>' : ''}`
+      + `${b.owner.tg_username ? `<div class="sub">@${esc(b.owner.tg_username)}</div>` : ''}${b.owner.email ? `<div class="sub">${esc(b.owner.email)}</div>` : ''}`
+      + `${b.members.length > 1 ? `<div class="sub">семья · ${b.members.length} ${plural(b.members.length, 'человек', 'человека', 'человек')}</div>` : ''}`,
   },
+  { key: 'plan', label: 'Тариф', nw: true, value: (b) => ({ free: 0, plus: 1, premium: 2 })[b.plan.id], cell: (b) => planLabel(b.plan, { sub: true }) },
   {
     key: 'created_at',
     label: 'Пришёл',
     nw: true,
-    cell: (u) => `${esc(dateRu(u.created_at))}<div class="sub">${esc(u.channel === 'invite' && u.invited_by ? `приглашён: ${u.invited_by}` : channelName(u.channel))}</div>`,
+    cell: (b) => `${esc(dateRu(b.created_at))}<div class="sub">${esc(b.owner.channel === 'invite' && b.owner.invited_by ? `приглашён: ${b.owner.invited_by}` : channelName(b.owner.channel))}</div>`,
   },
-  { key: 'last_seen', label: 'Заходил', nw: true, cell: (u) => esc(ago(u.last_seen)) },
-  { key: 'active_days', label: 'Дней из 30', r: true, cell: (u) => String(u.active_days) },
-  { key: 'receipts', label: 'Чеки', r: true, cell: (u) => (u.receipts ? int.format(u.receipts) : '<span class="muted">—</span>') },
-  { key: 'manual', label: 'Вручную', r: true, cell: (u) => (u.manual ? int.format(u.manual) : '<span class="muted">—</span>') },
-  {
-    key: 'scans',
-    label: 'Сканы',
-    r: true,
-    cell: (u) => (u.scans ? `${int.format(u.scans)}${u.scans_failed ? `<div class="sub warn-t">ошибок ${u.scans_failed}</div>` : ''}` : '<span class="muted">—</span>'),
-  },
+  { key: 'last_seen', label: 'Заходили', nw: true, cell: (b) => esc(ago(b.last_seen)) },
+  { key: 'active_days', label: 'Дней из 30', r: true, cell: (b) => String(b.active_days) },
+  // Вручную и сканы — в панели и на странице бюджета: рядом с панелью таблица должна помещаться
+  { key: 'receipts', label: 'Чеки', r: true, cell: (b) => (b.receipts ? int.format(b.receipts) : dash) },
   {
     key: 'banks',
     label: 'Подключения',
-    value: (u) => u.banks.length,
-    cell: (u) => {
-      const labels = u.banks.map((l) => linkLabel(l));
-      if (u.shared) labels.push(`<span class="label accent">общий бюджет · ${u.members}</span>`);
-      if (u.in_demo) labels.push('<span class="label">в демо</span>');
-      return labels.length ? `<div class="labels">${labels.join('')}</div>` : '<span class="muted">—</span>';
+    value: (b) => b.banks.length,
+    cell: (b) => {
+      const labels = b.banks.map((l) => linkLabel(l));
+      if (b.in_demo) labels.push('<span class="label">в демо</span>');
+      return labels.length ? `<div class="labels">${labels.join('')}</div>` : dash;
     },
   },
 ];
 
-function pagePeople(d) {
-  const list = filterPeople(d.people);
-  const channels = [...new Set(d.people.map((u) => u.channel))];
+function usersBox(list, all) {
+  if (!list.some((b) => b.id === state.selBudget)) state.selBudget = list[0]?.id ?? null;
+  return box(`${int.format(list.length)} ${plural(list.length, 'пользователь', 'пользователя', 'пользователей')}${list.length !== all ? ` <span class="muted">из ${all}</span>` : ''}`,
+    table('users', USER_COLS, list, { select: (b) => b.id, selected: state.selBudget, href: (b) => `#/users/${b.id}`, empty: 'Никого не нашлось' }));
+}
+
+/** Правая панель: выбранный пользователь кратко. Подробно — страница бюджета. */
+function userPanel(b) {
+  if (!b) return box('Пользователь', blank('Выберите строку'));
+  const row = (k, v) => `<div class="pp-row"><span class="muted">${esc(k)}</span><span>${v}</span></div>`;
+  const members = b.members
+    .map((m) => `<a href="#/people/${m.id}">${esc(m.name)}</a>${m.owner && b.members.length > 1 ? ' <span class="muted">(владелец)</span>' : ''}`)
+    .join('<br>');
+  return `<div class="box"><div class="pp-head"><span class="avatar">${esc(initials(b.owner.name))}</span><div>
+      <div class="pp-name">${esc(b.owner.name)}</div>
+      <div class="muted">${esc([b.owner.tg_username && `@${b.owner.tg_username}`, b.owner.email].filter(Boolean).join(' · ') || 'без Telegram и почты')}</div>
+    </div></div>
+    <div class="pp-body">
+      ${row('Тариф', planLabel(b.plan, { sub: true }))}
+      ${row(b.members.length > 1 ? `Семья · ${b.members.length}` : 'Участник', members)}
+      ${row('Пришёл', `${esc(dateRu(b.created_at))}<div class="sub">${esc(channelName(b.owner.channel))}</div>`)}
+      ${row('Заходили', `${esc(ago(b.last_seen))}<div class="sub">${b.active_days} ${plural(b.active_days, 'день', 'дня', 'дней')} из 30</div>`)}
+      ${row('Внесено', esc([b.receipts && `чеков ${int.format(b.receipts)}`, b.manual && `вручную ${int.format(b.manual)}`, b.scans && `сканов ${int.format(b.scans)}`, b.bank_ops && `операций банка ${int.format(b.bank_ops)}`].filter(Boolean).join(', ') || 'ничего'))}
+      ${row('Подключения', b.banks.length ? `<div class="labels">${b.banks.map((l) => linkLabel(l)).join('')}</div>` : dash)}
+    </div>
+    <div class="pp-foot"><a class="btn sm" href="#/users/${b.id}">Открыть бюджет →</a></div></div>`;
+}
+
+function pageUsers(d) {
+  const list = filterBudgets(d.budgets);
+  const channels = [...new Set(d.budgets.map((b) => b.owner.channel))];
+  const opts = (map, cur) => Object.entries(map).map(([k, v]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(v)}</option>`).join('');
   const filters = `<div class="filters">
-      <input class="input" type="search" id="f-q" placeholder="Найти: имя, @ник, канал" value="${esc(state.filter.q)}" />
+      <input class="input" type="search" id="f-q" placeholder="Найти: имя, @ник, почта, канал" value="${esc(state.filter.q)}" />
       <select class="input" id="f-channel"><option value="">Все каналы</option>${channels.map((c) => `<option value="${esc(c)}"${c === state.filter.channel ? ' selected' : ''}>${esc(channelName(c))}</option>`).join('')}</select>
-      <select class="input" id="f-activity">${Object.entries(ACTIVITY).map(([k, v]) => `<option value="${k}"${k === state.filter.activity ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>
+      <select class="input" id="f-plan">${opts(PLAN_FILTER, state.filter.plan)}</select>
+      <select class="input" id="f-activity">${opts(ACTIVITY, state.filter.activity)}</select>
     </div>`;
-  return subhead('Люди')
-    + `<p class="lead">Новые сверху; щелчок по заголовку — сортировка, по строке — подробно о человеке. Только служебное: сколько внесено и подключено, без сумм и покупок. Демо-пользователи не показываются; администратор — в списке, но не в подсчётах.</p>`
+  const table = usersBox(list, d.budgets.length);
+  return subhead('Пользователи')
+    + '<p class="lead">Бюджеты, которыми пользуются, — по владельцу; семья — внутри бюджета. Щелчок по строке — кратко справа, по имени или Enter — страница бюджета. Только служебное: без сумм и покупок. Администратор — в списке, но не в подсчётах.</p>'
     + filters
-    + box(`${int.format(list.length)} ${plural(list.length, 'человек', 'человека', 'человек')}${list.length !== d.people.length ? ` <span class="muted">из ${d.people.length}</span>` : ''}`,
-      table('people', PEOPLE_COLS, list, { href: (u) => `#/people/${u.id}`, empty: 'Никого не нашлось' }));
+    + `<div class="users-layout"><div id="users-table">${table}</div><aside class="side-panel" id="user-panel">${userPanel(d.budgets.find((b) => b.id === state.selBudget))}</aside></div>`;
+}
+
+function rerenderUsers() {
+  const d = state.data;
+  const list = filterBudgets(d.budgets);
+  const wrap = $('users-table');
+  if (!wrap) return;
+  wrap.innerHTML = usersBox(list, d.budgets.length);
+  $('user-panel').innerHTML = userPanel(d.budgets.find((b) => b.id === state.selBudget));
+}
+
+/** Страница бюджета: тариф (сменить), участники, активность, внесено, подключения, обращения. */
+function pageBudget(b) {
+  if (!b) return '<a class="back" href="#/users">← Пользователи</a>' + blank('Нет такого бюджета');
+  const head = `<a class="back" href="#/users">← Пользователи</a>
+    <div class="person-head"><span class="avatar">${esc(initials(b.owner.name))}</span><div>
+      <div class="person-name">${esc(b.owner.name)}${b.admin ? ' <span class="label accent">администратор</span>' : ''}</div>
+      <div class="muted">бюджет «${esc(b.name)}» · с ${esc(dateRu(b.created_at))} · ${esc(channelName(b.owner.channel))}</div>
+    </div></div>`;
+  const stats = `<div class="box"><div class="stats">
+      ${stat('Заходили', esc(ago(b.last_seen)))}
+      ${stat('Дней из 30', b.active_days)}
+      ${stat('Чеков', b.receipts, b.manual ? `и ${b.manual} вручную` : '')}
+      ${stat('Операций банка', b.bank_ops)}
+    </div></div>`;
+  const p = b.plan;
+  const planBox = box('Тариф', `<form class="box-body plan-form" id="plan-form" data-id="${b.id}">
+      <div class="plan-now">${planLabel(p, { sub: true })}</div>
+      <label class="field">Тариф<select class="input" name="plan">${b.plans.map((x) => `<option value="${x.id}"${x.id === (p.was ?? p.id) ? ' selected' : ''}>${esc(x.title)}</option>`).join('')}</select></label>
+      <label class="field">Откуда<select class="input" name="label"><option value="">—</option>${Object.entries(b.labels).map(([k, v]) => `<option value="${k}"${k === p.label ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+      <label class="field">До<input class="input" type="date" name="until" value="${esc(p.until ?? '')}" /><span class="note">пусто — навсегда</span></label>
+      <button class="btn primary" type="submit">Сохранить</button>
+    </form>`, { foot: 'Оплаты пока нет — тариф меняется здесь. Срок прошёл — бюджет на «Бесплатно», данные не трогаются.' });
+  const members = box(`Участники · ${b.people.length}`, b.people
+    .map((m) => `<div class="box-row"><span class="avatar sm">${esc(initials(m.name))}</span><div class="grow"><a href="#/people/${m.id}">${esc(m.name)}</a>${m.id === b.owner.id ? ' <span class="label">владелец</span>' : ''}${m.admin ? ' <span class="label accent">администратор</span>' : ''}
+        <div class="muted" style="font-size:12px">${esc([m.tg_username && `@${m.tg_username}`, m.email].filter(Boolean).join(' · '))}</div></div><span class="muted nw">${esc(ago(m.last_seen))}</span></div>`)
+    .join(''));
+  const activity = box('Активность за 13 недель', `<div class="box-body">${dayGrid(b.days)}</div>`, { end: `<span class="muted">${b.days.length} ${plural(b.days.length, 'день', 'дня', 'дней')} — заходил хоть кто-то из участников</span>` });
+  const months = box('Внесено по месяцам', table('budget-months', [
+    { key: 'month', label: 'Месяц', cell: (m) => esc(monthRu(m.month)) },
+    { key: 'receipts', label: 'Чеков', r: true },
+    { key: 'manual', label: 'Вручную', r: true },
+  ], [...b.months].reverse(), { empty: 'За год ничего не внесено' }), { foot: 'Только количество — без сумм и покупок.' });
+  const links = box('Банки и магазины', table('budget-links', [
+    { key: 'person', label: 'Чьё', cell: (l) => esc(l.person) },
+    { key: 'bank', label: 'Подключение', cell: (l) => esc(bankName(l.bank)) },
+    { key: 'status', label: 'Состояние', cell: (l) => linkLabel(l, false) },
+    { key: 'synced_at', label: 'Обновлялся', nw: true, cell: (l) => esc(ago(l.synced_at)) },
+    { key: 'error', label: 'Ошибка', cell: (l) => (l.error ? `<span class="err-t">${esc(l.error)}</span>` : dash) },
+  ], b.banks, { empty: 'Не подключали' }));
+  const support = b.support.length ? box('Обращения в поддержку', supportRows(b.support)) : '';
+  return head + stats + `<div class="grid2">${planBox}${members}</div><div style="height:16px"></div>` + activity + support + months + links;
 }
 
 function pagePerson(u) {
   if (!u) return subhead('Человек') + blank('Нет такого человека');
   const from = u.channel === 'invite' && u.invited_by ? `по приглашению ${u.invited_by}` : channelName(u.channel);
-  const head = `<a class="back" href="#/people">← Люди</a>
+  const head = `<a class="back" href="#/users/${u.budget_id}">← Бюджет</a>
     <div class="person-head"><span class="avatar">${esc(initials(u.name))}</span><div>
       <div class="person-name">${esc(u.name)}</div>
       <div class="muted">${u.tg_username ? `<a href="https://t.me/${esc(u.tg_username)}" target="_blank" rel="noopener">@${esc(u.tg_username)}</a> · ` : ''}с ${esc(dateRu(u.created_at))} · ${esc(from)}</div>
@@ -583,6 +680,14 @@ async function route() {
     } catch (err) {
       html = arg ? pageThread(null) : `<div class="flash bad">Не загрузилось: ${esc(err.message)}</div>`;
     }
+  } else if (known === 'users' && arg) {
+    let b = null;
+    try {
+      b = await api(`/api/admin/budgets/${encodeURIComponent(arg)}`);
+    } catch {
+      /* нет такого — покажем пустую */
+    }
+    html = pageBudget(b);
   } else if (known === 'people' && arg) {
     try {
       state.person = await api(`/api/admin/people/${encodeURIComponent(arg)}`);
@@ -591,7 +696,7 @@ async function route() {
     }
     html = pagePerson(state.person);
   } else {
-    html = { overview: pageOverview, people: pagePeople, sources: pageSources, load: pageLoad, links: pageLinks, errors: pageErrors }[known](d);
+    html = { overview: pageOverview, users: pageUsers, people: pageUsers, sources: pageSources, load: pageLoad, links: pageLinks, errors: pageErrors }[known](d);
   }
   $('main').innerHTML = html;
   document.title = `${PAGES.find((p) => p.id === known)?.title ?? 'Админка'} — Чекер`;
@@ -608,13 +713,6 @@ async function loadImages() {
       /* не загрузилась — переписка читается и так */
     }
   }
-}
-
-function rerenderPeopleTable() {
-  const list = filterPeople(state.data.people);
-  const box = $('main').querySelector('.box');
-  if (!box) return;
-  box.outerHTML = `<div class="box"><div class="box-head">${int.format(list.length)} ${plural(list.length, 'человек', 'человека', 'человек')}${list.length !== state.data.people.length ? ` <span class="muted">из ${state.data.people.length}</span>` : ''}</div>${table('people', PEOPLE_COLS, list, { href: (u) => `#/people/${u.id}`, empty: 'Никого не нашлось' })}</div>`;
 }
 
 // ── вход и загрузка ──────────────────────────────────────
@@ -760,6 +858,19 @@ document.addEventListener('submit', async (e) => {
     stopLinkRefresh?.();
     return refresh();
   }
+  if (e.target.id === 'plan-form') {
+    const until = form.get('until');
+    try {
+      await api(`/api/admin/budgets/${e.target.dataset.id}/plan`, {
+        method: 'POST',
+        body: JSON.stringify({ plan: form.get('plan'), label: form.get('label') || null, until: until || null }),
+      });
+      await refresh();
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
   if (e.target.id === 'reply-form') {
     const button = e.target.querySelector('button[type="submit"]');
     button.disabled = true;
@@ -782,6 +893,22 @@ document.addEventListener('submit', async (e) => {
   }
 });
 
+// «Пользователи»: стрелки — по строкам, Enter — открыть бюджет выбранного
+document.addEventListener('keydown', (e) => {
+  if (!$('users-table') || ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  const rows = [...$('users-table').querySelectorAll('tr[data-select]')];
+  const at = rows.findIndex((r) => Number(r.dataset.select) === state.selBudget);
+  if (e.key === 'Enter' && at >= 0) {
+    location.hash = rows[at].dataset.open;
+  } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && rows.length) {
+    e.preventDefault();
+    const next = rows[Math.max(0, Math.min(rows.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))];
+    state.selBudget = Number(next.dataset.select);
+    rerenderUsers();
+    $('users-table').querySelector('tr.sel')?.scrollIntoView({ block: 'nearest' });
+  }
+});
+
 // Ctrl+Enter в ответе — отправить
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.closest('#reply-form')) {
@@ -793,15 +920,16 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'f-q') {
     state.filter.q = e.target.value;
-    rerenderPeopleTable();
+    rerenderUsers();
   }
 });
 
 document.addEventListener('change', (e) => {
   if (e.target.id === 'f-channel') state.filter.channel = e.target.value;
   else if (e.target.id === 'f-activity') state.filter.activity = e.target.value;
+  else if (e.target.id === 'f-plan') state.filter.plan = e.target.value;
   else return;
-  rerenderPeopleTable();
+  rerenderUsers();
 });
 
 document.addEventListener('click', async (e) => {
@@ -810,7 +938,7 @@ document.addEventListener('click', async (e) => {
     const [id, key] = sort.dataset.sort.split(':');
     const cur = state.sort[id];
     state.sort[id] = cur?.key === key ? { key, dir: -cur.dir } : { key, dir: -1 };
-    if (id === 'people') rerenderPeopleTable();
+    if (id === 'users') rerenderUsers();
     else route();
     return;
   }
@@ -824,6 +952,13 @@ document.addEventListener('click', async (e) => {
   // Ссылка из «Требует внимания» сразу с отбором
   const preset = e.target.closest('[data-activity]');
   if (preset) state.filter = { q: '', channel: '', activity: preset.dataset.activity };
+  // «Пользователи»: щелчок — выбрать строку (кратко справа); по имени — страница бюджета
+  const pick = e.target.closest('tr[data-select]');
+  if (pick && !e.target.closest('a, button')) {
+    state.selBudget = Number(pick.dataset.select);
+    rerenderUsers();
+    return;
+  }
   const row = e.target.closest('tr[data-href]');
   if (row && !e.target.closest('a, button')) {
     location.hash = row.dataset.href;
