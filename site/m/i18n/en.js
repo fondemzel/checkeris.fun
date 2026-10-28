@@ -302,6 +302,7 @@ export const en = {
     deleteConfirm2: 'Are you sure? The account cannot be restored.',
     look: {
       label: 'Appearance',
+      language: 'Language',
       motion: 'Animations',
       motionNote: 'Rings, counters, sheets',
       allLabel: 'Turn on animations',
@@ -1088,6 +1089,10 @@ export const en = {
     },
     add: 'Add spending',
     addShort: 'Add',
+  },
+  languages: {
+    ru: 'Русский',
+    en: 'English',
   },
   panelIdle: 'Select a row — its details will appear here',
   table: {

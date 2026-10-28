@@ -31,7 +31,7 @@ function shades(hex, n, from = 25, to = 85) {
 }
 import { TG_ICON, keepLinkReady, markWaiting, pendingLogin, forgetLogin, waitLogin, savedFrom, requestLogin } from '/shared/tglogin.js';
 import { showPlace, mappable } from '/shared/ymap.js';
-import { T, f, pl, lang } from '/m/i18n/index.js';
+import { T, f, pl, lang, LANGS, setLang } from '/m/i18n/index.js';
 import qrcode from '/shared/qrcode.js';
 
 const $ = (id) => document.getElementById(id);
@@ -164,6 +164,7 @@ const UI = {
   chartBars: svg('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'),
   list: svg('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'),
   moon: svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
+  globe: svg('<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>'),
   sparkle: svg('<path d="M9.94 14.06 4 20"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="m16.24 7.76 2.83-2.83"/>'),
   search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
   swap: svg('<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>'),
@@ -7203,7 +7204,9 @@ async function screenSettings() {
     // Внешний вид: тема и анимации — выбор хранится на телефоне (index.html ставит их до отрисовки)
     + section(S.look.label, '',
       srow({ icon: UI.moon, title: S.menu.dark, end: toggle('data-theme-toggle', theme() === 'dark', S.menu.dark) })
-      + link('motion', groupIcon('zap'), S.look.motion, motionNote()))
+      + link('motion', groupIcon('zap'), S.look.motion, motionNote())
+      // Язык — на телефоне (как тема); каждый подписан на самом себе
+      + srow({ icon: UI.globe, title: S.look.language, note: esc(T.languages[lang]), attrs: 'data-lang-pick', end: GO }))
     + section(S.cats.label, S.cats.listNote,
       link('cats', UI.wallet, S.cats.expense, counts(meta?.categories))
       + link('incats', UI.income, S.cats.income, counts(meta?.income)))
@@ -7655,6 +7658,18 @@ function setSyncPref(bankId, key, value) {
   } else prefs[key] = value;
   saveSyncPrefs(prefs);
 }
+
+// Выбор языка: новый язык — перезагрузкой, тексты берутся при запуске
+$('stage').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-lang-pick]')) return;
+  const rows = LANGS.map((code) => dropRow(`data-lang="${code}"`, '', T.languages[code], code === lang)).join('');
+  openChoice(T.settings.look.language, `<div class="choice-list">${rows}</div>`, (ev, close) => {
+    const row = ev.target.closest('[data-lang]');
+    if (!row) return;
+    close();
+    if (row.dataset.lang !== lang && setLang(row.dataset.lang)) location.reload();
+  });
+});
 
 $('stage').addEventListener('click', (e) => {
   if (!['set_banks', 'bank_card'].includes(state.screen)) return;

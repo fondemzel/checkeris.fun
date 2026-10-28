@@ -6,6 +6,8 @@ import { ru } from './ru.js';
 import { en } from './en.js';
 
 const LOCALES = { ru, en };
+/** Языки на выбор — в настройках, «Внешний вид». */
+export const LANGS = Object.keys(LOCALES);
 const KEY = 'checker.lang';
 
 function pick() {
