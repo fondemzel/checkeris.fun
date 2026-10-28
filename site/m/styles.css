@@ -2510,10 +2510,17 @@ body.no-tabs .tabs { display: none; }
   .tab-pill { display: none; }
   .pc-only { display: flex; }
   .tab-add { order: 0; align-self: center; width: 52px; height: 52px; margin: 0 0 12px; border: none; font-size: 28px; }
-  .actions, .sheet, .picker, .scanner { left: var(--rail); right: 0; }
+  .actions, .scanner { left: var(--rail); right: 0; }
   .actions { padding-inline: max(12px, calc((100% - var(--content)) / 2 + 12px)); }
-  .sheet, .picker { justify-content: center; }
-  .sheet-box, .picker-box { max-width: 560px; }
+  /* Листы и окна выбора (календарь, фильтр, категория, приглашение) — модальным окном
+     посередине экрана, а не снизу: проявляются, а не выезжают */
+  .sheet:not(.in-panel), .picker { align-items: center; justify-content: center; padding: 24px; }
+  .sheet:not(.in-panel) .sheet-box, .picker-box {
+    width: min(560px, 100%); max-height: min(85vh, 760px); padding-bottom: 14px;
+    border-radius: 16px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+  }
+  .sheet.opening .sheet-box, .picker.opening .picker-box { animation-name: ask-in; animation-duration: 0.2s; }
+  .sheet.closing .sheet-box, .picker.closing .picker-box { animation-name: ask-out; animation-duration: 0.15s; }
   .toast { left: calc(50% + var(--rail) / 2); }
 }
 @media (min-width: 900px) {
@@ -2552,9 +2559,6 @@ body.no-tabs .tabs { display: none; }
   .sheet.in-panel { display: contents; }
   .in-panel .sheet-box { max-width: none; max-height: none; padding: 0; border-radius: 0; background: none; }
   .in-panel .sheet-top > [data-close] { display: none; } /* закрывает крестик панели */
-  body.has-panel .actions, body.has-panel .sheet, body.has-panel .picker { right: var(--panel-w); }
-  /* Окно, открытое из панели (openPopup → .from-panel), — поверх панели, в её ширину */
-  body.has-panel .sheet.from-panel, body.has-panel .picker.from-panel { left: auto; right: 0; width: var(--panel-w); }
-  .from-panel .sheet-box, .from-panel .picker-box { max-width: none; }
+  body.has-panel .actions { right: var(--panel-w); }
   body.has-panel .toast { left: calc(50% + (var(--rail) - var(--panel-w)) / 2); }
 }

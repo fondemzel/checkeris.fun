@@ -917,15 +917,7 @@ function ask(text, { ok = T.common.yes, danger = false } = {}) {
   });
 }
 
-// Окно, открытое из правой панели (выбор категории, подтверждение), — поверх самой панели, а
-// не на всю ширину: смотрят туда же, куда нажали. Вложенное окно — там же, где предыдущее
-let downInPanel = false;
-document.addEventListener('pointerdown', (e) => { downInPanel = Boolean(e.target.closest?.('#panel')); }, true);
-
 function openPopup(el) {
-  const fromPanel = document.body.classList.contains('has-panel')
-    && (downInPanel || document.querySelector('.from-panel:not(.closing)'));
-  el.classList.toggle('from-panel', Boolean(fromPanel));
   el.classList.add('opening');
   setTimeout(() => el.classList.remove('opening'), 320);
   document.body.appendChild(el);
