@@ -488,7 +488,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
           aria-label="${esc(state.mode === 'ring' ? T.feed.asList : T.feed.asRing)}" title="${esc(state.mode === 'ring' ? T.feed.listShort : T.feed.ringShort)}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
       </div>`}
     </div>
-    ${wide ? filterRows(chips === 'income') : `
+    ${wide ? filterRows(chips === 'income', { table: state.screen !== 'stats' }) : `
     <div class="head-line">
       ${periodNav(true)}
       ${search ? searchBox() : ''}
@@ -507,9 +507,10 @@ const filterCfg = (income) => (income
  * ничего не выбрано — значит все. Группы — одними значками (название — в подсказке): выбранные
  * цветные, прочие бледные. Чипсы — «включённые»: пока ничего не отобрано, горят все; погасили —
  * этих строк нет; погасили все — пусто (NOTHING). В конце строки источников и групп — круглый
- * крестик: горят все — погасить все, иначе — зажечь все
+ * крестик: горят все — погасить все, иначе — зажечь все. table = false — не таблица («Сводка»):
+ * без кнопок группировки и сворачивания разделов
  */
-function filterRows(income) {
+function filterRows(income, { table = true } = {}) {
   const cfg = filterCfg(income);
   const lit = (key) => (value) => !state[key] || state[key].split(',').includes(value);
   const srcOnChip = lit(cfg.srcKey);
@@ -531,8 +532,8 @@ function filterRows(income) {
   };
   // Справа в строке групп — группировка таблицы (разделы по дням или категориям — или сплошной
   // список) и «свернуть / развернуть все разделы»
-  const grouped = tableGrouped();
-  const groupBtn = `<button class="fchip-all${grouped ? ' on' : ''}" type="button" data-tgroup
+  const grouped = table && tableGrouped();
+  const groupBtn = !table ? '' : `<button class="fchip-all${grouped ? ' on' : ''}" type="button" data-tgroup
     aria-label="${esc(grouped ? T.table.ungroup : T.table.group)}" title="${esc(grouped ? T.table.ungroup : T.table.group)}">${UI.rows}</button>`;
   // Лента ещё не завела состояние разделов (её рисуют после шапки) — как откроет она сама:
   // по дате — верхний день, по категориям — всё свёрнуто
@@ -10561,7 +10562,8 @@ async function screenAnalytics() {
   const bars = anaView() === 'bars';
   const viewBtn = `<button class="drop-btn" type="button" data-ana-view aria-label="${esc(bars ? T.stats.asLines : T.stats.asBars)}"
     title="${esc(bars ? T.stats.lines : T.stats.bars)}">${bars ? UI.chartLine : UI.chartBars}</button>`;
-  const head = (sum, note) => `<div class="stuck-head">${listHead({ sum: money(sum), note, sorts: ANA_SORTS, filters: sourceChips(), search: true, extra: viewBtn })}</div>`;
+  // Шапка — как в «Расходе»: на широком экране чипсы периода, источника и группы
+  const head = (sum, note) => `<div class="stuck-head ana-head">${listHead({ sum: money(sum), note, sorts: ANA_SORTS, filters: sourceChips(), search: true, extra: viewBtn, chips: 'expense' })}</div>`;
   const sort = ANA_SORTS.includes(state.sort) ? state.sort : 'category';
   if (cut < 0) return `${head(0, '')}<div class="empty">${esc(T.stats.notStarted)}</div>`;
 

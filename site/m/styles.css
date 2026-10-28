@@ -2592,7 +2592,7 @@ body.no-tabs .tabs { display: none; }
    Узкая лента (рядом открыта панель) — без столбца источника: его видно по значку у суммы нет,
    но он есть в карточке */
 .list.tbl { container-type: inline-size; }
-.screen:has(.list.tbl) { max-width: 1100px; } /* таблице нужна ширина: лента шире обычной */
+.screen:has(.list.tbl), .screen:has(.ana-head) { max-width: 1100px; } /* таблице и «Сводке» нужна ширина: лента шире обычной */
 .thead, .trow, .tfoot {
   display: grid; align-items: center; column-gap: 12px;
   grid-template-columns: 22px 92px minmax(180px, 1fr) minmax(0, 210px) minmax(0, 140px) 108px;
