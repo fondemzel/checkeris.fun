@@ -86,7 +86,11 @@
       <button class="demo-pill" id="demo-pill" type="button" hidden></button>
     </header>
 
-    <main class="screen" id="screen"></main>
+    <!-- Лента и правая панель подробностей (широкий экран) — общий контейнер: обработчики нажатий висят на нём -->
+    <div class="stage" id="stage">
+      <main class="screen" id="screen"></main>
+      <aside class="panel" id="panel" hidden></aside>
+    </div>
 
     <div class="actions" id="actions" hidden></div>
 

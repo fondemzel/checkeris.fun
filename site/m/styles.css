@@ -2527,3 +2527,27 @@ body.no-tabs .tabs { display: none; }
   .tab-add .tab-name { display: inline; }
   .tab-add-ic { font-size: 24px; line-height: 1; }
 }
+
+/* ── правая панель подробностей (от 1100 px, openPanel) ──────
+   Покупка или операция открывается справа во всю высоту, лента ужимается и остаётся рядом;
+   её строка выделена. Шапка панели — такая же тёмная полоса, как шапка экрана */
+.panel[hidden] { display: none; }
+[data-item].picked, [data-op].picked { background: var(--accent-faint); }
+@media (min-width: 1100px) {
+  :root { --panel-w: 420px; }
+  body.has-panel { padding-right: var(--panel-w); }
+  .panel {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 9; width: var(--panel-w);
+    overflow-y: auto; overscroll-behavior: contain; background: var(--bg); box-shadow: -1px 0 0 var(--border);
+  }
+  .panel-top {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
+    height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0 16px;
+    background: var(--bar); color: #fff;
+  }
+  .panel-title { flex: 1; min-width: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel-top .icon-btn { background: rgba(255, 255, 255, 0.12); color: #fff; }
+  .panel-body { padding: 12px; }
+  body.has-panel .actions, body.has-panel .sheet, body.has-panel .picker { right: var(--panel-w); }
+  body.has-panel .toast { left: calc(50% + (var(--rail) - var(--panel-w)) / 2); }
+}

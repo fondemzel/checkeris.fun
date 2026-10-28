@@ -786,6 +786,7 @@ function go(patch, replace = false) {
   if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY, q: state.q, same: state.same, mode: state.mode, ringGroup: state.ringGroup, ringRest: state.ringRest }, '', location.href);
   Object.assign(state, patch);
   rememberPeriod();
+  closePanel(); // другой экран или другой период — подробности прежней строки больше ни к чему
   const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
   if (state.category) params.set('category', state.category);
@@ -1768,7 +1769,7 @@ async function openLimitSheet(slug) {
   });
 }
 
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   const edit = e.target.closest('[data-lim-edit]');
   if (!edit) return;
   if (edit.dataset.limEdit) openLimitSheet(edit.dataset.limEdit);
@@ -1815,7 +1816,7 @@ function limitsFocus() {
   row.classList.add('lim-flash');
 }
 
-$('screen').addEventListener('click', async (e) => {
+$('stage').addEventListener('click', async (e) => {
   if (state.screen !== 'set_limits') return;
   const group = e.target.closest('[data-lim-group]');
   if (group) return openLimitSheet(group.dataset.limGroup);
@@ -1849,7 +1850,7 @@ function limitsDim(off) {
 }
 
 /** Включить или выключить лимиты целиком — на экране «Лимиты» и в поиске по настройкам. */
-$('screen').addEventListener('change', async (e) => {
+$('stage').addEventListener('change', async (e) => {
   if (!e.target.matches('[data-limits-toggle]')) return;
   const box = e.target;
   box.disabled = true;
@@ -2501,8 +2502,8 @@ const expandKey = (norm) => `${state.group}|${state.category}|${state.from}|${st
 
 let itemShown = null; // позиция на экране — карте нужны её координаты после отрисовки
 
-async function screenItem() {
-  const it = await api(`/api/items/${state.item}`);
+async function screenItem(id = state.item) {
+  const it = await api(`/api/items/${id}`);
   return itemCard({ ...it, source: itemSource({ manual: it.receipt_drive === 'manual', market: it.market }) });
 }
 
@@ -2511,11 +2512,17 @@ async function screenItem() {
  * той же карточкой: человеку важно, что трата учтена, а не каким путём она пришла.
  */
 async function screenOp() {
-  const op = await api(`/api/bank/ops/${state.op}`);
-  const income = op.direction === 'credit';
+  const { income, html } = await opCard(state.op);
   setTitle(income ? T.income.one : T.item.title); // вид операции известен только теперь
   for (const tab of document.querySelectorAll('[data-tab]')) tab.classList.toggle('on', tab.dataset.tab === (income ? 'income' : 'summary'));
-  return itemCard({
+  return html;
+}
+
+/** Карточка операции банка: поступление или трата — вид известен только после ответа. */
+async function opCard(id) {
+  const op = await api(`/api/bank/ops/${id}`);
+  const income = op.direction === 'credit';
+  return { income, html: itemCard({
     id: op.id,
     source: 'bank',
     income,
@@ -2536,8 +2543,94 @@ async function screenOp() {
     account: op.account,
     bank: op.bank,
     manualIncome: op.bank === 'manual', // вписан вручную: источник «вручную», его можно удалить
-  });
+  }) };
 }
+
+// ── правая панель подробностей (широкий экран) ───────────
+// От 1100 px покупка и операция открываются справа, а лента остаётся на месте — с выделенной
+// строкой. Следующая строка подменяет панель; Esc и крестик закрывают. Уже 1100 — карточка,
+// как на телефоне, отдельным экраном. Кнопки карточки работают и тут: обработчики висят на
+// общем контейнере #stage
+const panelMq = matchMedia('(min-width: 1100px)');
+let panelCard = null; // { kind: 'item' | 'op', id } — что открыто в панели
+let panelSeq = 0;
+
+/** Открыть покупку или операцию: на широком экране — в панели, иначе — экраном. */
+function openCard(kind, id) {
+  if (!panelMq.matches) return go(kind === 'op' ? { screen: 'op', op: id } : { screen: 'item', item: id });
+  return openPanel(kind, id);
+}
+
+async function openPanel(kind, id) {
+  const panel = $('panel');
+  const seq = ++panelSeq;
+  const same = panelCard?.kind === kind && panelCard?.id === String(id);
+  panelCard = { kind, id: String(id) };
+  panel.hidden = false;
+  document.body.classList.add('has-panel');
+  markPicked();
+  updateDock();
+  if (!same) {
+    panel.innerHTML = `
+      <div class="panel-top"><b class="panel-title" id="panel-title"></b>
+        <button class="icon-btn soft" type="button" data-panel-close aria-label="${esc(T.common.close)}" title="${esc(T.common.close)}">${UI.close}</button></div>
+      <div class="panel-body" id="panel-body">${loading()}</div>`;
+    panel.scrollTop = 0;
+  }
+  try {
+    const card = kind === 'op' ? await opCard(id) : { income: false, html: await screenItem(id) };
+    if (seq !== panelSeq) return;
+    $('panel-title').textContent = card.income ? T.income.one : T.item.title;
+    $('panel-body').innerHTML = card.html;
+    mountItemMap();
+    fitNote();
+  } catch (err) {
+    if (seq === panelSeq) $('panel-body').innerHTML = failed(err);
+  }
+}
+
+function closePanel() {
+  if (!panelCard) return;
+  panelCard = null;
+  panelSeq += 1; // запоздавший ответ уже не нужен
+  const panel = $('panel');
+  panel.hidden = true;
+  panel.innerHTML = '';
+  document.body.classList.remove('has-panel');
+  markPicked();
+  updateDock();
+}
+
+/** Строка открытой в панели покупки — выделена, чтобы было видно, что справа. */
+function markPicked() {
+  for (const el of document.querySelectorAll('#screen .picked')) el.classList.remove('picked');
+  if (!panelCard) return;
+  const attr = panelCard.kind === 'op' ? 'data-op' : 'data-item';
+  document.querySelector(`#screen [${attr}="${CSS.escape(panelCard.id)}"]`)?.classList.add('picked');
+}
+
+/** Карточки больше нет (убрали, удалили, стала переводом себе): в панели — закрыть, экраном — назад. */
+function cardGone() {
+  if (!panelCard) return history.back();
+  closePanel();
+  screenCache.clear();
+  return render();
+}
+
+/** В карточке поменяли категорию: лента рядом — перерисовать, карточку в панели — освежить. */
+function cardChanged() {
+  if (panelCard) openPanel(panelCard.kind, panelCard.id);
+  return render();
+}
+
+panelMq.addEventListener?.('change', () => !panelMq.matches && closePanel());
+$('stage').addEventListener('click', (e) => {
+  if (e.target.closest('[data-panel-close]')) closePanel();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !panelCard || document.querySelector(OPEN_POPUPS)) return;
+  closePanel();
+});
 
 /** Чем трата попала в Чекер: чек, ручная запись или конкретный банк. */
 /** Источник позиции чека: вбита руками, чек маркетплейса (по ИНН площадки) или обычный чек. */
@@ -3543,7 +3636,7 @@ async function markTransfer(id, only) {
   screenCache.clear();
   toast(res.affected > 1 ? f(T.item.selfDoneMore, { n: int.format(res.affected - 1) }) : T.item.selfDone);
   // Карточка операции больше не трата и не доход — возвращаемся к списку
-  if (state.screen === 'op') history.back();
+  if (state.screen === 'op' || panelCard) cardGone();
   else render();
 }
 
@@ -3553,7 +3646,7 @@ async function saveIncomeCategory(id, slug, { only = false } = {}) {
     const res = await post(`/api/bank/ops/${id}/category`, { category: slug, only });
     screenCache.clear();
     toast(res.affected > 1 ? f(T.income.savedMore, { n: int.format(res.affected - 1) }) : only ? T.pick.savedOnlyIncome : T.income.saved);
-    render();
+    cardChanged();
   } catch (err) {
     toast(f(T.common.notSaved, { error: err.message }));
   }
@@ -3950,7 +4043,7 @@ async function saveOpCategory(id, slug, { only = false } = {}) {
     if (slug === TRANSFER) return await markTransfer(id, only);
     const res = await post(`/api/bank/ops/${id}/category`, { category: slug, only });
     toast(res.affected > 1 ? f(T.pick.savedSeller, { n: int.format(res.affected - 1) }) : only ? T.pick.savedOnly : T.pick.saved);
-    render();
+    cardChanged();
   } catch (err) {
     toast(f(T.common.notSaved, { error: err.message }));
   }
@@ -4517,7 +4610,7 @@ window.addEventListener('checker-history', (e) => {
 });
 
 // Счета на странице банка: выбор сохраняется сразу, операции счёта уходят из учёта или возвращаются
-$('screen').addEventListener('change', async (e) => {
+$('stage').addEventListener('change', async (e) => {
   const box = e.target.closest('[data-bank-acc]');
   if (!box) return;
   const ops = Number(box.dataset.ops) || 0;
@@ -4542,7 +4635,7 @@ $('screen').addEventListener('change', async (e) => {
 });
 
 // Галочки счетов: оценка времени меняется сразу
-$('screen').addEventListener('change', (e) => {
+$('stage').addEventListener('change', (e) => {
   const box = e.target.closest('[data-wiz-acc]');
   if (!box || !wiz) return;
   const id = box.dataset.wizAcc;
@@ -4914,6 +5007,7 @@ async function render() {
   };
   if (cached) {
     $('screen').innerHTML = cached;
+    markPicked();
     window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
     arrive();
     shownScreen = state.screen;
@@ -4955,6 +5049,7 @@ async function render() {
     // Ничего не изменилось — не трогаем: перерисовка сбросила бы нажатие и фокус
     else if (html !== cached) {
       $('screen').innerHTML = html;
+      markPicked();
       window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
       if (!cached) {
         arrive();
@@ -5057,7 +5152,7 @@ function patchKeepingSearch(html) {
 // Поиск: выборка обновляется на каждый символ (с короткой паузой — чтобы не перерисовывать
 // на каждое нажатие при быстром наборе). Ищется по уже загруженному, сервер не спрашиваем
 let searchTimer = null;
-$('screen').addEventListener('input', (e) => {
+$('stage').addEventListener('input', (e) => {
   if (e.target.id !== 'q') return;
   state.q = e.target.value;
   state.same = ''; // поправили текст — это уже обычный поиск, а не «все такие же»
@@ -5066,7 +5161,7 @@ $('screen').addEventListener('input', (e) => {
   searchTimer = setTimeout(() => render(), 120);
 });
 // «Найти» на клавиатуре — убрать её: результат уже на экране
-$('screen').addEventListener('keydown', (e) => {
+$('stage').addEventListener('keydown', (e) => {
   if (e.target.id === 'q' && e.key === 'Enter') e.target.blur();
 });
 
@@ -5950,7 +6045,7 @@ async function onScreenClick(e) {
     try {
       await post(`/api/items/${hide.dataset.itemHide}/hide`, {});
       toast(manual ? T.item.deleted : T.item.hidden);
-      return history.back(); // карточки больше нет — возвращаемся к ленте
+      return cardGone(); // карточки больше нет — возвращаемся к ленте
     } catch (err) {
       return toast(f(T.common.failedWhy, { error: err.message }));
     }
@@ -5963,7 +6058,7 @@ async function onScreenClick(e) {
     try {
       await api(`/api/income/manual/${opDel.dataset.opDel}`, { method: 'DELETE' });
       toast(T.item.deleted);
-      return history.back();
+      return cardGone();
     } catch (err) {
       return toast(f(T.common.failedWhy, { error: err.message }));
     }
@@ -5981,7 +6076,7 @@ async function onScreenClick(e) {
     try {
       await post(`/api/bank/ops/${opKind.dataset.id}/kind`, { kind: opKind.dataset.opKind });
       toast(transfer ? T.item.selfDone : income ? T.income.excluded : T.item.excluded);
-      return history.back();
+      return cardGone();
     } catch (err) {
       return toast(f(T.common.failedWhy, { error: err.message }));
     }
@@ -5995,7 +6090,7 @@ async function onScreenClick(e) {
 
   // Трата из банка открывается карточкой, как товар; категория меняется уже в ней
   const opOpen = e.target.closest('[data-op]');
-  if (opOpen) return go({ screen: 'op', op: opOpen.dataset.op });
+  if (opOpen) return openCard('op', opOpen.dataset.op);
 
   const opIncat = e.target.closest('[data-op-incat]');
   if (opIncat) return openCategoryPicker(Number(opIncat.dataset.opIncat), saveIncomeCategory, meta?.income ?? [], sameFor('income', Number(opIncat.dataset.opIncat)), { transfer: true });
@@ -6048,7 +6143,7 @@ async function onScreenClick(e) {
   }
 
   const itemReceipt = e.target.closest('[data-item-receipt]');
-  if (itemReceipt) return openReceiptSheet(Number(itemReceipt.dataset.itemReceipt), { current: state.item });
+  if (itemReceipt) return openReceiptSheet(Number(itemReceipt.dataset.itemReceipt), { current: panelCard?.kind === 'item' ? panelCard.id : state.item });
 
   const itemCat = e.target.closest('[data-item-cat]');
   if (itemCat) return openCategoryPicker(Number(itemCat.dataset.itemCat), saveItemCategory, undefined, sameFor('item', Number(itemCat.dataset.itemCat)));
@@ -6080,7 +6175,7 @@ async function onScreenClick(e) {
   if (category) return go({ screen: 'category', category: category.dataset.category });
 
   const item = e.target.closest('[data-item]');
-  if (item) return go({ screen: 'item', item: item.dataset.item });
+  if (item) return openCard('item', item.dataset.item);
 
   if (e.target.closest('[data-scanner]')) return openScanner();
 
@@ -6125,10 +6220,10 @@ async function onScreenClick(e) {
 }
 
 // Полоса действий лежит вне #screen, но кнопки на ней — те же data-атрибуты
-$('screen').addEventListener('click', onScreenClick);
+$('stage').addEventListener('click', onScreenClick);
 $('actions').addEventListener('click', onScreenClick);
 
-$('screen').addEventListener('submit', (e) => {
+$('stage').addEventListener('submit', (e) => {
   if (e.target.id === 'income-form') {
     e.preventDefault();
     return saveIncome();
@@ -6158,6 +6253,10 @@ async function saveItemCategory(itemId, slug, { only = false, seller = false } =
       ? f(T.pick.updated, { name: data.category.name, n: int.format(data.affected), w: pl(data.affected, T.spend.positions) })
       : f(T.pick.clearedMany, { n: int.format(data.affected) });
     meta = await api('/api/meta'); // счётчики и цвета могли измениться
+    if (panelCard) { // карточка — в панели, лента рядом: там та же покупка с прежней категорией
+      screenCache.clear();
+      render();
+    }
   } catch (err) {
     note.textContent = f(T.pick.saveFailed, { error: err.message });
     note.classList.add('error');
@@ -6786,7 +6885,7 @@ async function sendTicket(button) {
   return null;
 }
 
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   if (!['set_support', 'set_ticket'].includes(state.screen)) return;
   const ticket = e.target.closest('[data-ticket]');
   if (ticket) return go({ screen: 'set_ticket', sup: ticket.dataset.ticket });
@@ -6963,13 +7062,13 @@ function settingsSearch() {
   main.hidden = true;
 }
 
-$('screen').addEventListener('input', (e) => {
+$('stage').addEventListener('input', (e) => {
   if (e.target.id !== 'sq') return;
   settingsQ = e.target.value;
   settingsSearch();
 });
 
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   if (state.screen !== 'settings') return null;
   if (e.target.closest('[data-sq-clear]')) {
     settingsQ = '';
@@ -7057,7 +7156,7 @@ async function linkPost(path, body) {
   return data;
 }
 
-$('screen').addEventListener('submit', async (e) => {
+$('stage').addEventListener('submit', async (e) => {
   if (!['link-email-form', 'link-code-form'].includes(e.target.id)) return;
   e.preventDefault();
   const button = e.target.querySelector('button[type="submit"]');
@@ -7084,13 +7183,13 @@ $('screen').addEventListener('submit', async (e) => {
 });
 
 // Код набрали целиком (или телефон вставил его из письма) — подтверждаем сразу
-$('screen').addEventListener('input', (e) => {
+$('stage').addEventListener('input', (e) => {
   if (e.target.id === 'link-email' && document.getElementById('link-code-form') && e.target.value.replace(/\D/g, '').length === 6) {
     document.getElementById('link-code-form').requestSubmit();
   }
 });
 
-$('screen').addEventListener('click', async (e) => {
+$('stage').addEventListener('click', async (e) => {
   if (e.target.closest('[data-link-again]')) {
     linkEmail = '';
     return render();
@@ -7282,7 +7381,7 @@ function setSyncPref(bankId, key, value) {
   saveSyncPrefs(prefs);
 }
 
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   if (!['set_banks', 'bank_card'].includes(state.screen)) return;
   if (e.target.closest('[data-perm-bg]')) return window.Checker?.askBackground?.();
   if (e.target.closest('[data-perm-auto]')) return window.Checker?.openAutostart?.();
@@ -7302,7 +7401,7 @@ $('screen').addEventListener('click', (e) => {
   });
 });
 
-$('screen').addEventListener('change', (e) => {
+$('stage').addEventListener('change', (e) => {
   if (e.target.matches('[data-sync-all]')) {
     setSyncPref('', 'all', e.target.checked);
     render();
@@ -7357,7 +7456,7 @@ function screenSetBackup() {
     + srow({ icon: UI.upload, title: B.share, attrs: 'data-backup-share', off: !info.last, end: GO }));
 }
 
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   if (state.screen !== 'set_backup') return null;
   const B = T.settings.backup;
   if (e.target.closest('[data-backup-now]')) {
@@ -7600,7 +7699,7 @@ function groupBars() {
   };
 }
 
-$('screen').addEventListener('input', (e) => {
+$('stage').addEventListener('input', (e) => {
   if (!e.target.matches('[data-ghue], [data-shade]')) return;
   const { color, shade_from, shade_to } = groupBars();
   const row = e.target.closest('.bar-row');
@@ -7616,7 +7715,7 @@ $('screen').addEventListener('input', (e) => {
   });
 });
 
-$('screen').addEventListener('change', (e) => {
+$('stage').addEventListener('change', (e) => {
   if (!e.target.matches('[data-ghue], [data-shade]')) return;
   const bars = groupBars();
   // Сохраняем то, что двигали: цвет или границы градиента. Экран уже выглядит как надо
@@ -8075,7 +8174,7 @@ function setMotion(on) {
   }
 }
 
-$('screen').addEventListener('change', (e) => {
+$('stage').addEventListener('change', (e) => {
   if (e.target.matches('[data-theme-toggle]')) setTheme(e.target.checked ? 'dark' : 'light');
   if (e.target.matches('[data-motion-toggle]')) {
     setMotion(e.target.checked);
@@ -8265,7 +8364,7 @@ async function onSettingsClick(e) {
     }
 }
 
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   if (e.target.closest('[data-privacy]')) return go({ screen: 'privacy' });
   const set = e.target.closest('[data-set]');
   // Категории расходов и доходов — одни и те же экраны, разный справочник
@@ -8324,7 +8423,7 @@ const INLINE_SAVE = {
   thint: async (hint) => (await taxoCall('PATCH', `/categories/${encodeURIComponent(state.tc)}`, { hint })).category.hint ?? '',
 };
 
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   const view = e.target.closest('[data-inline-view]');
   const input = view ? view.nextElementSibling : e.target.closest('[data-inline]');
   if (!input?.readOnly) return;
@@ -8333,7 +8432,7 @@ $('screen').addEventListener('click', (e) => {
   input.select();
 });
 
-$('screen').addEventListener('keydown', (e) => {
+$('stage').addEventListener('keydown', (e) => {
   // Enter — «готово» и в многострочном поле: подсказка — один абзац, перенос строки ей не нужен
   if (e.target.matches?.('[data-inline]') && e.key === 'Enter') {
     e.preventDefault();
@@ -8341,7 +8440,7 @@ $('screen').addEventListener('keydown', (e) => {
   }
 });
 
-$('screen').addEventListener('focusout', async (e) => {
+$('stage').addEventListener('focusout', async (e) => {
   const input = e.target;
   if (!input.matches?.('[data-inline]') || input.readOnly) return;
   input.readOnly = true;
@@ -8445,7 +8544,7 @@ for (const type of ['pointerup', 'pointercancel', 'pointermove', 'pointerleave']
 }
 
 // Тап, которым закончилось долгое нажатие, не должен ещё и открывать товар
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   if (!longPressFired) return;
   longPressFired = false;
   e.stopPropagation();
@@ -8453,7 +8552,7 @@ $('screen').addEventListener('click', (e) => {
 }, true);
 
 // Долгое нажатие на телефоне вызывает меню выделения — у строк оно ни к чему
-$('screen').addEventListener('contextmenu', (e) => {
+$('stage').addEventListener('contextmenu', (e) => {
   if (e.target.closest('[data-long]')) e.preventDefault();
 });
 
@@ -8467,20 +8566,20 @@ const growNote = (el) => {
 };
 const fitNote = () => $('item-note') && growNote($('item-note'));
 
-$('screen').addEventListener('input', (e) => {
+$('stage').addEventListener('input', (e) => {
   if (e.target.matches?.('[data-note]')) growNote(e.target);
 });
 
 // Галочка сохранения видна, пока пишут. Нажатие не должно уводить фокус раньше клика —
 // тогда поле само потеряет фокус по нашей команде и сохранится как обычно
-$('screen').addEventListener('pointerdown', (e) => {
+$('stage').addEventListener('pointerdown', (e) => {
   if (e.target.closest('[data-note-save]')) e.preventDefault();
 });
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   if (e.target.closest('[data-note-save]')) $('item-note')?.blur();
 });
 
-$('screen').addEventListener('focusout', async (e) => {
+$('stage').addEventListener('focusout', async (e) => {
   const el = e.target;
   if (!el.matches?.('[data-note]') || el.value === el.defaultValue) return;
   try {
@@ -10065,7 +10164,7 @@ $('screen').addEventListener('touchmove', (e) => {
   anaPoint(e.touches[0].clientX);
 }, { passive: false });
 
-$('screen').addEventListener('click', (e) => {
+$('stage').addEventListener('click', (e) => {
   if (state.screen !== 'stats') return null;
   // Группа — её категории; категория — её траты в «Расходе»
   const row = e.target.closest('[data-ana]');
