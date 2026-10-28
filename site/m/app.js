@@ -468,7 +468,7 @@ function matchesQ(fields, amounts = []) {
  * экране вместо кнопки фильтра и строки периода — строки чипсов (filterRows). Таблица сортируется
  * по заголовкам столбцов — кнопки сортировки у неё нет (кроме «Сводки»: там не таблица)
  */
-const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false, mode = false, extra = '', chips = '' }) => {
+const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false, mode = false, extra = '', chips = '', view = '' }) => {
   const wide = Boolean(chips) && panelRingOn();
   const sortBtn = sorts && !(tableOn() && state.screen !== 'stats') && !(mode && state.mode === 'ring' && !panelRingOn());
   // Кнопок справа нет — и блока для них нет: пустой отодвигал поиск от правого края
@@ -488,7 +488,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
           aria-label="${esc(state.mode === 'ring' ? T.feed.asList : T.feed.asRing)}" title="${esc(state.mode === 'ring' ? T.feed.listShort : T.feed.ringShort)}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
       </div>`}
     </div>
-    ${wide ? filterRows(chips === 'income', { table: state.screen !== 'stats' }) : `
+    ${wide ? filterRows(chips === 'income', { table: state.screen !== 'stats', view }) : `
     <div class="head-line">
       ${periodNav(true)}
       ${search ? searchBox() : ''}
@@ -508,9 +508,9 @@ const filterCfg = (income) => (income
  * цветные, прочие бледные. Чипсы — «включённые»: пока ничего не отобрано, горят все; погасили —
  * этих строк нет; погасили все — пусто (NOTHING). В конце строки источников и групп — круглый
  * крестик: горят все — погасить все, иначе — зажечь все. table = false — не таблица («Сводка»):
- * без кнопок группировки и сворачивания разделов
+ * без кнопок группировки и сворачивания разделов; view — своя кнопка вида на их месте
  */
-function filterRows(income, { table = true } = {}) {
+function filterRows(income, { table = true, view = '' } = {}) {
   const cfg = filterCfg(income);
   const lit = (key) => (value) => !state[key] || state[key].split(',').includes(value);
   const srcOnChip = lit(cfg.srcKey);
@@ -543,7 +543,7 @@ function filterRows(income, { table = true } = {}) {
   return `<div class="frows">
     <div class="frow">${periods}<span class="frow-end">${periodNav(true)}</span></div>
     <div class="frow">${sources}${all(cfg.srcKey)}</div>
-    <div class="frow">${groups}${all(cfg.groupKey)}<span class="frow-end">${foldBtn}${groupBtn}</span></div>
+    <div class="frow">${groups}${all(cfg.groupKey)}<span class="frow-end">${foldBtn}${groupBtn}${view}</span></div>
   </div>`;
 }
 
@@ -10570,8 +10570,9 @@ async function screenAnalytics() {
   // С правой панелью: шапка — как в «Расходе», без кнопок; вид графика — в его карточке,
   // группы — справа, их сортировка — в шапке панели
   const side = panelRingOn();
-  const head = (sum, note) => `<div class="stuck-head ana-head">${listHead({ sum: money(sum), note, sorts: side ? false : ANA_SORTS, filters: sourceChips(), search: true, extra: side ? '' : viewBtn, chips: 'expense' })}</div>`;
-  const viewChip = `<button class="ana-step-btn ana-view-btn" type="button" data-ana-view aria-label="${esc(bars ? T.stats.asLines : T.stats.asBars)}"
+  const head = (sum, note) => `<div class="stuck-head ana-head">${listHead({ sum: money(sum), note, sorts: side ? false : ANA_SORTS, filters: sourceChips(), search: true, extra: side ? '' : viewBtn, chips: 'expense', view: side ? viewChip : '' })}</div>`;
+  // Вид графика — в шапке, на месте кнопки группировки таблицы у других лент: тоже вид показа
+  const viewChip = `<button class="fchip-all" type="button" data-ana-view aria-label="${esc(bars ? T.stats.asLines : T.stats.asBars)}"
     title="${esc(bars ? T.stats.asLines : T.stats.asBars)}">${bars ? UI.chartLine : UI.chartBars}</button>`;
   const sort = ANA_SORTS.includes(state.sort) ? state.sort : 'category';
   if (cut < 0) {
@@ -10697,7 +10698,7 @@ async function screenAnalytics() {
   }).filter((r) => r.now || r.was)
     .sort((a, b) => compare(a, b) * back);
 
-  const tools = `${bars ? anaStepDrop(from, to, B.step) : ''}${side ? viewChip : ''}`;
+  const tools = bars ? anaStepDrop(from, to, B.step) : '';
   const groupRows = groupsRows.map((r) => anaRow(r, names)).join('');
   const groupsTitle = open ? open.name : T.stats.groups;
   const groupsHint = open ? T.stats.catsHint : T.stats.groupsHint;
