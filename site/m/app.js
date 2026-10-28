@@ -471,6 +471,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
         <span class="total-sum">${sum}</span>
         <span class="total-note">${note}</span>
       </div>
+      ${wide && search ? searchBox() : ''}
       <div class="head-btns">
         ${sortBtn ? sortDrop(sorts === true ? undefined : sorts) : ''}
         ${wide ? '' : filters}
@@ -479,7 +480,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
           aria-label="${esc(state.mode === 'ring' ? T.feed.asList : T.feed.asRing)}" title="${esc(state.mode === 'ring' ? T.feed.listShort : T.feed.ringShort)}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
       </div>
     </div>
-    ${wide ? filterRows(chips === 'income', search) : `
+    ${wide ? filterRows(chips === 'income') : `
     <div class="head-line">
       ${periodNav(true)}
       ${search ? searchBox() : ''}
@@ -494,10 +495,12 @@ const filterCfg = (income) => (income
 
 /**
  * Фильтры широкого экрана — строками чипсов в шапке ленты: период (день, неделя, месяц, год,
- * в конце — переключатель периода и поиск), источник и группа. Источников и групп можно выбрать
- * несколько; ничего не выбрано — значит все. У групп — их значки: выбранные цветные, прочие бледные
+ * справа — переключатель периода), источник и группа. Источников и групп можно выбрать несколько;
+ * ничего не выбрано — значит все. Группы — одними значками (название — в подсказке): выбранные
+ * цветные, прочие бледные. В конце строки источников и групп — круглый крестик: выбрано что-то —
+ * снять всё, не выбрано ничего — включить все
  */
-function filterRows(income, search) {
+function filterRows(income) {
   const cfg = filterCfg(income);
   const src = new Set(state[cfg.srcKey] ? state[cfg.srcKey].split(',') : []);
   const sg = new Set(state[cfg.groupKey] ? state[cfg.groupKey].split(',') : []);
@@ -507,13 +510,15 @@ function filterRows(income, search) {
   const sources = cfg.sources.filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
     .map((k) => chip(`data-fchip="${cfg.srcKey}:${k}"`, `<span class="fchip-src">${SOURCES[k].icon}</span>${esc(SOURCE_SHORT[k])}`, src.has(k))).join('');
   const groups = [...cfg.groups, { slug: cfg.none, name: cfg.noneName, icon: 'none', color: '#c9ced6' }]
-    .map((g) => chip(`data-fchip="${cfg.groupKey}:${esc(g.slug)}"`,
-      `<span class="fchip-ic">${groupIcon(g.icon ?? 'none')}</span>${esc(g.name)}`, sg.has(g.slug), ' grp',
+    .map((g) => chip(`data-fchip="${cfg.groupKey}:${esc(g.slug)}" aria-label="${esc(g.name)}" title="${esc(g.name)}"`,
+      `<span class="fchip-ic">${groupIcon(g.icon ?? 'none')}</span>`, sg.has(g.slug), ' grp',
       `--g:${g.color ?? 'var(--fill)'};--gt:${readableText(g.color ?? '#c9ced6')}`)).join('');
+  const all = (key, picked) => `<button class="fchip-all${picked ? ' on' : ''}" type="button" data-fall="${key}"
+    aria-label="${esc(picked ? T.feed.clearRow : T.feed.allRow)}" title="${esc(picked ? T.feed.clearRow : T.feed.allRow)}">${UI.close}</button>`;
   return `<div class="frows">
-    <div class="frow">${periods}<span class="frow-end">${periodNav(true)}${search ? searchBox() : ''}</span></div>
-    <div class="frow">${sources}</div>
-    <div class="frow">${groups}</div>
+    <div class="frow">${periods}<span class="frow-end">${periodNav(true)}</span></div>
+    <div class="frow">${sources}${all(cfg.srcKey, src.size > 0)}</div>
+    <div class="frow">${groups}${all(cfg.groupKey, sg.size > 0)}</div>
   </div>`;
 }
 
@@ -6482,7 +6487,7 @@ addEventListener('touchcancel', () => {
 // браузерная: та появляется через секунду и выглядит чужой. title переезжает в data-tip, чтобы
 // не всплывали обе
 const hoverMq = matchMedia('(hover: hover) and (pointer: fine)');
-const TIP_DELAY = 450;
+const TIP_DELAY = 60; // почти сразу: подсказка — часть интерфейса, а не справка по запросу
 const TIP_CUT = '.row-title, .t-cat, .t-src, .srow-title, .srow-note, .cat-name, .sheet-name, .picker-tile-name, .ring-name';
 let tipEl = null;
 let tipTimer = null;
@@ -6569,6 +6574,14 @@ async function onScreenClick(e) {
   // Чипсы фильтров широкого экрана: период — сразу, источник и группа — добавить или убрать из выбора
   const fperiod = e.target.closest('[data-fperiod]');
   if (fperiod) return go({ ...quickPeriods()[Number(fperiod.dataset.fperiod)][1] }, true);
+  // Крестик в конце строки чипсов: выбрано что-то — снять всё; ничего — включить все чипсы строки
+  const fall = e.target.closest('[data-fall]');
+  if (fall) {
+    const key = fall.dataset.fall;
+    const every = [...document.querySelectorAll(`#screen [data-fchip^="${key}:"]`)].map((c) => c.dataset.fchip.split(':')[1]);
+    pulseNext = 'count';
+    return go({ [key]: state[key] ? '' : every.join(',') }, true);
+  }
   const fchip = e.target.closest('[data-fchip]');
   if (fchip) {
     const [key, value] = fchip.dataset.fchip.split(':');

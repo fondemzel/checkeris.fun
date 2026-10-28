@@ -762,6 +762,8 @@ export const ru = {
     only: { receipt: 'Только чеки', market: 'Только маркетплейсы', bank: 'Только банк', manual: 'Только вручную', failed: 'Чеки с ошибкой' },
     short: { receipt: 'Чеки', market: 'Маркетплейсы', bank: 'Банк', manual: 'Вручную', failed: 'С ошибкой' },
     noCategory: 'Без категории',
+    allRow: 'Включить все',
+    clearRow: 'Снять выбор',
     onlyQ: 'только «{q}»',
     searchQ: 'поиск «{q}»',
     andMore: '{list} и ещё {n}',

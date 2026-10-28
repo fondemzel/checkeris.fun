@@ -699,6 +699,8 @@ export const en = {
       failed: 'Failed',
     },
     noCategory: 'No category',
+    allRow: 'Select all',
+    clearRow: 'Clear selection',
     onlyQ: 'only “{q}”',
     searchQ: 'search “{q}”',
     andMore: '{list} and {n} more',

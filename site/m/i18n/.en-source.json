@@ -729,6 +729,8 @@
  "feed.short.manual": "Вручную",
  "feed.short.failed": "С ошибкой",
  "feed.noCategory": "Без категории",
+ "feed.allRow": "Включить все",
+ "feed.clearRow": "Снять выбор",
  "feed.onlyQ": "только «{q}»",
  "feed.searchQ": "поиск «{q}»",
  "feed.andMore": "{list} и ещё {n}",
