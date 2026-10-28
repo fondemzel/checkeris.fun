@@ -113,6 +113,7 @@
  "settings.words.demo": "демо тестовый пример",
  "settings.words.group": "группа",
  "settings.words.category": "категория",
+ "settings.words.language": "язык language english русский перевод",
  "settings.menu.label": "Основные",
  "settings.menu.members": [
   "участник",

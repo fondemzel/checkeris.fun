@@ -7262,6 +7262,7 @@ function settingsIndex() {
   // Внешний вид
   add(S.menu.dark, L.label, UI.moon, { toggle: 'theme' }, W.dark);
   add(L.motion, L.label, groupIcon('zap'), { screen: 'set_motion' });
+  add(L.language, L.label, UI.globe, { lang: true }, W.language); // открывает выбор языка на месте
   add(L.allLabel, `${L.label} · ${L.motion}`, groupIcon('zap'), { toggle: 'motion' }, W.motion);
   for (const k of MOTION_KINDS) add(L.kinds[k], `${L.label} · ${L.motion}`, groupIcon('zap'), { toggle: `kind:${k}` }, `${L.kindNotes[k]} ${W.motion}`);
   // Категории
@@ -7331,7 +7332,9 @@ function settingsSearch() {
     return srow({
       icon: e.icon, bare: e.icon.startsWith('<span class="gic"'), title: esc(e.title), note: esc(e.where),
       // Ссылка наружу (поддержка) — обычной ссылкой, без перехода по экранам
-      href: e.how.href ?? '', attrs: e.how.toggle || e.how.href ? '' : `data-sjump="${i}"`, end: end || (e.how.toggle ? '' : GO),
+      href: e.how.href ?? '',
+      attrs: e.how.lang ? 'data-lang-pick' : e.how.toggle || e.how.href ? '' : `data-sjump="${i}"`,
+      end: end || (e.how.toggle ? '' : GO),
     });
   }).join('');
   results.innerHTML = rows ? section('', '', rows) : `<p class="sec-foot">${esc(T.settings.nothing)}</p>`;

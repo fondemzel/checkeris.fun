@@ -110,6 +110,7 @@ export const en = {
       demo: 'demo test example',
       group: 'group',
       category: 'category',
+      language: 'language язык russian english translation',
     },
     menu: {
       label: 'General',
