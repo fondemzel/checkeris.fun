@@ -35,6 +35,8 @@ import { T, f, pl, lang, LANGS, setLang } from '/m/i18n/index.js';
 import qrcode from '/shared/qrcode.js';
 
 const $ = (id) => document.getElementById(id);
+// Подпись кнопки: title, а после наведения — data-tip (подсказка забирает title себе, см. tipTarget)
+const titleOf = (el) => el?.title || el?.dataset.tip || '';
 
 // Разметка index.html — по словарю: data-i18n — текст, data-i18n-html — разметка со ссылкой
 // внутри, data-i18n-attr="placeholder:login.name;aria-label:…" — атрибуты. Русский в самой
@@ -524,17 +526,17 @@ document.addEventListener('click', (e) => {
   const menu = btn.nextElementSibling;
   // Сортировка — коротким попапом прямо из кнопки, как выбор периода на острове: пунктов
   // мало, лист снизу для них — лишнее движение через весь экран
-  if (btn.title === T.feed.sort || 'pop' in btn.dataset) return dropPopOpen(btn, menu);
+  if (titleOf(btn) === T.feed.sort || 'pop' in btn.dataset) return dropPopOpen(btn, menu);
   if (menu.querySelector('[data-sg], [data-inf]')) return openFilterSheet(Boolean(menu.querySelector('[data-inf]'))); // источники и группы — плитками
-  const sheet = openChoice(btn.title, `<div class="choice-list">${menu.innerHTML}</div>`, (ev, close) => {
+  const sheet = openChoice(titleOf(btn), `<div class="choice-list">${menu.innerHTML}</div>`, (ev, close) => {
     const row = ev.target.closest('.drop-row');
     if (!row) return;
     const i = [...sheet.querySelectorAll('.drop-row')].indexOf(row);
     // Строку ищем в меню, которое на экране сейчас: экран мог уже перерисоваться (данные из
     // памяти — мгновенно), и прежнее меню отцеплено — нажатие на него никуда не доходило
-    const title = btn.title;
+    const title = titleOf(btn);
     const pick = () => {
-      const now = [...document.querySelectorAll('[data-drop]')].find((b) => b.title === title)?.nextElementSibling ?? menu;
+      const now = [...document.querySelectorAll('[data-drop]')].find((b) => titleOf(b) === title)?.nextElementSibling ?? menu;
       now.querySelectorAll('.drop-row')[i]?.click();
     };
     if (history.state?.popup) addEventListener('popstate', () => setTimeout(pick, 0), { once: true });
@@ -631,7 +633,7 @@ function dropPopOpen(btn, menu) {
     el.animate([{ opacity: 0, transform: 'scale(0.5)' }, { opacity: 1, transform: 'none' }],
       { duration: 200, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.15)' });
   }
-  dropPop = { el, title: btn.title };
+  dropPop = { el, title: titleOf(btn) };
 }
 
 function dropPopClose(now = false) {
@@ -648,7 +650,7 @@ function dropPopPick(row) {
   const { el, title } = dropPop;
   const i = [...el.querySelectorAll('.drop-row')].indexOf(row);
   dropPopClose();
-  const now = [...document.querySelectorAll('[data-drop]')].find((b) => b.title === title)?.nextElementSibling;
+  const now = [...document.querySelectorAll('[data-drop]')].find((b) => titleOf(b) === title)?.nextElementSibling;
   now?.querySelectorAll('.drop-row')[i]?.click();
 }
 
@@ -685,7 +687,7 @@ const holdsDrop = () => Boolean(dropHold?.held);
 document.addEventListener('pointerdown', (e) => {
   const btn = e.target.closest('[data-drop]');
   if (dropHold && !dropHold.held) clearTimeout(dropHold.timer);
-  if (!btn || btn.title !== T.feed.sort) {
+  if (!btn || titleOf(btn) !== T.feed.sort) {
     if (dropHold) dropHold.ate = false;
     return;
   }
@@ -6384,6 +6386,74 @@ addEventListener('touchcancel', () => {
   pullFrom = null;
   pullReset();
 });
+
+// ── подсказки при наведении (мышь) ───────────────────────
+// Одна подсказка на всё приложение, только там, где есть курсор: у кнопки-значка — её подпись
+// (title, а нет его — aria-label), у текста, обрезанного многоточием, — он целиком. Своя, а не
+// браузерная: та появляется через секунду и выглядит чужой. title переезжает в data-tip, чтобы
+// не всплывали обе
+const hoverMq = matchMedia('(hover: hover) and (pointer: fine)');
+const TIP_DELAY = 450;
+const TIP_CUT = '.row-title, .t-cat, .t-src, .srow-title, .srow-note, .cat-name, .sheet-name, .picker-tile-name, .ring-name';
+let tipEl = null;
+let tipTimer = null;
+let tipFor = null;
+
+/** Что подсказать про элемент под курсором: { el, text } или null. */
+function tipTarget(target) {
+  const own = target.closest?.('[data-tip], [title]');
+  if (own?.hasAttribute('title')) {
+    own.dataset.tip = own.getAttribute('title');
+    own.removeAttribute('title');
+  }
+  if (own?.dataset.tip) return { el: own, text: own.dataset.tip };
+  // Кнопка без видимого текста (значок) — её подпись для чтения с экрана
+  const btn = target.closest?.('button[aria-label], a[aria-label], [role="button"][aria-label]');
+  if (btn && !btn.textContent.trim()) return { el: btn, text: btn.getAttribute('aria-label') };
+  // Текст не поместился и обрезан многоточием — показать целиком
+  const cut = target.closest?.(TIP_CUT);
+  if (cut && cut.scrollWidth > cut.clientWidth + 1) return { el: cut, text: cut.textContent.trim() };
+  return null;
+}
+
+function hideTip() {
+  clearTimeout(tipTimer);
+  tipFor = null;
+  tipEl?.remove();
+  tipEl = null;
+}
+
+function showTip({ el, text }) {
+  hideTip();
+  tipFor = el;
+  tipEl = document.createElement('div');
+  tipEl.className = 'tip';
+  tipEl.textContent = text;
+  document.body.appendChild(tipEl);
+  // Под элементом по центру; не помещается снизу — над ним; не вылезает за края окна
+  const r = el.getBoundingClientRect();
+  const w = tipEl.offsetWidth;
+  const h = tipEl.offsetHeight;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - 8 - w);
+  const below = r.bottom + 8 + h < innerHeight;
+  tipEl.style.left = `${left}px`;
+  tipEl.style.top = `${below ? r.bottom + 8 : r.top - 8 - h}px`;
+}
+
+document.addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse' || !hoverMq.matches || dragSel?.active) return;
+  const tip = tipTarget(e.target);
+  if (tip?.el === tipFor) return;
+  hideTip();
+  if (!tip?.text) return;
+  tipFor = tip.el;
+  tipTimer = setTimeout(() => tipFor === tip.el && tip.el.isConnected && showTip(tip), TIP_DELAY);
+});
+document.addEventListener('pointerout', (e) => {
+  if (tipFor && !tipFor.contains(e.relatedTarget)) hideTip();
+});
+for (const type of ['pointerdown', 'wheel', 'keydown']) document.addEventListener(type, hideTip, { passive: true });
+addEventListener('scroll', hideTip, { passive: true, capture: true });
 
 // ── события ──────────────────────────────────────────────
 

@@ -2633,3 +2633,12 @@ body.drag-select, body.drag-select * { cursor: default !important; }
   body.has-panel .actions { right: var(--panel-w); }
   body.has-panel .toast { left: calc(50% + (var(--rail) - var(--panel-w)) / 2); }
 }
+
+/* Подсказка при наведении мыши (showTip): тёмная плашка у элемента, проявляется */
+.tip {
+  position: fixed; z-index: 100; max-width: 320px; padding: 5px 9px; border-radius: 7px;
+  background: rgba(19, 26, 38, 0.94); color: #fff; font-size: 12px; line-height: 1.35;
+  pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); animation: tip-in 0.12s ease-out;
+}
+:root[data-theme="dark"] .tip { background: #e8ecf1; color: #11151b; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(-2px); } }
