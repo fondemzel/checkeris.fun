@@ -6407,9 +6407,9 @@ function tipTarget(target) {
     own.removeAttribute('title');
   }
   if (own?.dataset.tip) return { el: own, text: own.dataset.tip };
-  // Кнопка без видимого текста (значок) — её подпись для чтения с экрана
+  // Кнопка без слов (значок или один символ: «‹», «×») — её подпись для чтения с экрана
   const btn = target.closest?.('button[aria-label], a[aria-label], [role="button"][aria-label]');
-  if (btn && !btn.textContent.trim()) return { el: btn, text: btn.getAttribute('aria-label') };
+  if (btn && btn.textContent.trim().length < 2) return { el: btn, text: btn.getAttribute('aria-label') };
   // Текст не поместился и обрезан многоточием — показать целиком
   const cut = target.closest?.(TIP_CUT);
   if (cut && cut.scrollWidth > cut.clientWidth + 1) return { el: cut, text: cut.textContent.trim() };
