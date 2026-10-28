@@ -516,3 +516,8 @@ a.who:hover { color: var(--accent); }
 .bank-ic.st-bad::after { background: var(--danger); }
 .bank-ic.st-warn::after { background: var(--attention); }
 .bank-ic.st-idle::after { background: var(--muted); }
+
+/* «Пользователи»: строки одной высоты — под три строки ячейки «Пользователь», всё по центру */
+.users-t .t tbody td { height: 76px; vertical-align: middle; }
+.users-t .one { max-width: 240px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.users-t .t td .sub { white-space: nowrap; }

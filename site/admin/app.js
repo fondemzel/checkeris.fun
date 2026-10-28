@@ -346,9 +346,11 @@ const USER_COLS = [
     key: 'name',
     label: 'Пользователь',
     value: (b) => b.owner.name.toLowerCase(),
-    cell: (b) => `<a class="who" href="#/users/${b.id}">${esc(b.owner.name)}</a>${b.admin ? ' <span class="label accent">администратор</span>' : ''}`
-      + `${b.owner.tg_username ? `<div class="sub">@${esc(b.owner.tg_username)}</div>` : ''}${b.owner.email ? `<div class="sub">${esc(b.owner.email)}</div>` : ''}`
-      + `${b.members.length > 1 ? `<div class="sub">семья · ${b.members.length} ${plural(b.members.length, 'человек', 'человека', 'человек')}</div>` : ''}`,
+    // Не больше трёх строк — строка таблицы фиксированной высоты: имя, один контакт (@ник или
+    // почта), семья. Остальное — в правой панели
+    cell: (b) => `<div class="one"><a class="who" href="#/users/${b.id}">${esc(b.owner.name)}</a>${b.admin ? ' <span class="label accent">администратор</span>' : ''}</div>`
+      + `${b.owner.tg_username || b.owner.email ? `<div class="sub one">${esc(b.owner.tg_username ? `@${b.owner.tg_username}` : b.owner.email)}</div>` : ''}`
+      + `${b.members.length > 1 ? `<div class="sub one">семья · ${b.members.length} ${plural(b.members.length, 'человек', 'человека', 'человек')}</div>` : ''}`,
   },
   { key: 'plan', label: 'Тариф', nw: true, value: (b) => ({ free: 0, plus: 1, premium: 2 })[b.plan.id], cell: (b) => planLabel(b.plan, { sub: true }) },
   {
@@ -375,7 +377,7 @@ const USER_COLS = [
 function usersBox(list, all) {
   if (!list.some((b) => b.id === state.selBudget)) state.selBudget = list[0]?.id ?? null;
   return box(`${int.format(list.length)} ${plural(list.length, 'пользователь', 'пользователя', 'пользователей')}${list.length !== all ? ` <span class="muted">из ${all}</span>` : ''}`,
-    table('users', USER_COLS, list, { select: (b) => b.id, selected: state.selBudget, href: (b) => `#/users/${b.id}`, empty: 'Никого не нашлось' }));
+    `<div class="users-t">${table('users', USER_COLS, list, { select: (b) => b.id, selected: state.selBudget, href: (b) => `#/users/${b.id}`, empty: 'Никого не нашлось' })}</div>`);
 }
 
 /** Правая панель: выбранный пользователь кратко. Подробно — страница бюджета. */
