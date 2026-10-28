@@ -2,6 +2,14 @@
    экран узкий, и каждая деталь конкурирует с цифрой, ради которой сюда зашли. */
 
 :root {
+  /* Размеры текста — по образцу настроек (там всё выверено на телефоне):
+     строка — 15, подстрочник — 12,5, пояснение под блоком — 13, заголовок раздела — 14,
+     подпись заглавными (столбцы, метки карточек) — 12 */
+  --fs-title: 15px;
+  --fs-note: 12.5px;
+  --fs-foot: 13px;
+  --fs-head: 14px;
+  --fs-caps: 12px;
   --bg: #f4f5f7;
   --surface: #ffffff;
   --text: #1f2328;
@@ -2655,7 +2663,7 @@ body.drag-select, body.drag-select * { cursor: default !important; }
     height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0 16px;
     background: var(--bar); color: #fff;
   }
-  .panel-title { flex: 1; min-width: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* как заголовок ленты рядом */
   .panel-top .icon-btn { background: rgba(255, 255, 255, 0.12); color: #fff; }
   .panel-body { padding: 12px; }
   /* Ничего не выбрано — панель на месте, в ней тихая подсказка */
@@ -2731,3 +2739,22 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 /* В строке чипсов переключатель периода — высотой с чипс */
 .frow-end .month.compact .month-arrow { width: 30px; height: 30px; }
 .frow-end .month.compact .month-name { min-height: 30px; border-radius: 15px; }
+
+/* ── единые размеры текста таблицы и правой панели (уровни --fs-* в :root) ───────────
+   Заголовок раздела (день, категория) — заголовком, а не мельче строк под ним; всё второстепенное
+   в строке — подстрочником; суммы — полужирным, как в строках */
+.list.tbl > .day { min-height: 40px; font-size: var(--fs-head); font-weight: 600; color: var(--text); }
+.list.tbl > .day b { font-variant-numeric: tabular-nums; }
+.thead { font-size: var(--fs-caps); }
+.trow .t-date, .trow .t-cat, .trow .t-src, .t-many, .tfoot { font-size: var(--fs-note); }
+.trow.sub-row .row-title { font-size: var(--fs-note); }
+.trow .row-title, .tfoot .t-sum { font-size: var(--fs-title); }
+.tfoot .t-sum { font-weight: 600; }
+.t-empty, .select-hint { font-size: var(--fs-foot); }
+.panel .ring-name { font-size: var(--fs-title); }
+.panel .ring-share { font-size: var(--fs-note); }
+.panel .ring-row b { font-weight: 600; }
+.panel .card-name { font-size: var(--fs-title); }
+@media (min-width: 1100px) {
+  .total-note { font-size: var(--fs-note); }
+}
