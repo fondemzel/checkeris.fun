@@ -1336,7 +1336,8 @@ button.bank-op { cursor: pointer; }
   outline: none;
 }
 
-.note-input::placeholder { color: var(--muted); }
+/* Подсказка в пустом поле — бледная: её не путают с введённым текстом (все поля приложения) */
+input::placeholder, textarea::placeholder, .note-input::placeholder { color: var(--gray-text); opacity: 1; }
 .note-input:focus { border-bottom-color: var(--accent); }
 
 .kv b svg { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; color: var(--muted); }
@@ -2468,7 +2469,7 @@ body.no-tabs .tabs { display: none; }
   resize: none;
   outline: none;
 }
-.composer-bar textarea::placeholder { color: var(--muted); }
+.composer-bar textarea::placeholder { color: var(--gray-text); }
 .send-btn {
   display: grid;
   place-items: center;
@@ -2548,7 +2549,7 @@ body.no-tabs .tabs { display: none; }
 /* Шапка столбцов прилипает под шапкой ленты (--thead-top считает updateSecTop) */
 .thead {
   position: sticky; top: var(--thead-top, 0px); z-index: 3;
-  padding: 8px 14px; border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0;
+  min-height: 44px; padding: 8px 14px; border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0;
   background: var(--surface-2); font-size: 12px; color: var(--muted);
 }
 /* Углы скруглены и тогда, когда шапка прилипла посреди ленты: вокруг — цвет фона, а не строки,
