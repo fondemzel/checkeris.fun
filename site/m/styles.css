@@ -2557,7 +2557,7 @@ span.t-col { cursor: default; }
 .trow { min-height: 48px; padding: 6px 14px; }
 .trow .ic { width: 28px; height: 28px; border-radius: 8px; }
 .trow .ic svg { width: 16px; height: 16px; }
-.t-date { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.t-date { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .t-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .trow .t-name .row-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Число покупок уступает место названию первым */
@@ -2571,6 +2571,7 @@ span.t-col { cursor: default; }
 @container (max-width: 760px) {
   .thead, .trow { grid-template-columns: 22px 78px minmax(140px, 1fr) minmax(0, 130px) 96px; column-gap: 10px; }
   .t-src { display: none; }
+  .t-date { font-size: 12px; }
 }
 /* Флажок строки: квадрат, отмечен — заливка акцента с галочкой; в шапке «часть отмечена» — черта */
 .t-check { width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 5px; background: var(--surface); cursor: pointer; position: relative; }
