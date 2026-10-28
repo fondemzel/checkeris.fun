@@ -3213,7 +3213,7 @@ function hostSheet(sheet, card, title) {
 function closePanel(force = false) {
   // Что-то отобрано — в шапке панели с кольцом крестик «сбросить фильтры»
   const filtered = Boolean(state.src || state.sg || state.inf || state.isrc);
-  const view = `${panelMq.matches}|${panelRing ? 'ring' : ''}|${filtered}|${panelSide.title}`;
+  const view = `${panelMq.matches}|${panelRing ? 'ring' : ''}|${filtered}|${panelSide.title}|${panelSide.back}`;
   if (!force && !panelCard && $('panel').dataset.view === view) return;
   panelCard = null;
   panelSeq += 1; // запоздавший ответ уже не нужен
@@ -3226,7 +3226,7 @@ function closePanel(force = false) {
   // «Расход» и «Доход» — кольцо по той же выборке, что в таблице; другие ленты — подсказка
   panel.innerHTML = !keep ? ''
     : panelRing
-      ? `<div class="panel-top"><b class="panel-title">${esc(panelSide.title)}</b>${panelSide.tools}${filtered
+      ? `<div class="panel-top">${panelSide.back}<b class="panel-title">${esc(panelSide.title)}</b>${panelSide.tools}${filtered
         ? `<button class="icon-btn soft" type="button" data-reset-filters aria-label="${esc(T.feed.resetFilters)}" title="${esc(T.feed.resetFilters)}">${UI.close}</button>` : ''}</div>
         <div class="panel-body panel-ring">${panelRing}</div>`
       : `<div class="panel-top"><b class="panel-title"></b></div>
@@ -3241,11 +3241,11 @@ function closePanel(force = false) {
 // вместе с таблицей) или группы «Сводки». title и tools — заголовок и кнопки шапки панели,
 // screen — чей это: ушли на другой экран — панель снова с подсказкой
 let panelRing = '';
-let panelSide = { title: '', tools: '', screen: '' };
-function setPanelRing(html, { title = T.panelRing, tools = '' } = {}) {
-  if (panelRing === html && panelSide.title === title && panelSide.tools === tools) return;
+let panelSide = { title: '', tools: '', back: '', screen: '' };
+function setPanelRing(html, { title = T.panelRing, tools = '', back = '' } = {}) {
+  if (panelRing === html && panelSide.title === title && panelSide.tools === tools && panelSide.back === back) return;
   panelRing = html;
-  panelSide = { title, tools, screen: state.screen };
+  panelSide = { title, tools, back, screen: state.screen };
   if (!panelCard) closePanel(true);
 }
 
@@ -10702,7 +10702,9 @@ async function screenAnalytics() {
   const groupRows = groupsRows.map((r) => anaRow(r, names)).join('');
   const groupsTitle = open ? open.name : T.stats.groups;
   const groupsHint = open ? T.stats.catsHint : T.stats.groupsHint;
-  if (side) setPanelRing(section('', groupsHint, groupRows), { title: groupsTitle, tools: `<span class="panel-tools">${sortDrop(ANA_SORTS)}</span>` });
+  // Внутри группы — «назад» к группам слева от её названия
+  const up = open ? `<button class="icon-btn soft" type="button" data-ana-up aria-label="${esc(T.common.back)}" title="${esc(T.common.back)}">${UI.prev}</button>` : '';
+  if (side) setPanelRing(section('', groupsHint, groupRows), { title: groupsTitle, tools: `<span class="panel-tools">${sortDrop(ANA_SORTS)}</span>`, back: up });
   return head(now, note)
     + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color, stepBtn: tools }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null, tools })}`
     + `<div class="ana-income-row">${sums.charAt(0).toUpperCase()}${sums.slice(1)}</div>`
@@ -11117,6 +11119,7 @@ $('stage').addEventListener('click', (e) => {
     if (!one && key !== NONE) return go({ sg: key, ringGroup: '', ringRest: '' });
     return go({ screen: 'summary', mode: 'list', sg: key, ringGroup: '', ringRest: '' });
   }
+  if (e.target.closest('[data-ana-up]')) return go({ sg: '', ringGroup: '', ringRest: '' });
   if (e.target.closest('.ana-plot')) return anaPoint(e.clientX);
   const step = e.target.closest('[data-ana-step]');
   if (step) return go({ step: step.dataset.anaStep }, true);
