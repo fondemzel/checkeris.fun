@@ -2240,11 +2240,12 @@ function tableRow(r, { color, found, catName, toggle, isOpen, part }) {
 }
 
 // ── выделение строк таблицы и правка многих разом ────────
-// Флажок отмечает строку; с Shift — все строки между прошлой отмеченной и этой; протяжка мышью
-// по строкам (зажали на одной, повели) — все строки от начальной до той, что под курсором, как
-// в аутлайнере Blender. Что выбрано — сводкой в правой панели: сколько, на какую сумму, за какие
-// дни, по каким категориям; там же действия — категория и общий комментарий. Без правой панели
-// (уже 1100 px) — короткой полосой внизу
+// Как в аутлайнере Blender. Флажок или Ctrl + нажатие — одна строка. Shift + нажатие (по любому
+// месту строки) — отметка всех строк от прошлой нажатой до этой переворачивается. Протяжка мышью
+// (зажали на строке, повели) — переворачиваются строки от начальной до той, что под курсором;
+// без Ctrl выделение начинается заново, с Ctrl — к прежнему. Обычное нажатие — карточка строки.
+// Что выбрано — сводкой в правой панели (сколько, сумма, дни, категории) с теми же блоками
+// «Категория» и «Комментарий», что в карточке. Без правой панели (уже 1100 px) — полосой внизу
 const bulk = new Set(); // отмеченные строки: 'item:ID' | 'items:ID' (группа одинаковых) | 'op:ID[,ID…]'
 const bulkInfo = new Map(); // ключ → { sum, cat, at, n } — для сводки, даже если строку уже не видно
 let bulkAnchor = ''; // от какой строки считать выбор с Shift
@@ -2295,14 +2296,17 @@ function selectionChanged() {
   else if (panelCard?.kind === 'bulk') closePanel();
 }
 
-/** Нажатие на флажок: с Shift — вся полоса от прошлой отмеченной до этой. */
+/**
+ * Одна строка — перевернуть отметку. С Shift — перевернуть все строки после прошлой нажатой
+ * до этой включительно (саму прошлую не трогаем: её уже отметили или сняли нажатием)
+ */
 function toggleCheck(el, shift = false) {
   const boxes = checkBoxes();
   const from = shift && bulkAnchor ? boxes.findIndex((b) => b.dataset.check === bulkAnchor) : -1;
   const to = boxes.indexOf(el);
-  if (from >= 0 && to >= 0) {
-    const [a, b] = from < to ? [from, to] : [to, from];
-    for (const box of boxes.slice(a, b + 1)) setChecked(box, true);
+  if (from >= 0 && to >= 0 && from !== to) {
+    const range = from < to ? boxes.slice(from + 1, to + 1) : boxes.slice(to, from);
+    for (const box of range) setChecked(box, !bulk.has(box.dataset.check));
   } else setChecked(el, !bulk.has(el.dataset.check));
   bulkAnchor = el.dataset.check;
   selectionChanged();
@@ -2323,14 +2327,16 @@ function clearSelection() {
   selectionChanged();
 }
 
-// Протяжка: зажали кнопку мыши на строке и повели — отмечаются строки от начальной до той, что
-// под курсором (к тому, что было отмечено до протяжки). Отпустили — нажатия на строку не было
+// Протяжка: зажали кнопку мыши на строке и повели — строки от начальной до той, что под курсором,
+// переворачиваются относительно начала протяжки: без Ctrl выделение начинается заново (было
+// пусто — значит, отмечаются), с Ctrl — к прежнему. Отпустили — нажатия на строку не было
 let dragSel = null; // { start, y, active, base }
 let dragAte = false;
 $('screen').addEventListener('pointerdown', (e) => {
-  if (e.pointerType !== 'mouse' || e.button !== 0 || !tableOn()) return;
+  if (e.pointerType !== 'mouse' || e.button !== 0 || e.shiftKey || !tableOn()) return;
   const box = e.target.closest('.trow')?.querySelector('[data-check]');
-  if (box) dragSel = { start: box.dataset.check, y: e.clientY, active: false, base: new Set(bulk) };
+  const add = e.ctrlKey || e.metaKey;
+  if (box) dragSel = { start: box.dataset.check, y: e.clientY, active: false, base: add ? new Set(bulk) : new Set() };
 });
 document.addEventListener('pointermove', (e) => {
   if (!dragSel) return;
@@ -2346,7 +2352,12 @@ document.addEventListener('pointermove', (e) => {
   const b = boxes.indexOf(over);
   if (a < 0 || b < 0) return;
   const [lo, hi] = a < b ? [a, b] : [b, a];
-  for (const box of boxes) setChecked(box, dragSel.base.has(box.dataset.check) || (boxes.indexOf(box) >= lo && boxes.indexOf(box) <= hi));
+  boxes.forEach((box, i) => {
+    const was = dragSel.base.has(box.dataset.check);
+    setChecked(box, i >= lo && i <= hi ? !was : was);
+  });
+  // Выделение начато заново — отмеченное за пределами ленты (свёрнутые разделы) тоже снимаем
+  if (!dragSel.base.size) for (const k of [...bulk]) if (!boxes.some((x) => x.dataset.check === k)) bulk.delete(k);
   bulkAnchor = over.dataset.check;
   markChecked();
 });
@@ -2387,13 +2398,16 @@ function showSelection() {
   };
   const S = T.table;
   const panel = $('panel');
+  // Комментарий, который уже начали писать, перерисовка сводки не стирает
+  const draft = panelCard?.kind === 'bulk' ? $('item-note')?.value ?? '' : '';
   panelSeq += 1; // открывавшаяся карточка сюда уже не ляжет
   panelCard = { kind: 'bulk' };
   panel.dataset.idle = '';
   panel.hidden = false;
   document.body.classList.add('has-panel');
-  // Комментарий, который уже начали писать, перерисовка не стирает
-  const draft = $('bulk-note')?.value ?? '';
+  // Категория у всех одна — её и показываем; разные — кнопка «выбрать», как у неразмеченной
+  const cats = [...byCat.keys()];
+  const one = cats.length === 1 ? cats[0] : null;
   panel.innerHTML = `${panelTop(f(S.picked, { n: int.format(bulk.size) }))}
     <div class="panel-body">
       <div class="card">
@@ -2402,18 +2416,21 @@ function showSelection() {
       </div>
       <div class="card"><div class="card-label">${esc(S.byCategory)}</div>
         ${[...byCat].sort((a, b) => b[1].sum - a[1].sum).map(catRow).join('')}</div>
-      <div class="card">
-        <button class="btn primary big" type="button" data-bulk-cat>${esc(S.setCategory)}</button>
-      </div>
-      <div class="card"><div class="card-label">${esc(T.item.note)}</div>
-        <textarea class="note-input bulk-note" id="bulk-note" rows="2" maxlength="1000" placeholder="${esc(S.notePlaceholder)}">${esc(draft)}</textarea>
-        <button class="btn" type="button" data-bulk-note>${esc(S.noteSave)}</button>
-        <p class="note">${esc(S.noteHint)}</p>
-      </div>
+      ${categoryBlock('data-bulk-cat', income ? incomeButton(one) : categoryButton(one))}
+      ${noteBlock('bulk', '', { placeholder: S.notePlaceholder, hint: S.noteHint })}
       <button class="btn more" type="button" data-bulk-clear>${esc(S.clear)}</button>
+      ${selectHint()}
     </div>`;
+  if (draft) $('item-note').value = draft;
+  fitNote();
   markPicked();
 }
+
+/** Подсказка, как выделять строки, — в правой панели: и пока ничего не выбрано, и в сводке. */
+const SELECT_SCREENS = ['summary', 'group', 'category', 'income', 'bank']; // ленты с флажками
+const selectHint = () => (tableOn() && SELECT_SCREENS.includes(state.screen)
+  ? `<div class="select-hint note">${T.table.hints.map((h) => `<p>${h}</p>`).join('')}</div>`
+  : '');
 
 /** Категория всем отмеченным: как выбор в карточке — только эти строки, переключателем — и все такие же. */
 function bulkCategory() {
@@ -2456,8 +2473,8 @@ async function bulkSave(slug, only) {
 }
 
 /** Общий комментарий всем отмеченным; пустой — убирает их комментарии. */
-async function bulkNote() {
-  const note = $('bulk-note')?.value.trim() ?? '';
+async function bulkNote(note) {
+  if (!bulk.size) return;
   toast(T.table.saving);
   const res = await bulkEach((kind, id) => post(kind === 'op' ? `/api/bank/ops/${id}/note` : `/api/items/${id}/note`, { note }));
   bulkDone(res, T.table.noteDone);
@@ -2474,7 +2491,6 @@ async function bulkDone({ rows, failed, total }, doneText) {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-bulk-cat]')) return bulkCategory();
-  if (e.target.closest('[data-bulk-note]')) return bulkNote();
   if (e.target.closest('[data-bulk-clear]')) return clearSelection();
 });
 
@@ -3000,17 +3016,19 @@ function hostSheet(sheet, card, title) {
  * попадёт выбранная строка: ширина ленты не меняется, ничего не прыгает. Уже — панель прячется
  */
 function closePanel() {
-  if (!panelCard && $('panel').dataset.idle === String(panelMq.matches)) return;
+  const hint = selectHint();
+  if (!panelCard && $('panel').dataset.idle === String(panelMq.matches) && $('panel').dataset.hint === String(Boolean(hint))) return;
   panelCard = null;
   panelSeq += 1; // запоздавший ответ уже не нужен
   const panel = $('panel');
   const keep = panelMq.matches;
   if (keep && bulk.size) return showSelection(); // отмечены строки — справа снова их сводка
   panel.dataset.idle = String(keep);
+  panel.dataset.hint = String(Boolean(hint));
   panel.hidden = !keep;
   panel.innerHTML = keep
     ? `<div class="panel-top"><b class="panel-title"></b></div>
-       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p></div>`
+       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p>${hint}</div>`
     : '';
   document.body.classList.toggle('has-panel', keep);
   markPicked();
@@ -3068,6 +3086,32 @@ function accountName(it) {
   return [it.account_name, digits].filter(Boolean).join(' ');
 }
 
+/**
+ * Блок «Категория» — один и в карточке траты, и в сводке выбранных строк: кнопка с категорией,
+ * attr — что откроет нажатие, below — пояснение под ней
+ */
+const categoryBlock = (attr, button, below = '') => `
+    <div class="card">
+      <div class="card-label">${esc(T.item.category)}</div>
+      <button class="cat-pick" id="item-cat" type="button" ${attr}>${button}</button>
+      ${below}
+    </div>`;
+
+/**
+ * Блок «Комментарий» — тоже общий. Сохраняется сам, когда поле теряет фокус, или галочкой;
+ * target — куда (адрес запроса, у выбранных строк — 'bulk'), hint — пояснение под полем
+ */
+const noteBlock = (target, value, { placeholder = T.item.notePlaceholder, hint = '' } = {}) => `
+    <div class="card">
+      <div class="card-label">${esc(T.item.note)}</div>
+      <div class="note-row">
+        <textarea class="note-input" id="item-note" rows="1" maxlength="1000" placeholder="${esc(placeholder)}"
+          data-note="${target}">${esc(value)}</textarea>
+        <button class="note-save" type="button" data-note-save aria-label="${esc(T.item.save)}" title="${esc(T.item.save)}">${UI.ok}</button>
+      </div>
+      ${hint ? `<p class="note">${esc(hint)}</p>` : ''}
+    </div>`;
+
 /** Карточка траты — одна для всех источников. Отличается только строка «Источник». */
 function itemCard(it) {
   itemShown = it;
@@ -3102,9 +3146,8 @@ function itemCard(it) {
       ])}
     </div>
 
-    <div class="card">
-      <div class="card-label">${esc(T.item.category)}</div>
-      <button class="cat-pick" id="item-cat" type="button" ${it.income ? `data-op-incat="${it.id}"` : bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`}>${it.income ? incomeButton(it.category_slug) : categoryButton(it.category_slug)}</button>
+    ${categoryBlock(it.income ? `data-op-incat="${it.id}"` : bank ? `data-op-cat="${it.id}"` : `data-item-cat="${it.id}"`,
+      it.income ? incomeButton(it.category_slug) : categoryButton(it.category_slug), `
       <div class="pick-same">
       <p class="note" id="pick-note">${
         it.same_name_count > 1
@@ -3119,17 +3162,9 @@ function itemCard(it) {
       <button class="pick-same-go" type="button" data-same-go="${esc(it.income ? it.name : bank ? it.merchant ?? it.name : it.name)}"
         data-same="${esc(it.income ? `in|${sameKey(it.name)}` : bank ? `op|${sameKey(it.merchant ?? it.name)}` : `item|${it.name_norm}`)}"
         data-same-screen="${it.income ? 'income' : 'summary'}" aria-label="${esc(T.item.showSame)}" title="${esc(T.item.showSame)}">${GO}</button>` : ''}
-      </div>
-    </div>
+      </div>`)}
 
-    <div class="card">
-      <div class="card-label">${esc(T.item.note)}</div>
-      <div class="note-row">
-        <textarea class="note-input" id="item-note" rows="1" maxlength="1000" placeholder="${esc(T.item.notePlaceholder)}"
-          data-note="${bank ? `/api/bank/ops/${it.id}/note` : `/api/items/${it.id}/note`}">${esc(it.note ?? '')}</textarea>
-        <button class="note-save" type="button" data-note-save aria-label="${esc(T.item.save)}" title="${esc(T.item.save)}">${UI.ok}</button>
-      </div>
-    </div>
+    ${noteBlock(bank ? `/api/bank/ops/${it.id}/note` : `/api/items/${it.id}/note`, it.note ?? '')}
 
     <div class="settings-actions item-actions">
       ${it.manualIncome
@@ -6310,7 +6345,9 @@ addEventListener('touchcancel', () => {
 
 async function onScreenClick(e) {
   // Флажок строки таблицы — отметить, а не открыть
-  const check = e.target.closest('[data-check]');
+  // Shift и Ctrl — по любому месту строки: выделение, а не открытие карточки
+  const check = e.target.closest('[data-check]')
+    ?? ((e.shiftKey || e.ctrlKey || e.metaKey) && tableOn() ? e.target.closest('.trow')?.querySelector('[data-check]') : null);
   if (check) return toggleCheck(check, e.shiftKey);
   if (e.target.closest('[data-check-all]')) return toggleCheckAll();
 
@@ -9036,6 +9073,7 @@ $('stage').addEventListener('click', (e) => {
 $('stage').addEventListener('focusout', async (e) => {
   const el = e.target;
   if (!el.matches?.('[data-note]') || el.value === el.defaultValue) return;
+  if (el.dataset.note === 'bulk') return bulkNote(el.value.trim()); // сводка выбранных строк — всем
   try {
     const res = await post(el.dataset.note, { note: el.value });
     el.value = el.defaultValue = res.note ?? '';

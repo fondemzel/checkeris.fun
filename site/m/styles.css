@@ -2592,8 +2592,11 @@ span.t-col { cursor: default; }
 body.has-panel { --panel-on: var(--panel-w, 0px); }
 /* Протяжка по строкам (выделение) — курсор не меняется на текстовый, ничего не подсвечивается */
 body.drag-select, body.drag-select * { cursor: default !important; }
-/* Сводка выбранного: общий комментарий — поле и кнопка под ним */
-.bulk-note { display: block; width: 100%; margin: 6px 0 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font: inherit; resize: vertical; }
+/* Как выделять строки — тихая подсказка в правой панели */
+.select-hint { margin-top: 16px; text-align: left; line-height: 1.45; }
+.select-hint p { margin: 0 0 4px; }
+.select-hint b { color: var(--text); font-weight: 600; }
+.panel-idle .select-hint { max-width: 300px; }
 .panel .card .kv .op-cat { margin-right: 6px; }
 
 /* ── правая панель подробностей (от 1100 px, openPanel) ──────
