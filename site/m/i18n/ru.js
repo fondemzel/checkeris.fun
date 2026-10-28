@@ -1149,7 +1149,10 @@ export const ru = {
 
   // ── лента таблицей (широкий экран) и правка многих строк разом ──
   table: {
-    cols: { date: 'Дата', name: 'Название', category: 'Категория', source: 'Источник', sum: 'Сумма' },
+    cols: {
+      date: 'Дата', name: 'Название', category: 'Категория', source: 'Источник', sum: 'Сумма',
+      account: 'Счёт', card: 'Карта', description: 'Описание', seller: 'Продавец', items: 'Позиций', author: 'Кто внёс',
+    },
     selectAll: 'Выбрать все строки',
     select: 'Выбрать строку',
     picked: 'Выбрано: {n}',

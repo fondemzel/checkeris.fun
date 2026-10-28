@@ -2163,20 +2163,40 @@ tableMq.addEventListener?.('change', () => {
   render();
 });
 
-/** Шапка столбцов: дата, название, категория, сумма сортируют; повторное нажатие — обратный порядок. */
-function tableHead() {
+/**
+ * Шапка столбцов. Столбцы у всех лент одни и те же по месту (дата, название, два своих, сумма) —
+ * cols: [ключ сортировки или '', подпись] на каждый. Нажатие сортирует, повторное — обратный
+ * порядок. check — у строк есть флажки: в шапке — «отметить все»
+ */
+function tableHead(cols = null, { check = true } = {}) {
   const C = T.table.cols;
-  const col = (key, label, cls) => {
+  const list = cols ?? [['date', C.date], ['name', C.name], ['category', C.category], ['', C.source], ['sum', C.sum]];
+  const classes = ['t-date', 't-name', 't-cat', 't-src', 't-sum'];
+  const col = ([key, label], i) => {
+    if (!key) return `<span class="t-col ${classes[i]}">${esc(label)}</span>`;
     const on = state.sort === key;
     const arrow = on ? `<span class="sort-dir${state.dir === 'asc' ? ' asc' : ''}">${UI.arrow}</span>` : '';
-    return `<button class="t-col ${cls}${on ? ' on' : ''}" type="button" data-sort="${key}">${esc(label)}${arrow}</button>`;
+    return `<button class="t-col ${classes[i]}${on ? ' on' : ''}" type="button" data-sort="${key}">${esc(label)}${arrow}</button>`;
   };
   return `<div class="thead">
-    <span class="t-check" data-check-all role="checkbox" aria-checked="false" aria-label="${esc(T.table.selectAll)}"></span>
-    ${col('date', C.date, 't-date')}${col('name', C.name, 't-name')}${col('category', C.category, 't-cat')}
-    <span class="t-col t-src">${esc(C.source)}</span>${col('sum', C.sum, 't-sum')}
+    ${check ? `<span class="t-check" data-check-all role="checkbox" aria-checked="false" aria-label="${esc(T.table.selectAll)}"></span>` : '<span class="t-check none"></span>'}
+    ${list.map(col).join('')}
   </div>`;
 }
+
+/** Строка таблицы для доходов, операций банка, чеков: name, cat, src — уже готовая разметка. */
+const tRow = ({ action, long = '', check = '', when, name, cat = '', src = '', sum, sumCls = '', sub = false }) => `
+  <button class="row item trow${sub ? ' sub-row' : ''}" type="button" ${action}${long ? ` data-long="${esc(long)}"` : ''}>
+    ${check ? `<span class="t-check" data-check="${check}" role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>` : '<span class="t-check none"></span>'}
+    <span class="t-date">${esc(when)}</span>
+    <span class="t-name">${name}</span>
+    <span class="t-cat">${cat}</span>
+    <span class="t-src">${src}</span>
+    <span class="row-sum t-sum${sumCls}">${sum}</span>
+  </button>`;
+
+/** Дата и время в ячейке: «27.10 22:14» — год виден в периоде. */
+const tWhen = (iso) => `${dateRu(iso.slice(0, 10)).slice(0, 5)} ${timeRu(iso)}`;
 
 /** Строка таблицы — те же данные, что у строки ленты, ячейками. */
 function tableRow(r, { color, found, catName, toggle, isOpen, part }) {
@@ -2261,7 +2281,8 @@ function toggleCheckAll() {
 function bulkCategory() {
   const n = bulk.size;
   const same = [{ key: 'all', title: T.table.allSame, note: T.table.allSameNote }];
-  openCategoryPicker(null, (_, slug, { only }) => bulkSave(slug, only), undefined, same,
+  const groups = TAB_OF[state.screen] === 'income' ? meta?.income ?? [] : meta?.categories ?? []; // в «Доходе» — справочник доходов
+  openCategoryPicker(null, (_, slug, { only }) => bulkSave(slug, only), groups, same,
     { note: f(T.table.forBulk, { n: int.format(n), w: pl(n, T.table.rows) }) });
 }
 
@@ -2269,20 +2290,25 @@ async function bulkSave(slug, only) {
   const picks = [...bulk];
   toast(T.table.saving);
   let failedN = 0;
+  let total = 0; // операций: строка дохода бывает из нескольких
   for (const p of picks) {
-    const [kind, id] = p.split(':');
-    const url = kind === 'op' ? `/api/bank/ops/${id}/category` : `/api/items/${id}/category`;
-    try {
-      await post(url, { category: slug, only });
-    } catch {
-      failedN += 1;
+    const [kind, ids] = p.split(':');
+    // Строка может быть из нескольких операций (одинаковые поступления) — категория каждой
+    for (const id of ids.split(',')) {
+      total += 1;
+      const url = kind === 'op' ? `/api/bank/ops/${id}/category` : `/api/items/${id}/category`;
+      try {
+        await post(url, { category: slug, only });
+      } catch {
+        failedN += 1;
+      }
     }
   }
   bulk.clear();
   screenCache.clear();
   meta = await api('/api/meta').catch(() => meta);
-  const ok = picks.length - failedN;
-  toast(failedN ? f(T.table.partFailed, { n: int.format(failedN), all: int.format(picks.length) })
+  const ok = picks.length;
+  toast(failedN ? f(T.table.partFailed, { n: int.format(failedN), all: int.format(total) })
     : f(T.table.done, { n: int.format(ok), w: pl(ok, T.table.doneRows) }));
   if (panelCard?.kind === 'item' || panelCard?.kind === 'op') openPanel(panelCard.kind, panelCard.id);
   render();
@@ -2375,6 +2401,7 @@ async function screenBank() {
 
   const byDate = state.sort === 'date';
   let day = '';
+  const table = tableOn();
   const rows = data.rows
     .map((op) => {
       const opDay = op.at.slice(0, 10);
@@ -2397,6 +2424,17 @@ async function screenBank() {
           ? `<span class="op-cat" style="background:${found.group.color ?? 'var(--fill)'}"></span>${esc(found.category.name)}`
           : `<span class="op-cat none"></span><span class="pick-hint">${esc(T.spend.pickCategory)}</span>`;
       const action = op.receipt_id ? `data-receipt="${op.receipt_id}"` : `data-op="${op.id}"`;
+      if (table) {
+        return header + tRow({
+          action,
+          check: op.receipt_id ? '' : `op:${op.id}`, // с чеком — категории у товаров чека
+          when: tWhen(op.at),
+          name: `<span class="row-title">${esc(op.merchant ?? op.description ?? T.spend.noName)}</span>${op.receipt_id ? `<span class="op-mark" title="${esc(T.spend.hasReceipt)}">${UI.receipt}</span>` : ''}`,
+          cat,
+          src: `<span>${esc([op.card ? `·${op.card}` : '', op.bank_category, op.status === 'WAIT' ? T.spend.pending : ''].filter(Boolean).join(' · '))}</span>`,
+          sum: money(op.amount),
+        });
+      }
       return `${header}
         <button class="row bank-op" type="button" ${action}>
           <span class="row-main">
@@ -2409,7 +2447,9 @@ async function screenBank() {
     })
     .join('');
 
-  return `${head}${hint}<div class="list">${rows}</div>`;
+  if (!table) return `${head}${hint}<div class="list">${rows}</div>`;
+  const C = T.table.cols;
+  return `${head}${hint}<div class="list tbl">${tableHead([['date', C.date], ['name', C.description], ['', C.category], ['', C.card], ['sum', C.sum]])}${rows}</div>`;
 }
 
 /**
@@ -2552,6 +2592,7 @@ async function screenIncome() {
   let cat = null;
   const opened = openSections(null, byCat && fewRows(list.length) ? [...new Set(list.map((op) => op.category_slug || NONE))] : null);
   feedSections = { order: [], single: false };
+  const table = tableOn();
   const html = entries
     .map(({ gk, ops, sum: groupSum }) => {
       const op = ops[0]; // последнее: список идёт от свежих
@@ -2574,6 +2615,29 @@ async function screenIncome() {
       const opCat = incomeCat(op.category_slug);
       const many = ops.length > 1;
       const isOpen = many && expanded.has(expandKey(gk));
+      if (table) {
+        const toggleT = many
+          ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(gk)}" role="button" aria-label="${esc(isOpen ? T.feed.collapse : T.income.show)}">${UI.chevron}</span>`
+          : '';
+        const rowT = header + tRow({
+          action: `data-op="${op.id}"`,
+          long: many ? gk : '',
+          check: `op:${ops.map((x) => x.id).join(',')}`, // строка из нескольких — категория всем
+          when: tWhen(op.at),
+          name: `<span class="row-title">${esc(op.description ?? op.merchant ?? T.income.one)}</span>${many ? ` <small class="t-many">· ${int.format(ops.length)} ${esc(pl(ops.length, T.income.many))}</small>` : ''}${toggleT}`,
+          cat: `<span class="op-cat" style="background:${opCat?.color ?? '#d7dbe2'}"></span>${esc(opCat?.name ?? T.income.noCategory)}`,
+          src: `<span>${esc(many ? '' : op.account_name ?? '')}</span>`,
+          sum: `+${money(groupSum)}`,
+          sumCls: ' income',
+        });
+        if (!isOpen) return rowT;
+        const subsT = ops.map((x) => tRow({
+          action: `data-op="${x.id}"`, check: `op:${x.id}`, when: tWhen(x.at), sub: true,
+          name: `<span class="row-title">${esc(x.description ?? x.merchant ?? '')}</span>`,
+          src: `<span>${esc(x.account_name ?? '')}</span>`, sum: `+${money(x.amount)}`, sumCls: ' income',
+        })).join('');
+        return `${rowT}<div class="sub-wrap">${subsT}</div>`;
+      }
       const note = [
         `<span class="op-cat" style="background:${opCat?.color ?? '#d7dbe2'}"></span>${esc(opCat?.name ?? T.income.noCategory)}`,
         byDate ? esc(timeRu(op.at)) : `${dateRu(opDay)} ${esc(timeRu(op.at))}`,
@@ -2604,7 +2668,9 @@ async function screenIncome() {
     })
     .join('');
 
-  return `${head}<div class="list">${html}</div>`;
+  if (!table) return `${head}<div class="list">${html}</div>`;
+  const C = T.table.cols;
+  return `${head}<div class="list tbl">${tableHead([['date', C.date], ['name', C.name], ['category', C.category], ['', C.account], ['sum', C.sum]])}${html}</div>`;
 }
 
 /**
@@ -3129,6 +3195,18 @@ function receiptRows(rows) {
         ? dayHead(r.purchased_date, daySum(rows, r.purchased_date, (x) => x.purchased_date, (x) => (x.counted ? x.total_sum : 0)))
         : '';
       lastDay = r.purchased_date;
+      if (tableOn()) {
+        const tags = [r.manual ? T.receipts.manual : '', r.operation_type === 2 ? T.receipts.refund : ''].filter(Boolean).join(' · ');
+        return heading + tRow({
+          action: `data-receipt="${r.id}"`,
+          when: tWhen(r.purchased_at),
+          name: `<span class="row-title">${esc(r.manual ? r.title : sellerName(r))}</span>${tags ? ` <small class="t-many">· ${esc(tags)}</small>` : ''}`,
+          cat: `<span>${int.format(r.item_count)}</span>`,
+          src: `<span>${esc(shared() ? r.author ?? '' : '')}</span>`,
+          sum: money(r.total_sum, true),
+          sumCls: r.counted ? '' : ' muted',
+        });
+      }
       const marks = [
         timeRu(r.purchased_at),
         `${int.format(r.item_count)} ${pl(r.item_count, T.spend.positions)}`,
@@ -3206,7 +3284,7 @@ async function screenReceipts() {
       ? `<p class="note list-hint"><button class="link" type="button" data-filter="failed">${esc(f(T.receipts.failedLink, { n: int.format(scans.counts.failed) }))}</button></p>`
       : ''}
     ${stuck.length ? `<div class="list stuck">${stuck.map(jobRow).join('')}</div>` : ''}
-    <div class="list" id="receipt-list">${receiptRows(data.rows)}</div>
+    <div class="list${tableOn() ? ' tbl' : ''}" id="receipt-list">${tableOn() ? tableHead([['date', T.table.cols.date], ['name', T.table.cols.seller], ['', T.table.cols.items], ['', shared() ? T.table.cols.author : ''], ['sum', T.table.cols.sum]], { check: false }) : ''}${receiptRows(data.rows)}</div>
     ${more}`;
 }
 
