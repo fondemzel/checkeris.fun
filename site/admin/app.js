@@ -587,7 +587,8 @@ function pageSupport(threads) {
   return subhead('Поддержка')
     + '<p class="lead">Люди пишут из приложения («Настройки → Помощь → Поддержка») или боту @checker_costs_bot. Отвечают здесь: ответ придёт человеку в приложение и в Telegram. Вам в Telegram — только уведомления о новых сообщениях.</p>'
     + box(`${threads.length} ${plural(threads.length, 'обращение', 'обращения', 'обращений')}${waiting ? ` <span class="muted">· ждут ответа ${waiting}</span>` : ''}`,
-      threads.length ? supportRows(threads) : blank('Обращений пока нет'));
+      threads.length ? supportRows(threads, { panel: true }) : blank('Обращений пока нет'),
+      threads.length ? { foot: 'Щелчок — переписка справа; Ctrl+щелчок — в новой вкладке.' } : {});
 }
 
 /** Где человек увидит ответ: в приложении (есть аккаунт) и в Telegram (привязан). */
@@ -804,8 +805,9 @@ async function route() {
   // Три колонки на всех страницах — меню и середина не прыгают при переключении. Справа: у списка
   // «Пользователи» — выбранный кратко, на остальных — «Сейчас»: что горит
   $('panel-col').innerHTML = known === 'users' && !arg ? userPanel(d.budgets.find((b) => b.id === state.selBudget)) : nowPanel(d) + '<div id="thread-slot"></div>';
-  // На странице бюджета открытое обращение остаётся справа и после ответа; ушли на другой — свернуть
-  const here = known === 'users' && arg ? arg : null;
+  // На странице бюджета и в «Поддержке» открытое обращение остаётся справа и после ответа;
+  // ушли на другую страницу — свернуть
+  const here = known === 'users' && arg ? `users/${arg}` : known === 'support' && !arg ? 'support' : null;
   if (here !== state.panelBudget) state.panelThread = null;
   state.panelBudget = here;
   if (state.panelThread) openPanelThread(state.panelThread);
