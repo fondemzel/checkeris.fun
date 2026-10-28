@@ -2548,14 +2548,25 @@ body.no-tabs .tabs { display: none; }
 /* Шапка столбцов прилипает под шапкой ленты (--thead-top считает updateSecTop) */
 .thead {
   position: sticky; top: var(--thead-top, 0px); z-index: 3;
-  padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); font-size: 12px; color: var(--muted);
+  padding: 8px 14px; border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0;
+  background: var(--surface-2); font-size: 12px; color: var(--muted);
 }
+/* Углы скруглены и тогда, когда шапка прилипла посреди ленты: вокруг — цвет фона, а не строки,
+   что проезжают под ней (тень-заливка, обрезанная снизу) */
+.thead::before, .tfoot::after {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  border-radius: inherit; box-shadow: 0 0 0 14px var(--bg);
+}
+.thead::before { clip-path: inset(-14px -14px 0 -14px); }
 /* Подвал с итогом — последней строкой таблицы, прилипает к низу колонки */
+/* Подвал — того же цвета, что шапка, со скруглёнными нижними углами и отступом от низа колонки;
+   в отступе и углах — фон, строки под ним не просвечивают */
 .tfoot {
-  position: sticky; bottom: 0; z-index: 3; min-height: 44px; padding: 8px 14px;
-  border-top: 1px solid var(--line); background: var(--surface-2);
-  font-size: 13px; color: var(--muted); box-shadow: 0 -6px 14px rgba(15, 20, 28, 0.04);
+  position: sticky; bottom: 12px; z-index: 3; min-height: 44px; padding: 8px 14px;
+  border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; background: var(--surface-2);
+  font-size: 13px; color: var(--muted);
 }
+.tfoot::after { clip-path: inset(0 -14px -14px -14px); }
 .tfoot b { color: var(--text); }
 .tfoot .t-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tfoot .t-sum { font-size: 15px; font-weight: 700; color: var(--text); }
