@@ -2178,7 +2178,12 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
     })
     .join('');
 
-  return table ? `<div class="list tbl">${tableHead()}${rows}</div>` : `<div class="list">${rows}</div>`;
+  if (!table) return `<div class="list">${rows}</div>`;
+  // Подвал — итог всей выборки (возвраты и переводы себе в сумму не входят), как в шапке ленты
+  const counted = spendings.filter((r) => !r.outside && !r.self);
+  const n = counted.reduce((s, r) => s + (r.positions ?? 1), 0);
+  return `<div class="list tbl">${tableHead()}${rows}
+    ${tableFoot(`${int.format(n)} ${pl(n, T.common.purchases)}`, money(counted.reduce((s, r) => s + r.sum, 0)))}</div>`;
 }
 
 // ── лента таблицей (широкий экран) ───────────────────────
@@ -2232,6 +2237,18 @@ const tRow = ({ action, long = '', check = '', info = '', when, name, cat = '', 
 /** Что в строке — у её флажка: сводке выбранного (сумма в копейках, категория, когда, сколько покупок). */
 const checkInfo = (sum, cat, at, n = 1) =>
   ` data-sum="${Number(sum) || 0}" data-cat="${esc(cat ?? '')}" data-at="${esc(at ?? '')}" data-n="${n || 1}"`;
+
+/**
+ * Подвал таблицы — последней строкой, прилипает к низу: «Итого · сколько» и сумма в столбце
+ * сумм. Итог — всей выборки, а не только раскрытых разделов
+ */
+const tableFoot = (label, sum, sumCls = '') => `
+  <div class="tfoot">
+    <span class="t-check none"></span><span class="t-date"></span>
+    <span class="t-name"><b>${esc(T.table.total)}</b>&nbsp;· ${esc(label)}</span>
+    <span class="t-cat"></span><span class="t-src"></span>
+    <span class="row-sum t-sum${sumCls}">${sum}</span>
+  </div>`;
 
 /** Дата и время в ячейке: «27.10 22:14» — год виден в периоде. */
 const tWhen = (iso) => `${dateRu(iso.slice(0, 10)).slice(0, 5)} ${timeRu(iso)}`;
@@ -2651,7 +2668,8 @@ async function screenBank() {
 
   if (!table) return `${head}${hint}<div class="list">${rows}</div>`;
   const C = T.table.cols;
-  return `${head}${hint}<div class="list tbl">${tableHead([['date', C.date], ['name', C.description], ['', C.category], ['', C.card], ['sum', C.sum]])}${rows}</div>`;
+  return `${head}${hint}<div class="list tbl">${tableHead([['date', C.date], ['name', C.description], ['', C.category], ['', C.card], ['sum', C.sum]])}${rows}
+    ${tableFoot(`${int.format(data.rows.length)} ${pl(data.rows.length, T.common.ops)}`, money(data.totals.sum))}</div>`;
 }
 
 /**
@@ -2876,7 +2894,8 @@ async function screenIncome() {
 
   if (!table) return `${head}<div class="list">${html}</div>`;
   const C = T.table.cols;
-  return `${head}<div class="list tbl">${tableHead([['date', C.date], ['name', C.name], ['category', C.category], ['', C.account], ['sum', C.sum]])}${html}</div>`;
+  return `${head}<div class="list tbl">${tableHead([['date', C.date], ['name', C.name], ['category', C.category], ['', C.account], ['sum', C.sum]])}${html}
+    ${tableFoot(`${int.format(count)} ${pl(count, T.income.many)}`, `+${money(sum)}`, ' income')}</div>`;
 }
 
 /**
@@ -3549,7 +3568,7 @@ async function screenReceipts() {
       ? `<p class="note list-hint"><button class="link" type="button" data-filter="failed">${esc(f(T.receipts.failedLink, { n: int.format(scans.counts.failed) }))}</button></p>`
       : ''}
     ${stuck.length ? `<div class="list stuck">${stuck.map(jobRow).join('')}</div>` : ''}
-    <div class="list${tableOn() ? ' tbl' : ''}" id="receipt-list">${tableOn() ? tableHead([['date', T.table.cols.date], ['name', T.table.cols.seller], ['', T.table.cols.items], ['', shared() ? T.table.cols.author : ''], ['sum', T.table.cols.sum]], { check: false }) : ''}${receiptRows(data.rows)}</div>
+    <div class="list${tableOn() ? ' tbl' : ''}" id="receipt-list">${tableOn() ? tableHead([['date', T.table.cols.date], ['name', T.table.cols.seller], ['', T.table.cols.items], ['', shared() ? T.table.cols.author : ''], ['sum', T.table.cols.sum]], { check: false }) : ''}${receiptRows(data.rows)}${tableOn() ? tableFoot(`${int.format(data.totals.count)} ${pl(data.totals.count, T.common.receipts)}`, money(data.totals.sum)) : ''}</div>
     ${more}`;
 }
 
@@ -3566,7 +3585,10 @@ async function loadMoreReceipts(button) {
   try {
     const data = await api(`/api/receipts?${receiptsQuery(receiptsPage + 1)}`);
     receiptsPage += 1;
-    $('receipt-list').insertAdjacentHTML('beforeend', receiptRows(data.rows));
+    // В таблице последняя строка — подвал с итогом: новые строки — перед ним
+    const foot = $('receipt-list').querySelector('.tfoot');
+    if (foot) foot.insertAdjacentHTML('beforebegin', receiptRows(data.rows));
+    else $('receipt-list').insertAdjacentHTML('beforeend', receiptRows(data.rows));
     if (receiptsPage * RECEIPTS_PER >= data.totals.count) button.remove();
     else button.disabled = false;
   } catch (err) {
@@ -5846,15 +5868,21 @@ function perDayNote(items, ops, part) {
 }
 
 /** Где прилипают заголовки разделов: под шапкой с итогом (у каждого экрана своей высоты). */
-function secTop() {
+// Шапка ленты прилипает, под ней — шапка столбцов таблицы, под той — заголовок раздела
+function headBottom() {
   const head = document.querySelector('#screen .stuck-head');
   if (!head) return 0;
   return (parseFloat(getComputedStyle(head).top) || 0) + head.offsetHeight;
 }
+function secTop() {
+  return headBottom() + (document.querySelector('#screen .list.tbl > .thead')?.offsetHeight ?? 0);
+}
 function updateSecTop() {
   // Вниз и ещё на пиксель — под шапку: верх шапки на телефоне дробный (вырез под камеру), и при
   // округлении вверх между ней и прилипшим заголовком просвечивала строка ленты
-  document.documentElement.style.setProperty('--sec-top', `${Math.floor(secTop()) - 1}px`);
+  const root = document.documentElement.style;
+  root.setProperty('--thead-top', `${Math.floor(headBottom()) - 1}px`);
+  root.setProperty('--sec-top', `${Math.floor(secTop()) - 1}px`);
 }
 addEventListener('resize', updateSecTop);
 

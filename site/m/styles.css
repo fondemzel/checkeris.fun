@@ -2541,11 +2541,25 @@ body.no-tabs .tabs { display: none; }
    но он есть в карточке */
 .list.tbl { container-type: inline-size; }
 .screen:has(.list.tbl) { max-width: 1100px; } /* таблице нужна ширина: лента шире обычной */
-.thead, .trow {
+.thead, .trow, .tfoot {
   display: grid; align-items: center; column-gap: 12px;
   grid-template-columns: 22px 92px minmax(180px, 1fr) minmax(0, 210px) minmax(0, 140px) 108px;
 }
-.thead { padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); font-size: 12px; color: var(--muted); }
+/* Шапка столбцов прилипает под шапкой ленты (--thead-top считает updateSecTop) */
+.thead {
+  position: sticky; top: var(--thead-top, 0px); z-index: 3;
+  padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); font-size: 12px; color: var(--muted);
+}
+/* Подвал с итогом — последней строкой таблицы, прилипает к низу колонки */
+.tfoot {
+  position: sticky; bottom: 0; z-index: 3; min-height: 44px; padding: 8px 14px;
+  border-top: 1px solid var(--line); background: var(--surface-2);
+  font-size: 13px; color: var(--muted); box-shadow: 0 -6px 14px rgba(15, 20, 28, 0.04);
+}
+.tfoot b { color: var(--text); }
+.tfoot .t-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tfoot .t-sum { font-size: 15px; font-weight: 700; color: var(--text); }
+.tfoot .t-sum.income { color: var(--income, #1baf7a); }
 .t-col { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .t-col.on { color: var(--text); font-weight: 600; }
 .t-col .sort-dir { position: static; width: auto; height: auto; border: none; background: none; color: inherit; }
@@ -2569,7 +2583,7 @@ span.t-col { cursor: default; }
 .trow.sub-row .t-name { padding-left: 38px; }
 .trow.sub-row .row-title { font-size: 13px; color: var(--muted); }
 @container (max-width: 760px) {
-  .thead, .trow { grid-template-columns: 22px 78px minmax(140px, 1fr) minmax(0, 130px) 96px; column-gap: 10px; }
+  .thead, .trow, .tfoot { grid-template-columns: 22px 78px minmax(140px, 1fr) minmax(0, 130px) 96px; column-gap: 10px; }
   .t-src { display: none; }
   .t-date { font-size: 12px; }
 }

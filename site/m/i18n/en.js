@@ -1125,6 +1125,7 @@ export const en = {
     doneRows: ['row', 'rows'],
     partFailed: 'Not saved: {n} of {all}',
     byCategory: 'By category',
+    total: 'Total',
     notePlaceholder: 'A shared comment for the selected',
     noteHint: 'Replaces the comments of all selected; empty removes them',
     hints: ['<b>Shift</b> + click — flip the selection of rows from the last clicked one to this one', '<b>Drag</b> the mouse over rows — select them anew', '<b>Ctrl</b> + drag — add to the selection', '<b>Ctrl</b> + click — select a single row'],
