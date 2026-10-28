@@ -2745,7 +2745,9 @@ body.drag-select, body.drag-select * { cursor: default !important; }
    в строке — подстрочником; суммы — полужирным, как в строках */
 .list.tbl > .day { min-height: 40px; font-size: var(--fs-head); font-weight: 600; color: var(--text); }
 .list.tbl > .day b { font-variant-numeric: tabular-nums; }
-.thead { font-size: var(--fs-caps); }
+.thead, .thead .t-col { font-size: var(--fs-caps); }
+/* Строка групп — плотнее: значки, крестик и кнопки справа помещаются в одну строку */
+.frow:has(.fchip.grp) { gap: 4px; }
 .trow .t-date, .trow .t-cat, .trow .t-src, .t-many, .tfoot { font-size: var(--fs-note); }
 .trow.sub-row .row-title { font-size: var(--fs-note); }
 .trow .row-title, .tfoot .t-sum { font-size: var(--fs-title); }
@@ -2756,5 +2758,5 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 .panel .ring-row b { font-weight: 600; }
 .panel .card-name { font-size: var(--fs-title); }
 @media (min-width: 1100px) {
-  .total-note { font-size: var(--fs-note); }
+  .total .total-note, .total.compact .total-note { font-size: var(--fs-note); }
 }
