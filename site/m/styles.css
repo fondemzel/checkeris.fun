@@ -2572,7 +2572,8 @@ body.no-tabs .tabs { display: none; }
 }
 .tfoot::after { clip-path: inset(0 -14px -14px -14px); }
 .tfoot b { color: var(--text); }
-.tfoot .t-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* «Итого · N» — от левого края таблицы (с обычным отступом строки), сумма — в своём столбце */
+.tfoot .t-foot-label { grid-column: 1 / -2; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tfoot .t-sum { font-size: 15px; font-weight: 700; color: var(--text); }
 .tfoot .t-sum.income { color: var(--income, #1baf7a); }
 .t-col { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
@@ -2641,7 +2642,9 @@ body.drag-select, body.drag-select * { cursor: default !important; }
      колонки, а не окна */
   html, body { height: 100%; overflow: hidden; }
   .app:not([hidden]) { display: flex; flex-direction: column; height: 100%; }
-  .stage { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  /* Место под полосу прокрутки — всегда: появилась или пропала — содержимое не прыгает */
+  .stage { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .panel { scrollbar-gutter: stable; }
   .stuck-head { top: 0; }
   .panel {
     position: fixed; top: 0; right: 0; bottom: 0; z-index: 9; width: var(--panel-w);

@@ -548,15 +548,34 @@ const NOTHING = '!';
 
 // «Развернуть все разделы» — для этого списка: длинная лента иначе держит открытым один раздел
 let unfoldAllKey = '';
-function toggleFoldAll() {
-  const keys = [...document.querySelectorAll('#screen .day.section')].map((b) => b.dataset.section);
+/**
+ * Свернуть или развернуть все разделы — с той же анимацией, что у одного: свернуть — строки
+ * гаснут, потом место под ними плавно сжимается; развернуть — строки проявляются по одной
+ */
+async function toggleFoldAll() {
+  const heads = () => [...document.querySelectorAll('#screen .day.section')];
+  const keys = heads().map((b) => b.dataset.section);
   const open = openSections(null);
   const fold = open.size > 0;
+  // Сколько места строки каждого открытого раздела занимали на экране — для плавного сжатия
+  const rooms = new Map();
+  if (fold) {
+    const openHeads = heads().filter((h) => open.has(h.dataset.section));
+    for (const h of openHeads) rooms.set(h.dataset.section, visibleHeight(sectionRows(h)));
+    await Promise.all(openHeads.map((h) => animateOut(sectionRows(h), h)));
+  }
   open.clear();
   if (!fold) keys.forEach((k) => open.add(k));
   unfoldAllKey = fold ? '' : sectionsKey();
   screenCache.clear();
-  render();
+  await render();
+  for (const head of heads()) {
+    if (fold && !rooms.has(head.dataset.section)) continue;
+    head.classList.add(fold ? 'arrow-closing' : 'arrow-opening');
+    setTimeout(() => head.classList.remove('arrow-closing', 'arrow-opening'), 250);
+    if (fold) collapseSpace(head, rooms.get(head.dataset.section));
+    else animateIn(sectionRows(head));
+  }
 }
 
 // Группировка таблицы — выбор человека, на этом устройстве (по умолчанию — разделами)
@@ -2352,9 +2371,7 @@ const checkInfo = (sum, cat, at, n = 1) =>
  */
 const tableFoot = (label, sum, sumCls = '') => `
   <div class="tfoot">
-    <span class="t-check none"></span><span class="t-date"></span>
-    <span class="t-name"><span><b>${esc(T.table.total)}</b> · ${esc(label)}</span></span>
-    <span class="t-cat"></span><span class="t-src"></span>
+    <span class="t-foot-label"><b>${esc(T.table.total)}</b> · ${esc(label)}</span>
     <span class="row-sum t-sum${sumCls}">${sum}</span>
   </div>`;
 
