@@ -456,7 +456,15 @@ function matchesQ(fields, amounts = []) {
   });
 }
 
-const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false, mode = false, extra = '' }) => `
+/**
+ * Шапка ленты: сумма, подпись, кнопки, период и поиск. chips ('expense' | 'income') — на широком
+ * экране вместо кнопки фильтра и строки периода — строки чипсов (filterRows). Таблица сортируется
+ * по заголовкам столбцов — кнопки сортировки у неё нет (кроме «Сводки»: там не таблица)
+ */
+const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false, mode = false, extra = '', chips = '' }) => {
+  const wide = Boolean(chips) && panelRingOn();
+  const sortBtn = sorts && !(tableOn() && state.screen !== 'stats') && !(mode && state.mode === 'ring' && !panelRingOn());
+  return `
   <div class="total compact">
     <div class="head-top">
       <div class="head-sum">
@@ -464,18 +472,50 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
         <span class="total-note">${note}</span>
       </div>
       <div class="head-btns">
-        ${sorts && !(mode && state.mode === 'ring' && !panelRingOn()) ? sortDrop(sorts === true ? undefined : sorts) : ''}
-        ${filters}
+        ${sortBtn ? sortDrop(sorts === true ? undefined : sorts) : ''}
+        ${wide ? '' : filters}
         ${extra}
         ${mode && !panelRingOn() ? `<button class="drop-btn" type="button" data-mode-toggle
           aria-label="${esc(state.mode === 'ring' ? T.feed.asList : T.feed.asRing)}" title="${esc(state.mode === 'ring' ? T.feed.listShort : T.feed.ringShort)}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
       </div>
     </div>
+    ${wide ? filterRows(chips === 'income', search) : `
     <div class="head-line">
       ${periodNav(true)}
       ${search ? searchBox() : ''}
-    </div>
+    </div>`}
   </div>`;
+};
+
+/** Что фильтруется: у расходов — источники и группы расходов, у доходов — банк или вручную и группы доходов. */
+const filterCfg = (income) => (income
+  ? { srcKey: 'isrc', groupKey: 'inf', sources: ['bank', 'manual'], none: '-', groups: meta?.income ?? [], noneName: T.income.noCategory }
+  : { srcKey: 'src', groupKey: 'sg', sources: Object.keys(SOURCE_SHORT), none: NONE, groups: meta?.categories ?? [], noneName: T.feed.noCategory });
+
+/**
+ * Фильтры широкого экрана — строками чипсов в шапке ленты: период (день, неделя, месяц, год,
+ * в конце — переключатель периода и поиск), источник и группа. Источников и групп можно выбрать
+ * несколько; ничего не выбрано — значит все. У групп — их значки: выбранные цветные, прочие бледные
+ */
+function filterRows(income, search) {
+  const cfg = filterCfg(income);
+  const src = new Set(state[cfg.srcKey] ? state[cfg.srcKey].split(',') : []);
+  const sg = new Set(state[cfg.groupKey] ? state[cfg.groupKey].split(',') : []);
+  const chip = (attrs, html, on, cls = '', style = '') =>
+    `<button class="fchip${cls}${on ? ' on' : ''}" type="button" ${attrs}${style ? ` style="${style}"` : ''}>${html}</button>`;
+  const periods = quickPeriods().map(([label, p], i) => chip(`data-fperiod="${i}"`, esc(label), p.from === state.from && p.to === state.to)).join('');
+  const sources = cfg.sources.filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
+    .map((k) => chip(`data-fchip="${cfg.srcKey}:${k}"`, `<span class="fchip-src">${SOURCES[k].icon}</span>${esc(SOURCE_SHORT[k])}`, src.has(k))).join('');
+  const groups = [...cfg.groups, { slug: cfg.none, name: cfg.noneName, icon: 'none', color: '#c9ced6' }]
+    .map((g) => chip(`data-fchip="${cfg.groupKey}:${esc(g.slug)}"`,
+      `<span class="fchip-ic">${groupIcon(g.icon ?? 'none')}</span>${esc(g.name)}`, sg.has(g.slug), ' grp',
+      `--g:${g.color ?? 'var(--fill)'};--gt:${readableText(g.color ?? '#c9ced6')}`)).join('');
+  return `<div class="frows">
+    <div class="frow">${periods}<span class="frow-end">${periodNav(true)}${search ? searchBox() : ''}</span></div>
+    <div class="frow">${sources}</div>
+    <div class="frow">${groups}</div>
+  </div>`;
+}
 
 /** Кнопка с выпадающим списком. on — выбрано не то, что по умолчанию: кнопка подсвечена. */
 const drop = (icon, label, rows, on = false) => `
@@ -581,9 +621,7 @@ const groupTileIc = (g) => {
  */
 function openFilterSheet(income = false) {
   // Расходы: источники и группы расходов (src, sg). Доходы: банк или вручную и группы доходов (isrc, inf)
-  const cfg = income
-    ? { srcKey: 'isrc', groupKey: 'inf', sources: ['bank', 'manual'], none: '-', groups: meta?.income ?? [], noneName: T.income.noCategory }
-    : { srcKey: 'src', groupKey: 'sg', sources: Object.keys(SOURCE_SHORT), none: NONE, groups: meta?.categories ?? [], noneName: T.feed.noCategory };
+  const cfg = filterCfg(income);
   const src = new Set(state[cfg.srcKey] ? state[cfg.srcKey].split(',') : []);
   const sg = new Set(state[cfg.groupKey] ? state[cfg.groupKey].split(',') : []);
   const sources = cfg.sources.filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
@@ -1167,6 +1205,7 @@ async function screenSummary() {
         filters: sourceChips(),
         search: true,
         mode: true,
+        chips: 'expense',
       })}
     </div>`;
 
@@ -2740,6 +2779,7 @@ async function screenIncome() {
         sorts: all.length > 0 ? ['category', 'date', 'name', 'sum'] : false,
         // Внутри кольца группы отбор по группам дал бы пустое кольцо — фильтра нет
         filters: all.length > 0 && !(state.mode === 'ring' && (state.ringGroup || state.ringRest)) ? filters : '',
+        chips: 'income',
         search: all.length > 0,
         mode: all.length > 0,
       })}
@@ -3068,7 +3108,9 @@ function hostSheet(sheet, card, title) {
  */
 function closePanel(force = false) {
   const hint = selectHint();
-  const view = `${panelMq.matches}|${Boolean(hint)}|${panelRing ? 'ring' : ''}`;
+  // Что-то отобрано — в шапке панели с кольцом крестик «сбросить фильтры»
+  const filtered = Boolean(state.src || state.sg || state.inf || state.isrc);
+  const view = `${panelMq.matches}|${Boolean(hint)}|${panelRing ? 'ring' : ''}|${filtered}`;
   if (!force && !panelCard && $('panel').dataset.view === view) return;
   panelCard = null;
   panelSeq += 1; // запоздавший ответ уже не нужен
@@ -3081,7 +3123,9 @@ function closePanel(force = false) {
   // «Расход» и «Доход» — кольцо по той же выборке, что в таблице; другие ленты — подсказка
   panel.innerHTML = !keep ? ''
     : panelRing
-      ? `<div class="panel-top"><b class="panel-title">${esc(T.panelRing)}</b></div><div class="panel-body panel-ring">${panelRing}${hint}</div>`
+      ? `<div class="panel-top"><b class="panel-title">${esc(T.panelRing)}</b>${filtered
+        ? `<button class="icon-btn soft" type="button" data-reset-filters aria-label="${esc(T.feed.resetFilters)}" title="${esc(T.feed.resetFilters)}">${UI.close}</button>` : ''}</div>
+        <div class="panel-body panel-ring">${panelRing}${hint}</div>`
       : `<div class="panel-top"><b class="panel-title"></b></div>
        <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p>${hint}</div>`;
   document.body.classList.toggle('has-panel', keep);
@@ -6520,7 +6564,19 @@ async function onScreenClick(e) {
   if (inf) return go({ inf: inf.dataset.inf }, true);
   if (e.target.closest('[data-reset-filters]')) {
     pulseNext = 'count';
-    return go({ src: '', sg: '' }, true);
+    return go({ src: '', sg: '', inf: '', isrc: '' }, true);
+  }
+  // Чипсы фильтров широкого экрана: период — сразу, источник и группа — добавить или убрать из выбора
+  const fperiod = e.target.closest('[data-fperiod]');
+  if (fperiod) return go({ ...quickPeriods()[Number(fperiod.dataset.fperiod)][1] }, true);
+  const fchip = e.target.closest('[data-fchip]');
+  if (fchip) {
+    const [key, value] = fchip.dataset.fchip.split(':');
+    const picked = new Set(state[key] ? state[key].split(',') : []);
+    if (picked.has(value)) picked.delete(value);
+    else picked.add(value);
+    pulseNext = 'count';
+    return go({ [key]: [...picked].join(',') }, true);
   }
   const sg = e.target.closest('[data-sg]');
   if (sg) {

@@ -2675,3 +2675,27 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 }
 :root[data-theme="dark"] .tip { background: #e8ecf1; color: #11151b; }
 @keyframes tip-in { from { opacity: 0; transform: translateY(-2px); } }
+
+/* Фильтры широкого экрана — строки чипсов в шапке ленты (filterRows): период, источник, группа */
+.frows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.frow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.frow-end { display: flex; flex: 1 1 300px; align-items: center; justify-content: flex-end; gap: 6px; margin-left: auto; min-width: 0; }
+.frow-end .search { flex: 1; min-width: 140px; }
+.fchip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 15px; background: var(--surface);
+  font: inherit; font-size: 13px; color: var(--text); white-space: nowrap; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.fchip:hover { border-color: var(--muted); }
+.fchip.on { border-color: var(--accent); background: var(--accent-faint); color: var(--accent); font-weight: 600; }
+.fchip-src { display: flex; }
+.fchip-src svg { width: 14px; height: 14px; }
+/* Группа: значок её цветом; не выбрана — значок бледный и серый, подпись приглушена */
+.fchip.grp { padding-left: 4px; }
+.fchip-ic { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: var(--g); color: var(--gt); transition: filter 0.15s, opacity 0.15s; }
+.fchip-ic svg { width: 13px; height: 13px; }
+.fchip.grp:not(.on) { color: var(--muted); }
+.fchip.grp:not(.on) .fchip-ic { filter: grayscale(1); opacity: 0.45; }
+.fchip.grp:hover .fchip-ic { filter: none; opacity: 1; }
+.fchip.grp.on { border-color: var(--g); background: color-mix(in srgb, var(--g) 14%, var(--surface)); color: var(--text); }
