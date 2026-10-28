@@ -2344,6 +2344,7 @@ document.addEventListener('pointermove', (e) => {
     if (Math.abs(e.clientY - dragSel.y) < 6) return; // ещё нажатие, а не протяжка
     dragSel.active = true;
     document.body.classList.add('drag-select');
+    cancelLongPress(); // это протяжка: группа под курсором не раскрывается долгим нажатием
   }
   const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('.trow')?.querySelector('[data-check]');
   if (!over) return;
