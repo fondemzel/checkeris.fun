@@ -3213,7 +3213,7 @@ function hostSheet(sheet, card, title) {
 function closePanel(force = false) {
   // Что-то отобрано — в шапке панели с кольцом крестик «сбросить фильтры»
   const filtered = Boolean(state.src || state.sg || state.inf || state.isrc);
-  const view = `${panelMq.matches}|${panelRing ? 'ring' : ''}|${filtered}`;
+  const view = `${panelMq.matches}|${panelRing ? 'ring' : ''}|${filtered}|${panelSide.title}`;
   if (!force && !panelCard && $('panel').dataset.view === view) return;
   panelCard = null;
   panelSeq += 1; // запоздавший ответ уже не нужен
@@ -3226,7 +3226,7 @@ function closePanel(force = false) {
   // «Расход» и «Доход» — кольцо по той же выборке, что в таблице; другие ленты — подсказка
   panel.innerHTML = !keep ? ''
     : panelRing
-      ? `<div class="panel-top"><b class="panel-title">${esc(T.panelRing)}</b>${filtered
+      ? `<div class="panel-top"><b class="panel-title">${esc(panelSide.title)}</b>${panelSide.tools}${filtered
         ? `<button class="icon-btn soft" type="button" data-reset-filters aria-label="${esc(T.feed.resetFilters)}" title="${esc(T.feed.resetFilters)}">${UI.close}</button>` : ''}</div>
         <div class="panel-body panel-ring">${panelRing}</div>`
       : `<div class="panel-top"><b class="panel-title"></b></div>
@@ -3237,11 +3237,15 @@ function closePanel(force = false) {
   if (keep && panelRing) playRing(); // новое кольцо — заливкой, если она не выключена в настройках
 }
 
-// Кольцо для правой панели — его считает экран «Расхода» или «Дохода» вместе с таблицей
+// Содержимое правой панели, пока ничего не выбрано: кольцо «Расхода» и «Дохода» (считает экран
+// вместе с таблицей) или группы «Сводки». title и tools — заголовок и кнопки шапки панели,
+// screen — чей это: ушли на другой экран — панель снова с подсказкой
 let panelRing = '';
-function setPanelRing(html) {
-  if (panelRing === html) return;
+let panelSide = { title: '', tools: '', screen: '' };
+function setPanelRing(html, { title = T.panelRing, tools = '' } = {}) {
+  if (panelRing === html && panelSide.title === title && panelSide.tools === tools) return;
   panelRing = html;
+  panelSide = { title, tools, screen: state.screen };
   if (!panelCard) closePanel(true);
 }
 
@@ -5685,8 +5689,8 @@ const NONE = '-'; // «Без категории»: у неразмеченно�
 
 async function render() {
   const seq = ++renderSeq;
-  // Кольцо в правой панели — только у «Расхода» и «Дохода»: ушли — снова подсказка
-  if (panelRing && !['summary', 'income'].includes(state.screen)) {
+  // Кольцо или группы в правой панели — только у своего экрана: ушли — снова подсказка
+  if (panelRing && state.screen !== panelSide.screen) {
     panelRing = '';
     if (!panelCard) closePanel(true);
   }
@@ -10563,9 +10567,17 @@ async function screenAnalytics() {
   const viewBtn = `<button class="drop-btn" type="button" data-ana-view aria-label="${esc(bars ? T.stats.asLines : T.stats.asBars)}"
     title="${esc(bars ? T.stats.lines : T.stats.bars)}">${bars ? UI.chartLine : UI.chartBars}</button>`;
   // Шапка — как в «Расходе»: на широком экране чипсы периода, источника и группы
-  const head = (sum, note) => `<div class="stuck-head ana-head">${listHead({ sum: money(sum), note, sorts: ANA_SORTS, filters: sourceChips(), search: true, extra: viewBtn, chips: 'expense' })}</div>`;
+  // С правой панелью: шапка — как в «Расходе», без кнопок; вид графика — в его карточке,
+  // группы — справа, их сортировка — в шапке панели
+  const side = panelRingOn();
+  const head = (sum, note) => `<div class="stuck-head ana-head">${listHead({ sum: money(sum), note, sorts: side ? false : ANA_SORTS, filters: sourceChips(), search: true, extra: side ? '' : viewBtn, chips: 'expense' })}</div>`;
+  const viewChip = `<button class="ana-step-btn ana-view-btn" type="button" data-ana-view aria-label="${esc(bars ? T.stats.asLines : T.stats.asBars)}"
+    title="${esc(bars ? T.stats.asLines : T.stats.asBars)}">${bars ? UI.chartLine : UI.chartBars}</button>`;
   const sort = ANA_SORTS.includes(state.sort) ? state.sort : 'category';
-  if (cut < 0) return `${head(0, '')}<div class="empty">${esc(T.stats.notStarted)}</div>`;
+  if (cut < 0) {
+    if (side) setPanelRing('');
+    return `${head(0, '')}<div class="empty">${esc(T.stats.notStarted)}</div>`;
+  }
 
   const all = anaCum(cur.total);
   // Линия прошлого периода на графике — по номеру деления, рядом с этим днём
@@ -10637,7 +10649,10 @@ async function screenAnalytics() {
     state.q ? part('q', f(T.feed.searchQ, { q: state.q.trim() })) : '',
     forecast ? part('forecast', f(T.stats.forecast, { sum: anaShort(forecast[n - 1]) })) : '',
   ].filter(Boolean).join(' · ');
-  if (!curRows.length && !was) return `${head(0, note)}<div class="empty">${esc(state.q ? T.feed.nothingFound : T.spend.empty)}</div>`;
+  if (!curRows.length && !was) {
+    if (side) setPanelRing('');
+    return `${head(0, note)}<div class="empty">${esc(state.q ? T.feed.nothingFound : T.spend.empty)}</div>`;
+  }
 
   // Под графиком — пришло и потрачено, в скобках — к прошлому периоду целиком. Больше трат —
   // красным, больше доходов — зелёным
@@ -10682,12 +10697,16 @@ async function screenAnalytics() {
   }).filter((r) => r.now || r.was)
     .sort((a, b) => compare(a, b) * back);
 
+  const tools = `${bars ? anaStepDrop(from, to, B.step) : ''}${side ? viewChip : ''}`;
+  const groupRows = groupsRows.map((r) => anaRow(r, names)).join('');
+  const groupsTitle = open ? open.name : T.stats.groups;
+  const groupsHint = open ? T.stats.catsHint : T.stats.groupsHint;
+  if (side) setPanelRing(section('', groupsHint, groupRows), { title: groupsTitle, tools: `<span class="panel-tools">${sortDrop(ANA_SORTS)}</span>` });
   return head(now, note)
-    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color, stepBtn: anaStepDrop(from, to, B.step) }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null })}`
+    + `<div class="card ana-card">${bars ? anaBars({ B, n, cut, now: cur.total, was: prevSplit.total, names, tint: open?.color, stepBtn: tools }) : anaChart({ B, n, cut, all, prevAll, forecast, names, incAll: plain && income ? anaCum(inc) : null, incPrevAll: plain && incomeWas ? anaCum(incPrev) : null, tools })}`
     + `<div class="ana-income-row">${sums.charAt(0).toUpperCase()}${sums.slice(1)}</div>`
     + '</div>'
-    + section(open ? open.name : T.stats.groups, open ? T.stats.catsHint : T.stats.groupsHint,
-      groupsRows.map((r) => anaRow(r, names)).join(''));
+    + (side ? '' : section(groupsTitle, groupsHint, groupRows));
 }
 
 /** Подпись суммы: 12 тыс., 1,2 млн. */
@@ -10791,7 +10810,7 @@ function anaMonotone(P, a = 0, b = P.length - 1) {
 }
 
 /** График: этот период ярко, прошлый — бледнее, прогноз — точками. SVG 0–1000 × 0–600. */
-function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll }) {
+function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll, tools = '' }) {
   const W = 1000;
   const H = 600;
   const top = Math.max(all[cut], ...prevAll, ...(forecast ?? []).filter((v) => v != null),
@@ -10832,7 +10851,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${axis}</div>
-    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? `<span><i class="k-fc"></i>${esc(T.stats.forecastKey)}</span>` : ''}${incAll || incPrevAll ? `<span><i class="k-inc"></i>${esc(T.stats.incomeKey)}</span>` : ''}</div>`;
+    <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? `<span><i class="k-fc"></i>${esc(T.stats.forecastKey)}</span>` : ''}${incAll || incPrevAll ? `<span><i class="k-inc"></i>${esc(T.stats.incomeKey)}</span>` : ''}${tools ? `<span class="ana-tools">${tools}</span>` : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
 let anaClipSeq = 0; // номера шторок графиков
@@ -10908,7 +10927,7 @@ function anaBars({ B, n, cut, now, was, names, tint, stepBtn = '' }) {
       <div class="ana-tip" hidden></div>
     </div>
     <div class="ana-axis">${axis}</div>
-    <div class="ana-keys"${tint ? ` style="--accent:${tint}"` : ''}><span><i class="k-col"></i>${esc(names.cur)}</span><span><i class="k-col k-col-prev"></i>${esc(names.key)}</span>${stepBtn}</div>`;
+    <div class="ana-keys"${tint ? ` style="--accent:${tint}"` : ''}><span><i class="k-col"></i>${esc(names.cur)}</span><span><i class="k-col k-col-prev"></i>${esc(names.key)}</span>${stepBtn ? `<span class="ana-tools">${stepBtn}</span>` : ''}</div>`;
 }
 
 /**
