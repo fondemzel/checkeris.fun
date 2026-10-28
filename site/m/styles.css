@@ -2673,10 +2673,10 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 /* Подсказка при наведении мыши (showTip): тёмная плашка у элемента, проявляется */
 .tip {
   position: fixed; z-index: 100; max-width: 320px; padding: 5px 9px; border-radius: 7px;
-  background: rgba(19, 26, 38, 0.94); color: #fff; font-size: 12px; line-height: 1.35;
+  background: #1d2530; color: #eef1f5; font-size: 12px; line-height: 1.35;
+  border: 1px solid rgba(255, 255, 255, 0.08); /* тёмная во всех темах; в тёмной — тонкий край */
   pointer-events: none; box-shadow: 0 2px 10px rgba(15, 20, 28, 0.1); animation: tip-in 0.12s ease-out;
 }
-:root[data-theme="dark"] .tip { background: #e8ecf1; color: #11151b; }
 @keyframes tip-in { from { opacity: 0; transform: translateY(-2px); } }
 
 /* Фильтры широкого экрана — строки чипсов в шапке ленты (filterRows): период, источник, группа */
@@ -2685,7 +2685,8 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 /* Справа в строке периода — переключатель периода */
 .frow-end { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 /* Поиск — в строке общей суммы, справа, крупный под стать сумме */
-.head-top > .search { flex: 0 1 340px; align-self: center; height: 44px; margin-left: auto; padding: 0 6px 0 14px; border-radius: 22px; }
+/* Высота — как строка суммы (28 px × 1,3), вровень с ней */
+.head-top > .search { flex: 0 1 340px; align-self: flex-start; height: 36px; margin-left: auto; padding: 0 5px 0 13px; border-radius: 18px; }
 .head-top > .search input { font-size: 17px; }
 .head-top > .search .search-ic svg { width: 18px; height: 18px; }
 .fchip {
@@ -2706,10 +2707,9 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 .fchip-ic svg { width: 16px; height: 16px; }
 .fchip.grp:not(.on) { color: var(--muted); }
 .fchip.grp:not(.on) .fchip-ic { filter: grayscale(1); opacity: 0.45; }
-.fchip.grp:hover .fchip-ic { filter: none; opacity: 1; }
-/* Выбранная — цветная и в тонком кольце своего цвета */
+.fchip.grp:not(.on):hover .fchip-ic { filter: grayscale(0.5); opacity: 0.75; } /* наведение — вполовину цвета */
+/* Выбранная — просто цветная, без обводки */
 .fchip.grp.on { background: none; }
-.fchip.grp.on .fchip-ic { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--g); }
 /* Пустая таблица: шапка столбцов на месте, вместо строк — надпись */
 .t-empty { padding: 48px 16px; text-align: center; color: var(--muted); }
 /* Круглый крестик в конце строки: снять выбор строки или включить все её чипсы */

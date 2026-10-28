@@ -1576,6 +1576,9 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
   // включает её playRing
   const ringKey = [kind, state.from, state.to, state.ringGroup, state.ringRest, state.src, state.sg, state.inf].join('|');
   const when = (f) => RING_SWEEP * (1 - Math.cbrt(1 - Math.min(1, Math.max(0, f)))); // обратная к ease-out
+  // Подсказка при наведении на сектор, значок и строку расшифровки: что это, доля и сумма;
+  // у «Остального» — из чего оно сложено
+  const tipOf = (p) => [p.other ? `${p.name}: ${p.parts.map((x) => x.name).join(', ')}` : p.name, shares(p), money(p.sum)].join(' · ');
   const arcs = placed.order.map((p) => {
     const part = (p.sum / sum) * len;
     const f0 = (at - at0) / len;
@@ -1585,7 +1588,7 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
     const a0 = ((at + gap / 2) / len) * TURN;
     const a1 = ((at + part - gap / 2) / len) * TURN;
     const arc = `<path class="ring-arc" fill="${p.color ?? '#c9ced6'}" d="${ringSector(a0, a1)}"
-      data-a0="${a0.toFixed(4)}" data-a1="${a1.toFixed(4)}"${tap(p)}><title>${esc(p.name)}: ${money(p.sum)}</title></path>`;
+      data-a0="${a0.toFixed(4)}" data-a1="${a1.toFixed(4)}"${tap(p)} data-tip="${esc(tipOf(p))}"></path>`;
     at += part;
     return arc;
   }).join('');
@@ -1593,7 +1596,7 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
     const [x, y] = point(p.mid, R);
     const color = p.color ?? '#c9ced6';
     return `
-      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-show="${p.show.toFixed(0)}"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}">
+      <button class="ring-ic" type="button" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-show="${p.show.toFixed(0)}"${tap(p)} aria-label="${esc(p.name)}: ${money(p.sum)}" data-tip="${esc(tipOf(p))}">
         <span class="ring-sum">${shares(p)}</span>
         <span class="ic${p.other ? ' round' : ''}" style="background:${color};color:${readableText(color)}">${groupIcon(p.icon ?? 'none')}</span>
         <span class="ring-sum">${money(p.sum)}</span>
@@ -1601,7 +1604,7 @@ function ringView(parts, total, countText, kind, overall = null, extra = '') {
   }).join('');
   // Расшифровка — все по отдельности, со значками; ушедшие в «Остальное» — его цветом
   const rows = all.map((p) => `
-    <button class="ring-row" type="button"${tap(p)}>
+    <button class="ring-row" type="button"${tap(p)} data-tip="${esc(tipOf(p))}">
       ${(() => {
         // Значок группы или категории — в цвете её сектора (ушедшие в «Остальное» — его цветом)
         const c = merged.has(p) ? other.color : p.color ?? '#c9ced6';
