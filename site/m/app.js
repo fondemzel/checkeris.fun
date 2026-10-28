@@ -111,6 +111,8 @@ const UI = {
   // Стрелки — значками: символы «‹ ›» в шрифте сидят выше середины кнопки
   prev: svg('<path d="m15 18-6-6 6-6"/>'),
   next: svg('<path d="m9 18 6-6-6-6"/>'),
+  up: svg('<path d="m18 15-6-6-6 6"/>'),
+  down: svg('<path d="m6 9 6 6 6-6"/>'),
   rows: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>'),
   layers: svg('<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>'
     + '<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'),
@@ -468,6 +470,7 @@ function matchesQ(fields, amounts = []) {
 const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', search = false, mode = false, extra = '', chips = '' }) => {
   const wide = Boolean(chips) && panelRingOn();
   const sortBtn = sorts && !(tableOn() && state.screen !== 'stats') && !(mode && state.mode === 'ring' && !panelRingOn());
+  // Кнопок справа нет — и блока для них нет: пустой отодвигал поиск от правого края
   return `
   <div class="total compact">
     <div class="head-top">
@@ -476,7 +479,7 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
         <span class="total-note">${note}</span>
       </div>
       ${wide && search ? searchBox() : ''}
-      ${wide && !sortBtn && !extra ? '' /* пустой блок кнопок отодвигал поиск от правого края */ : `<div class="head-btns">
+      ${wide && !sortBtn && !extra ? '' : `<div class="head-btns">
         ${sortBtn ? sortDrop(sorts === true ? undefined : sorts) : ''}
         ${wide ? '' : filters}
         ${extra}
@@ -501,33 +504,59 @@ const filterCfg = (income) => (income
  * Фильтры широкого экрана — строками чипсов в шапке ленты: период (день, неделя, месяц, год,
  * справа — переключатель периода), источник и группа. Источников и групп можно выбрать несколько;
  * ничего не выбрано — значит все. Группы — одними значками (название — в подсказке): выбранные
- * цветные, прочие бледные. В конце строки источников и групп — круглый крестик: выбрано что-то —
- * снять всё, не выбрано ничего — включить все
+ * цветные, прочие бледные. Чипсы — «включённые»: пока ничего не отобрано, горят все; погасили —
+ * этих строк нет; погасили все — пусто (NOTHING). В конце строки источников и групп — круглый
+ * крестик: горят все — погасить все, иначе — зажечь все
  */
 function filterRows(income) {
   const cfg = filterCfg(income);
-  const src = new Set(state[cfg.srcKey] ? state[cfg.srcKey].split(',') : []);
-  const sg = new Set(state[cfg.groupKey] ? state[cfg.groupKey].split(',') : []);
+  const lit = (key) => (value) => !state[key] || state[key].split(',').includes(value);
+  const srcOnChip = lit(cfg.srcKey);
+  const sgOnChip = lit(cfg.groupKey);
   const chip = (attrs, html, on, cls = '', style = '') =>
     `<button class="fchip${cls}${on ? ' on' : ''}" type="button" ${attrs}${style ? ` style="${style}"` : ''}>${html}</button>`;
   const periods = quickPeriods().map(([label, p], i) => chip(`data-fperiod="${i}"`, esc(label), p.from === state.from && p.to === state.to)).join('');
-  const sources = cfg.sources.filter((k) => k !== 'failed' || failedCount > 0 || src.has(k))
-    .map((k) => chip(`data-fchip="${cfg.srcKey}:${k}"`, `<span class="fchip-src">${SOURCES[k].icon}</span>${esc(SOURCE_SHORT[k])}`, src.has(k))).join('');
+  const sources = cfg.sources.filter((k) => k !== 'failed' || failedCount > 0 || state[cfg.srcKey].split(',').includes(k))
+    .map((k) => chip(`data-fchip="${cfg.srcKey}:${k}"`, `<span class="fchip-src">${SOURCES[k].icon}</span>${esc(SOURCE_SHORT[k])}`, srcOnChip(k))).join('');
   const groups = [...cfg.groups, { slug: cfg.none, name: cfg.noneName, icon: 'none', color: '#c9ced6' }]
     .map((g) => chip(`data-fchip="${cfg.groupKey}:${esc(g.slug)}" aria-label="${esc(g.name)}" title="${esc(g.name)}"`,
-      `<span class="fchip-ic">${groupIcon(g.icon ?? 'none')}</span>`, sg.has(g.slug), ' grp',
+      `<span class="fchip-ic">${groupIcon(g.icon ?? 'none')}</span>`, sgOnChip(g.slug), ' grp',
       `--g:${g.color ?? 'var(--fill)'};--gt:${readableText(g.color ?? '#c9ced6')}`)).join('');
-  const all = (key, picked) => `<button class="fchip-all${picked ? ' on' : ''}" type="button" data-fall="${key}"
-    aria-label="${esc(picked ? T.feed.clearRow : T.feed.allRow)}" title="${esc(picked ? T.feed.clearRow : T.feed.allRow)}">${UI.close}</button>`;
-  // Справа в строке групп — группировка таблицы: разделы по дням (или категориям) или сплошной список
+  // Крестик строки: горят все — погасить все; что-то погашено — зажечь все
+  const all = (key) => {
+    const full = !state[key];
+    return `<button class="fchip-all" type="button" data-fall="${key}"
+      aria-label="${esc(full ? T.feed.clearRow : T.feed.allRow)}" title="${esc(full ? T.feed.clearRow : T.feed.allRow)}">${UI.close}</button>`;
+  };
+  // Справа в строке групп — группировка таблицы (разделы по дням или категориям — или сплошной
+  // список) и «свернуть / развернуть все разделы»
   const grouped = tableGrouped();
   const groupBtn = `<button class="fchip-all${grouped ? ' on' : ''}" type="button" data-tgroup
     aria-label="${esc(grouped ? T.table.ungroup : T.table.group)}" title="${esc(grouped ? T.table.ungroup : T.table.group)}">${UI.rows}</button>`;
+  const anyOpen = (sectionState.get(sectionsKey())?.size ?? 0) > 0;
+  const foldBtn = grouped ? `<button class="fchip-all" type="button" data-tfold
+    aria-label="${esc(anyOpen ? T.table.foldAll : T.table.unfoldAll)}" title="${esc(anyOpen ? T.table.foldAll : T.table.unfoldAll)}">${anyOpen ? UI.up : UI.down}</button>` : '';
   return `<div class="frows">
     <div class="frow">${periods}<span class="frow-end">${periodNav(true)}</span></div>
-    <div class="frow">${sources}${all(cfg.srcKey, src.size > 0)}</div>
-    <div class="frow">${groups}${all(cfg.groupKey, sg.size > 0)}<span class="frow-end">${groupBtn}</span></div>
+    <div class="frow">${sources}${all(cfg.srcKey)}</div>
+    <div class="frow">${groups}${all(cfg.groupKey)}<span class="frow-end">${foldBtn}${groupBtn}</span></div>
   </div>`;
+}
+
+// Все чипсы строки погашены — в отборе особое значение: не «все» (пусто), а «ничего»
+const NOTHING = '!';
+
+// «Развернуть все разделы» — для этого списка: длинная лента иначе держит открытым один раздел
+let unfoldAllKey = '';
+function toggleFoldAll() {
+  const keys = [...document.querySelectorAll('#screen .day.section')].map((b) => b.dataset.section);
+  const open = openSections(null);
+  const fold = open.size > 0;
+  open.clear();
+  if (!fold) keys.forEach((k) => open.add(k));
+  unfoldAllKey = fold ? '' : sectionsKey();
+  screenCache.clear();
+  render();
 }
 
 // Группировка таблицы — выбор человека, на этом устройстве (по умолчанию — разделами)
@@ -937,9 +966,9 @@ function readUrl() {
   state.tc = p.get('tc') ?? '';
   state.sup = /^(\d+|new)$/.test(p.get('sup') ?? '') ? p.get('sup') : '';
   state.op = p.get('op') ?? '';
-  state.src = (p.get('src') ?? '').split(',').filter((k) => ['receipt', 'market', 'bank', 'manual', 'failed'].includes(k)).join(',');
+  state.src = (p.get('src') ?? '').split(',').filter((k) => ['receipt', 'market', 'bank', 'manual', 'failed', NOTHING].includes(k)).join(',');
   state.inf = p.get('inf') ?? '';
-  state.isrc = (p.get('isrc') ?? '').split(',').filter((k) => ['bank', 'manual'].includes(k)).join(',');
+  state.isrc = (p.get('isrc') ?? '').split(',').filter((k) => ['bank', 'manual', NOTHING].includes(k)).join(',');
   state.step = ['d', 'w', 'm', 'q', 'y'].includes(p.get('step')) ? p.get('step') : '';
   state.sg = p.get('sg') ?? '';
   state.added = p.get('added') ?? '';
@@ -2149,7 +2178,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
   // По дням верхний (сегодняшний) день открыт; по категориям всё свёрнуто — видно разом, сколько где
   // Во время поиска раскрыто всё — иначе найденное пряталось бы в свёрнутых разделах
   const opened = openSections(state.sort === 'category' ? null : order[0], fewRows(spendings.length) ? order : null);
-  const single = spendings.length > 500;
+  const single = spendings.length > 500 && unfoldAllKey !== sectionsKey(); // «развернуть все» — так все
   if (single && opened.size > 1) {
     const keep = [...opened].pop();
     opened.clear();
@@ -6630,22 +6659,24 @@ async function onScreenClick(e) {
   const fperiod = e.target.closest('[data-fperiod]');
   if (fperiod) return go({ ...quickPeriods()[Number(fperiod.dataset.fperiod)][1] }, true);
   if (e.target.closest('[data-tgroup]')) return toggleTableGroup();
+  if (e.target.closest('[data-tfold]')) return toggleFoldAll();
   // Крестик в конце строки чипсов: выбрано что-то — снять всё; ничего — включить все чипсы строки
   const fall = e.target.closest('[data-fall]');
   if (fall) {
     const key = fall.dataset.fall;
-    const every = [...document.querySelectorAll(`#screen [data-fchip^="${key}:"]`)].map((c) => c.dataset.fchip.split(':')[1]);
     pulseNext = 'count';
-    return go({ [key]: state[key] ? '' : every.join(',') }, true);
+    return go({ [key]: state[key] ? '' : NOTHING }, true); // горят все — погасить, иначе — зажечь все
   }
+  // Чипс источника или группы — погасить или зажечь. Горят все — в отборе пусто; погашены все — NOTHING
   const fchip = e.target.closest('[data-fchip]');
   if (fchip) {
     const [key, value] = fchip.dataset.fchip.split(':');
-    const picked = new Set(state[key] ? state[key].split(',') : []);
-    if (picked.has(value)) picked.delete(value);
-    else picked.add(value);
+    const every = [...document.querySelectorAll(`#screen [data-fchip^="${key}:"]`)].map((c) => c.dataset.fchip.split(':')[1]);
+    const lit = new Set(!state[key] ? every : state[key] === NOTHING ? [] : state[key].split(','));
+    if (lit.has(value)) lit.delete(value);
+    else lit.add(value);
     pulseNext = 'count';
-    return go({ [key]: [...picked].join(',') }, true);
+    return go({ [key]: lit.size >= every.length ? '' : lit.size ? [...lit].join(',') : NOTHING }, true);
   }
   const sg = e.target.closest('[data-sg]');
   if (sg) {
