@@ -14,7 +14,7 @@
   /* Без чистого белого: он слишком контрастный. Карточки — почти белые, белый текст (на тёмной
      шапке, синих кнопках, цветных значках) — мягкий */
   --surface: #fcfcfd;
-  --white: #f3f5f8;
+  --white: #dde2e8;
   --text: #1f2328;
   --muted: #6b7280;
   --border: #e1e4e8;
@@ -236,7 +236,8 @@ button, input, select { font: inherit; color: inherit; }
   color: var(--white);
 }
 
-.bar-title { flex: 1; font-size: 17px; font-weight: 600; text-align: center; }
+/* На тёмной шапке полужирный светлый текст режет глаз — средним начертанием */
+.bar-title { flex: 1; font-size: 17px; font-weight: 500; text-align: center; }
 
 .bar-back, .bar-action {
   width: 44px;
@@ -2663,7 +2664,7 @@ body.drag-select, body.drag-select * { cursor: default !important; }
     height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0 16px;
     background: var(--bar); color: var(--white);
   }
-  .panel-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* как заголовок ленты рядом */
+  .panel-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* как заголовок ленты рядом */
   .panel-top .icon-btn { background: rgba(255, 255, 255, 0.12); color: var(--white); }
   /* Содержимое — столбиком во всю высоту: подсказка про клавиши (.select-hint) уходит вниз */
   .panel:not([hidden]) { display: flex; flex-direction: column; }
