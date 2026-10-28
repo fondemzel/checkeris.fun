@@ -2760,7 +2760,7 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 @keyframes tip-in { from { opacity: 0; transform: translateY(-2px); } }
 
 /* Фильтры широкого экрана — строки чипсов в шапке ленты (filterRows): период, источник, группа */
-.frows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.frows { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; } /* строки чипсов — с воздухом, не липнут друг к другу */
 .frow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 /* Справа в строке периода — переключатель периода */
 .frow-end { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -2817,7 +2817,7 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 .list.tbl > .day b { font-variant-numeric: tabular-nums; }
 .thead, .thead .t-col { font-size: var(--fs-caps); }
 /* Строка групп — плотнее: значки, крестик и кнопки справа помещаются в одну строку */
-.frow:has(.fchip.grp) { gap: 4px; }
+.frow:has(.fchip.grp) { gap: 10px; } /* значки групп — на том же расстоянии, что строки (значок 28 px в кнопке 30 px — видимый зазор 12 px) */
 .trow .t-date, .trow .t-cat, .trow .t-src, .t-many, .tfoot { font-size: var(--fs-note); }
 .trow.sub-row .row-title { font-size: var(--fs-note); }
 .trow .row-title { font-size: var(--fs-head); }
