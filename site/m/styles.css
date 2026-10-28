@@ -2679,8 +2679,8 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 /* Фильтры широкого экрана — строки чипсов в шапке ленты (filterRows): период, источник, группа */
 .frows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .frow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.frow-end { display: flex; flex: 1 1 300px; align-items: center; justify-content: flex-end; gap: 6px; margin-left: auto; min-width: 0; }
-.frow-end .search { flex: 1; min-width: 140px; }
+.frow-end { display: flex; flex: 1 1 0; align-items: center; justify-content: flex-end; gap: 6px; margin-left: auto; min-width: 260px; }
+.frow-end .search { flex: 1; min-width: 100px; }
 .fchip {
   display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
   border: 1px solid var(--border); border-radius: 15px; background: var(--surface);
