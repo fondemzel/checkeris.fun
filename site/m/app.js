@@ -446,10 +446,10 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
         <span class="total-note">${note}</span>
       </div>
       <div class="head-btns">
-        ${sorts && !(mode && state.mode === 'ring') ? sortDrop(sorts === true ? undefined : sorts) : ''}
+        ${sorts && !(mode && state.mode === 'ring' && !panelRingOn()) ? sortDrop(sorts === true ? undefined : sorts) : ''}
         ${filters}
         ${extra}
-        ${mode ? `<button class="drop-btn" type="button" data-mode-toggle
+        ${mode && !panelRingOn() ? `<button class="drop-btn" type="button" data-mode-toggle
           aria-label="${esc(state.mode === 'ring' ? T.feed.asList : T.feed.asRing)}" title="${esc(state.mode === 'ring' ? T.feed.listShort : T.feed.ringShort)}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
       </div>
     </div>
@@ -1155,8 +1155,10 @@ async function screenSummary() {
 
   const selfRows = (state.sg ? [] : self?.rows ?? []).filter((op) => state.same ? sameAs('op', op) : matchesQ([op.merchant, op.description, op.account_name, SOURCES.bank.title,
     T.sources.bank, bankById(op.bank)?.name, T.spend.self], [op.amount, op.orig_amount]));
-  if (state.mode === 'ring') {
-    // Кольцо: доли групп. Сумма группы — по категории каждой строки; без категории — серым
+  // Кольцо: доли групп. Сумма группы — по категории каждой строки; без категории — серым.
+  // opened — группа, чьё кольцо категорий показать. На телефоне — вид «кольцом» вместо списка,
+  // на широком экране — в правой панели рядом с таблицей
+  const ringOf = (opened) => {
     const byGroup = new Map();
     const add = (slug, sum) => {
       const g = slug ? findCategory(slug)?.group : null;
@@ -1165,7 +1167,6 @@ async function screenSummary() {
     };
     shownItems.forEach((r) => add(r.category_slug, r.sum));
     shownOps.forEach((op) => add(op.category_slug, op.amount));
-    const opened = state.ringGroup && findGroup(state.ringGroup);
     if (opened) {
       // Кольцо категорий группы: суммы — по категориям её строк, цвета — оттенки группы
       const byCat = new Map();
@@ -1176,7 +1177,7 @@ async function screenSummary() {
         key: c.slug, name: c.name, color: categoryColor(opened.slug, c.slug) ?? opened.color, icon: c.icon || opened.icon, sum: byCat.get(c.slug) ?? 0,
       }));
       const groupSum = cats.reduce((n, c) => n + c.sum, 0);
-      return `${head}${ringView(cats, groupSum, opened.name, 'summary-cat', total, limitCard(limits, opened.slug))}`;
+      return ringView(cats, groupSum, opened.name, 'summary-cat', total, limitCard(limits, opened.slug));
     }
     // Сколько непустых категорий в группе: одна — нажатие ведёт сразу в список, кольцо из
     // одного сектора ничего не добавляет. Кроме группы с лимитом: под её кольцом — карточка лимита
@@ -1192,8 +1193,11 @@ async function screenSummary() {
       single: catsOf.get(g.slug)?.size === 1 && !(meta?.limits?.[g.slug] > 0),
     }));
     parts.push({ key: NONE, name: T.feed.noCategory, color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
-    return `${head}${ringView(parts, total, `${int.format(count)} ${pl(count, T.common.purchases)}`, 'summary', null, limitCard(limits))}`;
-  }
+    return ringView(parts, total, `${int.format(count)} ${pl(count, T.common.purchases)}`, 'summary', null, limitCard(limits));
+  };
+  // В панели — по фильтру таблицы: отобрана одна группа (или её категория) — кольцо её категорий
+  if (panelRingOn()) setPanelRing(ringOf(state.sg && !state.sg.includes(',') ? findGroup(state.sg) ?? findCategory(state.sg)?.group : null));
+  else if (state.mode === 'ring') return `${head}${ringOf(state.ringGroup && findGroup(state.ringGroup))}`;
   return `${head}${await spendingFeed(shownItems, shownOps, selfRows, scanRows)}`;
 }
 
@@ -2161,7 +2165,10 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
 // только строка — ячейками в ряд, а над ней — шапка столбцов, нажатие сортирует. Слева у строки —
 // флажок: отмеченным строкам разом ставится категория (полоса внизу)
 const tableMq = matchMedia('(min-width: 900px)');
-const tableOn = () => tableMq.matches && state.mode !== 'ring';
+// С правой панелью (от 1100 px) — таблица всегда, а кольцо — в панели (panelRingOn); уже — кольцо
+// вместо таблицы по выбору вида, как на телефоне
+const tableOn = () => tableMq.matches && (panelMq.matches || state.mode !== 'ring');
+const panelRingOn = () => tableMq.matches && panelMq.matches;
 tableMq.addEventListener?.('change', () => {
   bulk.clear();
   bulkInfo.clear();
@@ -2701,20 +2708,20 @@ async function screenIncome() {
 
   if (!rows.length) return `${head}<div class="empty">${esc(filter ? T.income.emptyFilter : T.income.empty)}</div>`;
 
-  if (state.mode === 'ring') {
+  // Кольцо доходов — как у расходов: на телефоне видом «кольцом», на широком экране — в панели
+  const ringOf = (opened) => {
     const byGroup = new Map();
     for (const op of rows) {
       const key = incomeCat(op.category_slug)?.group.slug ?? NONE;
       byGroup.set(key, (byGroup.get(key) ?? 0) + op.amount);
     }
-    const opened = state.ringGroup && groups.find((g) => g.slug === state.ringGroup);
     if (opened) {
       const byCat = new Map();
       for (const op of rows) byCat.set(op.category_slug, (byCat.get(op.category_slug) ?? 0) + op.amount);
       const cats = opened.subcategories.map((c) => ({
         key: c.slug, name: c.name, color: incomeCat(c.slug)?.color ?? opened.color, icon: c.icon || opened.icon, sum: byCat.get(c.slug) ?? 0,
       }));
-      return `${head}${ringView(cats, cats.reduce((n, c) => n + c.sum, 0), opened.name, 'income-cat', sum)}`;
+      return ringView(cats, cats.reduce((n, c) => n + c.sum, 0), opened.name, 'income-cat', sum);
     }
     const catsOf = new Map(); // одна непустая категория в группе — сразу список (как у расходов)
     for (const op of rows) {
@@ -2725,8 +2732,11 @@ async function screenIncome() {
       key: g.slug, name: g.name, color: g.color, icon: g.icon, sum: byGroup.get(g.slug) ?? 0, single: catsOf.get(g.slug)?.size === 1,
     }));
     parts.push({ key: NONE, name: T.income.noCategory, color: '#c9ced6', icon: 'none', sum: byGroup.get(NONE) ?? 0 });
-    return `${head}${ringView(parts, sum, `${int.format(count)} ${pl(count, T.income.many)}`, 'income')}`;
-  }
+    return ringView(parts, sum, `${int.format(count)} ${pl(count, T.income.many)}`, 'income');
+  };
+  const inGroup = state.inf && groups.find((g) => g.slug === state.inf || g.subcategories.some((c) => c.slug === state.inf));
+  if (panelRingOn()) setPanelRing(ringOf(inGroup));
+  else if (state.mode === 'ring') return `${head}${ringOf(state.ringGroup && groups.find((g) => g.slug === state.ringGroup))}`;
 
   const byDate = state.sort === 'date';
   const byCat = state.sort === 'category';
@@ -3016,25 +3026,45 @@ function hostSheet(sheet, card, title) {
  * Закрыть подробности. На широком экране панель остаётся на месте — с подсказкой, что сюда
  * попадёт выбранная строка: ширина ленты не меняется, ничего не прыгает. Уже — панель прячется
  */
-function closePanel() {
+function closePanel(force = false) {
   const hint = selectHint();
-  if (!panelCard && $('panel').dataset.idle === String(panelMq.matches) && $('panel').dataset.hint === String(Boolean(hint))) return;
+  const view = `${panelMq.matches}|${Boolean(hint)}|${panelRing ? 'ring' : ''}`;
+  if (!force && !panelCard && $('panel').dataset.view === view) return;
   panelCard = null;
   panelSeq += 1; // запоздавший ответ уже не нужен
   const panel = $('panel');
   const keep = panelMq.matches;
   if (keep && bulk.size) return showSelection(); // отмечены строки — справа снова их сводка
   panel.dataset.idle = String(keep);
-  panel.dataset.hint = String(Boolean(hint));
+  panel.dataset.view = view;
   panel.hidden = !keep;
-  panel.innerHTML = keep
-    ? `<div class="panel-top"><b class="panel-title"></b></div>
-       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p>${hint}</div>`
-    : '';
+  // «Расход» и «Доход» — кольцо по той же выборке, что в таблице; другие ленты — подсказка
+  panel.innerHTML = !keep ? ''
+    : panelRing
+      ? `<div class="panel-top"><b class="panel-title">${esc(T.panelRing)}</b></div><div class="panel-body panel-ring">${panelRing}${hint}</div>`
+      : `<div class="panel-top"><b class="panel-title"></b></div>
+       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p>${hint}</div>`;
   document.body.classList.toggle('has-panel', keep);
   markPicked();
   updateDock();
 }
+
+// Кольцо для правой панели — его считает экран «Расхода» или «Дохода» вместе с таблицей
+let panelRing = '';
+function setPanelRing(html) {
+  if (panelRing === html) return;
+  panelRing = html;
+  if (!panelCard) closePanel(true);
+}
+
+// Клик по пустому месту (не по строке, кнопке, полю) — снять выделение и закрыть подробности:
+// справа снова кольцо или подсказка
+document.addEventListener('click', (e) => {
+  if (!panelMq.matches || (!panelCard && !bulk.size)) return;
+  if (e.target.closest('button, a, input, textarea, select, label, [role="button"], [data-check], .trow, .thead, .stuck-head, .day, .panel, .tabs, .bar, .picker, .sheet, .quick, .toast, .drop-menu')) return;
+  if (bulk.size) clearSelection();
+  if (panelCard) closePanel();
+});
 
 /** Строка открытой в панели покупки — выделена, чтобы было видно, что справа. */
 function markPicked() {
@@ -3059,7 +3089,11 @@ function cardChanged() {
   return render();
 }
 
-panelMq.addEventListener?.('change', closePanel);
+panelMq.addEventListener?.('change', () => {
+  closePanel();
+  screenCache.clear(); // таблица или кольцо, кнопка вида — от ширины
+  render();
+});
 $('stage').addEventListener('click', (e) => {
   if (!e.target.closest('[data-panel-close]')) return;
   if (panelCard?.kind === 'bulk') clearSelection(); // крестик у сводки выбранного — снять выбор
@@ -5402,7 +5436,7 @@ const screenCache = new Map();
  * «кольцо / список», раскрытая группа и «Остальное» кольца, поиск. Без них, вернувшись,
  * человек видел прошлый режим, а потом его подменял нужный.
  */
-const viewKey = () => [location.search, state.mode, state.ringGroup, state.ringRest, state.q, state.same, tableOn()].join('|');
+const viewKey = () => [location.search, state.mode, state.ringGroup, state.ringRest, state.q, state.same, tableOn(), panelRingOn()].join('|');
 
 function remember(key, html) {
   screenCache.delete(key); // свежий — в конец очереди
@@ -5414,6 +5448,11 @@ const NONE = '-'; // «Без категории»: у неразмеченно�
 
 async function render() {
   const seq = ++renderSeq;
+  // Кольцо в правой панели — только у «Расхода» и «Дохода»: ушли — снова подсказка
+  if (panelRing && !['summary', 'income'].includes(state.screen)) {
+    panelRing = '';
+    if (!panelCard) closePanel(true);
+  }
   arrived = arriveNext;
   arriveNext = false;
   closeScanner(); // уходим с экрана (в том числе кнопкой «назад») — камера гаснет
@@ -6436,6 +6475,13 @@ async function onScreenClick(e) {
 
   // Группа на кольце: у расходов — её экран, у доходов — список, отобранный по группе
   const ringPick = e.target.closest('[data-ring]');
+  // Кольцо в правой панели — отбор таблицы рядом: группа, её категория, «Остальное», без категории
+  if (ringPick?.closest('#panel')) {
+    const key = ringPick.dataset.ring.split('|')[1];
+    const income = state.screen === 'income';
+    const pick = key.startsWith('~') ? key.slice(1) : key === NONE ? (income ? '-' : NONE) : key;
+    return go(income ? { inf: pick.split(',')[0] } : { sg: pick }, true);
+  }
   if (ringPick) {
     const [kind, key, how] = ringPick.dataset.ring.split('|');
     // «Остальное» — своё кольцо из слитых в него секторов («назад» вернёт к общему)

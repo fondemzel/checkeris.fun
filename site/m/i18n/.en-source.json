@@ -1079,6 +1079,7 @@
  "languages.ru": "Русский",
  "languages.en": "English",
  "panelIdle": "Выберите строку — здесь появятся подробности",
+ "panelRing": "Доли",
  "table.cols.date": "Дата",
  "table.cols.name": "Название",
  "table.cols.category": "Категория",

@@ -1096,6 +1096,7 @@ export const en = {
     en: 'English',
   },
   panelIdle: 'Select a row — its details will appear here',
+  panelRing: 'Breakdown',
   table: {
     cols: {
       date: 'Date',
