@@ -506,3 +506,12 @@ a.who:hover { color: var(--accent); }
   .layout.three { grid-template-columns: minmax(0, 1fr); }
   .layout.three .panel-col { grid-column: auto; }
 }
+
+/* Подключения значками: логотип, состояние — точкой в углу */
+.bank-icons { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.bank-ic { position: relative; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; background: var(--subtle); box-shadow: 0 0 0 1px var(--border-muted); cursor: default; }
+.bank-ic img { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; }
+.bank-ic b { font-size: 12px; color: var(--muted); }
+.bank-ic::after { content: ""; position: absolute; right: -3px; bottom: -3px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--canvas); background: var(--success); }
+.bank-ic.st-bad::after { background: var(--danger); }
+.bank-ic.st-idle::after { background: var(--muted); }

@@ -69,6 +69,8 @@ function ago(iso) {
 const daysSince = (iso) => (iso ? (Date.now() - Date.parse(iso)) / 86_400_000 : Infinity);
 
 const BANKS = { tbank: 'Т-Банк', sber: 'Сбер', ozon: 'Озон', wb: 'Wildberries' };
+// Логотипы — те же, что в приложении (site/shared/brand)
+const LOGOS = { tbank: '/shared/brand/tbank.png', sber: '/shared/brand/sber.svg', ozon: '/shared/brand/ozon.svg', wb: '/shared/brand/wb.svg' };
 // device — подключение на телефоне: операции присылает приложение, сессии на сервере нет
 const LINK_STATUS = { active: 'работает', device: 'с телефона', expired: 'отвалился', demo: 'демо' };
 const SCAN_STATUS = { new: 'в очереди', sent: 'ждёт ФНС', done: 'готов', failed: 'с ошибкой' };
@@ -76,6 +78,18 @@ const bankName = (b) => BANKS[b] ?? b;
 // withBank=false — в таблице, где банк уже стоит своей колонкой
 const linkLabel = (l, withBank = true) =>
   `<span class="label ${l.status === 'active' || l.status === 'device' ? 'ok' : l.status === 'expired' ? 'bad' : ''}">${withBank ? `${esc(bankName(l.bank))} · ` : ''}${esc(LINK_STATUS[l.status] ?? l.status)}</span>`;
+
+/**
+ * Подключение значком: логотип банка или магазина, состояние — точкой в углу (зелёная — работает,
+ * красная — отвалился), подробности — во всплывающей подсказке. Логотипа нет — первая буква.
+ */
+const linkIcon = (l) => {
+  const tip = `${bankName(l.bank)} · ${LINK_STATUS[l.status] ?? l.status}${l.synced_at ? ` · обновлялся ${ago(l.synced_at)}` : ''}${l.error ? ` · ${l.error}` : ''}`;
+  const st = l.status === 'expired' ? 'bad' : l.status === 'demo' ? 'idle' : 'ok';
+  const pic = LOGOS[l.bank] ? `<img src="${LOGOS[l.bank]}" alt="" />` : `<b>${esc(bankName(l.bank).slice(0, 1).toUpperCase())}</b>`;
+  return `<span class="bank-ic st-${st}" title="${esc(tip)}" aria-label="${esc(tip)}">${pic}</span>`;
+};
+const linkIcons = (links) => `<span class="bank-icons">${links.map(linkIcon).join('')}</span>`;
 
 const channelName = (slug) =>
   slug === 'direct' ? 'Напрямую' : slug === 'invite' ? 'По приглашению' : state.names.get(slug) || slug;
@@ -340,9 +354,8 @@ const USER_COLS = [
     label: 'Подключения',
     value: (b) => b.banks.length,
     cell: (b) => {
-      const labels = b.banks.map((l) => linkLabel(l));
-      if (b.in_demo) labels.push('<span class="label">в демо</span>');
-      return labels.length ? `<div class="labels">${labels.join('')}</div>` : dash;
+      if (!b.banks.length && !b.in_demo) return dash;
+      return `${b.banks.length ? linkIcons(b.banks) : ''}${b.in_demo ? ' <span class="label">в демо</span>' : ''}`;
     },
   },
 ];
@@ -370,7 +383,7 @@ function userPanel(b) {
       ${row('Пришёл', `${esc(dateRu(b.created_at))}<div class="sub">${esc(channelName(b.owner.channel))}</div>`)}
       ${row('Заходили', `${esc(ago(b.last_seen))}<div class="sub">${b.active_days} ${plural(b.active_days, 'день', 'дня', 'дней')} из 30</div>`)}
       ${row('Внесено', esc([b.receipts && `чеков ${int.format(b.receipts)}`, b.manual && `вручную ${int.format(b.manual)}`, b.scans && `сканов ${int.format(b.scans)}`, b.bank_ops && `операций банка ${int.format(b.bank_ops)}`].filter(Boolean).join(', ') || 'ничего'))}
-      ${row('Подключения', b.banks.length ? `<div class="labels">${b.banks.map((l) => linkLabel(l)).join('')}</div>` : dash)}
+      ${row('Подключения', b.banks.length ? linkIcons(b.banks) : dash)}
     </div>
     <div class="pp-foot"><a class="btn sm" href="#/users/${b.id}">Открыть бюджет →</a></div></div>`;
 }
