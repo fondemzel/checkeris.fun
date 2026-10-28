@@ -6688,6 +6688,9 @@ async function onScreenClick(e) {
   const fchip = e.target.closest('[data-fchip]');
   if (fchip) {
     const [key, value] = fchip.dataset.fchip.split(':');
+    pulseNext = 'count';
+    // Ctrl + нажатие — оставить только этот чипс; он и так единственный — зажечь все
+    if (e.ctrlKey || e.metaKey) return go({ [key]: state[key] === value ? '' : value }, true);
     const every = [...document.querySelectorAll(`#screen [data-fchip^="${key}:"]`)].map((c) => c.dataset.fchip.split(':')[1]);
     const lit = new Set(!state[key] ? every : state[key] === NOTHING ? [] : state[key].split(','));
     if (lit.has(value)) lit.delete(value);
