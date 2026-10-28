@@ -2685,9 +2685,9 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 /* Справа в строке периода — переключатель периода */
 .frow-end { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 /* Поиск — в строке общей суммы, справа, крупный под стать сумме */
-/* Высота — как строка суммы (28 px × 1,3), вровень с ней */
-.head-top > .search { flex: 0 1 340px; align-self: flex-start; height: 36px; margin-left: auto; padding: 0 5px 0 13px; border-radius: 18px; }
-.head-top > .search input { font-size: 17px; }
+/* Высота — как строка суммы (31 px), вровень с ней */
+.head-top > .search { flex: 0 1 340px; align-self: flex-start; height: 31px; margin-left: auto; padding: 0 4px 0 12px; border-radius: 16px; }
+.head-top > .search input { font-size: 16px; }
 .head-top > .search .search-ic svg { width: 18px; height: 18px; }
 .fchip {
   display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
