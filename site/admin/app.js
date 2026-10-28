@@ -403,7 +403,7 @@ function pageUsers(d) {
     </div>`;
   const table = usersBox(list, d.budgets.length);
   return subhead('Пользователи')
-    + '<p class="lead">Бюджеты, которыми пользуются, — по владельцу; семья — внутри бюджета. Щелчок по строке — кратко справа, по имени или Enter — страница бюджета. Только служебное: без сумм и покупок. Администратор — в списке, но не в подсчётах.</p>'
+    + '<p class="lead">Бюджеты, которыми пользуются, — по владельцу; семья — внутри бюджета. Наведите на строку — кратко справа; щелчок или Enter — страница бюджета. Только служебное: без сумм и покупок. Администратор — в списке, но не в подсчётах.</p>'
     + filters
     + `<div id="users-table">${table}</div>`;
 }
@@ -944,6 +944,21 @@ document.addEventListener('submit', async (e) => {
   }
 });
 
+/**
+ * «Пользователи»: навели на строку — она выбрана, справа кратко о ней. Таблицу не перерисовываем:
+ * только подсветка и панель — иначе при движении мыши всё мигало бы.
+ */
+function selectBudget(id) {
+  if (id === state.selBudget) return;
+  state.selBudget = id;
+  for (const tr of $('users-table')?.querySelectorAll('tr[data-select]') ?? []) tr.classList.toggle('sel', Number(tr.dataset.select) === id);
+  $('panel-col').innerHTML = userPanel(state.data.budgets.find((b) => b.id === id));
+}
+document.addEventListener('mouseover', (e) => {
+  const tr = e.target.closest?.('#users-table tr[data-select]');
+  if (tr) selectBudget(Number(tr.dataset.select));
+});
+
 // «Пользователи»: стрелки — по строкам, Enter — открыть бюджет выбранного
 document.addEventListener('keydown', (e) => {
   if (!$('users-table') || ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
@@ -954,9 +969,8 @@ document.addEventListener('keydown', (e) => {
   } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && rows.length) {
     e.preventDefault();
     const next = rows[Math.max(0, Math.min(rows.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))];
-    state.selBudget = Number(next.dataset.select);
-    rerenderUsers();
-    $('users-table').querySelector('tr.sel')?.scrollIntoView({ block: 'nearest' });
+    selectBudget(Number(next.dataset.select));
+    next.scrollIntoView({ block: 'nearest' });
   }
 });
 
@@ -1003,11 +1017,10 @@ document.addEventListener('click', async (e) => {
   // Ссылка из «Требует внимания» сразу с отбором
   const preset = e.target.closest('[data-activity]');
   if (preset) state.filter = { q: '', channel: '', activity: preset.dataset.activity };
-  // «Пользователи»: щелчок — выбрать строку (кратко справа); по имени — страница бюджета
+  // «Пользователи»: щелчок по строке — страница бюджета (наведение — кратко справа, ниже)
   const pick = e.target.closest('tr[data-select]');
   if (pick && !e.target.closest('a, button')) {
-    state.selBudget = Number(pick.dataset.select);
-    rerenderUsers();
+    location.hash = pick.dataset.open;
     return;
   }
   const row = e.target.closest('tr[data-href]');
