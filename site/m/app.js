@@ -10947,7 +10947,7 @@ function anaRow(r, names) {
   // одним прямоугольником со скруглёнными углами. Каждая полоса проявляется одной шторкой
   // (.ana-clip): расход и перерасход — одним движением
   const fill = `<i style="width:${lw.toFixed(1)}%;background:${r.color}"></i>`
-    + (over ? `<i class="ana-over" style="left:${lw.toFixed(1)}%;width:${(w - lw).toFixed(1)}%;--c:${r.color}"></i>` : '');
+    + (over ? `<i class="ana-over" style="left:${lw.toFixed(1)}%;width:${(w - lw).toFixed(1)}%;--c:${r.color}" data-tip="${esc(overTip)}"></i>` : '');
   const wasFill = `<i style="width:${pw.toFixed(1)}%;background:${r.color}"></i>`;
   const clip = (wd, html) => `<span class="ana-clip" data-w="${wd.toFixed(1)}">${html}</span>`;
   const d = r.now - r.was;
@@ -10955,13 +10955,18 @@ function anaRow(r, names) {
     ? `<span class="ana-same">${esc(f(T.stats.same, { when: names.in }))}</span>`
     : `<span class="${d > 0 ? 'ana-more' : 'ana-less'}">${d > 0 ? '+' : '−'}${anaShort(Math.abs(d))} ₽ ${esc(names.to)}</span>`;
   const overNote = over ? ` · <span class="ana-more">${esc(f(T.stats.overLimit, { sum: anaShort(r.now - r.limit) }))}</span>` : '';
+  // Подсказки при наведении мыши: на полосе этого периода — сумма и доля лимита, на перерасходе —
+  // сколько сверх лимита, на полосе прошлого — сколько ушло за весь прошлый период
+  const nowTip = `${cap(names.cur)}: ${money(r.now)}${r.limit > 0 ? ` · ${f(T.stats.tipLimit, { limit: money(r.limit), pct: Math.round((r.now / r.limit) * 100) })}` : ''}`;
+  const overTip = over ? f(T.stats.tipOver, { sum: money(r.now - r.limit), limit: money(r.limit) }) : '';
+  const wasTip = f(T.stats.tipWas, { name: cap(names.key), sum: money(r.was) });
   return `<button class="ana-row" type="button" data-ana="${esc(r.key)}">
     <span class="ic" style="background:${r.color};color:${readableText(r.color)}">${groupIcon(r.icon)}</span>
     <span class="ana-mid">
       <span class="ana-top"><span class="ana-name">${esc(r.name)}</span><b>${anaShort(r.now)} ₽</b></span>
       <span class="ana-twin">
-        <span class="ana-bars"><span class="ana-bar">${clip(w, fill)}</span><span class="ana-bar ana-was">${clip(pw, wasFill)}</span></span>
-        <span class="ana-psum">${anaShort(r.was)} ₽</span>
+        <span class="ana-bars"><span class="ana-bar" data-tip="${esc(nowTip)}">${clip(w, fill)}</span><span class="ana-bar ana-was" data-tip="${esc(wasTip)}">${clip(pw, wasFill)}</span></span>
+        <span class="ana-psum" data-tip="${esc(wasTip)}">${anaShort(r.was)} ₽</span>
       </span>
       <span class="ana-note">${diff}${overNote}</span>
     </span>
@@ -11076,6 +11081,17 @@ function anaPoint(clientX) {
   tip.style.left = `${Math.max(0, Math.min(r.width - w, left))}px`;
   tip.style.right = '';
 }
+
+// Мышь на графике ведёт ту же подсказку, что палец: дата и суммы под курсором; ушла — подсказка гаснет
+$('screen').addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse' || state.screen !== 'stats' || !e.target.closest('.ana-plot')) return;
+  anaPoint(e.clientX);
+});
+$('screen').addEventListener('pointerout', (e) => {
+  if (e.pointerType !== 'mouse' || !e.target.closest?.('.ana-plot') || e.relatedTarget?.closest?.('.ana-plot')) return;
+  document.querySelector('#screen .ana-tip')?.setAttribute('hidden', '');
+  document.querySelector('#screen .ana-cursor')?.classList.remove('on');
+});
 
 // Палец на графике ведёт подсказку по дням — в любую сторону, страница под ним не прокручивается
 // (у .ana-plot touch-action: none). Остальная карточка листает периоды, как весь экран

@@ -1170,6 +1170,9 @@ export const en = {
     catsHint: 'Tap a category to open its spending',
     same: 'same as {when}',
     overLimit: 'over the limit by {sum} ₽',
+    tipLimit: 'limit {limit}, {pct}% spent',
+    tipOver: 'Over the limit: {sum} above {limit}',
+    tipWas: '{name}, whole period: {sum}',
   },
   inline: {
     aria: '{label} — tap to edit',
