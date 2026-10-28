@@ -2607,6 +2607,13 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 @media (min-width: 1100px) {
   :root { --panel-w: 420px; }
   body.has-panel { padding-right: var(--panel-w); }
+  /* Три колонки: страница не прокручивается — у колонки ленты (#stage) и у правой панели свои
+     полосы прокрутки, меню и шапка стоят (scrollBox в app.js). Шапка ленты прилипает к верху
+     колонки, а не окна */
+  html, body { height: 100%; overflow: hidden; }
+  .app:not([hidden]) { display: flex; flex-direction: column; height: 100%; }
+  .stage { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .stuck-head { top: 0; }
   .panel {
     position: fixed; top: 0; right: 0; bottom: 0; z-index: 9; width: var(--panel-w);
     overflow-y: auto; overscroll-behavior: contain; background: var(--bg); box-shadow: -1px 0 0 var(--border);

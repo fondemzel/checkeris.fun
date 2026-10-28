@@ -38,6 +38,22 @@ const $ = (id) => document.getElementById(id);
 // Подпись кнопки: title, а после наведения — data-tip (подсказка забирает title себе, см. tipTarget)
 const titleOf = (el) => el?.title || el?.dataset.tip || '';
 
+// Прокрутка. На широком экране (три колонки) прокручивается не страница, а колонка ленты (#stage):
+// у неё и у правой панели свои полосы, меню и шапка стоят на месте. Уже — страница, как на телефоне
+const scrollBox = () => (panelMq.matches ? $('stage') : null);
+const scrollY0 = () => scrollBox()?.scrollTop ?? window.scrollY;
+function scrollToY(y) {
+  const box = scrollBox();
+  if (box) box.scrollTop = y;
+  else window.scrollTo(0, y);
+}
+/** Долистали до самого низа ленты. */
+function scrollAtBottom() {
+  const box = scrollBox();
+  return box ? box.scrollTop + box.clientHeight >= box.scrollHeight - 1
+    : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
+}
+
 // Разметка index.html — по словарю: data-i18n — текст, data-i18n-html — разметка со ссылкой
 // внутри, data-i18n-attr="placeholder:login.name;aria-label:…" — атрибуты. Русский в самой
 // разметке — запасной, до загрузки скрипта
@@ -675,7 +691,7 @@ document.addEventListener('click', (e) => {
   dropPopClose();
   if (again) e.stopPropagation();
 }, true);
-addEventListener('scroll', () => dropPopClose(), { passive: true });
+addEventListener('scroll', () => dropPopClose(), { passive: true, capture: true }); // и колонка ленты
 window.addEventListener('popstate', () => dropPopClose(true));
 
 // Долгое нажатие на сортировку — как на «Расходе» острова: попап открывается, пока палец
@@ -786,7 +802,7 @@ function go(patch, replace = false) {
   // Уходим вглубь — запоминаем, где был список: «назад» вернёт ровно туда
   // Поиск набирают уже на экране, после того как его запись в истории сделана, — поэтому
   // запоминаем его здесь же: «назад» из карточки вернёт к той же выборке
-  if (!replace) history.replaceState({ ...history.state, scroll: window.scrollY, q: state.q, same: state.same, mode: state.mode, ringGroup: state.ringGroup, ringRest: state.ringRest }, '', location.href);
+  if (!replace) history.replaceState({ ...history.state, scroll: scrollY0(), q: state.q, same: state.same, mode: state.mode, ringGroup: state.ringGroup, ringRest: state.ringRest }, '', location.href);
   Object.assign(state, patch);
   rememberPeriod();
   closePanel(); // другой экран или другой период — подробности прежней строки больше ни к чему
@@ -986,7 +1002,7 @@ window.addEventListener('popstate', (e) => {
   // Вернулись к списку — туда же, где его оставили. Закрытие попапа экран не двигает
   navDir = 'back';
   const back = render();
-  if (scroll && !hadPopup) back.then(() => window.scrollTo(0, scroll));
+  if (scroll && !hadPopup) back.then(() => scrollToY(scroll));
   // Вернулись из карточки товара, открытой из попапа чека, — показываем чек снова
   if (sheet) {
     history.replaceState({ ...state, popup: true }, '', location.href);
@@ -5521,7 +5537,7 @@ async function render() {
   if (cached) {
     $('screen').innerHTML = cached;
     markPicked();
-    window.scrollTo(0, history.state?.scroll ?? 0); // «назад» — туда же, где оставили
+    scrollToY(history.state?.scroll ?? 0); // «назад» — туда же, где оставили
     arrive();
     shownScreen = state.screen;
     // Без въезда кольцо заливается сразу, а свежие данные — после заливки (ниже): их разбор
@@ -5533,7 +5549,7 @@ async function render() {
     }
   } else if (!sameScreen && !sameKind) {
     $('screen').innerHTML = loading();
-    window.scrollTo(0, 0); // прокручивается страница, а не блок экрана
+    scrollToY(0); // прокручивается страница, а не блок экрана
   }
   // Ответ задерживается — показываем это не пустотой, а приглушением списка. Если на экране
   // уже прошлый вид, не гасим: он почти наверняка верный, свежий тихо его заменит
@@ -5556,14 +5572,14 @@ async function render() {
     if (seq !== renderSeq) return;
     if (CACHED.includes(state.screen)) remember(key, html);
     // Тот же список — остаёмся там же, где листали; другой — смотрим с начала
-    const keepScroll = sameScreen || cached ? window.scrollY : 0;
+    const keepScroll = sameScreen || cached ? scrollY0() : 0;
     // Набирают в поиске — шапку с полем не трогаем, иначе закроется клавиатура
     if (sameScreen && document.activeElement?.id === 'q') patchKeepingSearch(html);
     // Ничего не изменилось — не трогаем: перерисовка сбросила бы нажатие и фокус
     else if (html !== cached) {
       $('screen').innerHTML = html;
       markPicked();
-      window.scrollTo(0, cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
+      scrollToY(cached ? keepScroll : slide === 'back' ? history.state?.scroll ?? 0 : keepScroll);
       if (!cached) {
         arrive();
         if (landed) {
@@ -5847,7 +5863,8 @@ addEventListener('resize', updateSecTop);
 let stuckFrame = 0;
 function markStuck() {
   stuckFrame = 0;
-  const top = secTop();
+  // Прилипание считается от верха того, что листается: страницы или колонки ленты
+  const top = secTop() + (scrollBox()?.getBoundingClientRect().top ?? 0);
   for (const el of document.querySelectorAll('#screen .list > .day.section.open')) {
     const at = el.getBoundingClientRect().top;
     const listTop = el.parentElement.getBoundingClientRect().top;
@@ -5856,7 +5873,7 @@ function markStuck() {
 }
 addEventListener('scroll', () => {
   stuckFrame ||= requestAnimationFrame(markStuck);
-}, { passive: true });
+}, { passive: true, capture: true });
 
 /** Долистали до «Показать ещё» (с запасом в пару экранов) — следующая порция сама. */
 let feedObserver = null;
@@ -5868,7 +5885,7 @@ function watchFeedMore() {
     if (!entries.some((e) => e.isIntersecting)) return;
     feedObserver.disconnect();
     button.click();
-  }, { rootMargin: '1200px 0px' });
+  }, { root: scrollBox(), rootMargin: '1200px 0px' }); // листается колонка ленты — она же и рамка
   feedObserver.observe(button);
 }
 
@@ -5878,11 +5895,11 @@ function watchFeedMore() {
 addEventListener('scroll', () => {
   const card = state.screen === 'bank_wizard' && document.querySelector('.wiz-stuck');
   if (!card) return;
-  const next = wizCompact ? window.scrollY > 40 : window.scrollY > 160;
+  const next = wizCompact ? scrollY0() > 40 : scrollY0() > 160;
   if (next === wizCompact) return;
   wizCompact = next;
   card.classList.toggle('compact', next);
-}, { passive: true });
+}, { passive: true, capture: true });
 
 // ── обновление свайпом вниз ──────────────────────────────
 // Потянули страницу вниз от самого верха — перечитываем экран с сервера, как в любом
@@ -5919,7 +5936,7 @@ const islandOwn = (e) => Boolean(e.target.closest?.('#fab, .quick')) || Boolean(
 const onPlot = (e) => Boolean(e.target.closest?.('.ana-plot'));
 
 addEventListener('touchstart', (e) => {
-  const allowed = window.scrollY <= 0 && e.touches.length === 1 && !pulling && !$('app').hidden
+  const allowed = scrollY0() <= 0 && e.touches.length === 1 && !pulling && !$('app').hidden
     && PULLABLE.includes(state.screen) && !document.querySelector(OPEN_POPUPS) && !e.target.closest('.drop-menu') && !onIsland(e) && !onPlot(e);
   pullFrom = allowed ? e.touches[0].clientY : null;
   pullBy = 0;
@@ -5929,7 +5946,7 @@ addEventListener('touchmove', (e) => {
   if (pullFrom == null) return;
   if (holdsDrop()) return; // палец ведут по попапу сортировки
   const dy = e.touches[0].clientY - pullFrom;
-  pullBy = dy > 0 && window.scrollY <= 0 ? Math.min(PULL_MAX, dy * 0.5) : 0; // тянется туже пальца
+  pullBy = dy > 0 && scrollY0() <= 0 ? Math.min(PULL_MAX, dy * 0.5) : 0; // тянется туже пальца
   puller.style.transform = `translateY(${pullBy}px) rotate(${pullBy * 3.5}deg)`;
   puller.style.opacity = String(Math.min(1, pullBy / PULL_AT));
   puller.classList.toggle('ready', pullBy >= PULL_AT);
@@ -5991,8 +6008,8 @@ addEventListener('touchmove', (e) => {
   if (holdsDrop()) return; // палец ведут по попапу сортировки
   const y = e.touches[0].clientY;
   if (!stretchEdge) {
-    const top = window.scrollY <= 0;
-    const bottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
+    const top = scrollY0() <= 0;
+    const bottom = scrollAtBottom();
     if (top && y > stretchFrom) stretchEdge = 'top';
     else if (bottom && y < stretchFrom) stretchEdge = 'bottom';
     else {
@@ -6623,7 +6640,7 @@ async function onScreenClick(e) {
       setTimeout(() => head.classList.remove('arrow-closing', 'arrow-opening'), 250);
       if (!closing) animateIn(sectionRows(head));
     }
-    if (stuck && head) window.scrollBy(0, head.getBoundingClientRect().top - secTop());
+    if (stuck && head) scrollToY(scrollY0() + head.getBoundingClientRect().top - secTop() - (scrollBox()?.getBoundingClientRect().top ?? 0));
     if (closing && head) collapseSpace(head, room); // то, что ниже, подтягивается плавно, а не рывком
     return;
   }
