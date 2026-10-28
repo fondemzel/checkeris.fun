@@ -1309,7 +1309,10 @@ function playList() {
 
 function playRing(start = true) {
   if (holdFills) start = false; // содержимое ещё въезжает — заливка после остановки
-  const box = document.querySelector('#screen .ring-box');
+  // Кольцо — на экране (телефон: вид «кольцом») или в правой панели широкого экрана
+  const box = document.querySelector('#screen .ring-box') ?? document.querySelector('#panel .ring-box');
+  const root = box?.closest('#screen, #panel');
+  const legendRows = () => (root ? [...root.querySelectorAll('.ring-list > .ring-row')] : []);
   // На экране нет кольца (список, карточка, пустой период) — забываем показанное: кольцо,
   // появившись снова (в том числе по «назад»), заливается заново. Пока кольцо на экране
   // (набор в поиске, свежие данные), анимация не повторяется
@@ -1348,14 +1351,14 @@ function playRing(start = true) {
   if (arrived && !box.dataset.came) {
     box.dataset.came = '1';
     if (motion('sections')) {
-      document.querySelectorAll('#screen .ring-list > .ring-row').forEach((el, i) => {
+      legendRows().forEach((el, i) => {
         el.style.setProperty('--i', i);
         el.classList.add('row-in');
         el.addEventListener('animationend', () => el.classList.remove('row-in'), { once: true });
       });
     }
   }
-  const legend = ringPlayed.at == null && motion('sections') && !box.dataset.came ? [...document.querySelectorAll('#screen .ring-list > .ring-row')] : [];
+  const legend = ringPlayed.at == null && motion('sections') && !box.dataset.came ? legendRows() : [];
   legend.forEach((el) => el.classList.add('row-wait'));
   const fresh = ringPlayed.at == null;
   if (fresh) fillLimitBars(true); // полоса лимита под кольцом — с нуля, вместе с заливкой
@@ -1370,7 +1373,7 @@ function playRing(start = true) {
   });
   // Кольцо заливается с нуля — и сумма в шапке вместе с ним прокручивается от нуля. Если она
   // уже крутится (свайп периода — от прежней суммы), не перезапускаем
-  const sumEl = document.querySelector('#screen .total-sum');
+  const sumEl = root?.id === 'screen' ? document.querySelector('#screen .total-sum') : null;
   if (ringPlayed.at == null && sumEl && !sumEl.dataset.sum) rollNumber(sumEl, '0');
   // Время — performance.now(), а не метка кадра из requestAnimationFrame: та — когда кадр
   // запланировали. Если перед этим телефон разбирал данные, метка отстаёт на сотни мс, и
@@ -1384,7 +1387,7 @@ function playRing(start = true) {
   const key = box.dataset.ringKey;
   const frame = () => {
     // Экран перерисовали или кольцо уже не текущее — продолжит (или начнёт) новая отрисовка
-    if (!box.isConnected || ringPlayed.key !== key || !$('screen').contains(box)) return;
+    if (!box.isConnected || ringPlayed.key !== key || !box.closest('#screen, #panel')) return;
     const now = performance.now();
     ringPlayed.at ??= now;
     if (last != null && now - last > 50) ringPlayed.at += now - last - 16;
@@ -3047,6 +3050,7 @@ function closePanel(force = false) {
   document.body.classList.toggle('has-panel', keep);
   markPicked();
   updateDock();
+  if (keep && panelRing) playRing(); // новое кольцо — заливкой, если она не выключена в настройках
 }
 
 // Кольцо для правой панели — его считает экран «Расхода» или «Дохода» вместе с таблицей
