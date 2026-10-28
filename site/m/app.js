@@ -596,6 +596,7 @@ function toggleTableGroup() {
     // не сохранилось — вид не сменится, но и не сломается
   }
   screenCache.clear();
+  listPlayed = ''; // тот же список, но новый вид — строки проявляются заново
   render();
 }
 
