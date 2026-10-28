@@ -77,19 +77,31 @@ const SCAN_STATUS = { new: 'в очереди', sent: 'ждёт ФНС', done: '
 const bankName = (b) => BANKS[b] ?? b;
 // withBank=false — в таблице, где банк уже стоит своей колонкой
 const linkLabel = (l, withBank = true) =>
-  `<span class="label ${l.status === 'active' || l.status === 'device' ? 'ok' : l.status === 'expired' ? 'bad' : ''}">${withBank ? `${esc(bankName(l.bank))} · ` : ''}${esc(LINK_STATUS[l.status] ?? l.status)}</span>`;
+  `<span class="label ${HEALTH_CLS[l.health] ?? ''}">${withBank ? `${esc(bankName(l.bank))} · ` : ''}${esc(l.health_text ?? LINK_STATUS[l.status] ?? l.status)}</span>`;
+
+// Состояние подключения (health с сервера): цвет точки и метки
+const HEALTH_CLS = { ok: 'ok', warn: 'warn', bad: 'bad', idle: '' };
+const WORST = { bad: 3, warn: 2, ok: 1, idle: 0 };
+
+/** Строка подсказки про одно подключение: чьё, что с ним, когда обновлялось. */
+const linkLine = (l, who = true) =>
+  [who && l.person, l.health_text, l.synced_at ? `обновлялся ${ago(l.synced_at)}` : 'не обновлялся', l.error].filter(Boolean).join(' · ');
 
 /**
- * Подключение значком: логотип банка или магазина, состояние — точкой в углу (зелёная — работает,
- * красная — отвалился), подробности — во всплывающей подсказке. Логотипа нет — первая буква.
+ * Подключение значком: логотип банка или магазина, состояние — точкой в углу. Банк подключён у
+ * нескольких в бюджете — один значок, точка — по худшему, в подсказке — по строке на каждого.
  */
-const linkIcon = (l) => {
-  const tip = `${bankName(l.bank)} · ${LINK_STATUS[l.status] ?? l.status}${l.synced_at ? ` · обновлялся ${ago(l.synced_at)}` : ''}${l.error ? ` · ${l.error}` : ''}`;
-  const st = l.status === 'expired' ? 'bad' : l.status === 'demo' ? 'idle' : 'ok';
-  const pic = LOGOS[l.bank] ? `<img src="${LOGOS[l.bank]}" alt="" />` : `<b>${esc(bankName(l.bank).slice(0, 1).toUpperCase())}</b>`;
-  return `<span class="bank-ic st-${st}" title="${esc(tip)}" aria-label="${esc(tip)}">${pic}</span>`;
+const linkIcon = (bank, links) => {
+  const worst = links.reduce((w, l) => (WORST[l.health] > WORST[w] ? l.health : w), 'idle');
+  const tip = `${bankName(bank)}\n${links.map((l) => linkLine(l, links.length > 1 || Boolean(l.person))).join('\n')}`;
+  const pic = LOGOS[bank] ? `<img src="${LOGOS[bank]}" alt="" />` : `<b>${esc(bankName(bank).slice(0, 1).toUpperCase())}</b>`;
+  return `<span class="bank-ic st-${worst}" title="${esc(tip)}" aria-label="${esc(tip)}">${pic}</span>`;
 };
-const linkIcons = (links) => `<span class="bank-icons">${links.map(linkIcon).join('')}</span>`;
+const linkIcons = (links) => {
+  const byBank = new Map();
+  for (const l of links) byBank.set(l.bank, [...(byBank.get(l.bank) ?? []), l]);
+  return `<span class="bank-icons">${[...byBank].map(([bank, ls]) => linkIcon(bank, ls)).join('')}</span>`;
+};
 
 const channelName = (slug) =>
   slug === 'direct' ? 'Напрямую' : slug === 'invite' ? 'По приглашению' : state.names.get(slug) || slug;
@@ -229,7 +241,7 @@ const PAGES = [
 ];
 
 const allLinks = (d) => d.people.flatMap((u) => u.banks.map((b) => ({ ...b, person: u })));
-const brokenLinks = (d) => allLinks(d).filter((l) => l.status === 'expired');
+const brokenLinks = (d) => allLinks(d).filter((l) => l.health === 'bad'); // нужен вход заново
 const silent = (d) => d.people.filter((u) => !u.receipts && !u.manual && !u.banks.length && daysSince(u.created_at) >= 1);
 
 function renderNav(current) {
@@ -269,7 +281,7 @@ function pageOverview(d) {
     'Требует внимания',
     `<div class="box-row"><div class="grow"><div class="title">ФНС сегодня</div><div class="meter ${meterCls(share)}" style="margin-top:6px"><i style="width:${Math.min(100, share * 100)}%"></i></div></div><div class="num"><b>${d.load.fns.today}</b> из ${d.load.fns.limit}</div></div>
      <div class="box-row"><div class="grow"><a href="#/support">Обращения ждут ответа</a></div><span class="label ${d.support_waiting ? 'bad' : 'ok'}">${d.support_waiting}</span></div>
-     <div class="box-row"><div class="grow"><a href="#/links">Отвалившиеся подключения</a></div><span class="label ${broken ? 'bad' : 'ok'}">${broken}</span></div>
+     <div class="box-row"><div class="grow"><a href="#/links">Подключения: нужен вход заново</a></div><span class="label ${broken ? 'bad' : 'ok'}">${broken}</span></div>
      <div class="box-row"><div class="grow"><a href="#/errors">Сканы с ошибкой за 7 дней</a></div><span class="label ${errors ? 'warn' : 'ok'}">${errors}</span></div>
      <div class="box-row"><div class="grow"><a href="#/users" data-activity="silent">Зарегистрировались и ничего не внесли</a></div><span class="label ${quiet ? 'warn' : 'ok'}">${quiet}</span></div>`,
   );
@@ -639,8 +651,8 @@ function pageLinks(d) {
   const summary = banks.length
     ? `<div class="box"><div class="stats" style="grid-template-columns:repeat(${Math.min(4, banks.length)},minmax(0,1fr))">${banks.slice(0, 4).map((b) => {
       const mine = links.filter((l) => l.bank === b);
-      const bad = mine.filter((l) => l.status === 'expired').length;
-      return stat(bankName(b), mine.length, bad ? `<span class="err-t">отвалились: ${bad}</span>` : 'все работают');
+      const bad = mine.filter((l) => l.health === 'bad').length;
+      return stat(bankName(b), mine.length, bad ? `<span class="err-t">нужен вход: ${bad}</span>` : 'входить заново не нужно');
     }).join('')}</div></div>`
     : '';
   const cols = [
@@ -669,7 +681,7 @@ function pageErrors(d) {
   );
   const broken = brokenLinks(d);
   const links = box(
-    'Отвалившиеся подключения',
+    'Нужен вход заново',
     broken.length
       ? broken.map((l) => `<div class="box-row"><div class="grow"><a href="#/people/${l.person.id}">${esc(l.person.name)}</a> · ${esc(bankName(l.bank))}<div class="err-t" style="font-size:12px">${esc(l.error ?? 'сессия истекла')}</div></div><span class="muted">обновлялся ${esc(ago(l.synced_at))}</span></div>`).join('')
       : blank('Все подключения работают'),

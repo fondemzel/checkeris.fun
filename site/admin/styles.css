@@ -514,4 +514,5 @@ a.who:hover { color: var(--accent); }
 .bank-ic b { font-size: 12px; color: var(--muted); }
 .bank-ic::after { content: ""; position: absolute; right: -3px; bottom: -3px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--canvas); background: var(--success); }
 .bank-ic.st-bad::after { background: var(--danger); }
+.bank-ic.st-warn::after { background: var(--attention); }
 .bank-ic.st-idle::after { background: var(--muted); }

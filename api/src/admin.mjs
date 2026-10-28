@@ -33,6 +33,24 @@ function channelOf(u) {
 }
 
 /** Все люди беты с тем, что о них нужно админке. Новые — сверху. */
+const STALE_MS = 24 * 3_600_000; // операции не приходили дольше — что-то не так
+
+/**
+ * Живо ли подключение на деле. Большинство — «с телефона» (status = device): сессия на
+ * телефоне, и что с ней, знает только он — его отчёт (dev_state: ok, expired, offline, error,
+ * off, banks.mjs reportLink). Сбер, например, живёт час и потом просит войти заново: отчёт
+ * говорит об этом сразу. И просто давно не было операций — тоже повод посмотреть.
+ */
+function health(l) {
+  if (l.status === 'demo') return { state: 'idle', text: 'демо' };
+  if (l.status === 'off' || l.dev_state === 'off') return { state: 'idle', text: 'вышли' };
+  if (l.status === 'expired' || l.dev_state === 'expired') return { state: 'bad', text: 'нужен вход заново' };
+  if (l.dev_state === 'offline') return { state: 'warn', text: 'банк не отвечает' };
+  if (l.dev_state === 'error') return { state: 'warn', text: 'ошибка' };
+  if (!l.synced_at || Date.now() - Date.parse(l.synced_at) > STALE_MS) return { state: 'warn', text: 'давно не обновлялся' };
+  return { state: 'ok', text: 'работает' };
+}
+
 function people(db) {
   const since30 = dayAgo(29);
   const rows = db
@@ -61,21 +79,25 @@ function people(db) {
 
   const links = db
     .prepare(
-      `SELECT l.user_id, l.bank, l.status, l.login_at, l.synced_at, l.last_error, l.fails
+      `SELECT l.user_id, l.bank, l.status, l.login_at, l.synced_at, l.last_error, l.fails, l.dev_state, l.dev_detail, l.dev_at
          FROM bank_links l JOIN users u ON u.id = l.user_id
-        WHERE ${LISTED}
+        WHERE ${LISTED} AND l.bank <> 'manual'
         ORDER BY l.login_at`,
     )
     .all();
   const byUser = new Map();
   for (const l of links) {
     if (!byUser.has(l.user_id)) byUser.set(l.user_id, []);
+    const h = health(l);
     byUser.get(l.user_id).push({
       bank: l.bank,
       status: l.status,
+      health: h.state, // ok | warn | bad | idle — по нему цвет точки и счётчик отвалившихся
+      health_text: h.text,
       since: l.login_at,
       synced_at: l.synced_at,
-      error: l.status === 'active' ? null : l.last_error,
+      reported_at: l.dev_at,
+      error: h.state === 'ok' ? null : l.dev_detail || l.last_error,
     });
   }
 
