@@ -2551,6 +2551,7 @@ body.no-tabs .tabs { display: none; }
   /* Лист (чек, скан) в панели — без затемнения и выезда: просто содержимое панели */
   .sheet.in-panel { display: contents; }
   .in-panel .sheet-box { max-width: none; max-height: none; padding: 0; border-radius: 0; background: none; }
+  .in-panel .sheet-top > [data-close] { display: none; } /* закрывает крестик панели */
   body.has-panel .actions, body.has-panel .sheet, body.has-panel .picker { right: var(--panel-w); }
   body.has-panel .toast { left: calc(50% + (var(--rail) - var(--panel-w)) / 2); }
 }
