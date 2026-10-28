@@ -188,6 +188,7 @@ const UI = {
   chartBars: svg('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'),
   list: svg('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'),
   moon: svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>'),
   globe: svg('<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>'),
   sparkle: svg('<path d="M9.94 14.06 4 20"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="m16.24 7.76 2.83-2.83"/>'),
   search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
@@ -5429,13 +5430,13 @@ const soon = (icon, title, text) => `
 /**
  * Разделы приложения — одним списком: остров телефона и левое меню широкого экрана строятся
  * из него, руками их не правят. phone — где раздел на телефоне ('tab' — на острове, false — нет);
- * pc — в левом меню (pcOrder — место там: «Настройки» уходят вниз). Экран только для компьютера —
+ * pc — в левом меню (pcOrder — место там). Экран только для компьютера —
  * строка с phone: false и свой файл (подгружается только на широком экране)
  */
 const SECTIONS = [
   { key: 'summary', icon: UI.wallet, phone: 'tab', pc: 'menu', pcOrder: 1 },
   { key: 'income', icon: UI.income, phone: 'tab', pc: 'menu', pcOrder: 2 },
-  { key: 'settings', icon: UI.settings, phone: 'tab', pc: 'menu', pcOrder: 9 },
+  { key: 'settings', icon: UI.settings, phone: 'tab', pc: 'menu', pcOrder: 4 },
   { key: 'stats', icon: UI.stats, phone: 'tab', pc: 'menu', pcOrder: 3 },
 ];
 const PHONE_TABS = SECTIONS.filter((s) => s.phone === 'tab').map((s) => s.key);
@@ -5459,6 +5460,47 @@ function buildNav() {
     btn.innerHTML = `<span class="tab-ic">${s.icon}</span><span class="tab-name">${esc(T.shell.tabs[s.key])}</span>`;
     nav.insertBefore(btn, i < FAB_AFTER ? fab : null);
   });
+  // Низ меню на широком экране: кто вошёл и в каком бюджете, тема, выход
+  nav.querySelector('.rail-me')?.remove();
+  const me = document.createElement('div');
+  me.className = 'rail-me pc-only';
+  me.innerHTML = `<button class="rail-who" type="button" data-rail-profile>
+      <span class="rail-ava">${UI.user}</span><span class="rail-text"><b class="rail-name"></b><span class="rail-budget"></span></span>
+    </button>
+    <div class="rail-btns">
+      <button class="rail-ic" type="button" data-rail-theme></button>
+      <button class="rail-ic" type="button" data-rail-logout title="${esc(T.settings.profile.logout)}" aria-label="${esc(T.settings.profile.logout)}">${UI.logout}</button>
+    </div>`;
+  me.addEventListener('click', (e) => {
+    if (e.target.closest('[data-rail-profile]')) go({ screen: 'set_profile' });
+    if (e.target.closest('[data-rail-logout]')) logout();
+    if (e.target.closest('[data-rail-theme]')) {
+      setTheme(theme() === 'dark' ? 'light' : 'dark');
+      if (state.screen.startsWith('set')) render(); // переключатель темы в настройках — в новое положение
+    }
+  });
+  nav.append(me);
+  railTheme();
+}
+
+/** Кнопка темы внизу меню: значок — какая будет после нажатия. */
+function railTheme() {
+  const btn = document.querySelector('[data-rail-theme]');
+  if (!btn) return;
+  const dark = theme() === 'dark';
+  btn.innerHTML = dark ? UI.sun : UI.moon;
+  btn.title = dark ? T.shell.themeLight : T.shell.themeDark;
+  btn.setAttribute('aria-label', btn.title);
+}
+
+/** Имя и бюджет внизу меню — после входа и после переименования. */
+async function railMe() {
+  const box = document.querySelector('.rail-me');
+  if (!box) return;
+  const [me, budget] = await Promise.all([apiKept('/api/session').catch(() => null), apiKept('/api/budget').catch(() => null)]);
+  box.querySelector('.rail-name').textContent = me?.name ?? '';
+  box.querySelector('.rail-budget').textContent = budget?.name ?? '';
+  box.querySelector('.rail-who').title = [me?.name, budget?.name].filter(Boolean).join(' · ');
 }
 
 const TAB_OF = {
@@ -8943,6 +8985,7 @@ function setTheme(next) {
   screenCache.clear(); // сохранённые экраны нарисованы оттенками прошлой темы
   // Полоса браузера и системная строка — в тон верхней панели
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#0b0f14' : '#131a26');
+  railTheme();
   try {
     localStorage.setItem('checker.theme', next);
   } catch {
@@ -9193,12 +9236,7 @@ async function onSettingsClick(e) {
       return;
     }
 
-    if (e.target.closest('[data-logout]')) {
-      if (!(await ask(T.settings.profile.logoutConfirm, { ok: T.common.leave }))) return;
-      await api('/api/logout', { method: 'POST' }).catch(() => {});
-      token.clear();
-      location.reload();
-    }
+    if (e.target.closest('[data-logout]')) logout();
 
     if (e.target.closest('[data-delete-account]')) {
       if (!(await ask(T.settings.deleteConfirm, { ok: T.common.delete, danger: true }))) return;
@@ -9254,6 +9292,8 @@ const INLINE_SAVE = {
       body: JSON.stringify({ name }),
     });
     toast(T.inline.nameSaved);
+    kept.delete('/api/session');
+    railMe();
     meta = await api('/api/meta'); // у чеков общего бюджета автор — это имя
     return data.name;
   },
@@ -9264,6 +9304,8 @@ const INLINE_SAVE = {
       body: JSON.stringify({ name }),
     });
     toast(T.settings.budget.nameSaved);
+    kept.delete('/api/budget');
+    railMe();
     return data.name;
   },
   // Справочник категорий: название группы, название и подсказка категории
@@ -10148,6 +10190,14 @@ $('tg-cancel').addEventListener('click', () => {
   showLogin();
 });
 
+/** Выйти из аккаунта на этом устройстве — после подтверждения. */
+async function logout() {
+  if (!(await ask(T.settings.profile.logoutConfirm, { ok: T.common.leave }))) return;
+  await api('/api/logout', { method: 'POST' }).catch(() => {});
+  token.clear();
+  location.reload();
+}
+
 async function start() {
   stopLinkRefresh?.();
   $('login').hidden = true;
@@ -10171,6 +10221,7 @@ async function start() {
   }
   go({}, true);
   offerInvite();
+  railMe();
 
   // Бейдж ошибок виден с любого экрана — застрявший скан не должен теряться
   api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});

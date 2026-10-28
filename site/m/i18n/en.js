@@ -1092,6 +1092,8 @@ export const en = {
     },
     add: 'Add spending',
     addShort: 'Add',
+    themeDark: 'Dark theme',
+    themeLight: 'Light theme',
   },
   languages: {
     ru: 'Русский',

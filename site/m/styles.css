@@ -2524,7 +2524,23 @@ body.no-tabs .tabs { display: none; }
     box-shadow: 1px 0 0 var(--border); overflow-y: auto;
   }
   .tab { flex: none; order: var(--pc-order); height: 58px; font-size: 11px; }
-  .tab[data-tab="settings"] { margin-top: auto; }
+  /* Низ меню: кто вошёл (имя, бюджет), тема, выход. В узкой полосе — только значки столбиком */
+  .rail-me { order: 99; margin-top: auto; flex-direction: column; align-items: center; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .rail-who { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px; border: 0; border-radius: 12px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+  .rail-who:hover { background: var(--press); }
+  .rail-ava { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent-faint); color: var(--accent); }
+  .rail-ava svg { width: 18px; height: 18px; }
+  .rail-text { display: none; min-width: 0; flex-direction: column; }
+  .rail-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+  .rail-budget { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+  .rail-btns { display: flex; flex-direction: column; gap: 4px; }
+  .rail-ic { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+  .rail-ic:hover { background: var(--press); color: var(--text); }
+  .rail-ic svg { width: 19px; height: 19px; }
+  /* Светлая тема: шапки ленты и правой панели — светлые, в тон меню слева; тёмные — только на телефоне */
+  :root:not([data-theme="dark"]) .bar { background: var(--surface); color: var(--text); box-shadow: 0 1px 0 var(--border); }
+  :root:not([data-theme="dark"]) .bar-back, :root:not([data-theme="dark"]) .bar-action { color: var(--text); }
+  :root:not([data-theme="dark"]) .bar-period { color: var(--muted); }
   .tab-pill { display: none; }
   .pc-only { display: flex; }
   .tab-add { order: 0; align-self: center; width: 52px; height: 52px; margin: 0 0 12px; border: none; font-size: 28px; }
@@ -2551,6 +2567,11 @@ body.no-tabs .tabs { display: none; }
   }
   .tab-add .tab-name { display: inline; }
   .tab-add-ic svg { width: 20px; height: 20px; }
+  /* Широкое меню: имя и бюджет рядом со значком, тема и выход — в строку справа */
+  .rail-me { flex-direction: row; align-items: center; gap: 2px; }
+  .rail-who { flex: 1; }
+  .rail-text { display: flex; }
+  .rail-btns { flex-direction: row; gap: 0; }
 }
 
 /* ── лента таблицей (от 900 px, tableRow) ──────────────────
@@ -2668,6 +2689,8 @@ body.drag-select, body.drag-select * { cursor: default !important; }
   }
   .panel-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* как заголовок ленты рядом */
   .panel-top .icon-btn { background: rgba(255, 255, 255, 0.12); color: var(--white); }
+  :root:not([data-theme="dark"]) .panel-top { background: var(--surface); color: var(--text); box-shadow: 0 1px 0 var(--border); }
+  :root:not([data-theme="dark"]) .panel-top .icon-btn { background: var(--fill); color: var(--text); }
   /* Содержимое — столбиком во всю высоту: подсказка про клавиши (.select-hint) уходит вниз */
   .panel:not([hidden]) { display: flex; flex-direction: column; }
   .panel-top { flex: none; }
