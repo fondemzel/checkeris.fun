@@ -43,8 +43,11 @@ export function issueToken(db, userId, label = null) {
   return { token, expires_at: expires.toISOString() };
 }
 
-/** Пользователь по токену из заголовка, либо null. Просроченные токены чистятся здесь же. */
-export function userByToken(db, token) {
+/**
+ * Пользователь по токену из заголовка, либо null. Просроченные токены чистятся здесь же.
+ * seen = false — запрос не от человека (фоновая синхронизация телефона): заходом не считаем.
+ */
+export function userByToken(db, token, { seen = true } = {}) {
   if (!token) return null;
   const row = db
     .prepare(
@@ -60,11 +63,13 @@ export function userByToken(db, token) {
     return null;
   }
 
-  // Отметка последнего использования: по ней видно живые устройства в списке токенов
+  // Отметка последнего использования: по ней админка показывает «заходил» и живые устройства
   const now = new Date().toISOString();
-  db.prepare('UPDATE tokens SET used_at = ? WHERE hash = ?').run(now, row.hash);
-  // «Был сегодня» — одна строка на человека в сутки: по ним админка считает активных по дням
-  db.prepare("INSERT OR IGNORE INTO usage_daily (user_id, day, kind, n) VALUES (?, ?, 'active', 1)").run(row.id, now.slice(0, 10));
+  if (seen) {
+    db.prepare('UPDATE tokens SET used_at = ? WHERE hash = ?').run(now, row.hash);
+    // «Был сегодня» — одна строка на человека в сутки: по ним админка считает активных по дням
+    db.prepare("INSERT OR IGNORE INTO usage_daily (user_id, day, kind, n) VALUES (?, ?, 'active', 1)").run(row.id, now.slice(0, 10));
+  }
   return {
     id: row.id,
     login: row.login,

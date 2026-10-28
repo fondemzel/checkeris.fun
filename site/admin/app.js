@@ -223,6 +223,30 @@ function dayGrid(activeDays, span = 91) {
     <div class="legend">не заходил <span class="day"></span> <span class="day on"></span> заходил</div>`;
 }
 
+/** Внесено по месяцам — квадратики за год, как дни активности: чем больше записей, тем ярче. */
+function monthGrid(months) {
+  const by = new Map(months.map((m) => [m.month, m]));
+  const now = new Date();
+  const list = [];
+  for (let i = 11; i >= 0; i -= 1) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    list.push(d.toISOString().slice(0, 7));
+  }
+  const total = (m) => (m ? (m.receipts ?? 0) + (m.manual ?? 0) : 0);
+  const max = Math.max(1, ...list.map((k) => total(by.get(k))));
+  const cells = list
+    .map((k) => {
+      const m = by.get(k);
+      const n = total(m);
+      const level = n ? Math.min(4, Math.ceil((n / max) * 4)) : 0;
+      const tip = n ? `${monthRu(k)}: ${m.receipts ?? 0} ${plural(m.receipts ?? 0, 'чек', 'чека', 'чеков')}${m.manual ? `, ${m.manual} вручную` : ''}` : `${monthRu(k)}: ничего`;
+      return `<div class="mon"><span class="mon-cell l${level}" data-tip="${esc(tip)}"></span><span class="mon-k">${esc(monthRu(k).slice(0, 3))}</span></div>`;
+    })
+    .join('');
+  return `<div class="months">${cells}</div>
+    <div class="legend">меньше <span class="mon-cell l0"></span><span class="mon-cell l1"></span><span class="mon-cell l2"></span><span class="mon-cell l3"></span><span class="mon-cell l4"></span> больше</div>`;
+}
+
 const meterCls = (share) => (share >= 0.9 ? 'bad' : share >= 0.7 ? 'warn' : '');
 
 // ── разделы ──────────────────────────────────────────────
@@ -455,21 +479,17 @@ function pageBudget(b) {
   const p = b.plan;
   const planBox = box('Тариф', `<form class="box-body plan-form" id="plan-form" data-id="${b.id}">
       <div class="plan-now">${planLabel(p, { sub: true })}</div>
-      <label class="field">Тариф<select class="input" name="plan">${b.plans.map((x) => `<option value="${x.id}"${x.id === (p.was ?? p.id) ? ' selected' : ''}>${esc(x.title)}</option>`).join('')}</select></label>
-      <label class="field">Откуда<select class="input" name="label"><option value="">—</option>${Object.entries(b.labels).map(([k, v]) => `<option value="${k}"${k === p.label ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
-      <label class="field">До<input class="input" type="date" name="until" value="${esc(p.until ?? '')}" /><span class="note">пусто — навсегда</span></label>
-      <button class="btn primary" type="submit">Сохранить</button>
+      <label class="plan-row"><span>Тариф</span><select class="input" name="plan">${b.plans.map((x) => `<option value="${x.id}"${x.id === (p.was ?? p.id) ? ' selected' : ''}>${esc(x.title)}</option>`).join('')}</select></label>
+      <label class="plan-row"><span>Откуда</span><select class="input" name="label"><option value="">—</option>${Object.entries(b.labels).map(([k, v]) => `<option value="${k}"${k === p.label ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+      <label class="plan-row"><span>До</span><input class="input" type="date" name="until" value="${esc(p.until ?? '')}" title="пусто — навсегда" /></label>
+      <div class="plan-foot"><span class="muted">пустой срок — навсегда</span><button class="btn primary" type="submit">Сохранить</button></div>
     </form>`, { foot: 'Оплаты пока нет — тариф меняется здесь. Срок прошёл — бюджет на «Бесплатно», данные не трогаются.' });
   const members = box(`Участники · ${b.people.length}`, b.people
     .map((m) => `<div class="box-row"><span class="avatar sm">${esc(initials(m.name))}</span><div class="grow"><a href="#/people/${m.id}">${esc(m.name)}</a>${m.id === b.owner.id ? ' <span class="label">владелец</span>' : ''}${m.admin ? ' <span class="label accent">администратор</span>' : ''}
         <div class="muted" style="font-size:12px">${esc([m.tg_username && `@${m.tg_username}`, m.email].filter(Boolean).join(' · '))}</div></div><span class="muted nw">${esc(ago(m.last_seen))}</span></div>`)
     .join(''));
   const activity = box('Активность за 13 недель', `<div class="box-body">${dayGrid(b.days)}</div>`, { end: `<span class="muted">${b.days.length} ${plural(b.days.length, 'день', 'дня', 'дней')} — заходил хоть кто-то из участников</span>` });
-  const months = box('Внесено по месяцам', table('budget-months', [
-    { key: 'month', label: 'Месяц', cell: (m) => esc(monthRu(m.month)) },
-    { key: 'receipts', label: 'Чеков', r: true },
-    { key: 'manual', label: 'Вручную', r: true },
-  ], [...b.months].reverse(), { empty: 'За год ничего не внесено' }), { foot: 'Только количество — без сумм и покупок.' });
+  const months = box('Внесено по месяцам', `<div class="box-body">${monthGrid(b.months)}</div>`, { foot: 'Только количество — без сумм и покупок. Наведите на месяц — сколько.' });
   const links = box('Банки и магазины', table('budget-links', [
     { key: 'person', label: 'Чьё', cell: (l) => esc(l.person) },
     { key: 'bank', label: 'Подключение', cell: (l) => esc(bankName(l.bank)) },
@@ -477,7 +497,7 @@ function pageBudget(b) {
     { key: 'synced_at', label: 'Обновлялся', nw: true, cell: (l) => esc(ago(l.synced_at)) },
     { key: 'error', label: 'Ошибка', cell: (l) => (l.error ? `<span class="err-t">${esc(l.error)}</span>` : dash) },
   ], b.banks, { empty: 'Не подключали' }));
-  const support = b.support.length ? box('Обращения в поддержку', supportRows(b.support)) : '';
+  const support = b.support.length ? box('Обращения в поддержку', supportRows(b.support, { panel: true }), { foot: 'Щелчок — переписка справа.' }) : '';
   // Откуда данные: чеки по источникам и операции банка по видам — иначе числа не сходятся
   const o = b.origin;
   const part = (k, n) => `<div class="pp-row"><span class="muted">${esc(k)}</span><span class="num">${int.format(n)}</span></div>`;
@@ -524,15 +544,7 @@ function pagePerson(u) {
       ? u.budget.members.map((m) => `<div class="box-row"><span class="avatar sm">${esc(initials(m.name))}</span><div class="grow">${m.me ? esc(m.name) : `<a href="#/people/${m.id}">${esc(m.name)}</a>`}</div>${m.owner ? '<span class="label">владелец</span>' : ''}</div>`).join('')
       : blank('Нет бюджета'),
   );
-  const months = box(
-    'Внесено по месяцам',
-    table('months', [
-      { key: 'month', label: 'Месяц', cell: (m) => esc(monthRu(m.month)) },
-      { key: 'receipts', label: 'Чеков', r: true },
-      { key: 'manual', label: 'Вручную', r: true },
-    ], [...u.months].reverse(), { empty: 'За год ничего не внесено' }),
-    { foot: 'Только количество — без сумм и покупок.' },
-  );
+  const months = box('Внесено по месяцам', `<div class="box-body">${monthGrid(u.months)}</div>`, { foot: 'Только количество — без сумм и покупок. Наведите на месяц — сколько.' });
   const links = box(
     'Банки и магазины',
     table('person-links', [
@@ -561,9 +573,10 @@ function pagePerson(u) {
 const SUPPORT_STATUS = { new: ['ждёт ответа', 'bad'], answered: ['отвечено', 'ok'], closed: ['закрыто', ''] };
 const supportLabel = (s) => `<span class="label ${SUPPORT_STATUS[s]?.[1] ?? ''}">${esc(SUPPORT_STATUS[s]?.[0] ?? s)}</span>`;
 
-function supportRows(threads) {
+/** Список обращений; panel — открывать переписку справа, не уходя со страницы (бюджет). */
+function supportRows(threads, { panel = false } = {}) {
   return threads
-    .map((t) => `<div class="box-row"><div class="grow"><a href="#/support/${t.id}"><b>${esc(t.name)}</b></a>${t.user_id ? '' : ' <span class="label">без аккаунта</span>'}
+    .map((t) => `<div class="box-row${panel ? ' thread-pick' : ''}${panel && t.id === state.panelThread ? ' sel' : ''}"${panel ? ` data-thread="${t.id}"` : ''}><div class="grow"><a href="#/support/${t.id}"><b>${esc(t.name)}</b></a>${t.user_id ? '' : ' <span class="label">без аккаунта</span>'}
         <div class="muted" style="font-size:12px">${t.last_from_admin ? 'Вы: ' : ''}${esc(t.last)}</div></div>
         <span class="muted nw">${esc(ago(t.updated_at))}</span>${supportLabel(t.status)}</div>`)
     .join('');
@@ -604,6 +617,47 @@ function pageThread(t) {
         <textarea class="input" name="text" rows="4" required placeholder="${esc(replyWhere(t))}"></textarea>
         <div class="reply-foot"><span class="muted">Ctrl+Enter — отправить</span><button class="btn primary" type="submit">Отправить</button></div>
       </form>`);
+}
+
+/** Обращение в правой панели: переписка и ответ — коротко, без шапки страницы. */
+function threadPanel(t) {
+  const msgs = t.messages
+    .map((m) => {
+      const att = m.file
+        ? `<img class="msg-img" data-file="${m.id}" alt="картинка" title="Открыть" />`
+        : m.kind !== 'text' ? `<div class="att">📎 ${esc(m.kind_name ?? 'вложение')}</div>` : '';
+      return `<div class="msg${m.from_admin ? ' mine' : ''}"><div class="msg-meta">${esc(m.from_admin ? (m.author ?? 'Поддержка') : t.name)} · ${esc(dateTimeRu(m.created_at))}</div>${att}${m.text ? esc(m.text) : ''}</div>`;
+    })
+    .join('');
+  const next = t.status === 'closed'
+    ? `<button class="btn sm" type="button" data-status="new" data-id="${t.id}">Открыть снова</button>`
+    : `<button class="btn sm" type="button" data-status="closed" data-id="${t.id}">Закрыть</button>`;
+  return `<div class="box thread-box"><div class="box-head"><a href="#/support/${t.id}">Обращение #${t.id}</a><span class="grow"></span>${supportLabel(t.status)}<button class="btn sm icon-x" type="button" data-close-thread title="Свернуть">×</button></div>
+    <div class="chat">${msgs}</div>
+    <form class="box-body reply" id="reply-form" data-id="${t.id}">
+      <textarea class="input" name="text" rows="3" required placeholder="${esc(replyWhere(t))}"></textarea>
+      <div class="reply-foot">${next}<button class="btn primary sm" type="submit">Отправить</button></div>
+    </form></div>`;
+}
+
+/** Открыть обращение справа под «Сейчас»; null — свернуть. */
+async function openPanelThread(id) {
+  state.panelThread = id;
+  for (const row of $('main').querySelectorAll('[data-thread]')) row.classList.toggle('sel', Number(row.dataset.thread) === id);
+  const slot = $('thread-slot');
+  if (!slot) return;
+  if (!id) {
+    slot.innerHTML = '';
+    return;
+  }
+  try {
+    slot.innerHTML = threadPanel(await api(`/api/admin/support/${id}`));
+    loadImages(slot);
+    const chat = slot.querySelector('.chat');
+    chat.scrollTop = chat.scrollHeight;
+  } catch (err) {
+    slot.innerHTML = `<div class="flash bad">Не загрузилось: ${esc(err.message)}</div>`;
+  }
 }
 
 function pageSources(d) {
@@ -749,14 +803,19 @@ async function route() {
   // Три колонки — только у списка «Пользователи»: справа выбранный кратко
   // Три колонки на всех страницах — меню и середина не прыгают при переключении. Справа: у списка
   // «Пользователи» — выбранный кратко, на остальных — «Сейчас»: что горит
-  $('panel-col').innerHTML = known === 'users' && !arg ? userPanel(d.budgets.find((b) => b.id === state.selBudget)) : nowPanel(d);
+  $('panel-col').innerHTML = known === 'users' && !arg ? userPanel(d.budgets.find((b) => b.id === state.selBudget)) : nowPanel(d) + '<div id="thread-slot"></div>';
+  // На странице бюджета открытое обращение остаётся справа и после ответа; ушли на другой — свернуть
+  const here = known === 'users' && arg ? arg : null;
+  if (here !== state.panelBudget) state.panelThread = null;
+  state.panelBudget = here;
+  if (state.panelThread) openPanelThread(state.panelThread);
   document.title = `${PAGES.find((p) => p.id === known)?.title ?? 'Админка'} — Чекер`;
   loadImages();
 }
 
 /** Картинки из поддержки — по токену администратора: обычной ссылкой их не отдать. */
-async function loadImages() {
-  for (const img of $('main').querySelectorAll('img[data-file]:not([src])')) {
+async function loadImages(root = $('main')) {
+  for (const img of root.querySelectorAll('img[data-file]:not([src])')) {
     try {
       const res = await fetch(`/api/admin/support/file/${img.dataset.file}`, { headers: { authorization: `Bearer ${token.get()}` } });
       if (res.ok) img.src = URL.createObjectURL(await res.blob());
@@ -1007,9 +1066,21 @@ document.addEventListener('click', async (e) => {
     else route();
     return;
   }
+  // Обращение на странице бюджета — справа, а не отдельной страницей
+  const thread = e.target.closest('[data-thread]');
+  if (thread && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    const id = Number(thread.dataset.thread);
+    openPanelThread(state.panelThread === id ? null : id);
+    return;
+  }
+  if (e.target.closest('[data-close-thread]')) {
+    openPanelThread(null);
+    return;
+  }
   const status = e.target.closest('[data-status]');
   if (status) {
-    const id = location.hash.split('/')[2];
+    const id = status.dataset.id ?? location.hash.split('/')[2];
     await api(`/api/admin/support/${id}/status`, { method: 'POST', body: JSON.stringify({ status: status.dataset.status }) }).catch((err) => alert(err.message));
     await refresh();
     return;

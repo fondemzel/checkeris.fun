@@ -437,7 +437,9 @@ async function handleApi(req, res, url) {
   }
 
   // Всё остальное — только по токену. Кабинет и телефон ходят одинаково.
-  const user = userByToken(db, bearer(req));
+  // Фоновые запросы телефона (банки, отчёты о подключениях, резервная копия) идут из Java, не из
+  // WebView: у них нет «Mozilla» в User-Agent. Иначе любой, у кого подключён банк, «заходил только что»
+  const user = userByToken(db, bearer(req), { seen: /Mozilla/.test(req.headers['user-agent'] ?? '') });
   if (!user) return sendJson(res, 401, { error: 'нужен вход' });
   // Бюджет мог пропасть (удалён вместе с последним участником) — выдаём свой
   if (!user.budget_id) user.budget_id = ensureBudget(db, user.id);
