@@ -2245,7 +2245,7 @@ const checkInfo = (sum, cat, at, n = 1) =>
 const tableFoot = (label, sum, sumCls = '') => `
   <div class="tfoot">
     <span class="t-check none"></span><span class="t-date"></span>
-    <span class="t-name"><b>${esc(T.table.total)}</b>&nbsp;· ${esc(label)}</span>
+    <span class="t-name"><span><b>${esc(T.table.total)}</b> · ${esc(label)}</span></span>
     <span class="t-cat"></span><span class="t-src"></span>
     <span class="row-sum t-sum${sumCls}">${sum}</span>
   </div>`;
