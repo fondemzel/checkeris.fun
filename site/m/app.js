@@ -788,7 +788,10 @@ function go(patch, replace = false) {
   Object.assign(state, patch);
   rememberPeriod();
   closePanel(); // другой экран или другой период — подробности прежней строки больше ни к чему
-  if (patch.screen || patch.from || patch.to) bulk.clear(); // другой экран или период — отмеченное снимаем
+  if (patch.screen || patch.from || patch.to) { // другой экран или период — отмеченное снимаем
+    bulk.clear();
+    bulkInfo.clear();
+  }
   const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
   if (state.category) params.set('category', state.category);
@@ -1935,7 +1938,8 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       positions: r.positions,
       outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
       action: `data-item="${r.first_id}"`,
-      check: `item:${r.first_id}`, // выбор строки для правки многих разом (таблица)
+      // Выбор строки для правки многих разом (таблица); группа одинаковых — по названию
+      check: `${r.positions > 1 ? 'items' : 'item'}:${r.first_id}`,
       // Несколько покупок одного товара — можно развернуть. В ленте по дням группа живёт
       // внутри дня: у пива за сегодня и пива за вчера разные ключи и разное раскрытие
       group: r.positions > 1 ? (r.day ? `${r.day}|${r.name_norm}` : r.name_norm) : null,
@@ -2160,6 +2164,7 @@ const tableMq = matchMedia('(min-width: 900px)');
 const tableOn = () => tableMq.matches && state.mode !== 'ring';
 tableMq.addEventListener?.('change', () => {
   bulk.clear();
+  bulkInfo.clear();
   screenCache.clear();
   render();
 });
@@ -2186,15 +2191,19 @@ function tableHead(cols = null, { check = true } = {}) {
 }
 
 /** Строка таблицы для доходов, операций банка, чеков: name, cat, src — уже готовая разметка. */
-const tRow = ({ action, long = '', check = '', when, name, cat = '', src = '', sum, sumCls = '', sub = false }) => `
+const tRow = ({ action, long = '', check = '', info = '', when, name, cat = '', src = '', sum, sumCls = '', sub = false }) => `
   <button class="row item trow${sub ? ' sub-row' : ''}" type="button" ${action}${long ? ` data-long="${esc(long)}"` : ''}>
-    ${check ? `<span class="t-check" data-check="${check}" role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>` : '<span class="t-check none"></span>'}
+    ${check ? `<span class="t-check" data-check="${check}"${info} role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>` : '<span class="t-check none"></span>'}
     <span class="t-date">${esc(when)}</span>
     <span class="t-name">${name}</span>
     <span class="t-cat">${cat}</span>
     <span class="t-src">${src}</span>
     <span class="row-sum t-sum${sumCls}">${sum}</span>
   </button>`;
+
+/** Что в строке — у её флажка: сводке выбранного (сумма в копейках, категория, когда, сколько покупок). */
+const checkInfo = (sum, cat, at, n = 1) =>
+  ` data-sum="${Number(sum) || 0}" data-cat="${esc(cat ?? '')}" data-at="${esc(at ?? '')}" data-n="${n || 1}"`;
 
 /** Дата и время в ячейке: «27.10 22:14» — год виден в периоде. */
 const tWhen = (iso) => `${dateRu(iso.slice(0, 10)).slice(0, 5)} ${timeRu(iso)}`;
@@ -2207,7 +2216,7 @@ function tableRow(r, { color, found, catName, toggle, isOpen, part }) {
   const many = r.positions > 1 ? ` <small class="t-many">· ${int.format(r.positions)} ${esc(pl(r.positions, T.common.purchases))}</small>` : '';
   const row = `
     <button class="row item trow" type="button" ${r.action}${r.group ? ` data-long="${esc(r.group)}"` : ''}>
-      ${r.check ? `<span class="t-check" data-check="${r.check}" role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>` : '<span class="t-check none"></span>'}
+      ${r.check ? `<span class="t-check" data-check="${r.check}"${checkInfo(r.outside ? 0 : r.sum, r.category, r.at, r.positions)} role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>` : '<span class="t-check none"></span>'}
       <span class="t-date">${esc(when)}</span>
       <span class="t-name"><span class="ic" style="background:${color};color:${readableText(color)}">${r.self ? UI.swap : groupIcon(catIcon(found))}</span><span class="row-title">${esc(r.name)}</span>${many}${toggle}${r.noted ? `<span class="noted" title="${esc(T.feed.hasNote)}"></span>` : ''}</span>
       <span class="t-cat">${catName}</span>
@@ -2218,7 +2227,7 @@ function tableRow(r, { color, found, catName, toggle, isOpen, part }) {
   // Покупки раскрытой группы — строками той же таблицы, со сдвигом названия
   const subs = part.rows.map((it) => `
     <button class="row item trow sub-row" type="button" data-item="${it.id}">
-      <span class="t-check" data-check="item:${it.id}" role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>
+      <span class="t-check" data-check="item:${it.id}"${checkInfo(it.sum, it.category_slug ?? r.category, it.purchased_at, 1)} role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>
       <span class="t-date">${esc(`${dateRu(it.purchased_date ?? it.purchased_at.slice(0, 10)).slice(0, 5)} ${timeRu(it.purchased_at)}`)}</span>
       <span class="t-name"><span class="row-title">${esc(it.seller ?? '')}${it.quantity !== 1 ? ` · ${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''}</span>${it.has_note ? `<span class="noted" title="${esc(T.feed.hasNote)}"></span>` : ''}</span>
       <span class="t-cat"></span><span class="t-src"></span>
@@ -2230,12 +2239,29 @@ function tableRow(r, { color, found, catName, toggle, isOpen, part }) {
   return `${row}<div class="sub-wrap">${subs}${more}</div>`;
 }
 
-// ── правка многих строк разом ────────────────────────────
-const bulk = new Set(); // отмеченные строки: 'item:ID' | 'op:ID'
+// ── выделение строк таблицы и правка многих разом ────────
+// Флажок отмечает строку; с Shift — все строки между прошлой отмеченной и этой; протяжка мышью
+// по строкам (зажали на одной, повели) — все строки от начальной до той, что под курсором, как
+// в аутлайнере Blender. Что выбрано — сводкой в правой панели: сколько, на какую сумму, за какие
+// дни, по каким категориям; там же действия — категория и общий комментарий. Без правой панели
+// (уже 1100 px) — короткой полосой внизу
+const bulk = new Set(); // отмеченные строки: 'item:ID' | 'items:ID' (группа одинаковых) | 'op:ID[,ID…]'
+const bulkInfo = new Map(); // ключ → { sum, cat, at, n } — для сводки, даже если строку уже не видно
+let bulkAnchor = ''; // от какой строки считать выбор с Shift
 
-/** Флажки — по отмеченному (после перерисовки ленты), внизу — полоса с действием. */
+const checkBoxes = () => [...document.querySelectorAll('#screen [data-check]')];
+
+/** Отметить строку (или снять) и запомнить, что в ней, — сводке. */
+function setChecked(el, on) {
+  const key = el.dataset.check;
+  if (!on) return bulk.delete(key);
+  bulk.add(key);
+  bulkInfo.set(key, { sum: Number(el.dataset.sum) || 0, cat: el.dataset.cat || '', at: el.dataset.at || '', n: Number(el.dataset.n) || 1 });
+}
+
+/** Флажки — по отмеченному (после каждой перерисовки ленты); без правой панели — полоса внизу. */
 function markChecked() {
-  const boxes = [...document.querySelectorAll('#screen [data-check]')];
+  const boxes = checkBoxes();
   for (const el of boxes) {
     const on = bulk.has(el.dataset.check);
     el.classList.toggle('on', on);
@@ -2249,7 +2275,7 @@ function markChecked() {
     all.classList.toggle('some', n > 0 && n < boxes.length);
   }
   let bar = $('bulk-bar');
-  if (!bulk.size) return bar?.remove();
+  if (!bulk.size || panelMq.matches) return bar?.remove();
   if (!bar) {
     bar = document.createElement('div');
     bar.id = 'bulk-bar';
@@ -2261,21 +2287,132 @@ function markChecked() {
     <button class="icon-btn soft" type="button" data-bulk-clear aria-label="${esc(T.table.clear)}" title="${esc(T.table.clear)}">${UI.close}</button>`;
 }
 
-function toggleCheck(key) {
-  if (bulk.has(key)) bulk.delete(key);
-  else bulk.add(key);
+/** Выбор поменялся: флажки, а справа — сводка выбранного (или снова подсказка). */
+function selectionChanged() {
   markChecked();
+  if (!panelMq.matches) return;
+  if (bulk.size) showSelection();
+  else if (panelCard?.kind === 'bulk') closePanel();
+}
+
+/** Нажатие на флажок: с Shift — вся полоса от прошлой отмеченной до этой. */
+function toggleCheck(el, shift = false) {
+  const boxes = checkBoxes();
+  const from = shift && bulkAnchor ? boxes.findIndex((b) => b.dataset.check === bulkAnchor) : -1;
+  const to = boxes.indexOf(el);
+  if (from >= 0 && to >= 0) {
+    const [a, b] = from < to ? [from, to] : [to, from];
+    for (const box of boxes.slice(a, b + 1)) setChecked(box, true);
+  } else setChecked(el, !bulk.has(el.dataset.check));
+  bulkAnchor = el.dataset.check;
+  selectionChanged();
 }
 
 /** Флажок в шапке: всё видимое отмечено — снять, иначе отметить всё видимое. */
 function toggleCheckAll() {
-  const keys = [...document.querySelectorAll('#screen [data-check]')].map((el) => el.dataset.check);
-  const all = keys.length && keys.every((k) => bulk.has(k));
-  for (const k of keys) {
-    if (all) bulk.delete(k);
-    else bulk.add(k);
+  const boxes = checkBoxes();
+  const all = boxes.length && boxes.every((b) => bulk.has(b.dataset.check));
+  for (const box of boxes) setChecked(box, !all);
+  selectionChanged();
+}
+
+function clearSelection() {
+  bulk.clear();
+  bulkInfo.clear();
+  bulkAnchor = '';
+  selectionChanged();
+}
+
+// Протяжка: зажали кнопку мыши на строке и повели — отмечаются строки от начальной до той, что
+// под курсором (к тому, что было отмечено до протяжки). Отпустили — нажатия на строку не было
+let dragSel = null; // { start, y, active, base }
+let dragAte = false;
+$('screen').addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'mouse' || e.button !== 0 || !tableOn()) return;
+  const box = e.target.closest('.trow')?.querySelector('[data-check]');
+  if (box) dragSel = { start: box.dataset.check, y: e.clientY, active: false, base: new Set(bulk) };
+});
+document.addEventListener('pointermove', (e) => {
+  if (!dragSel) return;
+  if (!dragSel.active) {
+    if (Math.abs(e.clientY - dragSel.y) < 6) return; // ещё нажатие, а не протяжка
+    dragSel.active = true;
+    document.body.classList.add('drag-select');
   }
+  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('.trow')?.querySelector('[data-check]');
+  if (!over) return;
+  const boxes = checkBoxes();
+  const a = boxes.findIndex((b) => b.dataset.check === dragSel.start);
+  const b = boxes.indexOf(over);
+  if (a < 0 || b < 0) return;
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  for (const box of boxes) setChecked(box, dragSel.base.has(box.dataset.check) || (boxes.indexOf(box) >= lo && boxes.indexOf(box) <= hi));
+  bulkAnchor = over.dataset.check;
   markChecked();
+});
+document.addEventListener('pointerup', () => {
+  if (dragSel?.active) {
+    dragAte = true; // click, что придёт следом, — конец протяжки, а не нажатие на строку
+    setTimeout(() => (dragAte = false), 0);
+    document.body.classList.remove('drag-select');
+    selectionChanged();
+  }
+  dragSel = null;
+});
+document.addEventListener('click', (e) => {
+  if (!dragAte) return;
+  dragAte = false;
+  e.stopPropagation();
+  e.preventDefault();
+}, true);
+
+/** Сводка выбранного в правой панели: сколько, сумма, период, категории; ниже — действия. */
+function showSelection() {
+  const infos = [...bulk].map((k) => bulkInfo.get(k)).filter(Boolean);
+  const income = TAB_OF[state.screen] === 'income';
+  const sum = infos.reduce((s, x) => s + x.sum, 0);
+  const n = infos.reduce((s, x) => s + x.n, 0);
+  const days = infos.map((x) => x.at.slice(0, 10)).filter(Boolean).sort();
+  const span = days.length ? (days[0] === days.at(-1) ? dateRu(days[0]) : `${dateRu(days[0])} – ${dateRu(days.at(-1))}`) : '';
+  const byCat = new Map();
+  for (const x of infos) {
+    const c = byCat.get(x.cat) ?? { sum: 0, n: 0 };
+    byCat.set(x.cat, { sum: c.sum + x.sum, n: c.n + x.n });
+  }
+  const catRow = ([slug, c]) => {
+    const found = income ? incomeCat(slug) : findCategory(slug);
+    const color = (income ? found?.color : found && (categoryColor(found.group.slug, slug) ?? found.group.color)) ?? '#d7dbe2';
+    const name = found ? (income ? found.name : found.category.name) : T.feed.noCategory;
+    return `<div class="kv"><span><span class="op-cat" style="background:${color}"></span>${esc(name)} · ${int.format(c.n)}</span><b>${money(c.sum)}</b></div>`;
+  };
+  const S = T.table;
+  const panel = $('panel');
+  panelSeq += 1; // открывавшаяся карточка сюда уже не ляжет
+  panelCard = { kind: 'bulk' };
+  panel.dataset.idle = '';
+  panel.hidden = false;
+  document.body.classList.add('has-panel');
+  // Комментарий, который уже начали писать, перерисовка не стирает
+  const draft = $('bulk-note')?.value ?? '';
+  panel.innerHTML = `${panelTop(f(S.picked, { n: int.format(bulk.size) }))}
+    <div class="panel-body">
+      <div class="card">
+        <div class="card-sum${income ? ' income' : ''}">${income ? '+' : ''}${money(sum)}</div>
+        <div class="note">${esc([`${int.format(n)} ${pl(n, income ? T.income.many : T.common.purchases)}`, span].filter(Boolean).join(' · '))}</div>
+      </div>
+      <div class="card"><div class="card-label">${esc(S.byCategory)}</div>
+        ${[...byCat].sort((a, b) => b[1].sum - a[1].sum).map(catRow).join('')}</div>
+      <div class="card">
+        <button class="btn primary big" type="button" data-bulk-cat>${esc(S.setCategory)}</button>
+      </div>
+      <div class="card"><div class="card-label">${esc(T.item.note)}</div>
+        <textarea class="note-input bulk-note" id="bulk-note" rows="2" maxlength="1000" placeholder="${esc(S.notePlaceholder)}">${esc(draft)}</textarea>
+        <button class="btn" type="button" data-bulk-note>${esc(S.noteSave)}</button>
+        <p class="note">${esc(S.noteHint)}</p>
+      </div>
+      <button class="btn more" type="button" data-bulk-clear>${esc(S.clear)}</button>
+    </div>`;
+  markPicked();
 }
 
 /** Категория всем отмеченным: как выбор в карточке — только эти строки, переключателем — и все такие же. */
@@ -2287,40 +2424,58 @@ function bulkCategory() {
     { note: f(T.table.forBulk, { n: int.format(n), w: pl(n, T.table.rows) }) });
 }
 
-async function bulkSave(slug, only) {
+/**
+ * Каждой отмеченной строке — свой запрос. Строка из нескольких операций (одинаковые поступления) —
+ * каждой из них; группа одинаковых товаров ('items') — по названию: в строке все её покупки
+ */
+async function bulkEach(send) {
   const picks = [...bulk];
-  toast(T.table.saving);
-  let failedN = 0;
-  let total = 0; // операций: строка дохода бывает из нескольких
+  let failed = 0;
+  let total = 0;
   for (const p of picks) {
     const [kind, ids] = p.split(':');
-    // Строка может быть из нескольких операций (одинаковые поступления) — категория каждой
     for (const id of ids.split(',')) {
       total += 1;
-      const url = kind === 'op' ? `/api/bank/ops/${id}/category` : `/api/items/${id}/category`;
       try {
-        await post(url, { category: slug, only });
+        await send(kind, id);
       } catch {
-        failedN += 1;
+        failed += 1;
       }
     }
   }
-  bulk.clear();
+  return { rows: picks.length, failed, total };
+}
+
+async function bulkSave(slug, only) {
+  toast(T.table.saving);
+  const res = await bulkEach((kind, id) => post(
+    kind === 'op' ? `/api/bank/ops/${id}/category` : `/api/items/${id}/category`,
+    { category: slug, only: kind === 'items' ? false : only },
+  ));
+  bulkDone(res, T.table.done);
+}
+
+/** Общий комментарий всем отмеченным; пустой — убирает их комментарии. */
+async function bulkNote() {
+  const note = $('bulk-note')?.value.trim() ?? '';
+  toast(T.table.saving);
+  const res = await bulkEach((kind, id) => post(kind === 'op' ? `/api/bank/ops/${id}/note` : `/api/items/${id}/note`, { note }));
+  bulkDone(res, T.table.noteDone);
+}
+
+async function bulkDone({ rows, failed, total }, doneText) {
+  clearSelection();
   screenCache.clear();
   meta = await api('/api/meta').catch(() => meta);
-  const ok = picks.length;
-  toast(failedN ? f(T.table.partFailed, { n: int.format(failedN), all: int.format(total) })
-    : f(T.table.done, { n: int.format(ok), w: pl(ok, T.table.doneRows) }));
-  if (panelCard?.kind === 'item' || panelCard?.kind === 'op') openPanel(panelCard.kind, panelCard.id);
+  toast(failed ? f(T.table.partFailed, { n: int.format(failed), all: int.format(total) })
+    : f(doneText, { n: int.format(rows), w: pl(rows, T.table.doneRows) }));
   render();
 }
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-bulk-cat]')) return bulkCategory();
-  if (e.target.closest('[data-bulk-clear]')) {
-    bulk.clear();
-    markChecked();
-  }
+  if (e.target.closest('[data-bulk-note]')) return bulkNote();
+  if (e.target.closest('[data-bulk-clear]')) return clearSelection();
 });
 
 async function screenCategory() {
@@ -2429,6 +2584,7 @@ async function screenBank() {
         return header + tRow({
           action,
           check: op.receipt_id ? '' : `op:${op.id}`, // с чеком — категории у товаров чека
+          info: checkInfo(op.amount, op.category_slug, op.at),
           when: tWhen(op.at),
           name: `<span class="row-title">${esc(op.merchant ?? op.description ?? T.spend.noName)}</span>${op.receipt_id ? `<span class="op-mark" title="${esc(T.spend.hasReceipt)}">${UI.receipt}</span>` : ''}`,
           cat,
@@ -2624,6 +2780,7 @@ async function screenIncome() {
           action: `data-op="${op.id}"`,
           long: many ? gk : '',
           check: `op:${ops.map((x) => x.id).join(',')}`, // строка из нескольких — категория всем
+          info: checkInfo(groupSum, op.category_slug, op.at, ops.length),
           when: tWhen(op.at),
           name: `<span class="row-title">${esc(op.description ?? op.merchant ?? T.income.one)}</span>${many ? ` <small class="t-many">· ${int.format(ops.length)} ${esc(pl(ops.length, T.income.many))}</small>` : ''}${toggleT}`,
           cat: `<span class="op-cat" style="background:${opCat?.color ?? '#d7dbe2'}"></span>${esc(opCat?.name ?? T.income.noCategory)}`,
@@ -2633,7 +2790,7 @@ async function screenIncome() {
         });
         if (!isOpen) return rowT;
         const subsT = ops.map((x) => tRow({
-          action: `data-op="${x.id}"`, check: `op:${x.id}`, when: tWhen(x.at), sub: true,
+          action: `data-op="${x.id}"`, check: `op:${x.id}`, info: checkInfo(x.amount, x.category_slug, x.at), when: tWhen(x.at), sub: true,
           name: `<span class="row-title">${esc(x.description ?? x.merchant ?? '')}</span>`,
           src: `<span>${esc(x.account_name ?? '')}</span>`, sum: `+${money(x.amount)}`, sumCls: ' income',
         })).join('');
@@ -2848,6 +3005,7 @@ function closePanel() {
   panelSeq += 1; // запоздавший ответ уже не нужен
   const panel = $('panel');
   const keep = panelMq.matches;
+  if (keep && bulk.size) return showSelection(); // отмечены строки — справа снова их сводка
   panel.dataset.idle = String(keep);
   panel.hidden = !keep;
   panel.innerHTML = keep
@@ -2863,8 +3021,8 @@ function closePanel() {
 function markPicked() {
   markChecked(); // отмеченные строки таблицы — тоже после каждой перерисовки
   for (const el of document.querySelectorAll('#screen .picked')) el.classList.remove('picked');
-  if (!panelCard) return;
-  const attr = { op: 'data-op', item: 'data-item', receipt: 'data-receipt', job: 'data-job' }[panelCard.kind];
+  const attr = { op: 'data-op', item: 'data-item', receipt: 'data-receipt', job: 'data-job' }[panelCard?.kind];
+  if (!attr) return; // ничего не открыто или справа — сводка выбранного
   document.querySelector(`#screen [${attr}="${CSS.escape(panelCard.id)}"]`)?.classList.add('picked');
 }
 
@@ -2884,11 +3042,14 @@ function cardChanged() {
 
 panelMq.addEventListener?.('change', closePanel);
 $('stage').addEventListener('click', (e) => {
-  if (e.target.closest('[data-panel-close]')) closePanel();
+  if (!e.target.closest('[data-panel-close]')) return;
+  if (panelCard?.kind === 'bulk') clearSelection(); // крестик у сводки выбранного — снять выбор
+  else closePanel();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !panelCard || document.querySelector(OPEN_POPUPS)) return;
-  closePanel();
+  if (panelCard.kind === 'bulk') clearSelection();
+  else closePanel();
 });
 
 /** Чем трата попала в Чекер: чек, ручная запись или конкретный банк. */
@@ -6150,7 +6311,7 @@ addEventListener('touchcancel', () => {
 async function onScreenClick(e) {
   // Флажок строки таблицы — отметить, а не открыть
   const check = e.target.closest('[data-check]');
-  if (check) return toggleCheck(check.dataset.check);
+  if (check) return toggleCheck(check, e.shiftKey);
   if (e.target.closest('[data-check-all]')) return toggleCheckAll();
 
   // Строка позиции с выбором категории — экран «Добавлено»

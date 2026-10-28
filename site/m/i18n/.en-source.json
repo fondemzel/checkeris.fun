@@ -1111,6 +1111,11 @@
   "строк"
  ],
  "table.partFailed": "Не сохранилось: {n} из {all}",
+ "table.byCategory": "По категориям",
+ "table.notePlaceholder": "Общий комментарий для выбранных",
+ "table.noteSave": "Сохранить комментарий",
+ "table.noteHint": "Заменит комментарии у всех выбранных; пустой — уберёт их",
+ "table.noteDone": "Комментарий сохранён: {n} {w}",
  "stats.steps.d": "по дням",
  "stats.steps.w": "по неделям",
  "stats.steps.m": "по месяцам",

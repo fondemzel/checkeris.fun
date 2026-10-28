@@ -1123,6 +1123,11 @@ export const en = {
     done: 'Category set: {n} {w}',
     doneRows: ['row', 'rows'],
     partFailed: 'Not saved: {n} of {all}',
+    byCategory: 'By category',
+    notePlaceholder: 'A shared comment for the selected',
+    noteSave: 'Save comment',
+    noteHint: 'Replaces the comments of all selected; empty removes them',
+    noteDone: 'Comment saved: {n} {w}',
   },
   stats: {
     steps: {
