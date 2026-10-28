@@ -2785,6 +2785,7 @@ async function openPanel(kind, id) {
   const seq = ++panelSeq;
   const same = panelCard?.kind === kind && panelCard?.id === String(id);
   panelCard = { kind, id: String(id) };
+  panel.dataset.idle = '';
   panel.hidden = false;
   document.body.classList.add('has-panel');
   markPicked();
@@ -2823,6 +2824,7 @@ function hostSheet(sheet, card, title) {
   panelSeq += 1; // карточка, что ещё грузится, сюда уже не ляжет
   panelCard = card;
   const panel = $('panel');
+  panel.dataset.idle = '';
   panel.hidden = false;
   document.body.classList.add('has-panel');
   panel.innerHTML = `${panelTop(title)}<div class="panel-body" id="panel-body"></div>`;
@@ -2835,14 +2837,23 @@ function hostSheet(sheet, card, title) {
   return () => panelCard === card && closePanel();
 }
 
+/**
+ * Закрыть подробности. На широком экране панель остаётся на месте — с подсказкой, что сюда
+ * попадёт выбранная строка: ширина ленты не меняется, ничего не прыгает. Уже — панель прячется
+ */
 function closePanel() {
-  if (!panelCard) return;
+  if (!panelCard && $('panel').dataset.idle === String(panelMq.matches)) return;
   panelCard = null;
   panelSeq += 1; // запоздавший ответ уже не нужен
   const panel = $('panel');
-  panel.hidden = true;
-  panel.innerHTML = '';
-  document.body.classList.remove('has-panel');
+  const keep = panelMq.matches;
+  panel.dataset.idle = String(keep);
+  panel.hidden = !keep;
+  panel.innerHTML = keep
+    ? `<div class="panel-top"><b class="panel-title"></b></div>
+       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p></div>`
+    : '';
+  document.body.classList.toggle('has-panel', keep);
   markPicked();
   updateDock();
 }
@@ -2870,7 +2881,7 @@ function cardChanged() {
   return render();
 }
 
-panelMq.addEventListener?.('change', () => !panelMq.matches && closePanel());
+panelMq.addEventListener?.('change', closePanel);
 $('stage').addEventListener('click', (e) => {
   if (e.target.closest('[data-panel-close]')) closePanel();
 });
@@ -9567,6 +9578,7 @@ async function start() {
   $('login').hidden = true;
   $('app').hidden = false;
   buildNav();
+  closePanel(); // широкий экран — сразу с правой панелью (пока — подсказка)
   // Есть ли банк — вместе с остальным стартовым, до первой отрисовки: от него зависит вид
   // «Расхода», и ответ, пришедший позже, перерисовывал экран посреди заливки кольца
   const [m, bank] = await Promise.all([api('/api/meta'), api('/api/bank').catch(() => null)]);

@@ -1074,6 +1074,7 @@
  "shell.tabs.stats": "Сводка",
  "shell.add": "Добавить трату",
  "shell.addShort": "Добавить",
+ "panelIdle": "Выберите строку — здесь появятся подробности",
  "table.cols.date": "Дата",
  "table.cols.name": "Название",
  "table.cols.category": "Категория",

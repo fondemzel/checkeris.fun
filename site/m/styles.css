@@ -2609,6 +2609,13 @@ body.has-panel { --panel-on: var(--panel-w, 0px); }
   .panel-title { flex: 1; min-width: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .panel-top .icon-btn { background: rgba(255, 255, 255, 0.12); color: #fff; }
   .panel-body { padding: 12px; }
+  /* Ничего не выбрано — панель на месте, в ней тихая подсказка */
+  .panel-idle {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    height: calc(100% - 52px - env(safe-area-inset-top)); padding: 24px; text-align: center; color: var(--muted);
+  }
+  .panel-idle-ic svg { width: 36px; height: 36px; opacity: 0.45; }
+  .panel-idle .note { max-width: 240px; }
   /* Лист (чек, скан) в панели — без затемнения и выезда: просто содержимое панели */
   .sheet.in-panel { display: contents; }
   .in-panel .sheet-box { max-width: none; max-height: none; padding: 0; border-radius: 0; background: none; }

@@ -1089,6 +1089,7 @@ export const en = {
     add: 'Add spending',
     addShort: 'Add',
   },
+  panelIdle: 'Select a row — its details will appear here',
   table: {
     cols: {
       date: 'Date',
