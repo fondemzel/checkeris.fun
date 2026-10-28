@@ -3291,6 +3291,16 @@ $('stage').addEventListener('click', (e) => {
   if (panelCard?.kind === 'bulk') clearSelection(); // крестик у сводки выбранного — снять выбор
   else closePanel();
 });
+// Стрелки ← и → — период раньше и позже, как кнопки у периода в шапке ленты. Не в поле ввода
+// (там стрелки двигают курсор), не при открытом окне и не с Ctrl, Alt, Shift
+document.addEventListener('keydown', (e) => {
+  if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable="true"]') || document.querySelector(OPEN_POPUPS)) return;
+  const btn = document.querySelector(`#screen [data-shift="${e.key === 'ArrowLeft' ? -1 : 1}"]`);
+  if (!btn) return;
+  e.preventDefault();
+  btn.click();
+});
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !panelCard || document.querySelector(OPEN_POPUPS)) return;
   if (panelCard.kind === 'bulk') clearSelection();
