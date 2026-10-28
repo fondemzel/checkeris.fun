@@ -475,9 +475,10 @@ table.t { width: 100%; border-collapse: collapse; }
   .stamp { display: none; }
 }
 
-/* ── «Пользователи»: список и правая панель выбранного ── */
-.users-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
-.side-panel { position: sticky; top: 16px; }
+/* ── три колонки: меню, список, выбранный кратко («Пользователи») ── */
+.layout.three { grid-template-columns: 240px minmax(0, 1fr) 320px; max-width: 1680px; }
+.panel-col { position: sticky; top: 16px; align-self: start; min-width: 0; }
+.panel-col[hidden] { display: none; }
 .t tbody tr.sel td { background: var(--accent-soft); }
 .t .who { color: var(--fg); }
 a.who:hover { color: var(--accent); }
@@ -496,7 +497,12 @@ a.who:hover { color: var(--accent); }
 .plan-form { display: flex; flex-direction: column; gap: 12px; }
 .plan-form .note { color: var(--muted); font-size: 12px; font-weight: 400; }
 
-@media (max-width: 1100px) {
-  .users-layout { grid-template-columns: minmax(0, 1fr); }
-  .side-panel { position: static; }
+/* Узко для трёх — панель уходит под список */
+@media (max-width: 1180px) {
+  .layout.three { grid-template-columns: 240px minmax(0, 1fr); }
+  .layout.three .panel-col { grid-column: 2; position: static; }
+}
+@media (max-width: 860px) {
+  .layout.three { grid-template-columns: minmax(0, 1fr); }
+  .layout.three .panel-col { grid-column: auto; }
 }

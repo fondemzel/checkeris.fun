@@ -389,7 +389,7 @@ function pageUsers(d) {
   return subhead('Пользователи')
     + '<p class="lead">Бюджеты, которыми пользуются, — по владельцу; семья — внутри бюджета. Щелчок по строке — кратко справа, по имени или Enter — страница бюджета. Только служебное: без сумм и покупок. Администратор — в списке, но не в подсчётах.</p>'
     + filters
-    + `<div class="users-layout"><div id="users-table">${table}</div><aside class="side-panel" id="user-panel">${userPanel(d.budgets.find((b) => b.id === state.selBudget))}</aside></div>`;
+    + `<div id="users-table">${table}</div>`;
 }
 
 function rerenderUsers() {
@@ -398,7 +398,7 @@ function rerenderUsers() {
   const wrap = $('users-table');
   if (!wrap) return;
   wrap.innerHTML = usersBox(list, d.budgets.length);
-  $('user-panel').innerHTML = userPanel(d.budgets.find((b) => b.id === state.selBudget));
+  $('panel-col').innerHTML = userPanel(d.budgets.find((b) => b.id === state.selBudget));
 }
 
 /** Страница бюджета: тариф (сменить), участники, активность, внесено, подключения, обращения. */
@@ -699,6 +699,11 @@ async function route() {
     html = { overview: pageOverview, users: pageUsers, people: pageUsers, sources: pageSources, load: pageLoad, links: pageLinks, errors: pageErrors }[known](d);
   }
   $('main').innerHTML = html;
+  // Три колонки — только у списка «Пользователи»: справа выбранный кратко
+  const three = known === 'users' && !arg;
+  $('layout').classList.toggle('three', three);
+  $('panel-col').hidden = !three;
+  $('panel-col').innerHTML = three ? userPanel(d.budgets.find((b) => b.id === state.selBudget)) : '';
   document.title = `${PAGES.find((p) => p.id === known)?.title ?? 'Админка'} — Чекер`;
   loadImages();
 }
