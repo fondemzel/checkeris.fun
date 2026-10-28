@@ -5474,7 +5474,7 @@ function buildNav() {
       <button class="rail-who" type="button" data-rail-profile>
         <span class="rail-ava">${UI.user}</span><span class="rail-text"><b class="rail-name"></b><span class="rail-budget"></span></span>
       </button>
-      <button class="rail-ic" type="button" data-rail-logout title="${esc(T.settings.profile.logout)}" aria-label="${esc(T.settings.profile.logout)}">${UI.logout}</button>
+      <button class="rail-ic" type="button" data-rail-logout aria-label="${esc(T.settings.profile.logout)}">${UI.logout}</button>
     </div>`;
   me.addEventListener('click', (e) => {
     if (e.target.closest('[data-rail-profile]')) go({ screen: 'set_profile' });
@@ -5494,9 +5494,9 @@ function railTheme() {
   if (!btn) return;
   const dark = theme() === 'dark';
   btn.querySelector('.rail-theme-ic').innerHTML = dark ? UI.sun : UI.moon;
-  btn.title = dark ? T.shell.themeLight : T.shell.themeDark;
-  btn.querySelector('.rail-theme-name').textContent = btn.title;
-  btn.setAttribute('aria-label', btn.title);
+  const label = dark ? T.shell.themeLight : T.shell.themeDark;
+  btn.querySelector('.rail-theme-name').textContent = label;
+  btn.setAttribute('aria-label', label);
 }
 
 /** Имя и бюджет внизу меню — после входа и после переименования. */
@@ -5506,7 +5506,6 @@ async function railMe() {
   const [me, budget] = await Promise.all([apiKept('/api/session').catch(() => null), apiKept('/api/budget').catch(() => null)]);
   box.querySelector('.rail-name').textContent = me?.name ?? '';
   box.querySelector('.rail-budget').textContent = budget?.name ?? '';
-  box.querySelector('.rail-who').title = [me?.name, budget?.name].filter(Boolean).join(' · ');
 }
 
 const TAB_OF = {
@@ -6660,6 +6659,7 @@ let tipFor = null;
 
 /** Что подсказать про элемент под курсором: { el, text } или null. */
 function tipTarget(target) {
+  if (target.closest?.('.tabs')) return null; // меню слева — кнопки и так понятные, подсказки не нужны
   const own = target.closest?.('[data-tip], [title]');
   if (own?.hasAttribute('title')) {
     own.dataset.tip = own.getAttribute('title');
