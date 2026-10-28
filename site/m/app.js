@@ -533,7 +533,9 @@ function filterRows(income) {
   const grouped = tableGrouped();
   const groupBtn = `<button class="fchip-all${grouped ? ' on' : ''}" type="button" data-tgroup
     aria-label="${esc(grouped ? T.table.ungroup : T.table.group)}" title="${esc(grouped ? T.table.ungroup : T.table.group)}">${UI.rows}</button>`;
-  const anyOpen = (sectionState.get(sectionsKey())?.size ?? 0) > 0;
+  // Лента ещё не завела состояние разделов (её рисуют после шапки) — как откроет она сама:
+  // по дате — верхний день, по категориям — всё свёрнуто
+  const anyOpen = sectionState.has(sectionsKey()) ? sectionState.get(sectionsKey()).size > 0 : state.sort !== 'category';
   const foldBtn = grouped ? `<button class="fchip-all" type="button" data-tfold
     aria-label="${esc(anyOpen ? T.table.foldAll : T.table.unfoldAll)}" title="${esc(anyOpen ? T.table.foldAll : T.table.unfoldAll)}">${anyOpen ? UI.up : UI.down}</button>` : '';
   return `<div class="frows">
