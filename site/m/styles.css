@@ -252,6 +252,7 @@ button, input, select { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
+.bar-back svg { width: 24px; height: 24px; vertical-align: middle; }
 .bar-back[hidden] { visibility: hidden; display: block; } /* держим место, чтобы заголовок не прыгал */
 .bar-action { display: flex; align-items: center; justify-content: center; opacity: 0.75; }
 .bar-action svg { width: 21px; height: 21px; }
@@ -2566,6 +2567,11 @@ body.no-tabs .tabs { display: none; }
   /* Светлая тема: шапки ленты и правой панели — светлые, в тон меню слева; тёмные — только на телефоне */
   :root:not([data-theme="dark"]) .bar { background: var(--surface); color: var(--text); box-shadow: 0 1px 0 var(--border); }
   :root:not([data-theme="dark"]) .bar-back, :root:not([data-theme="dark"]) .bar-action { color: var(--text); }
+  /* «Назад» в шапке ленты — такой же круглой кнопкой, как в шапке панели */
+  .bar-back:not([hidden]) { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin: 0 4px; padding: 0; border-radius: 50%; background: var(--fill); color: var(--muted); font-size: 20px; transition: background 0.15s, color 0.15s; }
+  .bar-back:not([hidden]):hover { background: var(--fill-2); color: var(--text); }
+  .bar-back svg { width: 17px; height: 17px; }
+  :root[data-theme="dark"] .bar-back:not([hidden]) { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.75); }
   :root:not([data-theme="dark"]) .bar-period { color: var(--muted); }
   .tab-pill { display: none; }
   .pc-only { display: flex; }
@@ -2718,7 +2724,12 @@ body.drag-select, body.drag-select * { cursor: default !important; }
   .panel-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* как заголовок ленты рядом */
   .panel-top .icon-btn { background: rgba(255, 255, 255, 0.12); color: var(--white); }
   :root:not([data-theme="dark"]) .panel-top { background: var(--surface); color: var(--text); box-shadow: 0 1px 0 var(--border); }
-  :root:not([data-theme="dark"]) .panel-top .icon-btn { background: var(--fill); color: var(--text); }
+  /* Кнопки шапки панели — одного вида: круглые 36 px, как кнопка сортировки (.drop-btn) */
+  .panel-top .icon-btn, .panel-top .drop-btn { width: 36px; height: 36px; border: none; background: var(--fill); color: var(--muted); transition: background 0.15s, color 0.15s; }
+  .panel-top .icon-btn svg, .panel-top .drop-btn svg { width: 17px; height: 17px; stroke-width: 2; }
+  .panel-top .icon-btn:hover, .panel-top .drop-btn:hover { background: var(--fill-2); color: var(--text); }
+  :root[data-theme="dark"] .panel-top .icon-btn, :root[data-theme="dark"] .panel-top .drop-btn { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.75); }
+  :root[data-theme="dark"] .panel-top .icon-btn:hover, :root[data-theme="dark"] .panel-top .drop-btn:hover { background: rgba(255, 255, 255, 0.16); color: var(--white); }
   /* Содержимое — столбиком во всю высоту: подсказка про клавиши (.select-hint) уходит вниз */
   .panel:not([hidden]) { display: flex; flex-direction: column; }
   .panel-top { flex: none; }
