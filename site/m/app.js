@@ -3878,13 +3878,16 @@ function welcome() {
     ${screenAdd()}`;
 }
 
+// Компьютер (мышь, меню слева): чеки с него не сканируют — камеры под рукой нет
+const scanHere = () => !(onRail() && matchMedia('(pointer: fine)').matches);
+
 function screenAdd() {
   return `
     <div class="add">
-      <button class="add-btn" type="button" data-scanner>
+      ${scanHere() ? `<button class="add-btn" type="button" data-scanner>
         <span class="add-ic">${UI.scan}</span>
         <span class="add-text"><b>${esc(T.add.scan)}</b><span>${esc(T.add.scanNote)}</span></span>
-      </button>
+      </button>` : ''}
       <button class="add-btn" type="button" data-screen="manual">
         <span class="add-ic">${UI.pen}</span>
         <span class="add-text"><b>${esc(T.add.manual)}</b><span>${esc(T.add.manualNote)}</span></span>
