@@ -2343,6 +2343,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-tip div { display: flex; align-items: center; line-height: 1.6; white-space: nowrap; }
 .ana-tip b { margin-left: auto; padding-left: 10px; font-weight: 600; }
 .ana-tip-day { color: var(--muted); }
+.ana-tip-what { max-width: 220px; margin-left: auto; padding-left: 10px; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 600; } /* отобранные группы — справа от даты */
 /* Строка группы */
 .ana-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: none; border-bottom: 1px solid var(--line); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .ana-row:last-child { border-bottom: none; }

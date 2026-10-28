@@ -10642,6 +10642,8 @@ async function screenAnalytics() {
   // Шапка — как в «Расходе»: сумма, подпись, период, поиск; справа — сортировка и фильтр
   const part = (name, text) => `<span class="note-part" data-note-part="${name}">${esc(text)}</span>`;
   const picked = state.sg ? state.sg.split(',') : [];
+  anaTipWhat = open ? open.name : picked.filter((k) => k !== NOTHING)
+    .map((k) => (k === NONE ? T.feed.noCategory : findGroup(k)?.name ?? findCategory(k)?.category.name ?? '')).filter(Boolean).join(', ');
   const note = [
     part('count', going ? f(T.stats.until, { date: ANA_DAY.format(parseDay(today)) }) : `${int.format(curRows.length)} ${pl(curRows.length, T.common.purchases)}`),
     part('sort', SORTS[sort][0].toLowerCase()),
@@ -10858,6 +10860,7 @@ function anaChart({ B, n, cut, all, prevAll, forecast, names, incAll, incPrevAll
     <div class="ana-keys"><span><i class="k-now"></i>${esc(names.cur)}</span><span><i class="k-prev"></i>${esc(names.key)}</span>${forecast ? `<span><i class="k-fc"></i>${esc(T.stats.forecastKey)}</span>` : ''}${incAll || incPrevAll ? `<span><i class="k-inc"></i>${esc(T.stats.incomeKey)}</span>` : ''}${tools ? `<span class="ana-tools">${tools}</span>` : ''}</div>`;
 }
 let anaTip = null; // суммы по делениям — для подсказки под пальцем
+let anaTipWhat = ''; // какие группы отобраны — в подсказке справа от даты: суммы только по ним
 let anaClipSeq = 0; // номера шторок графиков
 
 /**
@@ -11071,7 +11074,7 @@ function anaPoint(clientX) {
   cursor.setAttribute('x2', px * 1000);
   cursor.classList.add('on');
   const tip = plot.querySelector('.ana-tip');
-  tip.innerHTML = `<div class="ana-tip-day">${esc(anaTip.ticks[i])}</div>`
+  tip.innerHTML = `<div class="ana-tip-day">${esc(anaTip.ticks[i])}${anaTipWhat ? `<span class="ana-tip-what">${esc(anaTipWhat)}</span>` : ''}</div>`
     + `<div><i class="${anaTip.bars ? 'k-col' : 'k-now'}"></i>${esc(anaTip.curName)}<b>${money(anaTip.all[i])}</b></div>`
     + `<div><i class="${anaTip.bars ? 'k-col k-col-prev' : 'k-prev'}"></i>${esc(anaTip.prevName)}<b>${money(anaTip.prev[Math.min(i, anaTip.prev.length - 1)] ?? 0)}</b></div>`
     + (anaTip.inc ? `<div><i class="k-inc"></i>${esc(f(T.stats.incomeTip, { name: anaTip.curName }))}<b>${money(anaTip.inc[i])}</b></div>` : '')
