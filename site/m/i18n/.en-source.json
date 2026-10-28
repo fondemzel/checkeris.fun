@@ -1116,6 +1116,8 @@
  "table.partFailed": "Не сохранилось: {n} из {all}",
  "table.byCategory": "По категориям",
  "table.total": "Итого",
+ "table.group": "Разделить на дни или категории",
+ "table.ungroup": "Сплошным списком, без разделов",
  "table.notePlaceholder": "Общий комментарий для выбранных",
  "table.noteHint": "Заменит комментарии у всех выбранных; пустой — уберёт их",
  "table.hints": [

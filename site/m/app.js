@@ -108,6 +108,10 @@ const UI = {
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
   sort: svg('<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>'),
   filter: svg('<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>'),
+  // Стрелки — значками: символы «‹ ›» в шрифте сидят выше середины кнопки
+  prev: svg('<path d="m15 18-6-6 6-6"/>'),
+  next: svg('<path d="m9 18 6-6-6-6"/>'),
+  rows: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>'),
   layers: svg('<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>'
     + '<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'),
   telegram: svg('<path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4"/>'),
@@ -472,13 +476,13 @@ const listHead = ({ sum, note, sorts = ['date', 'name', 'sum'], filters = '', se
         <span class="total-note">${note}</span>
       </div>
       ${wide && search ? searchBox() : ''}
-      <div class="head-btns">
+      ${wide && !sortBtn && !extra ? '' /* пустой блок кнопок отодвигал поиск от правого края */ : `<div class="head-btns">
         ${sortBtn ? sortDrop(sorts === true ? undefined : sorts) : ''}
         ${wide ? '' : filters}
         ${extra}
         ${mode && !panelRingOn() ? `<button class="drop-btn" type="button" data-mode-toggle
           aria-label="${esc(state.mode === 'ring' ? T.feed.asList : T.feed.asRing)}" title="${esc(state.mode === 'ring' ? T.feed.listShort : T.feed.ringShort)}">${state.mode === 'ring' ? UI.list : UI.ring}</button>` : ''}
-      </div>
+      </div>`}
     </div>
     ${wide ? filterRows(chips === 'income') : `
     <div class="head-line">
@@ -515,11 +519,34 @@ function filterRows(income) {
       `--g:${g.color ?? 'var(--fill)'};--gt:${readableText(g.color ?? '#c9ced6')}`)).join('');
   const all = (key, picked) => `<button class="fchip-all${picked ? ' on' : ''}" type="button" data-fall="${key}"
     aria-label="${esc(picked ? T.feed.clearRow : T.feed.allRow)}" title="${esc(picked ? T.feed.clearRow : T.feed.allRow)}">${UI.close}</button>`;
+  // Справа в строке групп — группировка таблицы: разделы по дням (или категориям) или сплошной список
+  const grouped = tableGrouped();
+  const groupBtn = `<button class="fchip-all${grouped ? ' on' : ''}" type="button" data-tgroup
+    aria-label="${esc(grouped ? T.table.ungroup : T.table.group)}" title="${esc(grouped ? T.table.ungroup : T.table.group)}">${UI.rows}</button>`;
   return `<div class="frows">
     <div class="frow">${periods}<span class="frow-end">${periodNav(true)}</span></div>
     <div class="frow">${sources}${all(cfg.srcKey, src.size > 0)}</div>
-    <div class="frow">${groups}${all(cfg.groupKey, sg.size > 0)}</div>
+    <div class="frow">${groups}${all(cfg.groupKey, sg.size > 0)}<span class="frow-end">${groupBtn}</span></div>
   </div>`;
+}
+
+// Группировка таблицы — выбор человека, на этом устройстве (по умолчанию — разделами)
+const TABLE_GROUP_KEY = 'checker.tableGroup';
+function tableGrouped() {
+  try {
+    return localStorage.getItem(TABLE_GROUP_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+function toggleTableGroup() {
+  try {
+    localStorage.setItem(TABLE_GROUP_KEY, tableGrouped() ? '0' : '1');
+  } catch {
+    // не сохранилось — вид не сменится, но и не сломается
+  }
+  screenCache.clear();
+  render();
 }
 
 /** Кнопка с выпадающим списком. on — выбрано не то, что по умолчанию: кнопка подсвечена. */
@@ -1061,11 +1088,11 @@ const failed = (err) => `<div class="empty error">${esc(err.message)}</div>`;
 /** Строка периода: стрелки листают, нажатие на даты открывает календарь. */
 const periodNav = (compact = false) => `
   <div class="month${compact ? ' compact' : ''}">
-    <button class="month-arrow" type="button" data-shift="-1" aria-label="${esc(T.feed.earlier)}">‹</button>
+    <button class="month-arrow" type="button" data-shift="-1" aria-label="${esc(T.feed.earlier)}">${UI.prev}</button>
     <button class="month-name" type="button" data-period title="${esc(periodTitle(state.from, state.to))}">${UI.calendar}<span>${esc(
       compact ? periodShort(state.from, state.to) : periodTitle(state.from, state.to),
     )}</span></button>
-    <button class="month-arrow" type="button" data-shift="1" aria-label="${esc(T.feed.later)}">›</button>
+    <button class="month-arrow" type="button" data-shift="1" aria-label="${esc(T.feed.later)}">${UI.next}</button>
   </div>`;
 
 /**
@@ -2105,8 +2132,9 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
   );
 
   // Заголовки разделов: день или категория, справа — подытог
-  const sectionOf = (r) =>
-    state.sort === 'date' ? r.at.slice(0, 10) : state.sort === 'category' ? r.category ?? NONE : null;
+  // Разделы (дни, категории) — всегда в ленте телефона; в таблице — по кнопке группировки
+  const sectionOf = (r) => (tableOn() && !tableGrouped() ? null
+    : state.sort === 'date' ? r.at.slice(0, 10) : state.sort === 'category' ? r.category ?? NONE : null);
   const sums = new Map();
   const counts = new Map(); // сколько покупок в разделе — для заголовка категории
   for (const r of spendings) {
@@ -2184,7 +2212,8 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
         ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(r.group)}" role="button" aria-label="${esc(isOpen ? T.feed.collapse : T.spend.showPurchases)}">${UI.chevron}</span>`
         : '';
       const catName = `<span class="op-cat" style="background:${dot}"></span>${esc(r.self ? T.spend.self : found?.category.name ?? T.feed.noCategory)}`;
-      if (table) return head + tableRow(r, { color, found, catName, toggle, isOpen, part: parts.get(r.group) });
+      // В таблице значок — цветом самой категории (в ленте телефона — цветом группы)
+      if (table) return head + tableRow(r, { color: found ? dot : color, found, catName, toggle, isOpen, part: parts.get(r.group) });
       const note = [
         catName,
         // При сортировке по дате день уже в заголовке раздела, в остальных — нужен в строке
@@ -2682,7 +2711,7 @@ async function screenBank() {
   const rows = data.rows
     .map((op) => {
       const opDay = op.at.slice(0, 10);
-      const header = !byDate || opDay === day
+      const header = !byDate || (table && !tableGrouped()) || opDay === day
         ? ''
         : dayHead(opDay, daySum(data.rows, opDay, (x) => x.at, (x) => x.amount));
       day = opDay;
@@ -2887,8 +2916,9 @@ async function screenIncome() {
       const op = ops[0]; // последнее: список идёт от свежих
       const opDay = op.at.slice(0, 10);
       let header = '';
-      if (byDate && opDay !== day) header = dayHead(opDay, daySum(rows, opDay, (x) => x.at, (x) => x.amount));
-      if (byCat && (op.category_slug ?? '') !== cat) {
+      const sections = !table || tableGrouped(); // в таблице — по кнопке группировки
+      if (sections && byDate && opDay !== day) header = dayHead(opDay, daySum(rows, opDay, (x) => x.at, (x) => x.amount));
+      if (sections && byCat && (op.category_slug ?? '') !== cat) {
         const c = incomeCat(op.category_slug);
         const key = op.category_slug ?? '';
         // Раздел-категория сворачивается, как в расходах; по умолчанию все свёрнуты
@@ -2900,7 +2930,7 @@ async function screenIncome() {
       }
       day = opDay;
       cat = op.category_slug ?? '';
-      if (byCat && !opened.has(cat || NONE)) return header; // раздел свёрнут — строк не рисуем
+      if (sections && byCat && !opened.has(cat || NONE)) return header; // раздел свёрнут — строк не рисуем
       const opCat = incomeCat(op.category_slug);
       const many = ops.length > 1;
       const isOpen = many && expanded.has(expandKey(gk));
@@ -3545,7 +3575,7 @@ function receiptRows(rows) {
   const byDate = state.sort === 'date';
   return rows
     .map((r) => {
-      const heading = byDate && r.purchased_date !== lastDay
+      const heading = byDate && (!tableOn() || tableGrouped()) && r.purchased_date !== lastDay
         ? dayHead(r.purchased_date, daySum(rows, r.purchased_date, (x) => x.purchased_date, (x) => (x.counted ? x.total_sum : 0)))
         : '';
       lastDay = r.purchased_date;
@@ -6599,6 +6629,7 @@ async function onScreenClick(e) {
   // Чипсы фильтров широкого экрана: период — сразу, источник и группа — добавить или убрать из выбора
   const fperiod = e.target.closest('[data-fperiod]');
   if (fperiod) return go({ ...quickPeriods()[Number(fperiod.dataset.fperiod)][1] }, true);
+  if (e.target.closest('[data-tgroup]')) return toggleTableGroup();
   // Крестик в конце строки чипсов: выбрано что-то — снять всё; ничего — включить все чипсы строки
   const fall = e.target.closest('[data-fall]');
   if (fall) {

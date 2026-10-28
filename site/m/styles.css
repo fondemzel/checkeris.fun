@@ -2720,3 +2720,11 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 .fchip-all svg { width: 14px; height: 14px; }
 .fchip-all:hover { border-color: var(--muted); color: var(--text); }
 .fchip-all.on { border-color: var(--accent); color: var(--accent); }
+
+/* Стрелки периода — значками по центру кнопки */
+.month-arrow { display: inline-flex; align-items: center; justify-content: center; }
+.month-arrow svg { width: 18px; height: 18px; }
+.month.compact .month-arrow svg { width: 15px; height: 15px; }
+/* В строке чипсов переключатель периода — высотой с чипс */
+.frow-end .month.compact .month-arrow { width: 30px; height: 30px; }
+.frow-end .month.compact .month-name { min-height: 30px; border-radius: 15px; }
