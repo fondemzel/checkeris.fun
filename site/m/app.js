@@ -3235,7 +3235,7 @@ function closePanel(force = false) {
         ? `<button class="icon-btn soft" type="button" data-reset-filters aria-label="${esc(T.feed.resetFilters)}" title="${esc(T.feed.resetFilters)}">${UI.close}</button>` : ''}</div>
         <div class="panel-body panel-ring">${panelRing}${hint}</div>`
       : `<div class="panel-top"><b class="panel-title"></b></div>
-       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p>${hint}</div>`;
+       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p></div>${hint}`;
   document.body.classList.toggle('has-panel', keep);
   markPicked();
   updateDock();
