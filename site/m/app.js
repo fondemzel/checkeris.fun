@@ -2601,7 +2601,7 @@ function showSelection() {
       <div class="card"><div class="card-label">${esc(S.byCategory)}</div>
         ${[...byCat].sort((a, b) => b[1].sum - a[1].sum).map(catRow).join('')}</div>
       ${categoryBlock('data-bulk-cat', income ? incomeButton(one) : categoryButton(one))}
-      ${noteBlock('bulk', '', { placeholder: S.notePlaceholder, hint: S.noteHint })}
+      ${noteBlock('bulk', '', { hint: S.noteHint })}
       <button class="btn more" type="button" data-bulk-clear>${esc(S.clear)}</button>
       ${selectHint()}
     </div>`;
