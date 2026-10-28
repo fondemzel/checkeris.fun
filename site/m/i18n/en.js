@@ -177,6 +177,7 @@ export const en = {
       namePlaceholder: 'Your name',
       nameNote: 'how budget members see you',
       logout: 'Sign out on this device',
+      logoutConfirm: 'Sign out on this device?',
       ways: 'Sign-in',
       waysFoot: 'Sign in any of these ways — it’s the same account',
       tg: 'Telegram',
@@ -191,7 +192,6 @@ export const en = {
       emailFoot: 'We’ll send a code to make sure the email is yours. Can’t see it? Check Spam.',
       emailConfirm: 'Confirm',
       emailDone: 'Email added',
-      logoutConfirm: 'Sign out on this device?',
     },
     budget: {
       label: 'Budget',
@@ -1087,6 +1087,7 @@ export const en = {
       stats: 'Summary',
     },
     add: 'Add spending',
+    addShort: 'Add',
   },
   stats: {
     steps: {

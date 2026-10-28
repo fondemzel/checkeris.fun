@@ -2485,17 +2485,45 @@ body.no-tabs .tabs { display: none; }
 .send-btn:disabled { opacity: 0.35; }
 .send-btn svg { width: 20px; height: 20px; stroke-width: 2.4; }
 
-/* ── широкий экран (компьютер, планшет) ─────────────────────
-   Приложение — колонкой телефонной ширины посередине, по бокам — поля чуть темнее фона.
-   Всё, что приклеено к краям окна (остров, листы, панель действий, сканер), — в той же
-   колонке: --side — ширина поля. Полосу прокрутки прячем, иначе 100vw шире окна и
-   закреплённое разъехалось бы с колонкой; колесо и тачпад прокручивают как обычно */
+/* Подпись «+» нужна только в меню слева; на острове — один знак */
+.tab-add .tab-name { display: none; }
+.tab-add-ic { display: block; }
+.pc-only { display: none; }
+
+/* ── широкий экран (планшет, компьютер): меню слева вместо острова ──────
+   Те же кнопки, что на острове (их строит buildNav по SECTIONS), — столбиком у левого края:
+   600–900 px — узкая полоса, значок над подписью; от 900 px — строки с подписью справа.
+   «Добавить» — сверху, «Настройки» — внизу. Всё, что приклеено к краям окна (панель действий,
+   листы, сканер), начинается правее меню (--rail). Лента — не шире --content, по центру */
 @media (min-width: 600px) {
-  :root { --app-w: 480px; --side: calc((100vw - var(--app-w)) / 2); --outside: #e2e5ea; }
-  :root[data-theme="dark"] { --outside: #080b0f; }
-  html { background: var(--outside); scrollbar-width: none; }
-  html::-webkit-scrollbar { display: none; }
-  body { max-width: var(--app-w); min-height: 100vh; margin: 0 auto; box-shadow: 0 0 0 1px var(--border); }
-  .tabs { left: calc(var(--side) + 10px); right: calc(var(--side) + 10px); }
-  .actions, .sheet, .picker, .scanner { left: var(--side); right: var(--side); }
+  :root { --rail: 84px; --content: 760px; }
+  body { padding-left: var(--rail); }
+  .screen { max-width: var(--content); margin: 0 auto; }
+  .tabs {
+    top: 0; bottom: 0; left: 0; right: auto; width: var(--rail); height: auto;
+    flex-direction: column; align-items: stretch; gap: 4px;
+    padding: calc(12px + env(safe-area-inset-top)) 8px 12px; border-radius: 0;
+    box-shadow: 1px 0 0 var(--border); overflow-y: auto;
+  }
+  .tab { flex: none; order: var(--pc-order); height: 58px; font-size: 11px; }
+  .tab[data-tab="settings"] { margin-top: auto; }
+  .tab-pill { display: none; }
+  .pc-only { display: flex; }
+  .tab-add { order: 0; align-self: center; width: 52px; height: 52px; margin: 0 0 12px; border: none; font-size: 28px; }
+  .actions, .sheet, .picker, .scanner { left: var(--rail); right: 0; }
+  .actions { padding-inline: max(12px, calc((100% - var(--content)) / 2 + 12px)); }
+  .sheet, .picker { justify-content: center; }
+  .sheet-box, .picker-box { max-width: 560px; }
+  .toast { left: calc(50% + var(--rail) / 2); }
+}
+@media (min-width: 900px) {
+  :root { --rail: 232px; }
+  .tabs { padding-inline: 12px; }
+  .tab { flex-direction: row; justify-content: flex-start; gap: 12px; height: 44px; padding: 0 14px; font-size: 15px; }
+  .tab-add {
+    align-self: stretch; width: auto; height: 44px; border-radius: 22px; padding: 0 16px;
+    display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 600;
+  }
+  .tab-add .tab-name { display: inline; }
+  .tab-add-ic { font-size: 24px; line-height: 1; }
 }

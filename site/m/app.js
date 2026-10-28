@@ -4638,6 +4638,41 @@ const soon = (icon, title, text) => `
   </div>`;
 
 // Какая вкладка горит: вглубь расходов — «Расходы», добавление — ни одна
+/**
+ * Разделы приложения — одним списком: остров телефона и левое меню широкого экрана строятся
+ * из него, руками их не правят. phone — где раздел на телефоне ('tab' — на острове, false — нет);
+ * pc — в левом меню (pcOrder — место там: «Настройки» уходят вниз). Экран только для компьютера —
+ * строка с phone: false и свой файл (подгружается только на широком экране)
+ */
+const SECTIONS = [
+  { key: 'summary', icon: UI.wallet, phone: 'tab', pc: 'menu', pcOrder: 1 },
+  { key: 'income', icon: UI.income, phone: 'tab', pc: 'menu', pcOrder: 2 },
+  { key: 'settings', icon: UI.settings, phone: 'tab', pc: 'menu', pcOrder: 9 },
+  { key: 'stats', icon: UI.stats, phone: 'tab', pc: 'menu', pcOrder: 3 },
+];
+const PHONE_TABS = SECTIONS.filter((s) => s.phone === 'tab').map((s) => s.key);
+const FAB_AFTER = 2; // «+» на острове — посередине, после второй вкладки
+
+// Широкий экран (планшет, компьютер): вместо острова — меню слева. Ширина та же, что в styles.css
+const railMq = matchMedia('(min-width: 600px)');
+const onRail = () => railMq.matches;
+
+/** Кнопки меню — по списку разделов; «+» (#fab) уже в разметке, встаёт между ними. */
+function buildNav() {
+  const nav = document.querySelector('.tabs');
+  for (const old of nav.querySelectorAll('[data-tab]')) old.remove();
+  const fab = $('fab');
+  SECTIONS.forEach((s, i) => {
+    const btn = document.createElement('button');
+    btn.className = `tab${s.phone === 'tab' ? '' : ' pc-only'}`;
+    btn.type = 'button';
+    btn.dataset.tab = s.key;
+    btn.style.setProperty('--pc-order', s.pcOrder);
+    btn.innerHTML = `<span class="tab-ic">${s.icon}</span><span class="tab-name">${esc(T.shell.tabs[s.key])}</span>`;
+    nav.insertBefore(btn, i < FAB_AFTER ? fab : null);
+  });
+}
+
 const TAB_OF = {
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', income_add: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
@@ -4655,6 +4690,13 @@ function updateDock() {
   // Экран без меню (переписка с поддержкой): внизу только своя полоса — место под ней от её верха
   if (document.body.classList.contains('no-tabs')) {
     const actions = $('actions').hidden ? 0 : Math.ceil(window.innerHeight - $('actions').getBoundingClientRect().top);
+    root.setProperty('--tabs', '0px');
+    root.setProperty('--dock', `${actions}px`);
+    return;
+  }
+  // Меню слева (широкий экран) снизу места не занимает
+  if (onRail()) {
+    const actions = $('actions').hidden ? 0 : $('actions').offsetHeight;
     root.setProperty('--tabs', '0px');
     root.setProperty('--dock', `${actions}px`);
     return;
@@ -4678,6 +4720,7 @@ if ('ResizeObserver' in window) {
 } else {
   window.addEventListener('resize', updateDock);
 }
+railMq.addEventListener?.('change', updateDock); // повернули планшет: остров ↔ меню слева
 
 let renderSeq = 0;
 
@@ -4842,7 +4885,7 @@ async function render() {
   const prevSum = prevEl ? prevEl.dataset.sum ?? prevEl.textContent : null;
   // Переход на другой экран — сдвигом: пока новый грузится, виден прежний, без «Загрузки».
   // Смена вкладки — тоже сдвигом, по порядку вкладок: правее — въезжает справа, левее — слева
-  const tabs = ['summary', 'income', 'settings', 'stats'];
+  const tabs = PHONE_TABS;
   const tabSwitch = TOP.includes(state.screen) && TAB_OF[state.screen] !== TAB_OF[shownScreen]
     && tabs.includes(TAB_OF[state.screen]) && tabs.includes(TAB_OF[shownScreen]);
   const dir = tabSwitch ? (tabs.indexOf(TAB_OF[state.screen]) > tabs.indexOf(TAB_OF[shownScreen]) ? 'fwd' : 'back') : navDir;
@@ -5378,7 +5421,7 @@ let swipeBusy = false;
 // Свайп по закреплённому — шапке, карточке итога аналитики, верхней панели или острову меню —
 // меняет не период, а вкладку: влево — вкладка правее, вправо — левее
 let swipeTab = false;
-const SWIPE_TABS = ['summary', 'income', 'settings', 'stats'];
+const SWIPE_TABS = PHONE_TABS;
 const PINNED = '.tabs, .bar, #screen > .stuck-head, #screen > .ana-hero';
 // Шкала свайпа экранов и периодов (доли ширины): до SWIPE_FROM — ещё ничего, к SWIPE_TO —
 // заполнено; протянули дальше SWIPE_TO — по отпусканию сменится вкладка (или период)
@@ -5416,7 +5459,7 @@ function pillBox(name) {
 }
 function pillDrag(dx, shift) {
   const cur = pillBox(TAB_OF[state.screen]);
-  if (!cur) return;
+  if (!cur || onRail()) return; // капсула — у горизонтального острова; в меню слева её нет
   const tabs = document.querySelector('.tabs');
   tabs.classList.add('pill-on');
   // Протянули до места, где по отпусканию вкладка сменится, — соседняя плавно синеет, прежняя
@@ -5454,7 +5497,7 @@ function pillSettle(name, ms, done = true) {
 function pillTap(from, to) {
   const cur = pillBox(from);
   const next = pillBox(to);
-  if (!cur || !next || from === to || !motion('screens')) return;
+  if (!cur || !next || from === to || !motion('screens') || onRail()) return;
   document.querySelector('.tabs').classList.add('pill-on');
   pillSet(cur.l, cur.r, cur, '');
   void tabPill.offsetWidth; // исходное место — иначе растяжения не будет видно
@@ -5603,10 +5646,7 @@ function peekHide() {
   peekEl.style.opacity = '0';
 }
 /** Подпись вкладки на острове — без счётчика на значке. */
-function tabLabel(name) {
-  const btn = name && document.querySelector(`.tabs [data-tab="${name}"]`);
-  return btn ? [...btn.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim() : '';
-}
+const tabLabel = (name) => (name && T.shell.tabs[name]) || '';
 
 /**
  * Данные периода, куда тянут свайпом, — заранее, теми же запросами, что сделает экран: к
@@ -6303,11 +6343,18 @@ function quickOpen(btn) {
   const r = btn.getBoundingClientRect();
   const island = document.querySelector('.tabs').getBoundingClientRect();
   const w = el.offsetWidth;
-  const left = Math.min(Math.max(10, r.left + r.width / 2 - w / 2), innerWidth - 10 - w);
-  el.style.left = `${left}px`;
-  // Выше и острова, и выступающего над ним «+»
-  el.style.bottom = `${innerHeight - Math.min(island.top, $('fab').getBoundingClientRect().top) + 8}px`;
-  el.style.transformOrigin = `${r.left + r.width / 2 - left}px 100%`;
+  if (onRail()) {
+    // Меню слева — список справа от кнопки, вровень с её верхом
+    el.style.left = `${r.right + 8}px`;
+    el.style.top = `${Math.min(r.top, innerHeight - el.offsetHeight - 10)}px`;
+    el.style.transformOrigin = '0 0';
+  } else {
+    const left = Math.min(Math.max(10, r.left + r.width / 2 - w / 2), innerWidth - 10 - w);
+    el.style.left = `${left}px`;
+    // Выше и острова, и выступающего над ним «+»
+    el.style.bottom = `${innerHeight - Math.min(island.top, $('fab').getBoundingClientRect().top) + 8}px`;
+    el.style.transformOrigin = `${r.left + r.width / 2 - left}px 100%`;
+  }
   if (motion('sheets')) {
     el.animate([{ opacity: 0, transform: 'scale(0.5)' }, { opacity: 1, transform: 'none' }],
       { duration: 200, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.15)' });
@@ -9156,10 +9203,7 @@ async function start() {
   stopLinkRefresh?.();
   $('login').hidden = true;
   $('app').hidden = false;
-  $('tab-summary-ic').innerHTML = UI.wallet;
-  $('tab-income-ic').innerHTML = UI.income;
-  $('tab-settings-ic').innerHTML = UI.settings;
-  $('tab-stats-ic').innerHTML = UI.stats;
+  buildNav();
   // Есть ли банк — вместе с остальным стартовым, до первой отрисовки: от него зависит вид
   // «Расхода», и ответ, пришедший позже, перерисовывал экран посреди заливки кольца
   const [m, bank] = await Promise.all([api('/api/meta'), api('/api/bank').catch(() => null)]);

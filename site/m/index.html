@@ -90,15 +90,9 @@
 
     <div class="actions" id="actions" hidden></div>
 
+    <!-- Кнопки разделов строит app.js по списку SECTIONS; «+» встаёт между ними -->
     <nav class="tabs" aria-label="Разделы" data-i18n-attr="aria-label:shell.tabsAria">
-      <button class="tab" type="button" data-tab="summary">
-        <span class="tab-ic" id="tab-summary-ic"></span><span data-i18n="shell.tabs.summary">Расход</span><i class="badge" id="tab-badge" hidden></i>
-      </button>
-      <button class="tab" type="button" data-tab="income"><span class="tab-ic" id="tab-income-ic"></span><span data-i18n="shell.tabs.income">Доход</span></button>
-      <!-- Добавление — посередине острова, круглой кнопкой -->
-      <button class="tab-add" id="fab" type="button" aria-label="Добавить трату" data-i18n-attr="aria-label:shell.add">+</button>
-      <button class="tab" type="button" data-tab="settings"><span class="tab-ic" id="tab-settings-ic"></span><span data-i18n="shell.tabs.settings">Настройки</span></button>
-      <button class="tab" type="button" data-tab="stats"><span class="tab-ic" id="tab-stats-ic"></span><span data-i18n="shell.tabs.stats">Сводка</span></button>
+      <button class="tab-add" id="fab" type="button" aria-label="Добавить трату" data-i18n-attr="aria-label:shell.add"><span class="tab-add-ic">+</span><span class="tab-name" data-i18n="shell.addShort">Добавить</span></button>
     </nav>
   </div>
 
