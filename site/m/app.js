@@ -2603,18 +2603,12 @@ function showSelection() {
       ${categoryBlock('data-bulk-cat', income ? incomeButton(one) : categoryButton(one))}
       ${noteBlock('bulk', '', { hint: S.noteHint })}
       <button class="btn more" type="button" data-bulk-clear>${esc(S.clear)}</button>
-      ${selectHint()}
     </div>`;
   if (draft) $('item-note').value = draft;
   fitNote();
   markPicked();
 }
 
-/** Подсказка, как выделять строки, — в правой панели: и пока ничего не выбрано, и в сводке. */
-const SELECT_SCREENS = ['summary', 'group', 'category', 'income', 'bank']; // ленты с флажками
-const selectHint = () => (tableOn() && SELECT_SCREENS.includes(state.screen)
-  ? `<div class="select-hint note">${T.table.hints.map((h) => `<p>${h}</p>`).join('')}</div>`
-  : '');
 
 /** Категория всем отмеченным: как выбор в карточке — только эти строки, переключателем — и все такие же. */
 function bulkCategory() {
@@ -3215,10 +3209,9 @@ function hostSheet(sheet, card, title) {
  * попадёт выбранная строка: ширина ленты не меняется, ничего не прыгает. Уже — панель прячется
  */
 function closePanel(force = false) {
-  const hint = selectHint();
   // Что-то отобрано — в шапке панели с кольцом крестик «сбросить фильтры»
   const filtered = Boolean(state.src || state.sg || state.inf || state.isrc);
-  const view = `${panelMq.matches}|${Boolean(hint)}|${panelRing ? 'ring' : ''}|${filtered}`;
+  const view = `${panelMq.matches}|${panelRing ? 'ring' : ''}|${filtered}`;
   if (!force && !panelCard && $('panel').dataset.view === view) return;
   panelCard = null;
   panelSeq += 1; // запоздавший ответ уже не нужен
@@ -3233,9 +3226,9 @@ function closePanel(force = false) {
     : panelRing
       ? `<div class="panel-top"><b class="panel-title">${esc(T.panelRing)}</b>${filtered
         ? `<button class="icon-btn soft" type="button" data-reset-filters aria-label="${esc(T.feed.resetFilters)}" title="${esc(T.feed.resetFilters)}">${UI.close}</button>` : ''}</div>
-        <div class="panel-body panel-ring">${panelRing}${hint}</div>`
+        <div class="panel-body panel-ring">${panelRing}</div>`
       : `<div class="panel-top"><b class="panel-title"></b></div>
-       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p></div>${hint}`;
+       <div class="panel-idle"><span class="panel-idle-ic">${UI.list}</span><p class="note">${esc(T.panelIdle)}</p></div>`;
   document.body.classList.toggle('has-panel', keep);
   markPicked();
   updateDock();

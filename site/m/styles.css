@@ -11,7 +11,10 @@
   --fs-head: 14px;
   --fs-caps: 12px;
   --bg: #f4f5f7;
-  --surface: #ffffff;
+  /* Без чистого белого: он слишком контрастный. Карточки — почти белые, белый текст (на тёмной
+     шапке, синих кнопках, цветных значках) — мягкий */
+  --surface: #fcfcfd;
+  --white: #f3f5f8;
   --text: #1f2328;
   --muted: #6b7280;
   --border: #e1e4e8;
@@ -24,7 +27,7 @@
   --danger: #b42318;
   --bar: #131a26;
   /* Нейтральные оттенки — по ролям, чтобы тёмная тема меняла их разом */
-  --surface-2: #fafbfc; /* второй фон: вложенные строки, шапки разделов */
+  --surface-2: #f6f7f9; /* второй фон: вложенные строки, шапки разделов */
   --line: #f0f1f3; /* черта между строками */
   --press: #eef2f9; /* строка, пока на неё нажимают */
   --fill: #eef1f5; /* серая заливка: круглые кнопки, значок без цвета, полоски */
@@ -152,7 +155,7 @@ button, input, select { font: inherit; color: inherit; }
   height: 50px;
   border: none;
   background: #2aabee;
-  color: #fff;
+  color: var(--white);
   font-size: 16px;
   font-weight: 600;
   text-decoration: none;
@@ -206,7 +209,7 @@ button, input, select { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-.btn.primary { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary { border-color: var(--accent); background: var(--accent); color: var(--white); font-weight: 600; }
 .btn:disabled { opacity: 0.6; }
 
 .note { margin: 0; font-size: 13px; color: var(--muted); }
@@ -230,7 +233,7 @@ button, input, select { font: inherit; color: inherit; }
   padding-top: env(safe-area-inset-top);
   height: calc(52px + env(safe-area-inset-top));
   background: var(--bar);
-  color: #fff;
+  color: var(--white);
 }
 
 .bar-title { flex: 1; font-size: 17px; font-weight: 600; text-align: center; }
@@ -240,7 +243,7 @@ button, input, select { font: inherit; color: inherit; }
   height: 44px;
   border: none;
   background: none;
-  color: #fff;
+  color: var(--white);
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
@@ -325,7 +328,7 @@ button, input, select { font: inherit; color: inherit; }
   border: 4px solid var(--surface);
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  color: var(--white);
   font-size: 30px;
   line-height: 1;
   box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 35%, transparent);
@@ -388,7 +391,7 @@ button, input, select { font: inherit; color: inherit; }
   padding: 0 5px;
   border-radius: 9px;
   background: var(--danger);
-  color: #fff;
+  color: var(--white);
   font-size: 11px;
   font-style: normal;
   font-weight: 600;
@@ -542,7 +545,7 @@ button, input, select { font: inherit; color: inherit; }
   padding: 10px 16px;
   border-radius: 10px;
   background: rgba(19, 26, 38, 0.92);
-  color: #fff;
+  color: var(--white);
   font-size: 14px;
   transform: translateX(-50%);
   animation: toast-in 0.18s ease-out;
@@ -752,7 +755,7 @@ button, input, select { font: inherit; color: inherit; }
 
 .chip b { margin-left: 2px; font-weight: 600; }
 .chip.alert b { color: var(--danger); }
-.chip.on { border-color: var(--bar); background: var(--bar); color: #fff; }
+.chip.on { border-color: var(--bar); background: var(--bar); color: var(--white); }
 .chip.on.alert b { color: #ffb4ab; }
 
 /* «Категории | Чеки | Банк» внутри «Расхода» */
@@ -780,7 +783,7 @@ button, input, select { font: inherit; color: inherit; }
   padding: 0 5px;
   border-radius: 9px;
   background: var(--danger);
-  color: #fff;
+  color: var(--white);
   font-size: 11px;
   font-style: normal;
   font-weight: 600;
@@ -962,7 +965,7 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
   -webkit-appearance: none;
   width: 30px;
   height: 30px;
-  border: 3px solid #fff;
+  border: 3px solid var(--white);
   border-radius: 50%;
   background: var(--pick, var(--accent));
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
@@ -977,13 +980,13 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
   -webkit-appearance: none;
   width: 30px;
   height: 30px;
-  border: 3px solid #fff;
+  border: 3px solid var(--white);
   border-radius: 50%;
   background: var(--pick, var(--accent));
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   pointer-events: auto; /* полоса под ползунками не перехватывает касание соседнего */
 }
-.icon-cell.on { background: var(--pick, var(--accent)); color: #fff; }
+.icon-cell.on { background: var(--pick, var(--accent)); color: var(--white); }
 .icon-search { width: 100%; margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font: inherit; }
 .icon-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
 .icon-cell { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border: none; border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; }
@@ -1049,7 +1052,7 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
   cursor: pointer;
 }
 .drop-btn svg { width: 17px; height: 17px; }
-.drop-btn.on { background: var(--accent); color: #fff; } /* фильтр включён */
+.drop-btn.on { background: var(--accent); color: var(--white); } /* фильтр включён */
 .drop-menu {
   position: absolute;
   top: 42px;
@@ -1229,7 +1232,7 @@ button.srow-main:active, a.srow-main:active { background: var(--press); }
 }
 
 .sort-chip svg { width: 13px; height: 13px; }
-.sort-chip.on { border-color: var(--bar); background: var(--bar); color: #fff; }
+.sort-chip.on { border-color: var(--bar); background: var(--bar); color: var(--white); }
 /* Направление — меткой в углу значка, а не рядом с ним: рядом не хватает места */
 .sort-dir {
   position: absolute;
@@ -1323,7 +1326,7 @@ button.bank-op { cursor: pointer; }
 /* Комментарий: галочка сохранения появляется, пока пишут */
 .note-row { display: flex; align-items: flex-start; gap: 8px; }
 .note-row .note-input { flex: 1; }
-.note-save { display: none; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; border: none; border-radius: 50%; background: var(--accent); color: #fff; cursor: pointer; }
+.note-save { display: none; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; border: none; border-radius: 50%; background: var(--accent); color: var(--white); cursor: pointer; }
 .note-save svg { width: 17px; height: 17px; stroke-width: 2.5; }
 .note-row:focus-within .note-save { display: flex; }
 .sub-row .row-title { font-size: 14px; }
@@ -1435,7 +1438,7 @@ input::placeholder, textarea::placeholder, .note-input::placeholder { color: var
 .cal-day.in { background: var(--accent-soft); }
 .cal-day.from { background: linear-gradient(90deg, transparent 50%, var(--accent-soft) 50%); }
 .cal-day.to { background: linear-gradient(90deg, var(--accent-soft) 50%, transparent 50%); }
-.cal-day.edge span { background: var(--accent); color: #fff; font-weight: 600; }
+.cal-day.edge span { background: var(--accent); color: var(--white); font-weight: 600; }
 .cal-day.today:not(.edge) { color: var(--accent); font-weight: 600; }
 .cal-day.future:not(.edge) { color: var(--gray-text); }
 
@@ -1479,7 +1482,7 @@ input::placeholder, textarea::placeholder, .note-input::placeholder { color: var
 
 /* Код пойман: рамка зеленеет и становится табло для ответа ФНС */
 .scanner.caught .scanner-frame { border-color: #4ade80; background: rgba(0, 0, 0, 0.62); }
-.scanner-frame-status { margin: 0; color: #fff; font-size: 17px; font-weight: 500; line-height: 1.35; }
+.scanner-frame-status { margin: 0; color: var(--white); font-size: 17px; font-weight: 500; line-height: 1.35; }
 /* Пойман — в рамке считанный код (scannerQr), а что говорит ФНС — сразу под рамкой */
 .scanner.caught .scanner-frame-status { position: absolute; top: calc(100% + 18px); left: -18%; right: -18%; font-size: 16px; }
 .scanner-qr { position: absolute; inset: 14px; padding: 6px; border-radius: 10px; background: #fff; color: #11151b;
@@ -1510,13 +1513,13 @@ input::placeholder, textarea::placeholder, .note-input::placeholder { color: var
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.16);
-  color: #fff;
+  color: var(--white);
   transform: translate(-50%, -50%);
   transition: background 0.2s, color 0.2s, box-shadow 0.2s;
   cursor: pointer;
 }
 .scanner-torch svg { width: 44%; height: 44%; }
-.scanner-torch[aria-pressed="true"] { background: #fff; color: #11151b; box-shadow: 0 0 28px rgba(255, 255, 255, 0.45); }
+.scanner-torch[aria-pressed="true"] { background: var(--white); color: #11151b; box-shadow: 0 0 28px rgba(255, 255, 255, 0.45); }
 .scanner-torch[hidden], .scanner.caught .scanner-torch,
 .scanner:has(.scanner-typed:not([hidden])) .scanner-torch { display: none; }
 
@@ -1529,7 +1532,7 @@ input::placeholder, textarea::placeholder, .note-input::placeholder { color: var
   border: none;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.45);
-  color: #fff;
+  color: var(--white);
   font-size: 28px;
   line-height: 1;
   cursor: pointer;
@@ -1546,7 +1549,7 @@ input::placeholder, textarea::placeholder, .note-input::placeholder { color: var
   gap: 10px;
   padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.75) 30%);
-  color: #fff;
+  color: var(--white);
   text-align: center;
 }
 
@@ -1670,7 +1673,7 @@ div.sheet-row { padding: 0; gap: 0; cursor: default; }
 }
 
 .icon-btn.soft { border: none; background: var(--fill-2); color: var(--text); }
-.icon-btn.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.icon-btn.primary { border-color: var(--accent); background: var(--accent); color: var(--white); }
 .icon-btn svg { width: 22px; height: 22px; stroke-width: 2.5; }
 .sheet-row.saving { opacity: 0.6; }
 .sheet-row.picked .sheet-cat { color: var(--accent); }
@@ -1826,7 +1829,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .filt-src-ic { background: var(--fill); color: var(--text); }
 .filt-check { position: absolute; right: -6px; bottom: -4px; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%;
   /* Размытая тень: на синих и тёмных значках голубая галочка без неё сливалась */
-  background: var(--accent); color: #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.55), 0 0 2px rgba(0, 0, 0, 0.35); transform: scale(0); transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+  background: var(--accent); color: var(--white); box-shadow: 0 1px 6px rgba(0, 0, 0, 0.55), 0 0 2px rgba(0, 0, 0, 0.35); transform: scale(0); transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
 .filt-check svg { width: 13px; height: 13px; stroke-width: 3; }
 .filt-tile.on .filt-check { transform: scale(1); }
 .picker-acts { display: flex; gap: 8px; }
@@ -1933,7 +1936,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--white);
   object-fit: contain;
   box-sizing: border-box;
 }
@@ -1961,7 +1964,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   margin-top: -11px;
   border: 2px solid var(--gray);
   border-radius: 50%;
-  background: #fff;
+  background: var(--white);
   transition: transform 0.2s, border-color 0.2s;
 }
 .switch input:checked + .switch-track { background: var(--accent); }
@@ -2041,7 +2044,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   border: none; border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
 }
 .icon-inherit svg { width: 22px; height: 22px; }
-.icon-inherit.on { background: var(--pick, var(--accent)); color: #fff; }
+.icon-inherit.on { background: var(--pick, var(--accent)); color: var(--white); }
 
 /* Меню фильтра расходов: источники, под чертой — группы; длинное — листается */
 .drop-menu { max-height: 70vh; overflow-y: auto; overscroll-behavior: contain; }
@@ -2363,7 +2366,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
   padding: 0 6px;
   border-radius: 10px;
   background: var(--accent);
-  color: #fff;
+  color: var(--white);
   font-size: 12px;
   font-weight: 600;
   line-height: 20px;
@@ -2488,7 +2491,7 @@ body.no-tabs .tabs { display: none; }
   border: 0;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  color: var(--white);
   transition: opacity 0.15s;
 }
 .send-btn:disabled { opacity: 0.35; }
@@ -2615,8 +2618,8 @@ span.t-col { cursor: default; }
 .t-check { width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 5px; background: var(--surface); cursor: pointer; position: relative; }
 .t-check.none { visibility: hidden; }
 .t-check.on, .t-check.some { border-color: var(--accent); background: var(--accent); }
-.t-check.on::after { content: ''; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.t-check.some::after { content: ''; position: absolute; left: 3px; right: 3px; top: 7px; height: 2px; background: #fff; }
+.t-check.on::after { content: ''; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px; border: solid var(--white); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.t-check.some::after { content: ''; position: absolute; left: 3px; right: 3px; top: 7px; height: 2px; background: var(--white); }
 .trow.checked { background: var(--accent-faint); }
 .trow:hover { background: var(--press); }
 .trow.checked:hover, .trow.picked { background: var(--accent-soft); }
@@ -2631,11 +2634,7 @@ body.has-panel { --panel-on: var(--panel-w, 0px); }
 /* Протяжка по строкам (выделение) — курсор не меняется на текстовый, ничего не подсвечивается */
 body.drag-select, body.drag-select * { cursor: default !important; }
 /* Как выделять строки — тихая подсказка в правой панели */
-/* Подсказка про клавиши выделения — подстрочником, прижата к низу правой панели */
-.select-hint { margin-top: auto; padding: 16px 4px 4px; text-align: left; line-height: 1.45; color: var(--muted); }
-.select-hint p { margin: 0 0 3px; }
-.select-hint b { font-weight: 600; }
-.panel-idle + .select-hint { padding: 12px 16px 16px; }
+
 .panel .card .kv .op-cat { margin-right: 6px; }
 
 /* ── правая панель подробностей (от 1100 px, openPanel) ──────
@@ -2662,10 +2661,10 @@ body.drag-select, body.drag-select * { cursor: default !important; }
   .panel-top {
     position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
     height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0 16px;
-    background: var(--bar); color: #fff;
+    background: var(--bar); color: var(--white);
   }
   .panel-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* как заголовок ленты рядом */
-  .panel-top .icon-btn { background: rgba(255, 255, 255, 0.12); color: #fff; }
+  .panel-top .icon-btn { background: rgba(255, 255, 255, 0.12); color: var(--white); }
   /* Содержимое — столбиком во всю высоту: подсказка про клавиши (.select-hint) уходит вниз */
   .panel:not([hidden]) { display: flex; flex-direction: column; }
   .panel-top { flex: none; }
@@ -2747,17 +2746,19 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 /* ── единые размеры текста таблицы и правой панели (уровни --fs-* в :root) ───────────
    Заголовок раздела (день, категория) — заголовком, а не мельче строк под ним; всё второстепенное
    в строке — подстрочником; суммы — полужирным, как в строках */
-.list.tbl > .day { min-height: 40px; font-size: var(--fs-head); font-weight: 600; color: var(--text); }
+/* Заголовок раздела (день, категория) — крупнее строк под ним: строки — 14, заголовок — 15 */
+.list.tbl > .day { min-height: 40px; font-size: var(--fs-title); font-weight: 600; color: var(--text); }
 .list.tbl > .day b { font-variant-numeric: tabular-nums; }
 .thead, .thead .t-col { font-size: var(--fs-caps); }
 /* Строка групп — плотнее: значки, крестик и кнопки справа помещаются в одну строку */
 .frow:has(.fchip.grp) { gap: 4px; }
 .trow .t-date, .trow .t-cat, .trow .t-src, .t-many, .tfoot { font-size: var(--fs-note); }
 .trow.sub-row .row-title { font-size: var(--fs-note); }
-.trow .row-title, .tfoot .t-sum { font-size: var(--fs-title); }
+.trow .row-title { font-size: var(--fs-head); }
+.tfoot .t-sum { font-size: var(--fs-title); }
 .tfoot .t-sum { font-weight: 600; }
 .t-empty { font-size: var(--fs-foot); }
-.select-hint { font-size: var(--fs-note); }
+
 .panel .ring-name { font-size: var(--fs-title); }
 .panel .ring-share { font-size: var(--fs-note); }
 .panel .ring-row b { font-weight: 600; }
