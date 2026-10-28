@@ -2560,7 +2560,8 @@ span.t-col { cursor: default; }
 .t-date { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .t-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .trow .t-name .row-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.t-many { flex: none; color: var(--muted); font-size: 12px; white-space: nowrap; }
+/* Число покупок уступает место названию первым */
+.t-many { flex: 0 4 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .t-cat, .t-src { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--muted); }
 .t-src svg { flex: none; width: 14px; height: 14px; }
 .t-src span { overflow: hidden; text-overflow: ellipsis; }
@@ -2568,7 +2569,7 @@ span.t-col { cursor: default; }
 .trow.sub-row .t-name { padding-left: 38px; }
 .trow.sub-row .row-title { font-size: 13px; color: var(--muted); }
 @container (max-width: 760px) {
-  .thead, .trow { grid-template-columns: 22px 84px minmax(140px, 1fr) minmax(0, 170px) 104px; }
+  .thead, .trow { grid-template-columns: 22px 78px minmax(140px, 1fr) minmax(0, 130px) 96px; column-gap: 10px; }
   .t-src { display: none; }
 }
 /* Флажок строки: квадрат, отмечен — заливка акцента с галочкой; в шапке «часть отмечена» — черта */
