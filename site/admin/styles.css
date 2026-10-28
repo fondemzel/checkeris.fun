@@ -475,10 +475,9 @@ table.t { width: 100%; border-collapse: collapse; }
   .stamp { display: none; }
 }
 
-/* ── три колонки: меню, список, выбранный кратко («Пользователи») ── */
+/* ── три колонки на всех страницах: меню, раздел, правая панель — ширины одни и те же ── */
 .layout.three { grid-template-columns: 240px minmax(0, 1fr) 320px; max-width: 1680px; }
 .panel-col { position: sticky; top: 16px; align-self: start; min-width: 0; }
-.panel-col[hidden] { display: none; }
 .t tbody tr.sel td { background: var(--accent-soft); }
 .t .who { color: var(--fg); }
 a.who:hover { color: var(--accent); }
@@ -526,3 +525,9 @@ a.who:hover { color: var(--accent); }
 .origin { padding: 12px 16px 4px; gap: 32px; }
 .origin-head { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 6px; }
 .origin .pp-row { grid-template-columns: 1fr auto; }
+
+/* Правая колонка «Сейчас»: главное числами, строки — ссылки в разделы */
+.now-body { padding: 4px 0; }
+.now-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px; color: var(--fg); font-size: 13px; }
+.now-row:hover { background: var(--subtle); text-decoration: none; }
+.now-meter { margin: 0 16px 6px; }

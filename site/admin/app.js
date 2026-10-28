@@ -273,18 +273,7 @@ function pageOverview(d) {
     { foot: 'Заходил — открыл приложение или кабинет хотя бы раз за день. Отметки пишутся с версии 0.61.0.' },
   );
 
-  const share = d.load.fns.today / d.load.fns.limit;
-  const broken = brokenLinks(d).length;
-  const errors = d.load.scan_errors.reduce((s, e) => s + e.n, 0);
-  const quiet = silent(d).length;
-  const attention = box(
-    'Требует внимания',
-    `<div class="box-row"><div class="grow"><div class="title">ФНС сегодня</div><div class="meter ${meterCls(share)}" style="margin-top:6px"><i style="width:${Math.min(100, share * 100)}%"></i></div></div><div class="num"><b>${d.load.fns.today}</b> из ${d.load.fns.limit}</div></div>
-     <div class="box-row"><div class="grow"><a href="#/support">Обращения ждут ответа</a></div><span class="label ${d.support_waiting ? 'bad' : 'ok'}">${d.support_waiting}</span></div>
-     <div class="box-row"><div class="grow"><a href="#/links">Подключения: нужен вход заново</a></div><span class="label ${broken ? 'bad' : 'ok'}">${broken}</span></div>
-     <div class="box-row"><div class="grow"><a href="#/errors">Сканы с ошибкой за 7 дней</a></div><span class="label ${errors ? 'warn' : 'ok'}">${errors}</span></div>
-     <div class="box-row"><div class="grow"><a href="#/users" data-activity="silent">Зарегистрировались и ничего не внесли</a></div><span class="label ${quiet ? 'warn' : 'ok'}">${quiet}</span></div>`,
-  );
+  // «Требует внимания» — в правой колонке «Сейчас» (nowPanel): на всех страницах, не только здесь
   const top = d.sources.slice(0, 6);
   const channels = box(
     'Каналы прихода',
@@ -298,7 +287,7 @@ function pageOverview(d) {
     d.budgets.slice(0, 5).map((b) => `<div class="box-row"><span class="avatar sm">${esc(initials(b.owner.name))}</span><div class="grow"><a href="#/users/${b.id}">${esc(b.owner.name)}</a> <span class="muted">· ${esc(channelName(b.owner.channel))}</span></div>${planLabel(b.plan)}<span class="muted">${esc(dateRu(b.created_at))}</span></div>`).join('') || blank('Пока никого'),
     { end: '<a href="#/users">Все пользователи</a>' },
   );
-  return subhead('Обзор') + stats + charts + `<div class="grid2">${attention}${channels}</div><div style="height:16px"></div>` + fresh;
+  return subhead('Обзор') + stats + charts + `<div class="grid2">${channels}${fresh}</div>`;
 }
 
 const ACTIVITY = {
@@ -426,6 +415,27 @@ function rerenderUsers() {
   if (!wrap) return;
   wrap.innerHTML = usersBox(list, d.budgets.length);
   $('panel-col').innerHTML = userPanel(d.budgets.find((b) => b.id === state.selBudget));
+}
+
+/** «Сейчас» — правая колонка на страницах без своей панели: главное числами, каждое ведёт в раздел. */
+function nowPanel(d) {
+  const t = d.totals;
+  const share = d.load.fns.today / d.load.fns.limit;
+  const broken = brokenLinks(d).length;
+  const errors = d.load.scan_errors.reduce((sum, e) => sum + e.n, 0);
+  const row = (href, k, v, cls = '', attrs = '') => `<a class="now-row" href="${href}"${attrs}><span>${esc(k)}</span><span class="label ${cls}">${v}</span></a>`;
+  const quiet = silent(d).length;
+  return `<div class="box"><div class="box-head">Сейчас</div>
+    <div class="now-body">
+      ${row('#/users', 'Заходили сегодня', `${t.active_today} из ${t.people}`)}
+      <a class="now-row" href="#/load"><span>ФНС сегодня</span><span class="num muted">${d.load.fns.today} из ${d.load.fns.limit}</span></a>
+      <div class="meter ${meterCls(share)} now-meter"><i style="width:${Math.min(100, share * 100)}%"></i></div>
+      ${row('#/support', 'Ждут ответа', d.support_waiting, d.support_waiting ? 'bad' : 'ok')}
+      ${row('#/links', 'Нужен вход в банк', broken, broken ? 'bad' : 'ok')}
+      ${row('#/errors', 'Сканы с ошибкой за 7 дней', errors, errors ? 'warn' : 'ok')}
+      ${row('#/users', 'Пришли и ничего не внесли', quiet, quiet ? 'warn' : 'ok', ' data-activity="silent"')}
+      ${row('#/users', 'Платные тарифы', d.plans.plus + d.plans.premium)}
+    </div></div>`;
 }
 
 /** Страница бюджета: тариф (сменить), участники, активность, внесено, подключения, обращения. */
@@ -737,10 +747,9 @@ async function route() {
   }
   $('main').innerHTML = html;
   // Три колонки — только у списка «Пользователи»: справа выбранный кратко
-  const three = known === 'users' && !arg;
-  $('layout').classList.toggle('three', three);
-  $('panel-col').hidden = !three;
-  $('panel-col').innerHTML = three ? userPanel(d.budgets.find((b) => b.id === state.selBudget)) : '';
+  // Три колонки на всех страницах — меню и середина не прыгают при переключении. Справа: у списка
+  // «Пользователи» — выбранный кратко, на остальных — «Сейчас»: что горит
+  $('panel-col').innerHTML = known === 'users' && !arg ? userPanel(d.budgets.find((b) => b.id === state.selBudget)) : nowPanel(d);
   document.title = `${PAGES.find((p) => p.id === known)?.title ?? 'Админка'} — Чекер`;
   loadImages();
 }
