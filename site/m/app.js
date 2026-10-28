@@ -2059,7 +2059,10 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       noted: Boolean(op.has_note),
     })),
   ];
-  if (!spendings.length) return `<div class="empty">${esc(state.q ? T.feed.nothingFound : T.spend.empty)}</div>`;
+  if (!spendings.length) {
+    const text = state.q || state.src || state.sg ? T.feed.nothingFound : T.spend.empty;
+    return tableOn() ? emptyTable(text) : `<div class="empty">${esc(text)}</div>`;
+  }
 
   // Порядок категорий — как в справочнике: так группы идут всегда в одном порядке
   const catOrder = new Map();
@@ -2293,6 +2296,13 @@ const tableFoot = (label, sum, sumCls = '') => `
     <span class="t-cat"></span><span class="t-src"></span>
     <span class="row-sum t-sum${sumCls}">${sum}</span>
   </div>`;
+
+/**
+ * Ничего не нашлось — таблица той же ширины, с шапкой столбцов и надписью вместо строк: колонка
+ * не сжимается, отборы и сортировка остаются на своих местах
+ */
+const emptyTable = (text, cols = null, opts = {}) =>
+  `<div class="list tbl">${tableHead(cols, { check: false, ...opts })}<div class="t-empty">${esc(text)}</div></div>`;
 
 /** Дата и время в ячейке: «27.10 22:14» — год виден в периоде. */
 const tWhen = (iso) => `${dateRu(iso.slice(0, 10)).slice(0, 5)} ${timeRu(iso)}`;
@@ -2655,7 +2665,9 @@ async function screenBank() {
     </div>`;
 
   if (!data.rows.length) {
-    return `${head}<div class="empty">${esc(T.spend.noOps)}</div>`;
+    return `${head}${tableOn()
+      ? emptyTable(T.spend.noOps, [['date', T.table.cols.date], ['name', T.table.cols.description], ['', T.table.cols.category], ['', T.table.cols.card], ['sum', T.table.cols.sum]])
+      : `<div class="empty">${esc(T.spend.noOps)}</div>`}`;
   }
 
   // Покупка с чеком уже посчитана чеком: сумма в шапке — это оплата картой, а не «ещё расходы»
@@ -2790,7 +2802,13 @@ async function screenIncome() {
       })}
     </div>`;
 
-  if (!rows.length) return `${head}<div class="empty">${esc(filter ? T.income.emptyFilter : T.income.empty)}</div>`;
+  if (!rows.length) {
+    const text = filter || state.isrc || state.q.trim() ? T.feed.nothingFound : T.income.empty;
+    const C = T.table.cols;
+    return `${head}${tableOn()
+      ? emptyTable(text, [['date', C.date], ['name', C.name], ['category', C.category], ['', C.account], ['sum', C.sum]])
+      : `<div class="empty">${esc(filter ? T.income.emptyFilter : T.income.empty)}</div>`}`;
+  }
 
   // Кольцо доходов — как у расходов: на телефоне видом «кольцом», на широком экране — в панели
   const ringOf = (opened) => {
@@ -3605,7 +3623,11 @@ async function screenReceipts() {
     </div>`;
 
   if (!data.rows.length && !stuck.length) {
-    return `${head}<div class="empty">${esc(flt === 'manual' ? T.receipts.noManual : T.receipts.empty)}</div>`;
+    const text = flt === 'manual' ? T.receipts.noManual : T.receipts.empty;
+    const C = T.table.cols;
+    return `${head}${tableOn()
+      ? emptyTable(text, [['date', C.date], ['name', C.seller], ['', C.items], ['', shared() ? C.author : ''], ['sum', C.sum]], { check: false })
+      : `<div class="empty">${esc(text)}</div>`}`;
   }
 
   const more = data.totals.count > RECEIPTS_PER
@@ -10030,6 +10052,7 @@ async function start() {
   $('login').hidden = true;
   $('app').hidden = false;
   buildNav();
+  $('fab').querySelector('.tab-add-ic').innerHTML = UI.plus; // значком: символ «+» сидит не по центру
   closePanel(); // широкий экран — сразу с правой панелью (пока — подсказка)
   // Есть ли банк — вместе с остальным стартовым, до первой отрисовки: от него зависит вид
   // «Расхода», и ответ, пришедший позже, перерисовывал экран посреди заливки кольца

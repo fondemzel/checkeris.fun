@@ -2488,7 +2488,10 @@ body.no-tabs .tabs { display: none; }
 
 /* Подпись «+» нужна только в меню слева; на острове — один знак */
 .tab-add .tab-name { display: none; }
-.tab-add-ic { display: block; }
+/* Плюс — значком по центру кнопки (символ шрифта сидел ниже середины) */
+.tab-add { display: flex; align-items: center; justify-content: center; }
+.tab-add-ic { display: flex; align-items: center; justify-content: center; }
+.tab-add-ic svg { width: 26px; height: 26px; stroke-width: 2.4; }
 .pc-only { display: none; }
 
 /* ── широкий экран (планшет, компьютер): меню слева вместо острова ──────
@@ -2533,7 +2536,7 @@ body.no-tabs .tabs { display: none; }
     display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 600;
   }
   .tab-add .tab-name { display: inline; }
-  .tab-add-ic { font-size: 24px; line-height: 1; }
+  .tab-add-ic svg { width: 20px; height: 20px; }
 }
 
 /* ── лента таблицей (от 900 px, tableRow) ──────────────────
@@ -2696,14 +2699,19 @@ body.drag-select, body.drag-select * { cursor: default !important; }
 .fchip-src { display: flex; }
 .fchip-src svg { width: 14px; height: 14px; }
 /* Группа: значок её цветом; не выбрана — значок бледный и серый, подпись приглушена */
-/* Группа — одним значком (название — в подсказке) */
-.fchip.grp { justify-content: center; width: 34px; padding: 0; }
-.fchip-ic { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: var(--g); color: var(--gt); transition: filter 0.15s, opacity 0.15s; }
-.fchip-ic svg { width: 13px; height: 13px; }
+/* Группа — одним значком, без обводки (название — в подсказке); значок — как в таблице */
+.fchip.grp { justify-content: center; width: 30px; height: 30px; padding: 0; border-color: transparent; background: none; }
+.fchip.grp:hover { border-color: transparent; }
+.fchip-ic { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: var(--g); color: var(--gt); transition: filter 0.15s, opacity 0.15s, box-shadow 0.15s; }
+.fchip-ic svg { width: 16px; height: 16px; }
 .fchip.grp:not(.on) { color: var(--muted); }
 .fchip.grp:not(.on) .fchip-ic { filter: grayscale(1); opacity: 0.45; }
 .fchip.grp:hover .fchip-ic { filter: none; opacity: 1; }
-.fchip.grp.on { border-color: var(--g); background: color-mix(in srgb, var(--g) 14%, var(--surface)); color: var(--text); }
+/* Выбранная — цветная и в тонком кольце своего цвета */
+.fchip.grp.on { background: none; }
+.fchip.grp.on .fchip-ic { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--g); }
+/* Пустая таблица: шапка столбцов на месте, вместо строк — надпись */
+.t-empty { padding: 48px 16px; text-align: center; color: var(--muted); }
 /* Круглый крестик в конце строки: снять выбор строки или включить все её чипсы */
 .fchip-all {
   display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0;
