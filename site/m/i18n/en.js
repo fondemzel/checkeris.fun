@@ -862,7 +862,7 @@ export const en = {
     welcomeNote: 'Scan the QR code on any till receipt — items come from the tax service and sort themselves into categories. A purchase without a receipt can be entered manually.',
     scan: 'Scan a receipt',
     scanNote: 'The QR code at the bottom of the receipt — items come from the tax service',
-    manual: 'Enter manually',
+    manual: 'Spending manually',
     manualNote: 'Spending without a receipt: a market, a transfer, cash',
     income: 'Income manually',
     incomeNote: 'Cash salary, a repaid debt, a side job',
