@@ -248,6 +248,26 @@ function budgetsOf(db, everyone) {
   return out.sort((a, c) => (c.created_at > a.created_at ? 1 : -1));
 }
 
+/**
+ * Откуда данные бюджета — числа, которые иначе не сходятся: чеки — из сканов, из магазинов
+ * (Озон, WB — свои чеки, source_id «ozon:…») и из выгрузки ФНС (остальное); операции банка —
+ * по видам (bank_ops.kind). Ручные записи — отдельно, это не чеки.
+ */
+function originOf(db, budgetId) {
+  const one = (sql) => db.prepare(sql).get(budgetId);
+  const total = one("SELECT COUNT(*) AS n FROM receipts WHERE budget_id = ? AND fiscal_drive <> 'manual'").n;
+  const scans = one('SELECT COUNT(DISTINCT receipt_id) AS n FROM scan_jobs WHERE budget_id = ? AND receipt_id IS NOT NULL').n;
+  const shops = one("SELECT COUNT(*) AS n FROM receipts WHERE budget_id = ? AND fiscal_drive <> 'manual' AND (source_id LIKE 'ozon:%' OR source_id LIKE 'wb:%')").n;
+  const span = one("SELECT MIN(purchased_date) AS a, MAX(purchased_date) AS z FROM receipts WHERE budget_id = ? AND fiscal_drive <> 'manual'");
+  const kinds = Object.fromEntries(db.prepare("SELECT COALESCE(kind, 'expense') AS k, COUNT(*) AS n FROM bank_ops WHERE budget_id = ? GROUP BY k").all(budgetId).map((r) => [r.k, r.n]));
+  const ops = Object.values(kinds).reduce((s, n) => s + n, 0);
+  const opsSpan = one('SELECT substr(MIN(at), 1, 10) AS a, substr(MAX(at), 1, 10) AS z FROM bank_ops WHERE budget_id = ?');
+  return {
+    receipts: { total, export: Math.max(0, total - scans - shops), scans, shops, from: span.a, to: span.z },
+    ops: { total: ops, expense: kinds.expense ?? 0, covered: kinds.covered ?? 0, transfer: kinds.transfer ?? 0, income: kinds.income ?? 0, excluded: kinds.excluded ?? 0, from: opsSpan.a, to: opsSpan.z },
+  };
+}
+
 /** Бюджет подробно: участники, дни, когда кто-то заходил (90), внесено по месяцам, обращения. */
 export function budgetDetail(db, id) {
   const everyone = people(db);
@@ -265,7 +285,7 @@ export function budgetDetail(db, id) {
   ).all(base.id, dayAgo(365).slice(0, 7));
   const members = everyone.filter((u) => u.budget_id === base.id);
   const support = members.flatMap((m) => supportOfUser(db, m.id)).sort((a, c) => (c.updated_at > a.updated_at ? 1 : -1));
-  return { ...base, people: members, days, months, support, plans: Object.values(PLANS).map((p) => ({ id: p.id, title: p.title })), labels: LABELS };
+  return { ...base, people: members, days, months, support, origin: originOf(db, base.id), plans: Object.values(PLANS).map((p) => ({ id: p.id, title: p.title })), labels: LABELS };
 }
 
 /** Сменить тариф бюджета из админки. */

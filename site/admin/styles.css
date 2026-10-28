@@ -521,3 +521,8 @@ a.who:hover { color: var(--accent); }
 .users-t .t tbody td { height: 76px; vertical-align: middle; }
 .users-t .one { max-width: 240px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .users-t .t td .sub { white-space: nowrap; }
+
+/* Страница бюджета: «Откуда данные» — две колонки разбивки */
+.origin { padding: 12px 16px 4px; gap: 32px; }
+.origin-head { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 6px; }
+.origin .pp-row { grid-template-columns: 1fr auto; }

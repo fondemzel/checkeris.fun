@@ -468,7 +468,17 @@ function pageBudget(b) {
     { key: 'error', label: 'Ошибка', cell: (l) => (l.error ? `<span class="err-t">${esc(l.error)}</span>` : dash) },
   ], b.banks, { empty: 'Не подключали' }));
   const support = b.support.length ? box('Обращения в поддержку', supportRows(b.support)) : '';
-  return head + stats + `<div class="grid2">${planBox}${members}</div><div style="height:16px"></div>` + activity + support + months + links;
+  // Откуда данные: чеки по источникам и операции банка по видам — иначе числа не сходятся
+  const o = b.origin;
+  const part = (k, n) => `<div class="pp-row"><span class="muted">${esc(k)}</span><span class="num">${int.format(n)}</span></div>`;
+  const span = (x) => (x.from ? `${dateRu(x.from)} — ${dateRu(x.to)}` : 'нет');
+  const origin = box('Откуда данные', `<div class="grid2 origin">
+      <div><div class="origin-head"><b>Чеки · ${int.format(o.receipts.total)}</b><span class="muted">${esc(span(o.receipts))}</span></div>
+        ${part('из выгрузки ФНС', o.receipts.export)}${part('из сканов', o.receipts.scans)}${part('из магазинов (Озон, WB)', o.receipts.shops)}</div>
+      <div><div class="origin-head"><b>Операции банка · ${int.format(o.ops.total)}</b><span class="muted">${esc(span(o.ops))}</span></div>
+        ${part('расходы без чека', o.ops.expense)}${part('покрыты чеком', o.ops.covered)}${part('переводы', o.ops.transfer)}${part('доходы', o.ops.income)}${o.ops.excluded ? part('исключены', o.ops.excluded) : ''}</div>
+    </div>`, { foot: `Записи «вручную» (${int.format(b.manual)}) — траты без чека, в «Чеки» не входят. «Покрыты чеком» — те же покупки, что среди чеков, только со стороны банка.` });
+  return head + stats + `<div class="grid2">${planBox}${members}</div><div style="height:16px"></div>` + origin + activity + support + months + links;
 }
 
 function pagePerson(u) {
