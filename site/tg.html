@@ -6,7 +6,17 @@
   <meta name="robots" content="noindex" />
   <meta name="theme-color" content="#131a26" />
   <title>Вход в Чекер</title>
+  <script>
+    // Тема — как в приложении (checker.theme); не выбрана в этом браузере — как в системе
+    try {
+      const t = localStorage.getItem('checker.theme');
+      if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.dataset.theme = 'dark';
+    } catch (e) { /* без хранилища — по системе не смотрим */ }
+  </script>
   <style>
+    /* Цвета — те же, что в приложении (site/m/styles.css) */
+    :root { --bg: #f4f5f7; --surface: #fff; --text: #1f2328; --muted: #6b7280; --line: #f0f1f3; }
+    :root[data-theme="dark"] { --bg: #0e1218; --surface: #182029; --text: #e6e9ee; --muted: #8d97a5; --line: #232b35; color-scheme: dark; }
     html, body { height: 100%; margin: 0; }
     body {
       display: flex;
@@ -14,23 +24,23 @@
       justify-content: center;
       padding: 20px;
       box-sizing: border-box;
-      background: #f4f5f7;
-      color: #1f2328;
+      background: var(--bg);
+      color: var(--text);
       font: 15px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     }
-    main { width: 100%; max-width: 340px; padding: 26px 22px; border-radius: 14px; background: #fff; text-align: center; }
+    main { width: 100%; max-width: 340px; padding: 26px 22px; border-radius: 14px; background: var(--surface); text-align: center; }
     .ic { width: 52px; height: 52px; margin: 0 auto 12px; color: #2aabee; }
     .ic.ok { color: #1baf7a; }
     .ic.bad { color: #b42318; }
     h1 { margin: 0 0 6px; font-size: 19px; }
-    p { margin: 0; color: #6b7280; }
+    p { margin: 0; color: var(--muted); }
 
     /* Что дальше: три строки о том, ради чего всё затевалось */
     .can { margin: 16px 0 0; padding: 0; list-style: none; text-align: left; }
-    .can li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid #f0f1f3; font-size: 14px; }
+    .can li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
     .can li:first-child { border-top: none; }
     .can b { display: block; font-weight: 600; }
-    .can span { color: #6b7280; }
+    .can span { color: var(--muted); }
     .can[hidden] { display: none; }
     a.btn {
       display: block;

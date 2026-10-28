@@ -148,23 +148,28 @@ button, input, select { font: inherit; color: inherit; }
 .login-title { font-size: 20px; font-weight: 600; }
 .login-box input { height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 16px; }
 
-/* Telegram — главный вход: фирменный цвет, чтобы узнавался без чтения */
-.btn.tg {
+/* Способы входа — ряд круглых значков; Telegram — фирменным цветом, чтобы узнавался без чтения */
+.login-ways { display: flex; justify-content: center; gap: 16px; padding: 4px 0; }
+.login-ways[hidden], .way[hidden] { display: none; }
+.way {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  height: 50px;
+  width: 56px;
+  height: 56px;
+  padding: 0;
   border: none;
-  background: #2aabee;
-  color: var(--white);
-  font-size: 16px;
-  font-weight: 600;
-  text-decoration: none;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--text);
+  cursor: pointer;
+  transition: filter 0.15s;
 }
-.btn.tg.disabled { opacity: 0.55; pointer-events: none; }
-.btn.tg[hidden] { display: none; }
-.tg-ic svg { display: block; width: 20px; height: 20px; }
+.way:hover { filter: brightness(0.94); }
+.way svg { display: block; width: 24px; height: 24px; }
+.way.tg { background: #2aabee; color: var(--white); }
+.way.tg svg { width: 26px; height: 26px; margin-left: -2px; }
+.way.tg.disabled { opacity: 0.55; pointer-events: none; }
 
 .tg-wait { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; background: var(--accent-faint); }
 .tg-wait[hidden] { display: none; }
@@ -172,10 +177,6 @@ button, input, select { font: inherit; color: inherit; }
 .tg-wait-title { margin: 0; font-weight: 600; }
 .tg-wait .btn { display: flex; align-items: center; justify-content: center; color: var(--text); text-decoration: none; }
 
-/* Вход по почте — вторая кнопка, спокойная: главный вход — Telegram */
-.btn.mail-btn { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text); }
-.btn.mail-btn[hidden] { display: none; }
-.mail-ic svg { width: 20px; height: 20px; display: block; }
 .mail-box { display: flex; flex-direction: column; gap: 10px; }
 .mail-box[hidden], .mail-box form[hidden], .mail-box .note[hidden] { display: none; }
 .mail-box form { display: flex; flex-direction: column; gap: 10px; }
@@ -200,8 +201,9 @@ button, input, select { font: inherit; color: inherit; }
 .consent { font-size: 12px; }
 .consent a { color: inherit; }
 
-.login-pass summary { cursor: pointer; font-size: 14px; color: var(--muted); }
-.login-pass form { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.login-pass { display: flex; flex-direction: column; gap: 10px; }
+.login-pass[hidden] { display: none; }
+.login-pass form { display: flex; flex-direction: column; gap: 10px; }
 
 .btn {
   height: 44px;

@@ -153,6 +153,7 @@ const UI = {
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   user: svg('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
   phone: svg('<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>'),
+  key: svg('<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>'),
   lock: svg('<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
   upload: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>'),
   eyeOff: svg(
@@ -9973,8 +9974,8 @@ function autoPickRow(type, id) {
 // ── запуск ───────────────────────────────────────────────
 
 // ── вход ─────────────────────────────────────────────────
-// Главный способ — Telegram, пароль спрятан ниже: он остался для тех, кто завёл
-// аккаунт до Telegram.
+// Способы — ряд значков: Telegram, почта (когда настроена), пароль — для тех, кто завёл
+// аккаунт до Telegram. Выбрали почту или пароль — ряд прячется, «Отмена» возвращает его.
 
 let stopLinkRefresh = null;
 let stopWaiting = null;
@@ -9986,6 +9987,8 @@ function showLogin(note) {
     note ?? (pendingInvite.get() ? T.login.invite : T.login.tagline);
   $('login-note').classList.toggle('error', Boolean(note));
   $('tg-ic').innerHTML = TG_ICON;
+  $('pass-ic').innerHTML = UI.key;
+  $('login-pass-block').hidden = true;
   setWaiting(null);
 
   stopLinkRefresh?.();
@@ -9994,7 +9997,7 @@ function showLogin(note) {
     onError: (err) => {
       // Вход через Telegram не настроен или сервер недоступен — остаётся пароль
       $('tg-login').hidden = err.status === 503;
-      if (err.status === 503) $('login-pass-block').open = true;
+      if (err.status === 503) openPass();
     },
   });
 
@@ -10022,7 +10025,7 @@ async function mailLoginReady() {
   } catch {
     mailCfg = null;
   }
-  $('mail-login').hidden = !mailCfg?.ready || !$('tg-wait').hidden || !$('mail-box').hidden;
+  $('mail-login').hidden = !mailCfg?.ready;
 }
 
 /** Капча Яндекса — скрипт грузим, только когда человек выбрал вход по почте. */
@@ -10120,8 +10123,7 @@ async function sendMailCode(email) {
 }
 
 $('mail-login').addEventListener('click', async () => {
-  $('mail-login').hidden = true;
-  $('tg-login').hidden = true;
+  $('login-ways').hidden = true;
   $('mail-box').hidden = false;
   mailError(null);
   mailStep('email');
@@ -10143,9 +10145,8 @@ $('mail-change').addEventListener('click', () => {
 $('mail-cancel').addEventListener('click', () => {
   clearInterval(resendTimer);
   $('mail-box').hidden = true;
-  $('tg-login').hidden = false;
+  $('login-ways').hidden = false;
   mailError(null);
-  mailLoginReady();
 });
 
 $('mail-code-form').addEventListener('submit', async (e) => {
@@ -10175,7 +10176,7 @@ $('mail-code').addEventListener('input', () => {
 
 function setWaiting(login) {
   $('tg-wait').hidden = !login;
-  $('tg-login').hidden = Boolean(login);
+  $('login-ways').hidden = Boolean(login);
   if (login) {
     $('tg-again').href = login.url;
     $('tg-web').href = login.web ?? login.url;
@@ -10246,6 +10247,18 @@ async function start() {
   // Бейдж ошибок виден с любого экрана — застрявший скан не должен теряться
   api('/api/scan?state=failed').then((d) => updateBadge(d.counts.failed)).catch(() => {});
 }
+
+/** Вход по паролю: поля вместо ряда значков. */
+function openPass() {
+  $('login-ways').hidden = true;
+  $('login-pass-block').hidden = false;
+  $('login-name').focus();
+}
+$('pass-open').addEventListener('click', openPass);
+$('pass-cancel').addEventListener('click', () => {
+  $('login-pass-block').hidden = true;
+  $('login-ways').hidden = false;
+});
 
 $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
