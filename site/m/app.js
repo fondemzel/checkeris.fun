@@ -863,7 +863,8 @@ function readUrl() {
 // opening — только на первые мгновения: лист, который перерисовывает своё содержимое
 // (выбор категории: группы → категории), не должен выезжать заново на каждом шаге
 const POPUP_OUT = 180; // мс: столько уезжает закрытый лист
-const OPEN_POPUPS = '.sheet:not(.closing), .picker:not(.closing)';
+// Лист в правой панели (.in-panel) — не попап: «назад» и закрытие окон его не трогают
+const OPEN_POPUPS = '.sheet:not(.closing):not(.in-panel), .picker:not(.closing)';
 
 function removePopup(el) {
   if (el.classList.contains('closing')) return;
@@ -2571,10 +2572,7 @@ async function openPanel(kind, id) {
   markPicked();
   updateDock();
   if (!same) {
-    panel.innerHTML = `
-      <div class="panel-top"><b class="panel-title" id="panel-title"></b>
-        <button class="icon-btn soft" type="button" data-panel-close aria-label="${esc(T.common.close)}" title="${esc(T.common.close)}">${UI.close}</button></div>
-      <div class="panel-body" id="panel-body">${loading()}</div>`;
+    panel.innerHTML = `${panelTop('')}<div class="panel-body" id="panel-body">${loading()}</div>`;
     panel.scrollTop = 0;
   }
   try {
@@ -2587,6 +2585,36 @@ async function openPanel(kind, id) {
   } catch (err) {
     if (seq === panelSeq) $('panel-body').innerHTML = failed(err);
   }
+}
+
+/** Шапка панели: заголовок и крестик. */
+const panelTop = (title) => `
+  <div class="panel-top"><b class="panel-title" id="panel-title">${esc(title)}</b>
+    <button class="icon-btn soft" type="button" data-panel-close aria-label="${esc(T.common.close)}" title="${esc(T.common.close)}">${UI.close}</button></div>`;
+
+/**
+ * Лист (чек, застрявший скан): на широком экране — в правой панели, иначе — снизу, как на
+ * телефоне. Возвращает «закрыть». Свои кнопки лист обрабатывает сам — ленте их нажатия не
+ * отдаём, иначе её обработчики сработали бы второй раз (тот же выбор категории)
+ */
+function hostSheet(sheet, card, title) {
+  if (!panelMq.matches) {
+    openPopup(sheet);
+    return () => closePopup(sheet);
+  }
+  panelSeq += 1; // карточка, что ещё грузится, сюда уже не ляжет
+  panelCard = card;
+  const panel = $('panel');
+  panel.hidden = false;
+  document.body.classList.add('has-panel');
+  panel.innerHTML = `${panelTop(title)}<div class="panel-body" id="panel-body"></div>`;
+  sheet.classList.add('in-panel');
+  sheet.addEventListener('click', (e) => e.stopPropagation());
+  $('panel-body').append(sheet);
+  panel.scrollTop = 0;
+  markPicked();
+  updateDock();
+  return () => panelCard === card && closePanel();
 }
 
 function closePanel() {
@@ -2605,7 +2633,7 @@ function closePanel() {
 function markPicked() {
   for (const el of document.querySelectorAll('#screen .picked')) el.classList.remove('picked');
   if (!panelCard) return;
-  const attr = panelCard.kind === 'op' ? 'data-op' : 'data-item';
+  const attr = { op: 'data-op', item: 'data-item', receipt: 'data-receipt', job: 'data-job' }[panelCard.kind];
   document.querySelector(`#screen [${attr}="${CSS.escape(panelCard.id)}"]`)?.classList.add('picked');
 }
 
@@ -2619,7 +2647,7 @@ function cardGone() {
 
 /** В карточке поменяли категорию: лента рядом — перерисовать, карточку в панели — освежить. */
 function cardChanged() {
-  if (panelCard) openPanel(panelCard.kind, panelCard.id);
+  if (panelCard?.kind === 'item' || panelCard?.kind === 'op') openPanel(panelCard.kind, panelCard.id);
   return render();
 }
 
@@ -3072,8 +3100,7 @@ async function openScanSheet(jobId) {
 
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
-  openPopup(sheet);
-  const close = () => closePopup(sheet);
+  const close = hostSheet(sheet, { kind: 'job', id: String(jobId) }, T.receipts.scan.aria);
 
   const explain = () => {
     if (job.status !== 'failed') return jobNote(job);
@@ -3128,7 +3155,8 @@ async function openScanSheet(jobId) {
         left: job.total_sum,
       };
       sheet.remove();
-      return go({ screen: 'manual' }, true); // попап уступает место форме, в истории — одна запись
+      // Попап уступает место форме, в истории — одна запись; из панели — обычный переход
+      return go({ screen: 'manual' }, !panelCard);
     }
 
     if (e.target.closest('[data-delete]')) {
@@ -4008,7 +4036,8 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
       <div class="sheet-list">${receipt.items.map((i) => sheetRow(i, { open: true })).join('')}</div>
     </div>`;
 
-  openPopup(sheet);
+  // Сводка могла измениться — у листа снизу её перерисует обработчик «назад»
+  const close = hostSheet(sheet, { kind: 'receipt', id: String(receipt.id) }, T.item.receipt);
 
   // Открыли из карточки товара — эту позицию подсвечиваем и показываем
   const row = current && sheet.querySelector(`.sheet-row[data-row="${current}"]`);
@@ -4016,8 +4045,6 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
     row.classList.add('current');
     row.scrollIntoView({ block: 'nearest' });
   }
-
-  const close = () => closePopup(sheet); // сводка могла измениться — перерисует обработчик «назад»
 
   sheet.addEventListener('click', async (e) => {
     if (e.target.closest('[data-close]') || e.target === sheet) return close();
@@ -4029,6 +4056,7 @@ async function openReceiptSheet(receiptId, { current = null } = {}) {
     // Строка — в карточку товара. Чек запоминаем в текущей записи истории:
     // «назад» из карточки откроет его снова
     const open = e.target.closest('[data-open-item]');
+    if (open && panelCard) return openCard('item', open.dataset.openItem); // в панели — на её месте
     if (open) {
       history.replaceState({ ...state, sheet: receipt.id, popup: true }, '', location.href);
       sheet.remove();
@@ -5407,7 +5435,7 @@ const onPlot = (e) => Boolean(e.target.closest?.('.ana-plot'));
 
 addEventListener('touchstart', (e) => {
   const allowed = window.scrollY <= 0 && e.touches.length === 1 && !pulling && !$('app').hidden
-    && PULLABLE.includes(state.screen) && !document.querySelector('.sheet, .picker') && !e.target.closest('.drop-menu') && !onIsland(e) && !onPlot(e);
+    && PULLABLE.includes(state.screen) && !document.querySelector(OPEN_POPUPS) && !e.target.closest('.drop-menu') && !onIsland(e) && !onPlot(e);
   pullFrom = allowed ? e.touches[0].clientY : null;
   pullBy = 0;
 }, { passive: true });
@@ -5458,7 +5486,7 @@ let stretchEdge = null; // 'top' | 'bottom' — за какой край тян�
 addEventListener('touchstart', (e) => {
   stretchFrom = null;
   stretchEdge = null;
-  if (e.touches.length !== 1 || $('app').hidden || document.querySelector('.sheet, .picker')) return;
+  if (e.touches.length !== 1 || $('app').hidden || document.querySelector(OPEN_POPUPS)) return;
   // Выпадающее меню листается само: «резина» перехватила бы жест, и меню бы не сдвинулось
   if (e.target.closest('.drop-menu') || onIsland(e) || onPlot(e)) return;
   stretchFrom = e.touches[0].clientY;
@@ -5633,7 +5661,7 @@ addEventListener('touchstart', (e) => {
   swipeFrom = null;
   swipeLock = '';
   const t = e.touches[0];
-  if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector('.sheet, .picker') || islandOwn(e)) return;
+  if (e.touches.length !== 1 || swipeBusy || $('app').hidden || document.querySelector(OPEN_POPUPS) || islandOwn(e)) return;
   // В настройках свайпать вбок больше нечего — там свайп по любому месту листает вкладки
   swipeTab = Boolean(e.target.closest(PINNED)) || (TAB_OF[state.screen] === 'settings' && !stretchEl.querySelector('[data-shift]'));
   if (!swipeTab && !stretchEl.querySelector('[data-shift]') && state.screen !== 'stats') return;
