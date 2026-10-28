@@ -23,7 +23,7 @@ import {
   hideItem,
 } from './queries.mjs';
 import { flatten, loadCategories, syncCategories } from './categories.mjs';
-import { isDemo, enableDemo, disableDemo } from './demo.mjs';
+import { isDemo, isGuest, guestLogin, enableDemo, disableDemo } from './demo.mjs';
 import { getAnalytics, getLimits, getLimitsFull, getLimitState, limitPeriod, limitsOn, setLimitPeriod, setLimits, setLimitsOn } from './limits.mjs';
 import { notifyManual } from './members.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
@@ -331,6 +331,16 @@ async function handleApi(req, res, url) {
     return handleToken(req, res);
   }
 
+  // Демо без аккаунта: гостевой токен (demo.mjs)
+  if (pathname === '/api/auth/demo' && req.method === 'POST') {
+    if (tooOften(`demo:${clientIp(req)}`, 20, 10 * 60_000)) return sendJson(res, 429, { error: 'слишком много попыток, подождите' });
+    let body = {};
+    try {
+      body = await readJson(req);
+    } catch { /* без подписи устройства */ }
+    return sendJson(res, 200, guestLogin(db, typeof body?.label === 'string' ? body.label.slice(0, 40) : null));
+  }
+
   // ── вход по почте (emailauth.mjs) ──
   // Есть ли вход по почте и ключ капчи для страницы
   if (pathname === '/api/auth/email' && req.method === 'GET') return sendJson(res, 200, emailConfig());
@@ -443,6 +453,11 @@ async function handleApi(req, res, url) {
   if (!user) return sendJson(res, 401, { error: 'нужен вход' });
   // Бюджет мог пропасть (удалён вместе с последним участником) — выдаём свой
   if (!user.budget_id) user.budget_id = ensureBudget(db, user.id);
+
+  // Гость (demo.mjs) только смотрит: имя, почта, поддержка у него общие на всех — можно лишь выйти
+  if (isGuest(user) && req.method !== 'GET' && req.method !== 'HEAD' && pathname !== '/api/logout') {
+    return sendJson(res, 409, { error: 'Это демо-режим — в нём ничего не меняется. Чтобы вести свой учёт, войдите', demo: true, guest: true });
+  }
 
   // Тестовая база (demo.mjs): включить, выключить, спросить
   if (pathname === '/api/demo') {
@@ -955,7 +970,7 @@ async function handleApi(req, res, url) {
     loadEnv();
     const maps = process.env.YANDEX_JAVASCRIPT_API_KEY ? { key: process.env.YANDEX_JAVASCRIPT_API_KEY } : null;
     return sendJson(res, 200, {
-      version: VERSION, ...getMeta(db, user.budget_id), maps, demo: isDemo(db, user.budget_id), limits: limitsOn(db, user.budget_id) ? getLimits(db, user.budget_id) : {}, // выключены — как не заданы
+      version: VERSION, ...getMeta(db, user.budget_id), maps, demo: isDemo(db, user.budget_id), guest: isGuest(user), limits: limitsOn(db, user.budget_id) ? getLimits(db, user.budget_id) : {}, // выключены — как не заданы
       limits_on: limitsOn(db, user.budget_id),
       limit_period: limitPeriod(db, user.budget_id),
     });

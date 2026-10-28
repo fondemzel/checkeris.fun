@@ -18,6 +18,10 @@
 // ОСАГО, переобувка, ТО. «Дети» и «Путешествия» — свои
 // группы этой семьи: в общем справочнике их нет, заодно видно, как выглядят созданные человеком.
 //
+// Гость — посмотреть демо прямо с экрана входа, без аккаунта: один служебный пользователь
+// (GUEST_LOGIN) на всех, всегда в тестовой базе. Каждому устройству — свой токен на неделю.
+// Гостю нельзя ничего, кроме выхода: имя, почта, поддержка у него общие на всех (server.mjs).
+//
 // Операции банка тестовой базы держатся за подключения служебного пользователя
 // (DEMO_LOGIN): так они показываются как операции Т-Банка и Сбера, но не смешиваются с
 // настоящими подключениями людей. Статус этих подключений — demo: фоновая проверка
@@ -26,9 +30,12 @@ import { provisionTaxonomy, createGroup, createCategory } from './taxonomy.mjs';
 import { provisionIncome, createIncomeCat } from './incomecats.mjs';
 import { normalizeName } from './import.mjs';
 import { setLimits, suggestLimits } from './limits.mjs';
+import { issueToken } from './auth.mjs';
 
 const DEMO_LOGIN = '__demo__';
 const DEMO_NAME = 'Демо-режим';
+const GUEST_LOGIN = '__guest__';
+const GUEST_DAYS = 7;
 // Версия генератора: поправили его — поднять, и база пересоздастся при следующем включении
 const DEMO_VERSION = 6;
 const now = () => new Date().toISOString();
@@ -79,6 +86,24 @@ export function enableDemo(db, user) {
   const id = demoBudget(db);
   db.prepare('UPDATE users SET demo_return = budget_id, budget_id = ? WHERE id = ?').run(id, user.id);
   return { demo: true };
+}
+
+/** Гость: пользователь без аккаунта, смотрит тестовую базу. */
+export const isGuest = (user) => user?.login === GUEST_LOGIN;
+
+/** Вход гостем: токен служебного пользователя, его бюджет — тестовая база. */
+export function guestLogin(db, label = null) {
+  const budget = demoBudget(db);
+  let id = db.prepare('SELECT id FROM users WHERE login = ?').get(GUEST_LOGIN)?.id;
+  if (!id) {
+    // Пароль — не хеш scrypt: войти паролем под гостем нельзя
+    id = Number(db.prepare("INSERT INTO users (login, password, created_at, name, budget_id) VALUES (?, '!', ?, ?, ?)")
+      .run(GUEST_LOGIN, now(), DEMO_NAME, budget).lastInsertRowid);
+  }
+  db.prepare('UPDATE users SET budget_id = ?, demo_return = NULL WHERE id = ?').run(budget, id);
+  // Просроченные токены гостей чистятся при выдаче: заходить снова ими никто не будет
+  db.prepare('DELETE FROM tokens WHERE user_id = ? AND expires_at <= ?').run(id, now());
+  return issueToken(db, id, label, GUEST_DAYS);
 }
 
 /** Выключить: вернуться в свой бюджет. Сама тестовая база остаётся для следующих. */

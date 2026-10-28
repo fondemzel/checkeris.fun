@@ -170,6 +170,8 @@ button, input, select { font: inherit; color: inherit; }
 .way.tg { background: #2aabee; color: var(--white); }
 .way.tg svg { width: 26px; height: 26px; margin-left: -2px; }
 .way.tg.disabled { opacity: 0.55; pointer-events: none; }
+.btn.demo-login { color: var(--text); cursor: pointer; }
+.btn.demo-login[hidden] { display: none; }
 
 .tg-wait { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; background: var(--accent-faint); }
 .tg-wait[hidden] { display: none; }

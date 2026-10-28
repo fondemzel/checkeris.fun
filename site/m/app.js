@@ -9110,6 +9110,7 @@ $('stage').addEventListener('change', (e) => {
  * перезагрузка: справочники, сохранённые экраны и счётчики — уже другого бюджета.
  */
 async function switchDemo(on, box = null) {
+  if (!on && meta?.guest) return leaveGuest(box);
   if (box) box.disabled = true;
   try {
     await post('/api/demo', { on });
@@ -9124,8 +9125,21 @@ async function switchDemo(on, box = null) {
 }
 
 demoPill.addEventListener('click', async () => {
+  if (meta?.guest) return leaveGuest();
   if (await ask(T.settings.help.offConfirm, { ok: T.settings.help.off })) switchDemo(false);
+  return null;
 });
+
+/** Гость выходит из демо — это выход из аккаунта: своих данных у него нет. */
+async function leaveGuest(box = null) {
+  if (!(await ask(T.settings.help.guestOff, { ok: T.common.leave }))) {
+    if (box) box.checked = true;
+    return null;
+  }
+  await api('/api/logout', { method: 'POST' }).catch(() => {});
+  token.clear();
+  return location.reload();
+}
 
 /** Переключатель справа в строке: включает и выключает счёт. */
 const toggle = (attrs, on, label) => `
@@ -10124,6 +10138,7 @@ async function sendMailCode(email) {
 
 $('mail-login').addEventListener('click', async () => {
   $('login-ways').hidden = true;
+  $('demo-login').hidden = true;
   $('mail-box').hidden = false;
   mailError(null);
   mailStep('email');
@@ -10146,6 +10161,7 @@ $('mail-cancel').addEventListener('click', () => {
   clearInterval(resendTimer);
   $('mail-box').hidden = true;
   $('login-ways').hidden = false;
+  $('demo-login').hidden = false;
   mailError(null);
 });
 
@@ -10177,6 +10193,7 @@ $('mail-code').addEventListener('input', () => {
 function setWaiting(login) {
   $('tg-wait').hidden = !login;
   $('login-ways').hidden = Boolean(login);
+  $('demo-login').hidden = Boolean(login);
   if (login) {
     $('tg-again').href = login.url;
     $('tg-web').href = login.web ?? login.url;
@@ -10251,6 +10268,7 @@ async function start() {
 /** Вход по паролю: поля вместо ряда значков. */
 function openPass() {
   $('login-ways').hidden = true;
+  $('demo-login').hidden = true;
   $('login-pass-block').hidden = false;
   $('login-name').focus();
 }
@@ -10258,6 +10276,22 @@ $('pass-open').addEventListener('click', openPass);
 $('pass-cancel').addEventListener('click', () => {
   $('login-pass-block').hidden = true;
   $('login-ways').hidden = false;
+  $('demo-login').hidden = false;
+});
+
+// Демо без аккаунта: гостевой токен, дальше — как после входа
+$('demo-login').addEventListener('click', async () => {
+  $('demo-login').disabled = true;
+  try {
+    const data = await mailPost('/api/auth/demo', { label: T.login.device });
+    token.set(data.token);
+    stopWaiting?.();
+    await start();
+  } catch (err) {
+    showLogin(err.message);
+  } finally {
+    $('demo-login').disabled = false;
+  }
 });
 
 $('login-form').addEventListener('submit', async (e) => {

@@ -33,10 +33,10 @@ export function findUser(db, login) {
 }
 
 /** Выдача токена. Возвращается один раз — в базе остаётся только его хеш. */
-export function issueToken(db, userId, label = null) {
+export function issueToken(db, userId, label = null, days = TOKEN_DAYS) {
   const token = randomBytes(32).toString('base64url');
   const now = new Date();
-  const expires = new Date(now.getTime() + TOKEN_DAYS * 86400_000);
+  const expires = new Date(now.getTime() + days * 86400_000);
   db.prepare(
     'INSERT INTO tokens (hash, user_id, label, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',
   ).run(tokenHash(token), userId, label, now.toISOString(), expires.toISOString());
