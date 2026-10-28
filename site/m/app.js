@@ -1433,9 +1433,12 @@ function playList() {
     anaBarsKey = key;
     document.querySelectorAll('#screen .ana-clip').forEach((b) => (b.style.clipPath = 'inset(0 100% 0 0)'));
   }
-  [...document.querySelectorAll(stats ? '#screen .ana-row' : '#screen .list > *')].forEach((el, i) => {
-    if (i >= 25) return stats && anaBarsKey === key && anaFillRow(el, 0);
-    el.style.setProperty('--i', i);
+  const rows = [...document.querySelectorAll(stats ? '#screen .ana-row' : '#screen .list > *')];
+  const shown = new Set(visibleRowsOf(rows));
+  let k = 0;
+  rows.forEach((el) => {
+    if (!shown.has(el)) return stats && anaBarsKey === key && anaFillRow(el, 0); // за краем — сразу
+    el.style.setProperty('--i', cascadeStep(k++, shown.size));
     el.classList.add('row-in');
     el.addEventListener('animationend', () => {
       el.classList.remove('row-in');
@@ -5870,7 +5873,23 @@ $('stage').addEventListener('keydown', (e) => {
 // Лёгкая: только прозрачность и сдвиг (без высот — телефону это ничего не стоит). Анимируем
 // первые строки раздела: остальные всё равно за краем экрана
 
-const ANIMATED = 20;
+/**
+ * Анимируются строки, которые сейчас видны, — а не первые N: на телефоне это те же два десятка,
+ * а на высоком экране — вся видимая часть ленты (раньше проявлялась половина, остальное уже
+ * стояло). За краем экрана — без анимации: их всё равно не видно
+ */
+const CASCADE = 20; // за сколько «шагов» проходит каскад, сколько бы строк ни было видно
+function visibleRowsOf(rows) {
+  const out = [];
+  for (const el of rows) {
+    const r = el.getBoundingClientRect();
+    if (r.top >= innerHeight) break; // дальше — только ниже края
+    if (r.bottom > 0) out.push(el);
+  }
+  return out;
+}
+/** Задержка строки в каскаде: много строк — шаг мельче, весь каскад — за то же время. */
+const cascadeStep = (i, n) => (i * Math.min(1, CASCADE / Math.max(1, n))).toFixed(2);
 
 /** Строки раздела: всё после заголовка до следующего заголовка (или пока stop не скажет). */
 function sectionRows(head, stop = (el) => el.matches('.day, [data-section]')) {
@@ -5880,8 +5899,9 @@ function sectionRows(head, stop = (el) => el.matches('.day, [data-section]')) {
 }
 
 function animateIn(rows) {
-  rows.slice(0, ANIMATED).forEach((el, i) => {
-    el.style.setProperty('--i', i);
+  const shown = visibleRowsOf(rows);
+  shown.forEach((el, i) => {
+    el.style.setProperty('--i', cascadeStep(i, shown.length));
     el.classList.add('sec-in');
     el.addEventListener('animationend', () => el.classList.remove('sec-in'), { once: true });
   });
@@ -5952,7 +5972,7 @@ async function slideWrap(wrap, open) {
 
 /** Погасить строки перед сворачиванием; ждём, только если есть что гасить. */
 async function animateOut(rows) {
-  const shown = rows.slice(0, ANIMATED);
+  const shown = visibleRowsOf(rows);
   if (!shown.length || !motion('sections')) return;
   shown.forEach((el) => el.classList.add('sec-out'));
   // Не ждём полного угасания: место начинает сжиматься, пока строки ещё догасают
