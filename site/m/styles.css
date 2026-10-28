@@ -2540,6 +2540,11 @@ body.no-tabs .tabs { display: none; }
   .rail-theme-ic { display: flex; }
   .rail-theme-ic svg { width: 19px; height: 19px; }
   .rail-theme-name { display: none; }
+  /* Наведение мышью — подсветка, как у кнопок внизу меню; выбранный раздел — своим цветом */
+  @media (hover: hover) {
+    .tab:not(.on):hover { background: var(--press); color: var(--text); }
+    .tab-add:hover { filter: brightness(1.08); }
+  }
   .rail-ic { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
   .rail-ic:hover { background: var(--press); color: var(--text); }
   .rail-ic svg { width: 19px; height: 19px; }
