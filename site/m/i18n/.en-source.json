@@ -884,7 +884,7 @@
  "add.welcomeNote": "Отсканируйте QR-код с любого кассового чека — позиции придут из ФНС и сами разложатся по категориям. Покупку без чека можно вбить вручную.",
  "add.scan": "Сканировать чек",
  "add.scanNote": "QR-код внизу чека — позиции придут из ФНС",
- "add.manual": "Вбить вручную",
+ "add.manual": "Расход вручную",
  "add.manualNote": "Трата без чека: рынок, перевод, наличные",
  "add.income": "Доход вручную",
  "add.incomeNote": "Зарплата наличными, возврат долга, подработка",
@@ -1078,6 +1078,8 @@
  "shell.tabs.stats": "Сводка",
  "shell.add": "Добавить трату",
  "shell.addShort": "Добавить",
+ "shell.themeDark": "Тёмная тема",
+ "shell.themeLight": "Светлая тема",
  "languages.ru": "Русский",
  "languages.en": "English",
  "panelIdle": "Выберите строку — здесь появятся подробности",
@@ -1158,6 +1160,9 @@
  "stats.catsHint": "Нажмите на категорию, чтобы открыть её траты",
  "stats.same": "как {when}",
  "stats.overLimit": "сверх лимита {sum} ₽",
+ "stats.tipLimit": "лимит {limit}, потрачено {pct}%",
+ "stats.tipOver": "Перерасход: {sum} сверх лимита {limit}",
+ "stats.tipWas": "{name}, весь период: {sum}",
  "inline.aria": "{label} — нажмите, чтобы изменить",
  "inline.nameSaved": "Имя сохранено"
 }
