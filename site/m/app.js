@@ -10943,6 +10943,11 @@ function anaRow(r, names) {
   const pw = (r.was / topv) * 100;
   const over = r.limit > 0 && r.now > r.limit;
   const lw = over ? (r.limit / topv) * 100 : w;
+  // Подсказки при наведении мыши: на полосе этого периода — сумма и доля лимита, на перерасходе —
+  // сколько сверх лимита, на полосе прошлого — сколько ушло за весь прошлый период
+  const nowTip = `${cap(names.cur)}: ${money(r.now)}${r.limit > 0 ? ` · ${f(T.stats.tipLimit, { limit: money(r.limit), pct: Math.round((r.now / r.limit) * 100) })}` : ''}`;
+  const overTip = over ? f(T.stats.tipOver, { sum: money(r.now - r.limit), limit: money(r.limit) }) : '';
+  const wasTip = f(T.stats.tipWas, { name: cap(names.key), sum: money(r.was) });
   // Заливки — прямоугольные: скругляет их маска — весь блок из двух полос (.ana-bars) обрезан
   // одним прямоугольником со скруглёнными углами. Каждая полоса проявляется одной шторкой
   // (.ana-clip): расход и перерасход — одним движением
@@ -10955,11 +10960,6 @@ function anaRow(r, names) {
     ? `<span class="ana-same">${esc(f(T.stats.same, { when: names.in }))}</span>`
     : `<span class="${d > 0 ? 'ana-more' : 'ana-less'}">${d > 0 ? '+' : '−'}${anaShort(Math.abs(d))} ₽ ${esc(names.to)}</span>`;
   const overNote = over ? ` · <span class="ana-more">${esc(f(T.stats.overLimit, { sum: anaShort(r.now - r.limit) }))}</span>` : '';
-  // Подсказки при наведении мыши: на полосе этого периода — сумма и доля лимита, на перерасходе —
-  // сколько сверх лимита, на полосе прошлого — сколько ушло за весь прошлый период
-  const nowTip = `${cap(names.cur)}: ${money(r.now)}${r.limit > 0 ? ` · ${f(T.stats.tipLimit, { limit: money(r.limit), pct: Math.round((r.now / r.limit) * 100) })}` : ''}`;
-  const overTip = over ? f(T.stats.tipOver, { sum: money(r.now - r.limit), limit: money(r.limit) }) : '';
-  const wasTip = f(T.stats.tipWas, { name: cap(names.key), sum: money(r.was) });
   return `<button class="ana-row" type="button" data-ana="${esc(r.key)}">
     <span class="ic" style="background:${r.color};color:${readableText(r.color)}">${groupIcon(r.icon)}</span>
     <span class="ana-mid">
