@@ -787,6 +787,7 @@ function go(patch, replace = false) {
   Object.assign(state, patch);
   rememberPeriod();
   closePanel(); // другой экран или другой период — подробности прежней строки больше ни к чему
+  if (patch.screen || patch.from || patch.to) bulk.clear(); // другой экран или период — отмеченное снимаем
   const params = new URLSearchParams({ screen: state.screen, from: state.from, to: state.to });
   if (state.group) params.set('group', state.group);
   if (state.category) params.set('category', state.category);
@@ -1933,6 +1934,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       positions: r.positions,
       outside: r.sum === 0 && r.excluded_count, // возврат или зачёт аванса: деньги уже считали
       action: `data-item="${r.first_id}"`,
+      check: `item:${r.first_id}`, // выбор строки для правки многих разом (таблица)
       // Несколько покупок одного товара — можно развернуть. В ленте по дням группа живёт
       // внутри дня: у пива за сегодня и пива за вчера разные ключи и разное раскрытие
       group: r.positions > 1 ? (r.day ? `${r.day}|${r.name_norm}` : r.name_norm) : null,
@@ -1949,6 +1951,8 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       positions: 1,
       outside: false,
       action: `data-op="${op.id}"`,
+      check: `op:${op.id}`,
+      bank: op.bank,
       orig: foreign(op),
       group: null,
       noted: Boolean(op.has_note),
@@ -2075,6 +2079,7 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
   // В разделе «Без категории» первой строкой — авторазметка: товары по названию, траты банка
   // по продавцу
   const autoBtn = `<button class="feed-auto" type="button" data-autolabel>${UI.sparkle} ${esc(T.spend.autolabel)}</button>`;
+  const table = tableOn();
   const rows = spendings
     .map((r) => {
       const key = sectionOf(r);
@@ -2098,8 +2103,10 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
       const toggle = r.group
         ? ` <span class="expand${isOpen ? ' open' : ''}" data-expand="${esc(r.group)}" role="button" aria-label="${esc(isOpen ? T.feed.collapse : T.spend.showPurchases)}">${UI.chevron}</span>`
         : '';
+      const catName = `<span class="op-cat" style="background:${dot}"></span>${esc(r.self ? T.spend.self : found?.category.name ?? T.feed.noCategory)}`;
+      if (table) return head + tableRow(r, { color, found, catName, toggle, isOpen, part: parts.get(r.group) });
       const note = [
-        `<span class="op-cat" style="background:${dot}"></span>${esc(r.self ? T.spend.self : found?.category.name ?? T.feed.noCategory)}`,
+        catName,
         // При сортировке по дате день уже в заголовке раздела, в остальных — нужен в строке
         state.sort === 'date' ? '' : dateRu(r.at.slice(0, 10)),
         r.positions > 1 ? `${int.format(r.positions)} ${pl(r.positions, T.common.purchases)}` : '',
@@ -2141,8 +2148,153 @@ async function spendingFeed(itemRows, bankRows, selfRows = [], scanRows = []) {
     })
     .join('');
 
-  return `<div class="list">${rows}</div>`;
+  return table ? `<div class="list tbl">${tableHead()}${rows}</div>` : `<div class="list">${rows}</div>`;
 }
+
+// ── лента таблицей (широкий экран) ───────────────────────
+// От 900 px лента «Расхода» — таблицей: та же лента (разделы, группы, порции, правая панель),
+// только строка — ячейками в ряд, а над ней — шапка столбцов, нажатие сортирует. Слева у строки —
+// флажок: отмеченным строкам разом ставится категория (полоса внизу)
+const tableMq = matchMedia('(min-width: 900px)');
+const tableOn = () => tableMq.matches && state.mode !== 'ring';
+tableMq.addEventListener?.('change', () => {
+  bulk.clear();
+  screenCache.clear();
+  render();
+});
+
+/** Шапка столбцов: дата, название, категория, сумма сортируют; повторное нажатие — обратный порядок. */
+function tableHead() {
+  const C = T.table.cols;
+  const col = (key, label, cls) => {
+    const on = state.sort === key;
+    const arrow = on ? `<span class="sort-dir${state.dir === 'asc' ? ' asc' : ''}">${UI.arrow}</span>` : '';
+    return `<button class="t-col ${cls}${on ? ' on' : ''}" type="button" data-sort="${key}">${esc(label)}${arrow}</button>`;
+  };
+  return `<div class="thead">
+    <span class="t-check" data-check-all role="checkbox" aria-checked="false" aria-label="${esc(T.table.selectAll)}"></span>
+    ${col('date', C.date, 't-date')}${col('name', C.name, 't-name')}${col('category', C.category, 't-cat')}
+    <span class="t-col t-src">${esc(C.source)}</span>${col('sum', C.sum, 't-sum')}
+  </div>`;
+}
+
+/** Строка таблицы — те же данные, что у строки ленты, ячейками. */
+function tableRow(r, { color, found, catName, toggle, isOpen, part }) {
+  const when = `${dateRu(r.at.slice(0, 10)).slice(0, 5)} ${timeRu(r.at)}`;
+  const src = r.source === 'bank' ? bankById(r.bank)?.name ?? T.sources.bank
+    : r.source === 'failed' ? T.feed.short.failed : T.sources[r.source];
+  const many = r.positions > 1 ? ` <small class="t-many">· ${int.format(r.positions)} ${esc(pl(r.positions, T.common.purchases))}</small>` : '';
+  const row = `
+    <button class="row item trow" type="button" ${r.action}${r.group ? ` data-long="${esc(r.group)}"` : ''}>
+      ${r.check ? `<span class="t-check" data-check="${r.check}" role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>` : '<span class="t-check none"></span>'}
+      <span class="t-date">${esc(when)}</span>
+      <span class="t-name"><span class="ic" style="background:${color};color:${readableText(color)}">${r.self ? UI.swap : groupIcon(catIcon(found))}</span><span class="row-title">${esc(r.name)}</span>${many}${toggle}${r.noted ? `<span class="noted" title="${esc(T.feed.hasNote)}"></span>` : ''}</span>
+      <span class="t-cat">${catName}</span>
+      <span class="t-src">${SOURCES[r.source].icon}<span>${esc(src)}${r.orig ? ` · ${esc(r.orig)}` : ''}</span></span>
+      <span class="row-sum t-sum${r.outside || r.self ? ' muted' : ''}">${r.outside && !r.scan ? esc(T.spend.outside) : money(r.sum)}</span>
+    </button>`;
+  if (!isOpen) return row;
+  // Покупки раскрытой группы — строками той же таблицы, со сдвигом названия
+  const subs = part.rows.map((it) => `
+    <button class="row item trow sub-row" type="button" data-item="${it.id}">
+      <span class="t-check" data-check="item:${it.id}" role="checkbox" aria-checked="false" aria-label="${esc(T.table.select)}"></span>
+      <span class="t-date">${esc(`${dateRu(it.purchased_date ?? it.purchased_at.slice(0, 10)).slice(0, 5)} ${timeRu(it.purchased_at)}`)}</span>
+      <span class="t-name"><span class="row-title">${esc(it.seller ?? '')}${it.quantity !== 1 ? ` · ${it.quantity}${it.unit ? ` ${esc(it.unit)}` : ''}` : ''}</span>${it.has_note ? `<span class="noted" title="${esc(T.feed.hasNote)}"></span>` : ''}</span>
+      <span class="t-cat"></span><span class="t-src"></span>
+      <span class="row-sum t-sum">${money(it.sum)}</span>
+    </button>`).join('');
+  const more = part.totals.count > part.rows.length
+    ? `<div class="sub-more note">${f(T.feed.lastOf, { n: int.format(part.rows.length), all: int.format(part.totals.count) })}</div>`
+    : '';
+  return `${row}<div class="sub-wrap">${subs}${more}</div>`;
+}
+
+// ── правка многих строк разом ────────────────────────────
+const bulk = new Set(); // отмеченные строки: 'item:ID' | 'op:ID'
+
+/** Флажки — по отмеченному (после перерисовки ленты), внизу — полоса с действием. */
+function markChecked() {
+  const boxes = [...document.querySelectorAll('#screen [data-check]')];
+  for (const el of boxes) {
+    const on = bulk.has(el.dataset.check);
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-checked', String(on));
+    el.closest('.trow')?.classList.toggle('checked', on);
+  }
+  const all = document.querySelector('#screen [data-check-all]');
+  if (all) {
+    const n = boxes.filter((el) => bulk.has(el.dataset.check)).length;
+    all.classList.toggle('on', n > 0 && n === boxes.length);
+    all.classList.toggle('some', n > 0 && n < boxes.length);
+  }
+  let bar = $('bulk-bar');
+  if (!bulk.size) return bar?.remove();
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'bulk-bar';
+    bar.className = 'bulk-bar';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `<b>${esc(f(T.table.picked, { n: int.format(bulk.size) }))}</b>
+    <button class="btn primary" type="button" data-bulk-cat>${esc(T.table.setCategory)}</button>
+    <button class="icon-btn soft" type="button" data-bulk-clear aria-label="${esc(T.table.clear)}" title="${esc(T.table.clear)}">${UI.close}</button>`;
+}
+
+function toggleCheck(key) {
+  if (bulk.has(key)) bulk.delete(key);
+  else bulk.add(key);
+  markChecked();
+}
+
+/** Флажок в шапке: всё видимое отмечено — снять, иначе отметить всё видимое. */
+function toggleCheckAll() {
+  const keys = [...document.querySelectorAll('#screen [data-check]')].map((el) => el.dataset.check);
+  const all = keys.length && keys.every((k) => bulk.has(k));
+  for (const k of keys) {
+    if (all) bulk.delete(k);
+    else bulk.add(k);
+  }
+  markChecked();
+}
+
+/** Категория всем отмеченным: как выбор в карточке — только эти строки, переключателем — и все такие же. */
+function bulkCategory() {
+  const n = bulk.size;
+  const same = [{ key: 'all', title: T.table.allSame, note: T.table.allSameNote }];
+  openCategoryPicker(null, (_, slug, { only }) => bulkSave(slug, only), undefined, same,
+    { note: f(T.table.forBulk, { n: int.format(n), w: pl(n, T.table.rows) }) });
+}
+
+async function bulkSave(slug, only) {
+  const picks = [...bulk];
+  toast(T.table.saving);
+  let failedN = 0;
+  for (const p of picks) {
+    const [kind, id] = p.split(':');
+    const url = kind === 'op' ? `/api/bank/ops/${id}/category` : `/api/items/${id}/category`;
+    try {
+      await post(url, { category: slug, only });
+    } catch {
+      failedN += 1;
+    }
+  }
+  bulk.clear();
+  screenCache.clear();
+  meta = await api('/api/meta').catch(() => meta);
+  const ok = picks.length - failedN;
+  toast(failedN ? f(T.table.partFailed, { n: int.format(failedN), all: int.format(picks.length) })
+    : f(T.table.done, { n: int.format(ok), w: pl(ok, T.table.doneRows) }));
+  if (panelCard?.kind === 'item' || panelCard?.kind === 'op') openPanel(panelCard.kind, panelCard.id);
+  render();
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-bulk-cat]')) return bulkCategory();
+  if (e.target.closest('[data-bulk-clear]')) {
+    bulk.clear();
+    markChecked();
+  }
+});
 
 async function screenCategory() {
   const params = new URLSearchParams({
@@ -2631,6 +2783,7 @@ function closePanel() {
 
 /** Строка открытой в панели покупки — выделена, чтобы было видно, что справа. */
 function markPicked() {
+  markChecked(); // отмеченные строки таблицы — тоже после каждой перерисовки
   for (const el of document.querySelectorAll('#screen .picked')) el.classList.remove('picked');
   if (!panelCard) return;
   const attr = { op: 'data-op', item: 'data-item', receipt: 'data-receipt', job: 'data-job' }[panelCard.kind];
@@ -4962,7 +5115,7 @@ const screenCache = new Map();
  * «кольцо / список», раскрытая группа и «Остальное» кольца, поиск. Без них, вернувшись,
  * человек видел прошлый режим, а потом его подменял нужный.
  */
-const viewKey = () => [location.search, state.mode, state.ringGroup, state.ringRest, state.q, state.same].join('|');
+const viewKey = () => [location.search, state.mode, state.ringGroup, state.ringRest, state.q, state.same, tableOn()].join('|');
 
 function remember(key, html) {
   screenCache.delete(key); // свежий — в конец очереди
@@ -5905,6 +6058,11 @@ addEventListener('touchcancel', () => {
 // ── события ──────────────────────────────────────────────
 
 async function onScreenClick(e) {
+  // Флажок строки таблицы — отметить, а не открыть
+  const check = e.target.closest('[data-check]');
+  if (check) return toggleCheck(check.dataset.check);
+  if (e.target.closest('[data-check-all]')) return toggleCheckAll();
+
   // Строка позиции с выбором категории — экран «Добавлено»
   const pick = e.target.closest('[data-pick]');
   if (pick) return openCategoryPicker(Number(pick.dataset.pick), saveCategory, undefined, sameFor('item', Number(pick.dataset.pick)));

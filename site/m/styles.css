@@ -2535,6 +2535,59 @@ body.no-tabs .tabs { display: none; }
   .tab-add-ic { font-size: 24px; line-height: 1; }
 }
 
+/* ── лента таблицей (от 900 px, tableRow) ──────────────────
+   Строки — сеткой с общими столбцами: флажок, дата, название, категория, источник, сумма.
+   Узкая лента (рядом открыта панель) — без столбца источника: его видно по значку у суммы нет,
+   но он есть в карточке */
+.list.tbl { container-type: inline-size; }
+.thead, .trow {
+  display: grid; align-items: center; column-gap: 12px;
+  grid-template-columns: 22px 92px minmax(0, 1fr) minmax(0, 200px) minmax(0, 150px) 112px;
+}
+.thead { padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); font-size: 12px; color: var(--muted); }
+.t-col { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.t-col.on { color: var(--text); font-weight: 600; }
+.t-col .sort-dir { position: static; width: auto; height: auto; border: none; background: none; color: inherit; }
+.t-col .sort-dir svg { width: 12px; height: 12px; }
+.t-col .sort-dir.asc { transform: rotate(180deg); }
+span.t-col { cursor: default; }
+.t-sum { justify-self: end; text-align: right; }
+.thead .t-sum { justify-content: flex-end; }
+.trow { min-height: 48px; padding: 6px 14px; }
+.trow .ic { width: 28px; height: 28px; border-radius: 8px; }
+.trow .ic svg { width: 16px; height: 16px; }
+.t-date { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.t-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.t-name .row-title { min-width: 0; }
+.t-many { flex: none; color: var(--muted); font-size: 12px; }
+.t-cat, .t-src { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--muted); }
+.t-src svg { flex: none; width: 14px; height: 14px; }
+.t-src span { overflow: hidden; text-overflow: ellipsis; }
+.trow.sub-row { min-height: 40px; }
+.trow.sub-row .t-name { padding-left: 38px; }
+.trow.sub-row .row-title { font-size: 13px; color: var(--muted); }
+@container (max-width: 720px) {
+  .thead, .trow { grid-template-columns: 22px 84px minmax(0, 1fr) minmax(0, 160px) 104px; }
+  .t-src { display: none; }
+}
+/* Флажок строки: квадрат, отмечен — заливка акцента с галочкой; в шапке «часть отмечена» — черта */
+.t-check { width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 5px; background: var(--surface); cursor: pointer; position: relative; }
+.t-check.none { visibility: hidden; }
+.t-check.on, .t-check.some { border-color: var(--accent); background: var(--accent); }
+.t-check.on::after { content: ''; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.t-check.some::after { content: ''; position: absolute; left: 3px; right: 3px; top: 7px; height: 2px; background: #fff; }
+.trow.checked { background: var(--accent-faint); }
+.trow:hover { background: var(--press); }
+.trow.checked:hover, .trow.picked { background: var(--accent-soft); }
+/* Полоса отмеченных: внизу посередине ленты — сколько выбрано, категория, снять */
+.bulk-bar {
+  position: fixed; z-index: 15; bottom: 20px; left: calc(50% + var(--rail, 0px) / 2 - var(--panel-on, 0px) / 2); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 18px;
+  border-radius: 26px; background: var(--surface); box-shadow: 0 10px 32px rgba(15, 20, 28, 0.22), 0 0 0 1px rgba(15, 20, 28, 0.06);
+}
+.bulk-bar .btn { height: 40px; padding: 0 16px; }
+body.has-panel { --panel-on: var(--panel-w, 0px); }
+
 /* ── правая панель подробностей (от 1100 px, openPanel) ──────
    Покупка или операция открывается справа во всю высоту, лента ужимается и остаётся рядом;
    её строка выделена. Шапка панели — такая же тёмная полоса, как шапка экрана */

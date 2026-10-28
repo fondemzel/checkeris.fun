@@ -1089,6 +1089,28 @@ export const en = {
     add: 'Add spending',
     addShort: 'Add',
   },
+  table: {
+    cols: {
+      date: 'Date',
+      name: 'Name',
+      category: 'Category',
+      source: 'Source',
+      sum: 'Amount',
+    },
+    selectAll: 'Select all rows',
+    select: 'Select row',
+    picked: 'Selected: {n}',
+    setCategory: 'Set category',
+    clear: 'Clear selection',
+    forBulk: 'Category for {n} {w}',
+    rows: ['row', 'rows'],
+    allSame: 'And for all the same',
+    allSameNote: 'with the same name or seller · and for new ones',
+    saving: 'Saving…',
+    done: 'Category set: {n} {w}',
+    doneRows: ['row', 'rows'],
+    partFailed: 'Not saved: {n} of {all}',
+  },
   stats: {
     steps: {
       d: 'by day',
