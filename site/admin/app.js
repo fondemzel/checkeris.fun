@@ -301,7 +301,7 @@ const PEOPLE_COLS = [
     key: 'name',
     label: 'Человек',
     value: (u) => u.name.toLowerCase(),
-    cell: (u) => `<div class="who">${esc(u.name)}</div>${u.tg_username ? `<div class="sub">@${esc(u.tg_username)}</div>` : ''}${u.email ? `<div class="sub">${esc(u.email)}</div>` : ''}`,
+    cell: (u) => `<div class="who">${esc(u.name)}${u.admin ? ' <span class="label accent">администратор</span>' : ''}</div>${u.tg_username ? `<div class="sub">@${esc(u.tg_username)}</div>` : ''}${u.email ? `<div class="sub">${esc(u.email)}</div>` : ''}`,
   },
   {
     key: 'created_at',
@@ -341,7 +341,7 @@ function pagePeople(d) {
       <select class="input" id="f-activity">${Object.entries(ACTIVITY).map(([k, v]) => `<option value="${k}"${k === state.filter.activity ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>
     </div>`;
   return subhead('Люди')
-    + `<p class="lead">Новые сверху; щелчок по заголовку — сортировка, по строке — подробно о человеке. Только служебное: сколько внесено и подключено, без сумм и покупок. Демо-пользователи и администратор не считаются.</p>`
+    + `<p class="lead">Новые сверху; щелчок по заголовку — сортировка, по строке — подробно о человеке. Только служебное: сколько внесено и подключено, без сумм и покупок. Демо-пользователи не показываются; администратор — в списке, но не в подсчётах.</p>`
     + filters
     + box(`${int.format(list.length)} ${plural(list.length, 'человек', 'человека', 'человек')}${list.length !== d.people.length ? ` <span class="muted">из ${d.people.length}</span>` : ''}`,
       table('people', PEOPLE_COLS, list, { href: (u) => `#/people/${u.id}`, empty: 'Никого не нашлось' }));

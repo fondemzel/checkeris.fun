@@ -17,8 +17,10 @@ const DAY = 86_400_000;
 const dayAgo = (n) => new Date(Date.now() - n * DAY).toISOString().slice(0, 10);
 const FNS_LIMIT = Number(process.env.FNS_DAILY_LIMIT ?? 1000); // как в fns.mjs
 
-// Люди беты: без служебных и без администратора
+// Люди беты: без служебных и без администратора — для подсчётов
 const REAL = "u.login NOT LIKE '\\_\\_%' ESCAPE '\\' AND u.role <> 'admin'";
+// В списке людей администратор есть (с пометкой) — в подсчётах его нет
+const LISTED = "u.login NOT LIKE '\\_\\_%' ESCAPE '\\'";
 // Свой бюджет человека: в демо-режиме текущий — общий тестовый, а свой ждёт в demo_return
 const OWN = 'COALESCE(u.demo_return, u.budget_id)';
 
@@ -34,7 +36,7 @@ function people(db) {
   const since30 = dayAgo(29);
   const rows = db
     .prepare(
-      `SELECT u.id, u.name, u.tg_username, u.email, u.created_at, u.source, u.telegram_id IS NOT NULL AS telegram,
+      `SELECT u.id, u.name, u.role, u.tg_username, u.email, u.created_at, u.source, u.telegram_id IS NOT NULL AS telegram,
               u.demo_return IS NOT NULL AS in_demo,
               (SELECT MAX(t.used_at) FROM tokens t WHERE t.user_id = u.id) AS last_seen,
               (SELECT COUNT(*) FROM usage_daily a WHERE a.user_id = u.id AND a.kind = 'active' AND a.day >= :since30) AS active_days,
@@ -50,7 +52,7 @@ function people(db) {
               (SELECT COUNT(*) FROM bank_ops o JOIN bank_links l ON l.id = o.link_id WHERE l.user_id = u.id) AS bank_ops,
               (SELECT COUNT(*) FROM budget_limits b WHERE b.budget_id = ${OWN}) AS limits
          FROM users u
-        WHERE ${REAL}
+        WHERE ${LISTED}
         ORDER BY u.created_at DESC`,
     )
     .all({ since30 });
@@ -59,7 +61,7 @@ function people(db) {
     .prepare(
       `SELECT l.user_id, l.bank, l.status, l.login_at, l.synced_at, l.last_error, l.fails
          FROM bank_links l JOIN users u ON u.id = l.user_id
-        WHERE ${REAL}
+        WHERE ${LISTED}
         ORDER BY l.login_at`,
     )
     .all();
@@ -78,6 +80,7 @@ function people(db) {
   return rows.map((u) => ({
     id: u.id,
     name: u.name ?? `#${u.id}`,
+    admin: u.role === 'admin', // в списке — с пометкой, в подсчёты не входит
     tg_username: u.tg_username,
     email: u.email,
     telegram: Boolean(u.telegram),
@@ -170,7 +173,8 @@ function load(db) {
 
 /** Всё для страницы админки одним ответом: людей пока немного. */
 export function overview(db) {
-  const list = people(db);
+  const everyone = people(db);
+  const list = everyone.filter((u) => !u.admin); // подсчёты — без администратора
   const since = (n) => dayAgo(n - 1);
   const seen = (n) => list.filter((u) => u.last_seen && u.last_seen.slice(0, 10) >= since(n)).length;
   const joined = (n) => list.filter((u) => u.created_at.slice(0, 10) >= since(n)).length;
@@ -190,7 +194,7 @@ export function overview(db) {
     support_waiting: supportWaiting(db),
     sources: sourceList(db, list),
     load: load(db),
-    people: list,
+    people: everyone,
   };
 }
 
