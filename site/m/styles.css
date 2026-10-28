@@ -2287,6 +2287,7 @@ button.sheet-row:disabled { cursor: default; opacity: 1; }
 .ana-more { color: #d0453a; }
 .ana-same { color: var(--muted); }
 .ana-plot { position: relative; height: 113px; margin: 14px 6px 0; touch-action: none; } /* палец ведёт подсказку, страница не едет */
+@media (min-width: 600px) { .ana-plot { height: 226px; } } /* широкий экран: колонка шире — график вдвое выше */
 .ana-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ana-svg path, .ana-svg line { vector-effect: non-scaling-stroke; fill: none; }
 .ana-line { stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
