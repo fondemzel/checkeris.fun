@@ -2533,7 +2533,13 @@ body.no-tabs .tabs { display: none; }
   .rail-text { display: none; min-width: 0; flex-direction: column; }
   .rail-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
   .rail-budget { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
-  .rail-btns { display: flex; flex-direction: column; gap: 4px; }
+  .rail-row { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  /* Тема — над профилем: в узкой полосе значком, в широком меню — строкой, как разделы */
+  .rail-theme { display: flex; align-items: center; justify-content: center; gap: 12px; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 18px; background: none; color: var(--muted); font: inherit; cursor: pointer; }
+  .rail-theme:hover { background: var(--press); color: var(--text); }
+  .rail-theme-ic { display: flex; }
+  .rail-theme-ic svg { width: 19px; height: 19px; }
+  .rail-theme-name { display: none; }
   .rail-ic { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
   .rail-ic:hover { background: var(--press); color: var(--text); }
   .rail-ic svg { width: 19px; height: 19px; }
@@ -2567,10 +2573,13 @@ body.no-tabs .tabs { display: none; }
   }
   .tab-add .tab-name { display: inline; }
   .tab-add-ic svg { width: 20px; height: 20px; }
-  /* Широкое меню: профиль (имя и бюджет рядом со значком) — своей строкой, под ним тема и выход */
-  .rail-me { align-items: stretch; gap: 2px; }
+  /* Широкое меню: тема — строкой, как разделы; под ней профиль (имя и бюджет) и выход в одну строку */
+  .rail-me { align-items: stretch; gap: 4px; }
+  .rail-theme { justify-content: flex-start; width: auto; height: 44px; padding: 0 14px; border-radius: 22px; font-size: 15px; }
+  .rail-theme-name { display: inline; }
+  .rail-row { flex-direction: row; gap: 2px; }
+  .rail-who { flex: 1; }
   .rail-text { display: flex; }
-  .rail-btns { flex-direction: row; gap: 4px; padding-left: 4px; }
 }
 
 /* ── лента таблицей (от 900 px, tableRow) ──────────────────

@@ -5464,11 +5464,11 @@ function buildNav() {
   nav.querySelector('.rail-me')?.remove();
   const me = document.createElement('div');
   me.className = 'rail-me pc-only';
-  me.innerHTML = `<button class="rail-who" type="button" data-rail-profile>
-      <span class="rail-ava">${UI.user}</span><span class="rail-text"><b class="rail-name"></b><span class="rail-budget"></span></span>
-    </button>
-    <div class="rail-btns">
-      <button class="rail-ic" type="button" data-rail-theme></button>
+  me.innerHTML = `<button class="rail-theme" type="button" data-rail-theme><span class="rail-theme-ic"></span><span class="rail-theme-name"></span></button>
+    <div class="rail-row">
+      <button class="rail-who" type="button" data-rail-profile>
+        <span class="rail-ava">${UI.user}</span><span class="rail-text"><b class="rail-name"></b><span class="rail-budget"></span></span>
+      </button>
       <button class="rail-ic" type="button" data-rail-logout title="${esc(T.settings.profile.logout)}" aria-label="${esc(T.settings.profile.logout)}">${UI.logout}</button>
     </div>`;
   me.addEventListener('click', (e) => {
@@ -5488,8 +5488,9 @@ function railTheme() {
   const btn = document.querySelector('[data-rail-theme]');
   if (!btn) return;
   const dark = theme() === 'dark';
-  btn.innerHTML = dark ? UI.sun : UI.moon;
+  btn.querySelector('.rail-theme-ic').innerHTML = dark ? UI.sun : UI.moon;
   btn.title = dark ? T.shell.themeLight : T.shell.themeDark;
+  btn.querySelector('.rail-theme-name').textContent = btn.title;
   btn.setAttribute('aria-label', btn.title);
 }
 
