@@ -2559,7 +2559,7 @@ span.t-col { cursor: default; }
 .trow .ic svg { width: 16px; height: 16px; }
 .t-date { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .t-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.t-name .row-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow .t-name .row-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-many { flex: none; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .t-cat, .t-src { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--muted); }
 .t-src svg { flex: none; width: 14px; height: 14px; }
