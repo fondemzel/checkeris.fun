@@ -53,23 +53,68 @@ async function captchaOk(token, ip) {
   }
 }
 
-// Письмо — на языке приложения. Коротко: код крупно, что делать, если это не вы
+// Письмо — на языке приложения. Короткое: что это за код, сам код крупно в рамке, срок,
+// «если это не вы». Текстовая часть — для клиентов без HTML; HTML — в стиле приложения.
 const LETTER = {
   ru: {
     subject: (code) => `${code} — код для входа в Чекер`,
     link: (code) => `${code} — код, чтобы добавить почту в Чекер`,
-    body: (code, link) => `${link ? 'Код, чтобы добавить эту почту к аккаунту Чекера' : 'Код для входа в Чекер'}: ${code}\n\nОн действует 10 минут. Если вы его не запрашивали — просто ничего не делайте.\n\n— Чекер, checkeris.fun`,
+    lead: (link) => (link ? 'Код, чтобы добавить эту почту к аккаунту Чекера' : 'Код для входа в Чекер'),
+    note: 'Он действует 10 минут. Если вы его не запрашивали — просто ничего не делайте.',
+    sign: '— Чекер, checkeris.fun',
   },
   en: {
     subject: (code) => `${code} is your Checker sign-in code`,
     link: (code) => `${code} is your code to add this email to Checker`,
-    body: (code, link) => `${link ? 'Code to add this email to your Checker account' : 'Your Checker sign-in code'}: ${code}\n\nIt is valid for 10 minutes. If you didn’t ask for it, just ignore this email.\n\n— Checker, checkeris.fun`,
+    lead: (link) => (link ? 'Code to add this email to your Checker account' : 'Your Checker sign-in code'),
+    note: 'It is valid for 10 minutes. If you didn’t ask for it, just ignore this email.',
+    sign: '— Checker, checkeris.fun',
   },
 };
-const html = (text, code) =>
-  `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:15px;line-height:1.5;color:#1f2328">`
-  + text.split('\n\n').map((p) => `<p>${p.replace(code, `<b style="font-size:24px;letter-spacing:4px">${code}</b>`)}</p>`).join('')
-  + '</div>';
+
+// Письмо без HTML (почтовые клиенты без разметки): то же содержание простым текстом
+const plain = (L, code, link) => `${L.lead(link)}: ${code}\n\n${L.note}\n\n${L.sign}`;
+
+// Акцент приложения (site/m/styles.css --accent) и его оттенки, вписанные готовым цветом:
+// в письме нельзя сослаться на переменные CSS, поэтому значения — явные
+const ACCENT = '#2a69b8';
+const TEXT = '#1a1e23';
+const MUTED = '#565e6b';
+const CARD = '#fcfcfd';
+const CODE_BG = '#eef3fa'; // ≈ accent-soft на белом: светлая подложка под кодом
+
+/**
+ * Письмо в стиле приложения: шапка «Чекер», код крупно в рамке (его удобно выделить и
+ * скопировать — моноширинный, с заметным интервалом), пояснение и подпись. Вёрстка на
+ * таблицах с инлайновыми стилями: Gmail и другие режут внешний CSS и часто flex.
+ */
+const htmlMail = (L, code, link) => `<!doctype html>
+<html lang="${L === LETTER.en ? 'en' : 'ru'}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#e9ecf0">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e9ecf0">
+  <tr><td align="center" style="padding:32px 16px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:420px;background:${CARD};border:1px solid #cfd4db;border-radius:16px;overflow:hidden;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
+      <tr><td style="padding:24px 28px 8px">
+        <div style="font-size:17px;font-weight:700;color:${TEXT};letter-spacing:.2px">Чекер</div>
+      </td></tr>
+      <tr><td style="padding:4px 28px 0;font-size:15px;line-height:1.5;color:${TEXT}">
+        ${L.lead(link)}:
+      </td></tr>
+      <tr><td align="center" style="padding:18px 28px 8px">
+        <div style="display:inline-block;padding:14px 22px;background:${CODE_BG};border:1px solid ${ACCENT};border-radius:12px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:${TEXT};-webkit-user-select:all;user-select:all">${code}</div>
+      </td></tr>
+      <tr><td style="padding:12px 28px 4px;font-size:13px;line-height:1.5;color:${MUTED}">
+        ${L.note}
+      </td></tr>
+      <tr><td style="padding:16px 28px 24px;border-top:1px solid #e4e7eb">
+        <a href="https://checkeris.fun" style="font-size:13px;color:${ACCENT};text-decoration:none">${L.sign}</a>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+
 
 /**
  * Отправить код. purpose: login — вход (нужна капча), link — привязка к вошедшему (userId).
@@ -104,9 +149,8 @@ export async function sendCode(db, { email, purpose = 'login', userId = null, ca
 
   const L = LETTER[lang] ?? LETTER.ru;
   const link = purpose === 'link';
-  const text = L.body(code, link);
   try {
-    await sendMail({ to: addr, subject: (link ? L.link : L.subject)(code), text, html: html(text, code) });
+    await sendMail({ to: addr, subject: (link ? L.link : L.subject)(code), text: plain(L, code, link), html: htmlMail(L, code, link) });
   } catch (err) {
     console.error('почта:', err.message);
     db.prepare('DELETE FROM email_codes WHERE email = ? AND created_at = ?').run(addr, iso(now)); // не ушло — не считаем
