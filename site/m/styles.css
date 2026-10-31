@@ -183,6 +183,7 @@ button, input, select { font: inherit; color: inherit; }
 .mail-box[hidden], .mail-box [hidden] { display: none; }
 .mail-box form { display: flex; flex-direction: column; gap: 10px; }
 .mail-box #mail-register { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.mail-box #mail-register[hidden] { display: none; }
 .mail-box #mail-register .note { margin: 0; }
 #mail-code { letter-spacing: 6px; font-size: 22px; text-align: center; }
 /* Разрядка — для цифр кода; подсказка в пустом поле — обычным текстом */
