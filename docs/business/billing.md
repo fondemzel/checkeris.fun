@@ -64,6 +64,10 @@ TBANK_ACQUIRING_PASSWORD=
 - [Уведомления и подпись](https://developer.tbank.ru/eacq/intro/developer/notification)
 - [GetState](https://developer.tbank.ru/eacq/api/get-state)
 - [Фискализация](https://developer.tbank.ru/eacq/scenarios/fiscalization)
+- [Тестирование СБП](https://developer.tbank.ru/eacq/intro/errors/test-sbp)
+- [TLS-сертификаты API](https://developer.tbank.ru/eacq/intro/certificates/):
+  в checker-api задан `NODE_EXTRA_CA_CERTS=/opt/checker/api/certs/russian-trusted-root.pem`.
+  Это публичный корень Минцифры, уже применяемый Android-клиентом; проверка TLS включена.
 
 Пополнение 100–10 000 ₽ создаёт заказ до обращения в банк и открывает размещённую
 у банка платёжную форму. Возврат на SuccessURL не зачисляет деньги. Зачисление —
