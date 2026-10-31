@@ -257,6 +257,7 @@ const PAGES = [
   { id: 'users', title: 'Пользователи', icon: 'people', count: (d) => d.budgets.length },
   { id: 'people', title: 'Человек', hidden: true, under: 'users' }, // страница участника — из бюджета
   { id: 'sources', title: 'Каналы прихода', icon: 'link' },
+  { id: 'funnel', title: 'Воронка и удержание', icon: 'gauge' },
   { id: 'support', title: 'Поддержка', icon: 'chat', count: (d) => d.support_waiting || null, bad: true },
   { group: 'Система' },
   { id: 'load', title: 'Нагрузка', icon: 'gauge' },
@@ -661,6 +662,50 @@ async function openPanelThread(id) {
   }
 }
 
+function pageFunnel(d) {
+  const ratio = (n, total) => total ? `${Math.round(n / total * 100)}%` : '—';
+  const labels = { first_scan: 'Попробовали сканировать', first_receipt: 'Добавили чек', first_manual: 'Внесли вручную',
+    first_bank_connected: 'Подключили банк', first_bank_data: 'Получили данные банка' };
+  const methods = { email: 'Почта', telegram: 'Telegram', password: 'Пароль' };
+  const retention = (r, key) => {
+    const v = r[key];
+    return v.eligible ? `${ratio(v.returned, v.eligible)} · ${v.returned} из ${v.eligible}` : 'Недостаточно наблюдений';
+  };
+  return subhead('Воронка и удержание')
+    + '<p class="lead">Чек, ручная запись и данные банка — три способа начать учёт. Демо можно пропустить.</p>'
+    + `<div class="box"><div class="stats">${stat('Зарегистрировались', d.registered)}
+      ${stat('Получили первый результат', d.activated, ratio(d.activated, d.registered))}
+      ${stat('До первого результата', d.activation_time.median_hours == null ? '—' : `${Math.round(d.activation_time.median_hours * 10) / 10} ч`,
+        `Медиана по ${d.activation_time.people}; неизвестно: ${d.activation_time.unknown}`)}</div></div>`
+    + box('Способы регистрации', table('funnel-methods', [
+      { key: 'method', label: 'Способ', cell: (r) => esc(methods[r.method] ?? r.method) },
+      { key: 'people', label: 'Людей', r: true },
+    ], d.methods))
+    + box('Первые действия', table('funnel-steps', [
+      { key: 'kind', label: 'Действие', cell: (r) => esc(labels[r.kind]) },
+      { key: 'people', label: 'Людей', r: true },
+      { key: 'share', label: 'От зарегистрированных', r: true, cell: (r) => ratio(r.people, d.registered) },
+      { key: 'unknown_date', label: 'Дата неизвестна', r: true },
+    ], d.milestones), { foot: 'Действия независимы: один человек может попасть в несколько строк. Попытка скана и подключение без данных ещё не считаются первым результатом.' })
+    + box('Из демо в регистрацию', `<div class="stats">${stat('Браузеров открыли демо', d.demo.visitors)}
+      ${stat('Затем зарегистрировались', d.demo.registered, ratio(d.demo.registered, d.demo.visitors))}</div>`,
+      { foot: `Учёт начат ${esc(dateTimeRu(d.started_at))}. Повторные открытия в одном браузере не прибавляют посетителя. Другой браузер или удалённые cookie разрывают связь.` })
+    + box('Удержание по неделе регистрации', table('funnel-cohorts', [
+      { key: 'week', label: 'Неделя с', cell: (r) => esc(dateRu(r.week)) },
+      { key: 'people', label: 'Новых', r: true },
+      { key: 'activated', label: 'С первым результатом', r: true },
+      { key: 'd7', label: 'D7 · вернулись / наблюдаем', r: true, cell: (r) => retention(r, 'd7') },
+      { key: 'd30', label: 'D30 · вернулись / наблюдаем', r: true, cell: (r) => retention(r, 'd30') },
+    ], d.cohorts, { empty: 'Пока нет регистраций' }),
+    { foot: 'Возврат ровно на 7-й или 30-й календарный день после регистрации, по UTC. В знаменателе только люди, для которых этот день полностью прошёл и есть история наблюдений. Фоновая синхронизация не считается заходом.' })
+    + box('Каналы регистрации', table('funnel-channels', [
+      { key: 'source', label: 'Канал', cell: (r) => esc(channelName(r.source)) },
+      { key: 'registered', label: 'Зарегистрировались', r: true },
+      { key: 'activated', label: 'С первым результатом', r: true },
+      { key: 'share', label: 'Доля', r: true, cell: (r) => ratio(r.activated, r.registered) },
+    ], d.channels), { foot: 'Считаются существующие аккаунты. Администратор и служебные аккаунты исключены. У старых данных дата первого результата может быть неизвестна.' });
+}
+
 function pageSources(d) {
   const rows = d.sources.map((s) => ({ ...s, conv: s.people ? s.used / s.people : null }));
   const cols = [
@@ -776,7 +821,13 @@ async function route() {
   renderNav(known);
   const d = state.data;
   let html;
-  if (known === 'support') {
+  if (known === 'funnel') {
+    try {
+      html = pageFunnel(await api('/api/admin/funnel'));
+    } catch (err) {
+      html = `<div class="flash bad">Не загрузилось: ${esc(err.message)}</div>`;
+    }
+  } else if (known === 'support') {
     try {
       html = arg ? pageThread(await api(`/api/admin/support/${encodeURIComponent(arg)}`)) : pageSupport((await api('/api/admin/support')).threads);
     } catch (err) {

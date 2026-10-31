@@ -15,6 +15,7 @@ import { createBudget } from './budgets.mjs';
 import { sourceSlug } from './telegram.mjs';
 import { loadEnv } from './llm.mjs';
 import { sendMail, mailReady } from './mail.mjs';
+import { linkFunnelRegistration } from './funnel.mjs';
 
 const TTL_MS = 10 * 60_000; // сколько живёт код
 const ATTEMPTS = 5; // попыток ввести код
@@ -196,7 +197,7 @@ function checkCode(db, addr, code, purpose, userId = null) {
 }
 
 /** Вход по коду. Незнакомая почта — новый аккаунт со своим бюджетом. */
-export function loginByCode(db, { email, code, label = null, source = null }) {
+export function loginByCode(db, { email, code, label = null, source = null, visitor = null }) {
   const addr = normalizeEmail(email);
   if (!addr) return { error: 'не похоже на почту', code: 'bad_email', status: 400 };
   const check = checkCode(db, addr, code, 'login');
@@ -211,6 +212,7 @@ export function loginByCode(db, { email, code, label = null, source = null }) {
       `INSERT INTO users (login, password, created_at, email, name, role, source) VALUES (?, '!', ?, ?, ?, 'user', ?)`,
     ).run(`mail:${addr}`, iso(Date.now()), addr, name, sourceSlug(source)).lastInsertRowid);
     createBudget(db, id); // свой бюджет с копией системного справочника
+    linkFunnelRegistration(db, id, visitor);
     user = { id, name, login: `mail:${addr}` };
     created = true;
   }

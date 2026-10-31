@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { provisionTaxonomy } from './taxonomy.mjs';
 import { placeKey } from './geo.mjs';
 import { provisionIncome } from './incomecats.mjs';
+import { initFunnel } from './funnel.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -75,6 +76,7 @@ export function migrate(db) {
   finishMove(db);
   fillPlaceKeys(db); // после переноса: иначе у перенесённых чеков ключей не будет до следующего запуска
   repairScanErrors(db);
+  initFunnel(db);
 }
 
 /** Вход через Telegram, роли и бюджеты. Индекс — здесь: в старой базе колонки появляются только сейчас. */
@@ -92,6 +94,7 @@ function addUserColumns(db) {
   addColumn(db, 'tg_logins', 'bot_chat', 'INTEGER');
   addColumn(db, 'tg_logins', 'bot_msg', 'INTEGER');
   addColumn(db, 'tg_logins', 'source', 'TEXT'); // откуда пришёл человек (admin.mjs)
+  addColumn(db, 'tg_logins', 'funnel_visitor', 'TEXT'); // хеш браузера, начавшего вход из демо
   addColumn(db, 'support_threads', 'user_seen_at', 'TEXT'); // поддержка: когда человек последний раз открыл обращение
   addColumn(db, 'support_messages', 'file', 'TEXT'); // поддержка: картинка из приложения (support.mjs)
   addColumn(db, 'tg_outbox', 'markup', 'TEXT'); // кнопки под сообщением (JSON reply_markup)

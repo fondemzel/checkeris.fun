@@ -894,7 +894,7 @@ function setTitle(main, sub = '') {
   const name = el.querySelector('.bar-main');
   if (name.scrollWidth > name.clientWidth) el.classList.add('tight');
   demoPill.hidden = !meta?.demo;
-  demoPill.textContent = T.settings.help.pill;
+  demoPill.textContent = meta?.guest ? T.settings.help.guestStart : T.settings.help.pill;
   document.querySelector('.bar').classList.toggle('demo', Boolean(meta?.demo));
 }
 
@@ -9164,7 +9164,7 @@ demoPill.addEventListener('click', async () => {
 
 /** Гость выходит из демо — это выход из аккаунта: своих данных у него нет. */
 async function leaveGuest(box = null) {
-  if (!(await ask(T.settings.help.guestOff, { ok: T.common.leave }))) {
+  if (!(await ask(T.settings.help.guestOff, { ok: T.settings.help.guestSignIn }))) {
     if (box) box.checked = true;
     return null;
   }
@@ -10359,7 +10359,7 @@ $('pass-cancel').addEventListener('click', () => {
 $('demo-login').addEventListener('click', async () => {
   $('demo-login').disabled = true;
   try {
-    const data = await mailPost('/api/auth/demo', { label: T.login.device });
+    const data = await mailPost('/api/auth/demo', { label: T.login.device, from: savedFrom() });
     token.set(data.token);
     stopWaiting?.();
     await start();

@@ -24,6 +24,7 @@ import {
 } from './queries.mjs';
 import { flatten, loadCategories, syncCategories } from './categories.mjs';
 import { isDemo, isGuest, guestLogin, enableDemo, disableDemo } from './demo.mjs';
+import { ensureFunnelVisitor, funnelVisitor, recordDemo, funnelOverview } from './funnel.mjs';
 import { getAnalytics, getLimits, getLimitsFull, getLimitState, limitPeriod, limitsOn, setLimitPeriod, setLimits, setLimitsOn } from './limits.mjs';
 import { notifyManual } from './members.mjs';
 import { findUser, verifyPassword, issueToken, userByToken, revokeToken, bearer, hasUsers } from './auth.mjs';
@@ -338,7 +339,9 @@ async function handleApi(req, res, url) {
     try {
       body = await readJson(req);
     } catch { /* без подписи устройства */ }
-    return sendJson(res, 200, guestLogin(db, typeof body?.label === 'string' ? body.label.slice(0, 40) : null));
+    const result = guestLogin(db, typeof body?.label === 'string' ? body.label.slice(0, 40) : null);
+    recordDemo(db, ensureFunnelVisitor(db, req, res, body?.from));
+    return sendJson(res, 200, result);
   }
 
   // ── вход по почте (emailauth.mjs) ──
@@ -358,7 +361,8 @@ async function handleApi(req, res, url) {
       ? await prepareEmailLogin(db, { email: body.email, captcha: body.captcha, ip: clientIp(req), lang: body.lang })
       : pathname.endsWith('/start')
         ? await sendCode(db, { email: body.email, captcha: body.captcha, ip: clientIp(req), lang: body.lang })
-        : loginByCode(db, { email: body.email, code: body.code, label: body.label, source: body.from });
+        : loginByCode(db, { email: body.email, code: body.code, label: body.label, source: body.from, visitor: funnelVisitor(db, req) });
+    if (!result.error && !pathname.endsWith('/verify')) ensureFunnelVisitor(db, req, res, body.from);
     return result.error ? sendJson(res, result.status, result) : sendJson(res, 200, result);
   }
 
@@ -384,7 +388,8 @@ async function handleApi(req, res, url) {
     return sendJson(
       res,
       200,
-      startLogin(db, { ua: req.headers['user-agent'], ip: clientIp(req), linkUserId, client: body.client, source: body.from }),
+      startLogin(db, { ua: req.headers['user-agent'], ip: clientIp(req), linkUserId, client: body.client, source: body.from,
+        visitor: !linkUserId && body.client !== 'admin' ? ensureFunnelVisitor(db, req, res, body.from) : null }),
     );
   }
 
@@ -531,6 +536,7 @@ async function handleApi(req, res, url) {
   // Админка (admin.mjs): только служебное о людях беты — сколько, откуда, как пользуются
   if (pathname.startsWith('/api/admin/')) {
     if (user.role !== 'admin') return sendJson(res, 403, { error: 'только для администратора' });
+    if (pathname === '/api/admin/funnel' && req.method === 'GET') return sendJson(res, 200, funnelOverview(db));
     if (pathname === '/api/admin/overview' && req.method === 'GET') return sendJson(res, 200, overview(db));
     // Бюджет («пользователь» в админке) и его тариф
     const budgetId = /^\/api\/admin\/budgets\/(\d+)(\/plan)?$/.exec(pathname);

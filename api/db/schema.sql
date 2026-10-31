@@ -140,6 +140,20 @@ CREATE TABLE IF NOT EXISTS tokens (
 
 CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens (user_id);
 
+-- Воронка: случайный браузер (в БД только хеш cookie), первое демо и первые этапы.
+-- NULL occurred_at у старых данных означает неизвестное время, а не дату покупки.
+CREATE TABLE IF NOT EXISTS funnel_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS funnel_visitors (
+  hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, demo_at TEXT, source TEXT
+);
+CREATE TABLE IF NOT EXISTS funnel_milestones (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, occurred_at TEXT, origin TEXT NOT NULL,
+  method TEXT, visitor_hash TEXT REFERENCES funnel_visitors(hash) ON DELETE SET NULL,
+  PRIMARY KEY (user_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_funnel_visitor ON funnel_milestones(visitor_hash) WHERE visitor_hash IS NOT NULL;
+
 -- ── чеки ────────────────────────────────────────────────────────────────────
 -- Чек принадлежит бюджету. Один и тот же чек (общий ужин) могут принести в разные
 -- бюджеты, поэтому тройка ФН/ФД/ФП уникальна в пределах бюджета, а не на всю базу.

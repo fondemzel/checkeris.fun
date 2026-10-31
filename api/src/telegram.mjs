@@ -20,6 +20,7 @@ import { randomBytes, createHash, createHmac, timingSafeEqual } from 'node:crypt
 import { issueToken } from './auth.mjs';
 import { createBudget } from './budgets.mjs';
 import { loadEnv } from './llm.mjs';
+import { linkFunnelRegistration } from './funnel.mjs';
 
 const TTL_MS = 10 * 60 * 1000; // сколько живёт код входа
 // Куда вернуть после подтверждения: телефон, кабинет или админка (site/admin — свой вход,
@@ -71,7 +72,7 @@ export function deviceOf(ua = '') {
  * Начало входа. Код — 32 символа base64url: столько и таких символов пропускает
  * параметр start в ссылке на бота. Хранится хеш: утечка базы не даёт перехватить вход.
  */
-export function startLogin(db, { ua, ip, linkUserId = null, client = null, source = null }) {
+export function startLogin(db, { ua, ip, linkUserId = null, client = null, source = null, visitor = null }) {
   const nonce = randomBytes(24).toString('base64url');
   const now = Date.now();
   db.prepare('DELETE FROM tg_logins WHERE expires_at < ?').run(iso(now - 86_400_000));
@@ -79,6 +80,7 @@ export function startLogin(db, { ua, ip, linkUserId = null, client = null, sourc
     `INSERT INTO tg_logins (nonce_hash, status, device, ip, link_user_id, client, source, created_at, expires_at)
      VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
   ).run(sha(nonce), deviceOf(ua), ip ?? null, linkUserId, CLIENTS.includes(client) ? client : 'm', sourceSlug(source), iso(now), iso(now + TTL_MS));
+  if (visitor && !linkUserId && client !== 'admin') db.prepare('UPDATE tg_logins SET funnel_visitor = ? WHERE nonce_hash = ?').run(visitor, sha(nonce));
 
   // Две ссылки на одного бота: tg:// открывает приложение сразу, без страницы t.me
   // с кнопкой «Open in Telegram»; https://t.me — запасная, если приложения нет
@@ -259,6 +261,7 @@ function settle(db, row, telegram, approve) {
         .run(`tg:${tgId}`, now, tgId, username, name, row.source ?? null);
       userId = Number(res.lastInsertRowid);
       createBudget(db, userId); // свой бюджет с копией системного справочника
+      linkFunnelRegistration(db, userId, row.funnel_visitor);
       created = true;
     }
     db.prepare('UPDATE tg_logins SET user_id = ?, created = ? WHERE nonce_hash = ?').run(userId, created ? 1 : 0, row.nonce_hash);
