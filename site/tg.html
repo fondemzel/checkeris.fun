@@ -53,6 +53,9 @@
       text-decoration: none;
     }
     a[hidden] { display: none; }
+    button.btn { width: 100%; border: 0; font: inherit; cursor: pointer; }
+    button[hidden] { display: none; }
+    a.link { display: block; margin-top: 12px; color: #3b7bce; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -71,6 +74,8 @@
       <li><b>Смотрите, куда уходят деньги</b><span>По категориям, магазинам и товарам</span></li>
       <li><b>Ведите бюджет вместе</b><span>Пригласите семью — траты будут общими</span></li>
     </ul>
+    <button class="btn" id="register" type="button" hidden>Регистрация</button>
+    <a class="link" id="existing" href="/m/" hidden>У меня уже есть аккаунт</a>
     <a class="btn" id="go" href="/m/" hidden>Открыть Чекер</a>
   </main>
 
@@ -90,6 +95,8 @@
       $('note').textContent = note;
       $('can').hidden = !welcome;
       $('go').hidden = !href;
+      $('register').hidden = true;
+      $('existing').hidden = true;
       $('go').textContent = button;
       if (href) $('go').href = href;
     }
@@ -108,17 +115,21 @@
     // Вход начат в этом же браузере — страница сама заберёт токен и откроет Чекер
     const pending = pendingLogin();
 
-    try {
+    async function confirm(register = false) {
       if (!code) throw new Error('В ссылке нет кода подтверждения');
       const res = await fetch('/api/auth/telegram/confirm-link', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ code, nonce: pending?.nonce ?? null }),
+        body: JSON.stringify({ code, nonce: pending?.nonce ?? null, register }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
 
-      if (!data.ok) {
+      if (data.registration_required) {
+        show('ok', 'Регистрация нового аккаунта', 'Если аккаунт уже есть, войдите как прежде и привяжите Telegram в настройках профиля.');
+        $('register').hidden = false;
+        $('existing').hidden = false;
+      } else if (!data.ok) {
         show(data.done ? 'ok' : 'bad', data.done ? 'Уже готово' : 'Не получилось', data.reply, appOf(data.client));
       } else if (data.link) {
         show('ok', 'Telegram привязан', 'Теперь в Чекер можно входить через Telegram.', appOf(data.client), { button: 'Готово' });
@@ -137,6 +148,21 @@
         forgetLogin();
         welcome(data.client);
       }
+    }
+
+    $('register').addEventListener('click', async () => {
+      $('register').disabled = true;
+      try {
+        await confirm(true);
+      } catch (err) {
+        show('bad', 'Не получилось', err.message, '/m/');
+      } finally {
+        $('register').disabled = false;
+      }
+    });
+
+    try {
+      await confirm();
     } catch (err) {
       show('bad', 'Не получилось', err.message, '/m/');
     }

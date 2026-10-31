@@ -163,13 +163,23 @@ function closeBotMessage(db, row, link) {
   add.run(row.bot_chat, `${what} ${moscowTime()}${row.device ? ` · ${row.device}` : ''}`, null, at);
 }
 
-export function confirmLink(db, { code, nonce }) {
+export function confirmLink(db, { code, nonce, register = false }) {
   const row = db.prepare('SELECT * FROM tg_logins WHERE confirm_hash = ?').get(sha(code ?? ''));
   if (!row?.tg_identity) return { ok: false, reply: EXPIRED };
   if (row.status === 'confirmed' || row.status === 'used') {
     return { ok: false, reply: 'Этот вход уже подтверждён. Вернитесь в приложение.', done: true, client: row.client };
   }
   if (!alive(row)) return { ok: false, reply: EXPIRED };
+
+  // Незнакомый Telegram не создаёт аккаунт автоматически. Сначала человек видит,
+  // что это регистрация; пользователь подтверждает её отдельной кнопкой на tg.html.
+  if (!row.link_user_id && row.client !== 'admin' && !register) {
+    const telegramId = JSON.parse(row.tg_identity).id;
+    const exists = db.prepare('SELECT 1 FROM users WHERE telegram_id = ?').get(telegramId);
+    if (!exists) {
+      return { ok: true, registration_required: true, same: Boolean(nonce) && sha(nonce) === row.nonce_hash, client: row.client ?? 'm' };
+    }
+  }
 
   const result = settle(db, row, JSON.parse(row.tg_identity), true);
   closeBotMessage(db, row, Boolean(row.link_user_id));

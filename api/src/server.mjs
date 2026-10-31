@@ -65,7 +65,7 @@ import {
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
 import { overview, personDetail, addSource, removeSource, budgetDetail, changePlan } from './admin.mjs';
-import { emailConfig, sendCode, loginByCode, linkByCode } from './emailauth.mjs';
+import { emailConfig, prepareEmailLogin, sendCode, loginByCode, linkByCode } from './emailauth.mjs';
 import { mailReady } from './mail.mjs';
 import {
   supportIncoming, supportList, supportThread, supportReply, supportStatus,
@@ -345,7 +345,7 @@ async function handleApi(req, res, url) {
   // Есть ли вход по почте и ключ капчи для страницы
   if (pathname === '/api/auth/email' && req.method === 'GET') return sendJson(res, 200, emailConfig());
   // Письмо с кодом: капча и лимиты — внутри; здесь — грубый предел частоты с одного адреса
-  if (pathname === '/api/auth/email/start' || pathname === '/api/auth/email/verify') {
+  if (pathname === '/api/auth/email/prepare' || pathname === '/api/auth/email/start' || pathname === '/api/auth/email/verify') {
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
     if (tooOften(`mail:${clientIp(req)}`, 30, 10 * 60_000)) return sendJson(res, 429, { error: 'слишком много попыток, подождите', code: 'limit' });
     let body = {};
@@ -354,9 +354,11 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: 'bad request body' });
     }
-    const result = pathname.endsWith('/start')
-      ? await sendCode(db, { email: body.email, captcha: body.captcha, ip: clientIp(req), lang: body.lang })
-      : loginByCode(db, { email: body.email, code: body.code, label: body.label, source: body.from });
+    const result = pathname.endsWith('/prepare')
+      ? await prepareEmailLogin(db, { email: body.email, captcha: body.captcha, ip: clientIp(req), lang: body.lang })
+      : pathname.endsWith('/start')
+        ? await sendCode(db, { email: body.email, captcha: body.captcha, ip: clientIp(req), lang: body.lang })
+        : loginByCode(db, { email: body.email, code: body.code, label: body.label, source: body.from });
     return result.error ? sendJson(res, result.status, result) : sendJson(res, 200, result);
   }
 
@@ -473,7 +475,7 @@ async function handleApi(req, res, url) {
   // Тестовая база общая — в ней ничего не меняется и ничего не загружается: правка одного
   // была бы видна всем, а настоящие операции из банка пропали бы в ней. Выйти из аккаунта,
   // удалить его и сменить имя — можно
-  if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session', '/api/support', '/api/account/email/start', '/api/account/email/verify'].includes(pathname)
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session', '/api/support', '/api/account/email', '/api/account/email/start', '/api/account/email/verify'].includes(pathname)
     && isDemo(db, user.budget_id)) {
     return sendJson(res, 409, { error: 'Это демо-режим — в нём ничего не меняется. Выключить его можно в настройках, в разделе «Помощь»', demo: true });
   }
@@ -508,6 +510,8 @@ async function handleApi(req, res, url) {
       role: user.role,
       telegram: user.telegram,
       email: user.email,
+      password_login: user.password_login,
+      email_can_unlink: Boolean((user.telegram && telegramReady()) || user.password_login),
       email_login: mailReady(), // почта на сервере настроена — можно входить и привязывать
       telegram_login: telegramReady(),
       support_unread: supportUnread(db, user.id), // ответы поддержки, которых человек ещё не видел
@@ -620,6 +624,19 @@ async function handleApi(req, res, url) {
       ? await sendCode(db, { email: body.email, purpose: 'link', userId: user.id, ip: clientIp(req), lang: body.lang })
       : linkByCode(db, user, body);
     return result.error ? sendJson(res, result.status, result) : sendJson(res, 200, result);
+  }
+
+  // Отвязать почту можно, только если у аккаунта останется другой способ входа.
+  if (pathname === '/api/account/email') {
+    if (req.method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
+    const account = db.prepare('SELECT email, telegram_id, password FROM users WHERE id = ?').get(user.id);
+    if (!account?.email) return sendJson(res, 404, { error: 'почта не привязана', code: 'missing' });
+    if ((!account.telegram_id || !telegramReady()) && account.password === '!') {
+      return sendJson(res, 409, { error: 'сначала привяжите другой способ входа', code: 'last_method' });
+    }
+    db.prepare('UPDATE users SET email = NULL WHERE id = ?').run(user.id);
+    db.prepare('UPDATE email_codes SET used = 1 WHERE email = ?').run(account.email);
+    return sendJson(res, 200, { ok: true });
   }
 
   if (pathname === '/api/logout') {

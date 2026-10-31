@@ -7988,15 +7988,16 @@ async function screenSetProfile() {
   const me = await apiKept('/api/session').catch(() => null);
   const P = T.settings.profile;
   linkEmail = ''; // недоделанная привязка почты не ждёт кода вечно — с профиля начинаем заново
+  changeEmail = false;
   // Способы входа: Telegram и почта — в один и тот же аккаунт. Не привязан — привязать отсюда
   const tgRow = me?.telegram
     ? srow({ icon: TG_ICON, title: P.tg, note: P.linked })
     : me?.telegram_login
       ? srow({ icon: TG_ICON, title: P.tg, note: P.notLinked, end: `<button class="btn small" type="button" data-tg-link>${P.link}</button>` })
       : '';
-  // Почта на сервере не настроена — сменить или добавить пока нельзя, только показать
+  // Почта на сервере не настроена — отвязку можно открыть, смена/добавление скрыты.
   const mailRow = me?.email
-    ? srow({ icon: UI.mail, title: esc(me.email), note: P.emailNote, ...(me.email_login ? { attrs: 'data-set="email"', end: GO } : {}) })
+    ? srow({ icon: UI.mail, title: esc(me.email), note: P.emailNote, attrs: 'data-set="email"', end: GO })
     : me?.email_login ? srow({ icon: UI.mail, title: P.emailAdd, note: P.emailAddNote, attrs: 'data-set="email"', end: GO }) : '';
   return section(P.block, '',
     srow({
@@ -8015,10 +8016,22 @@ async function screenSetProfile() {
 // почта человека. Капча не нужна — он уже вошёл; лимиты на письма те же.
 
 let linkEmail = ''; // куда ушёл код
+let changeEmail = false;
 
-function screenSetEmail() {
+async function screenSetEmail() {
   const P = T.settings.profile;
   const M = T.login.mail;
+  const me = await apiKept('/api/session').catch(() => null);
+  if (me?.email && !changeEmail && !linkEmail) {
+    const actions = srow({ icon: UI.mail, title: esc(me.email), note: P.emailCurrent })
+      + (me.email_login
+        ? srow({ icon: UI.mail, title: P.emailChange, attrs: 'data-email-change', end: GO })
+        : srow({ icon: UI.mail, title: P.emailChange, note: P.emailUnavailable }))
+      + (me.email_can_unlink
+        ? srow({ icon: UI.trash, title: P.emailUnlink, note: P.emailUnlinkNote, attrs: 'data-email-unlink', danger: true })
+        : srow({ icon: UI.trash, title: P.emailUnlink, note: P.emailNeedAnother }));
+    return section(P.emailTitle, '', actions);
+  }
   const step = linkEmail ? 'code' : 'email';
   const body = step === 'email'
     ? `<form class="mail-box" id="link-email-form" novalidate>
@@ -8092,6 +8105,25 @@ $('stage').addEventListener('click', async (e) => {
   if (e.target.closest('[data-link-again]')) {
     linkEmail = '';
     return render();
+  }
+  if (e.target.closest('[data-email-change]')) {
+    changeEmail = true;
+    linkEmail = '';
+    return render();
+  }
+  if (e.target.closest('[data-email-unlink]')) {
+    if (!(await ask(T.settings.profile.emailUnlinkConfirm, { ok: T.settings.profile.emailUnlink, danger: true }))) return;
+    try {
+      await api('/api/account/email', { method: 'DELETE' });
+      kept.delete('/api/session');
+      linkEmail = '';
+      changeEmail = false;
+      toast(T.settings.profile.emailRemoved);
+      return history.back();
+    } catch (err) {
+      toast(f(T.common.failedWhy, { error: err.message }));
+    }
+    return null;
   }
   // Привязать Telegram к аккаунту с почтой: вход через бота в режиме привязки
   const tg = e.target.closest('[data-tg-link]');
@@ -10028,6 +10060,7 @@ function showLogin(note) {
 
 let mailCfg = null; // { ready, captcha } — с сервера
 let mailEmail = ''; // куда ушёл код
+let registerEmail = ''; // новый адрес: код запрашивается только после подтверждения регистрации
 let captchaWidget = null;
 let captchaWaiter = null; // ждём токен от капчи
 let resendTimer = null;
@@ -10094,6 +10127,7 @@ const mailPost = async (path, body) => {
 /** Шаг: почта или код. */
 function mailStep(step) {
   $('mail-form').hidden = step !== 'email';
+  $('mail-register').hidden = step !== 'register';
   $('mail-code-form').hidden = step !== 'code';
   if (step === 'code') {
     $('mail-sent').textContent = f(T.login.mail.sent, { email: mailEmail });
@@ -10101,7 +10135,7 @@ function mailStep(step) {
     $('mail-code').focus();
     resendIn(60);
   } else {
-    $('mail-email').focus();
+    (step === 'register' ? $('mail-register-confirm') : $('mail-email')).focus();
   }
 }
 
@@ -10125,7 +10159,12 @@ async function sendMailCode(email) {
   try {
     await loadCaptcha();
     const captcha = await captchaToken();
-    const res = await mailPost('/api/auth/email/start', { email, captcha, lang });
+    const res = await mailPost('/api/auth/email/prepare', { email, captcha, lang });
+    if (res.registration_required) {
+      registerEmail = res.email;
+      mailStep('register');
+      return;
+    }
     mailEmail = res.email;
     mailStep('code');
   } catch (err) {
@@ -10133,6 +10172,23 @@ async function sendMailCode(email) {
     if (!$('mail-code-form').hidden) resendIn(0);
   } finally {
     $('mail-send').disabled = false;
+  }
+}
+
+async function confirmMailRegistration() {
+  mailError(null);
+  $('mail-register-confirm').disabled = true;
+  try {
+    await loadCaptcha();
+    const captcha = await captchaToken();
+    const res = await mailPost('/api/auth/email/start', { email: registerEmail, captcha, lang });
+    mailEmail = res.email;
+    registerEmail = '';
+    mailStep('code');
+  } catch (err) {
+    mailError(err.data ?? { code: 'other' });
+  } finally {
+    $('mail-register-confirm').disabled = false;
   }
 }
 
@@ -10152,13 +10208,22 @@ $('mail-form').addEventListener('submit', (e) => {
   return sendMailCode(email);
 });
 
+$('mail-register-confirm').addEventListener('click', confirmMailRegistration);
+$('mail-register-back').addEventListener('click', () => {
+  registerEmail = '';
+  mailError(null);
+  mailStep('email');
+});
+
 $('mail-resend').addEventListener('click', () => sendMailCode(mailEmail));
 $('mail-change').addEventListener('click', () => {
+  registerEmail = '';
   mailError(null);
   mailStep('email');
 });
 $('mail-cancel').addEventListener('click', () => {
   clearInterval(resendTimer);
+  registerEmail = '';
   $('mail-box').hidden = true;
   $('login-ways').hidden = false;
   $('demo-login').hidden = false;

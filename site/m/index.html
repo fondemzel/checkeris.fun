@@ -42,8 +42,14 @@
         <form id="mail-form" novalidate>
           <input id="mail-email" type="email" inputmode="email" autocomplete="email" enterkeyhint="send" placeholder="Почта" data-i18n-attr="placeholder:login.mail.email" />
           <div id="mail-captcha"></div>
-          <button class="btn primary" id="mail-send" type="submit" data-i18n="login.mail.send">Получить код</button>
+          <button class="btn primary" id="mail-send" type="submit" data-i18n="login.mail.continue">Продолжить</button>
         </form>
+        <div id="mail-register" hidden>
+          <p class="note"><b data-i18n="login.mail.registerTitle">Регистрация нового аккаунта</b></p>
+          <p class="note" data-i18n="login.mail.registerNote">Если аккаунт уже есть, войдите как прежде, а почту привяжите в настройках профиля.</p>
+          <button class="btn primary" id="mail-register-confirm" type="button" data-i18n="login.mail.registerButton">Регистрация</button>
+          <button class="link" id="mail-register-back" type="button" data-i18n="common.back">Назад</button>
+        </div>
         <form id="mail-code-form" novalidate hidden>
           <p class="note" id="mail-sent"></p>
           <input id="mail-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" enterkeyhint="done" placeholder="Код из письма" data-i18n-attr="placeholder:login.mail.code" />

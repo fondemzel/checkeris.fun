@@ -120,14 +120,14 @@ const htmlMail = (L, code, link) => `<!doctype html>
  * Отправить код. purpose: login — вход (нужна капча), link — привязка к вошедшему (userId).
  * Ответ одинаковый, есть такая почта или нет: по нему не узнать, кто пользуется Чекером.
  */
-export async function sendCode(db, { email, purpose = 'login', userId = null, captcha = null, ip = '', lang = 'ru' }) {
+export async function sendCode(db, { email, purpose = 'login', userId = null, captcha = null, captchaVerified = false, ip = '', lang = 'ru' }) {
   const addr = normalizeEmail(email);
   if (!addr) return { error: 'не похоже на почту', code: 'bad_email', status: 400 };
   if (!mailReady()) return { error: 'вход по почте пока не работает', code: 'off', status: 503 };
   if (purpose === 'link') {
     const taken = db.prepare('SELECT id FROM users WHERE email = ?').get(addr);
     if (taken && taken.id !== userId) return { error: 'эта почта уже привязана к другому аккаунту', code: 'taken', status: 409 };
-  } else if (!(await captchaOk(captcha, ip))) {
+  } else if (!captchaVerified && !(await captchaOk(captcha, ip))) {
     return { error: 'подтвердите, что вы не робот', code: 'captcha', status: 403 };
   }
 
@@ -157,6 +157,23 @@ export async function sendCode(db, { email, purpose = 'login', userId = null, ca
     return { error: 'не получилось отправить письмо — попробуйте позже', code: 'send', status: 502 };
   }
   return { ok: true, email: addr };
+}
+
+/**
+ * Первый шаг входа по почте. Известному адресу сразу отправляем код; новый адрес
+ * возвращаем на экран подтверждения регистрации и ничего не отправляем до согласия.
+ */
+export async function prepareEmailLogin(db, { email, captcha = null, ip = '', lang = 'ru' }) {
+  const addr = normalizeEmail(email);
+  if (!addr) return { error: 'не похоже на почту', code: 'bad_email', status: 400 };
+  if (!mailReady()) return { error: 'вход по почте пока не работает', code: 'off', status: 503 };
+  if (!(await captchaOk(captcha, ip))) return { error: 'подтвердите, что вы не робот', code: 'captcha', status: 403 };
+
+  const exists = Boolean(db.prepare('SELECT 1 FROM users WHERE email = ?').get(addr));
+  if (!exists) return { ok: true, registration_required: true, email: addr };
+
+  const sent = await sendCode(db, { email: addr, captchaVerified: true, ip, lang });
+  return sent.error ? sent : { ...sent, registration_required: false };
 }
 
 /** Проверить код: верный — запись гасится, неверный — попытка списывается. */

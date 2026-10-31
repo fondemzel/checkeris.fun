@@ -180,8 +180,10 @@ button, input, select { font: inherit; color: inherit; }
 .tg-wait .btn { display: flex; align-items: center; justify-content: center; color: var(--text); text-decoration: none; }
 
 .mail-box { display: flex; flex-direction: column; gap: 10px; }
-.mail-box[hidden], .mail-box form[hidden], .mail-box .note[hidden] { display: none; }
+.mail-box[hidden], .mail-box [hidden] { display: none; }
 .mail-box form { display: flex; flex-direction: column; gap: 10px; }
+.mail-box #mail-register { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.mail-box #mail-register .note { margin: 0; }
 #mail-code { letter-spacing: 6px; font-size: 22px; text-align: center; }
 /* Разрядка — для цифр кода; подсказка в пустом поле — обычным текстом */
 #mail-code:placeholder-shown, .link-email-box .mail-code:placeholder-shown { letter-spacing: normal; font-size: 16px; }
