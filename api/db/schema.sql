@@ -94,6 +94,49 @@ CREATE TABLE IF NOT EXISTS invites (
 
 CREATE INDEX IF NOT EXISTS idx_invites_budget ON invites (budget_id);
 
+-- Деньги сервиса отделены от личных расходов бюджета. Все суммы — целые копейки.
+CREATE TABLE IF NOT EXISTS service_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+INSERT OR IGNORE INTO service_meta(key,value) VALUES ('started_at',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+CREATE TABLE IF NOT EXISTS service_payments (
+  id TEXT PRIMARY KEY,
+  mode TEXT NOT NULL DEFAULT 'live' CHECK(mode IN ('live','test')),
+  budget_id INTEGER REFERENCES budgets(id) ON DELETE SET NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  amount INTEGER NOT NULL CHECK(amount > 0),
+  provider_id TEXT UNIQUE,
+  payment_url TEXT,
+  status TEXT NOT NULL DEFAULT 'NEW',
+  created_at TEXT NOT NULL,
+  checked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_service_payments_budget ON service_payments(budget_id, created_at);
+CREATE TABLE IF NOT EXISTS service_ledger (
+  id INTEGER PRIMARY KEY,
+  mode TEXT NOT NULL DEFAULT 'live' CHECK(mode IN ('live','test')),
+  budget_id INTEGER NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL CHECK(amount <> 0),
+  operation TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL CHECK(kind IN ('topup', 'subscription', 'refund')),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_service_ledger_budget ON service_ledger(budget_id);
+CREATE TABLE IF NOT EXISTS service_subscriptions (
+  budget_id INTEGER NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL DEFAULT 'live' CHECK(mode IN ('live','test')),
+  plan TEXT NOT NULL CHECK(plan IN ('plus','premium')),
+  next_plan TEXT CHECK(next_plan IN ('free','plus','premium')),
+  period_end TEXT NOT NULL,
+  renew INTEGER NOT NULL DEFAULT 1 CHECK(renew IN (0,1)),
+  PRIMARY KEY(budget_id,mode)
+);
+-- Отдельно считаем запросы чеков и опросы ФНС по бюджету. Авторизация ФНС общая.
+CREATE TABLE IF NOT EXISTS fns_budget_usage (
+  budget_id INTEGER NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  calls INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(budget_id, day)
+);
+
 -- Вход через Telegram. Браузер получает одноразовый код, человек подтверждает его
 -- в боте, браузер забирает токен. Код хранится хешем, живёт 10 минут и гасится
 -- при первой выдаче токена. link_user_id — не вход, а привязка Telegram к уже

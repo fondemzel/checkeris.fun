@@ -24,7 +24,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 export function planOf(db, budgetId) {
   const row = budgetId ? db.prepare('SELECT plan, plan_until, plan_label FROM budgets WHERE id = ?').get(budgetId) : null;
   const id = PLANS[row?.plan] ? row.plan : 'free';
-  const expired = id !== 'free' && Boolean(row?.plan_until) && row.plan_until < today();
+  const sub = row?.plan_label === 'paid' ? db.prepare("SELECT plan,period_end FROM service_subscriptions WHERE budget_id=? AND mode='live'").get(budgetId) : null;
+  const expired = id !== 'free' && (sub?.plan === id
+    ? sub.period_end <= new Date().toISOString()
+    : Boolean(row?.plan_until) && row.plan_until < today());
   return {
     ...PLANS[expired ? 'free' : id],
     until: row?.plan_until ?? null,
@@ -48,6 +51,8 @@ export function setPlan(db, budgetId, { plan, until = null, label = null }) {
   const changed = db
     .prepare('UPDATE budgets SET plan = ?, plan_until = ?, plan_label = ? WHERE id = ? AND demo = 0')
     .run(plan, plan === 'free' ? null : until || null, plan === 'free' ? null : label || null, Number(budgetId)).changes;
+  // Ручное назначение администратором не должно оставлять скрытое продление с баланса.
+  if (changed) db.prepare("DELETE FROM service_subscriptions WHERE budget_id=? AND mode='live'").run(Number(budgetId));
   return changed ? { ok: true, plan: planOf(db, budgetId) } : { error: 'нет такого бюджета', status: 404 };
 }
 

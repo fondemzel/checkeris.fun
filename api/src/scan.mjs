@@ -160,13 +160,13 @@ async function step(db, job) {
       sum: job.total_sum,
       date: job.purchased_at,
       type: job.operation,
-    });
+    }, job.budget_id);
     db.prepare("UPDATE scan_jobs SET status = 'sent', message_id = ?, attempts = 0, next_at = ?, updated_at = ? WHERE id = ?")
       .run(id, later(BACKOFF[0]), now(), job.id);
     return true;
   }
 
-  const answer = await fetchTicket(db, job.message_id);
+  const answer = await fetchTicket(db, job.message_id, job.budget_id);
 
   if (answer.status !== 'COMPLETED') {
     const attempts = job.attempts + 1;

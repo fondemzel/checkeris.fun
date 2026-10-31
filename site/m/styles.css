@@ -843,6 +843,14 @@ button, input, select { font: inherit; color: inherit; }
 .row-icon svg { width: 17px; height: 17px; }
 .row-icon:active { background: var(--press); }
 .settings-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.service-value { font-size: 13px; text-align: right; flex-shrink: 0; max-width: 45%; }
+.service-money { font-size: 28px; font-weight: 600; }
+.service-test { padding: 12px 16px; border: 1px solid var(--accent); border-radius: 12px; color: var(--text); background: var(--accent-faint); font-size: 13px; line-height: 1.45; margin-bottom: 14px; }
+.service-plan { margin-bottom: 18px; padding: 10px; border: 1px solid var(--line); border-radius: 16px; }
+.service-selected { border-color: var(--accent); }
+.service-plan > .btn { width: 100%; }
+.service-plan-price { display: block; margin-top: 5px; font-size: 15px; font-weight: 500; color: var(--text); }
+.service-amount-label { font-size: 13px; color: var(--muted); }
 .settings-actions .note { margin-top: 4px; text-align: center; }
 .settings-actions .note a { color: inherit; }
 

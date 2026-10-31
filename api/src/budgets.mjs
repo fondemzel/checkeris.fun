@@ -316,6 +316,16 @@ export function deleteAccount(db, userId) {
     user.budget_id = db.prepare('SELECT demo_return FROM users WHERE id = ?').get(userId).demo_return;
   }
 
+  // Не теряем общий денежный остаток или заказ, который банк ещё может подтвердить.
+  for (const id of new Set([user.budget_id, user.home_budget_id].filter(Boolean))) {
+    const others = db.prepare('SELECT 1 FROM users WHERE id<>? AND (budget_id=? OR demo_return=?)').get(userId,id,id);
+    if (others) continue;
+    const balance = db.prepare("SELECT COALESCE(SUM(amount),0) n FROM service_ledger WHERE budget_id=? AND mode='live'").get(id).n;
+    const pending = db.prepare(`SELECT 1 FROM service_payments WHERE budget_id=? AND mode='live'
+      AND status NOT IN ('CONFIRMED','REFUNDED','REVERSED','CANCELED','REJECTED','DEADLINE_EXPIRED')`).get(id);
+    if (balance !== 0 || pending) return fail(409, 'Перед удалением аккаунта завершите расчёты по балансу сервиса. Напишите в поддержку');
+  }
+
   db.exec('BEGIN');
   try {
     const budgets = [...new Set([user.budget_id, user.home_budget_id].filter(Boolean))];
@@ -323,7 +333,7 @@ export function deleteAccount(db, userId) {
     for (const id of budgets) {
       const budget = budgetRow(db, id);
       if (!budget) continue;
-      const heir = db.prepare('SELECT id FROM users WHERE budget_id = ? ORDER BY id LIMIT 1').get(id);
+      const heir = db.prepare('SELECT id FROM users WHERE COALESCE(demo_return,budget_id) = ? ORDER BY id LIMIT 1').get(id);
       if (heir) {
         if (budget.owner_id === userId) db.prepare('UPDATE budgets SET owner_id = ? WHERE id = ?').run(heir.id, id);
       } else {

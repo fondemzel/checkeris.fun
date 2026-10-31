@@ -65,6 +65,8 @@ import {
   noteBotMessage,
 } from './telegram.mjs';
 import { scanQuota } from './quota.mjs';
+import { serviceInfo, chooseServicePlan, startServiceTopup, applyServicePayment, renewService, reconcileServicePayments } from './service.mjs';
+import { validPaymentToken } from './tbankpay.mjs';
 import { overview, personDetail, addSource, removeSource, budgetDetail, changePlan } from './admin.mjs';
 import { emailConfig, prepareEmailLogin, sendCode, loginByCode, linkByCode } from './emailauth.mjs';
 import { mailReady } from './mail.mjs';
@@ -453,6 +455,18 @@ async function handleApi(req, res, url) {
     );
   }
 
+  // Банк приходит без пользовательского токена, но с проверяемой подписью.
+  if (pathname === '/api/service/tbank/notify') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    let body;
+    try { body = await readJson(req); } catch { return sendJson(res, 400, { error: 'bad request body' }); }
+    if (!validPaymentToken(body)) return sendJson(res, 403, { error: 'bad signature' });
+    if (!applyServicePayment(db, body)) return sendJson(res, 409, { error: 'payment mismatch' });
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('OK');
+    return;
+  }
+
   // Всё остальное — только по токену. Кабинет и телефон ходят одинаково.
   // Фоновые запросы телефона (банки, отчёты о подключениях, резервная копия) идут из Java, не из
   // WebView: у них нет «Mozilla» в User-Agent. Иначе любой, у кого подключён банк, «заходил только что»
@@ -483,6 +497,16 @@ async function handleApi(req, res, url) {
   if (req.method !== 'GET' && req.method !== 'HEAD' && !['/api/logout', '/api/account', '/api/session', '/api/support', '/api/account/email', '/api/account/email/start', '/api/account/email/verify'].includes(pathname)
     && isDemo(db, user.budget_id)) {
     return sendJson(res, 409, { error: 'Это демо-режим — в нём ничего не меняется. Выключить его можно в настройках, в разделе «Помощь»', demo: true });
+  }
+
+  if (pathname === '/api/service' && req.method === 'GET') return sendJson(res, 200, serviceInfo(db, user, searchParams.get('payment')));
+  if (['/api/service/plan', '/api/service/topup'].includes(pathname)) {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+    let body;
+    try { body = await readJson(req); } catch { return sendJson(res, 400, { error: 'bad request body' }); }
+    if (pathname.endsWith('/topup') && tooOften(`service-topup:${user.id}`, 5, 60_000)) return sendJson(res, 429, { error: 'Подождите минуту перед новой попыткой' });
+    const result = pathname.endsWith('/plan') ? chooseServicePlan(db, user, body.plan) : await startServiceTopup(db, user, body.amount);
+    return sendJson(res, result.error ? result.status : 200, result);
   }
 
   // Кабинет спрашивает при загрузке, жив ли сохранённый токен
@@ -1344,6 +1368,17 @@ if (banksReady()) {
 } else {
   console.error('Банки: нет BANK_KEY в api/.env — подключения к банкам выключены');
 }
+
+let serviceTickRunning = false;
+async function serviceTick() {
+  if (serviceTickRunning) return;
+  serviceTickRunning = true;
+  try { await reconcileServicePayments(db); renewService(db); }
+  catch (err) { console.error('сервис, оплата:', err.message); }
+  finally { serviceTickRunning = false; }
+}
+setTimeout(serviceTick, 5000).unref();
+setInterval(serviceTick, 60_000).unref();
 
 server.listen(PORT, HOST, () => {
   // Сводка по всей базе, без владельца: это журнал сервера, а не экран пользователя

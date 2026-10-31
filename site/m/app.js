@@ -391,7 +391,7 @@ const state = {
 };
 
 const SCREEN_NAMES = ['summary', 'group', 'category', 'item', 'receipts', 'add', 'manual', 'income_add', 'added', 'income',
-  'settings', 'set_profile', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits', 'set_backup', 'set_support', 'set_ticket', 'set_email'];
+  'settings', 'set_profile', 'set_plans', 'set_balance', 'set_budget', 'set_banks', 'set_cats', 'set_group', 'set_cat', 'privacy', 'stats', 'bank', 'bank_card', 'bank_add', 'bank_safety', 'bank_wizard', 'op', 'autolabel', 'set_motion', 'set_limits', 'set_backup', 'set_support', 'set_ticket', 'set_email'];
 const FILTERS = ['all', 'failed', 'pending', 'manual'];
 
 // Сортировки списков — одни и те же везде, где есть что сортировать: товары, чеки,
@@ -5399,6 +5399,8 @@ const SCREENS = {
   stats: { title: T.screens.stats, render: screenAnalytics, after: () => animateAnalytics() },
   settings: { title: T.screens.settings, render: screenSettings, after: () => settingsSearch() },
   set_profile: { title: T.settings.profile.label, render: screenSetProfile },
+  set_plans: { title: T.settings.service.tariff, render: screenSetPlans },
+  set_balance: { title: T.settings.service.balance, render: screenSetBalance, after: serviceBalanceAfter },
   set_motion: { title: T.settings.look.motion, render: screenSetMotion },
   set_limits: { title: T.settings.limits.label, render: screenSetLimits, after: limitsFocus },
   set_backup: { title: T.settings.backup.label, render: screenSetBackup },
@@ -5523,6 +5525,7 @@ async function railMe() {
 }
 
 const TAB_OF = {
+  set_plans: 'settings', set_balance: 'settings',
   summary: 'summary', group: 'summary', category: 'summary', item: 'summary', receipts: 'summary', bank: 'summary',
   income: 'income', income_add: 'income', settings: 'settings', stats: 'stats', bank_card: 'settings', bank_add: 'settings',
   bank_safety: 'settings', bank_wizard: 'settings', op: 'summary', autolabel: 'summary',
@@ -7861,6 +7864,8 @@ function settingsIndex() {
   const add = (title, where, icon, how, words = '') => out.push({ title, where, icon, how, words });
   // Основные: разделы и то, что внутри них (находится сам пункт, а не его раздел)
   add(S.profile.label, S.menu.label, UI.user, { screen: 'set_profile' });
+  add(S.service.tariff, `${S.profile.label} · ${S.service.label}`, UI.sparkle, { screen: 'set_plans' });
+  add(S.service.balance, `${S.profile.label} · ${S.service.label}`, UI.wallet, { screen: 'set_balance' });
   const W = S.words;
   add(S.profile.nameLabel, S.profile.label, UI.user, { screen: 'set_profile' }, W.name);
   add(S.profile.logout, S.profile.label, UI.logout, { screen: 'set_profile' }, W.logout);
@@ -7985,7 +7990,7 @@ $('stage').addEventListener('click', (e) => {
 });
 
 async function screenSetProfile() {
-  const me = await apiKept('/api/session').catch(() => null);
+  const [me, service] = await Promise.all([apiKept('/api/session').catch(() => null), api('/api/service').catch(() => null)]);
   const P = T.settings.profile;
   linkEmail = ''; // недоделанная привязка почты не ждёт кода вечно — с профиля начинаем заново
   changeEmail = false;
@@ -8008,8 +8013,127 @@ async function screenSetProfile() {
       + (me?.role === 'admin'
         ? ''
         : srow({ icon: UI.trash, title: T.settings.deleteAccount, note: T.settings.data.deleteNote, attrs: 'data-delete-account', danger: true })))
-    + section(P.ways, P.waysFoot, tgRow + mailRow);
+    + section(P.ways, P.waysFoot, tgRow + mailRow)
+    + section(T.settings.service.label, service?.test_mode && service?.payment_ready ? T.settings.service.testMode : T.settings.service.shared,
+      srow({ icon: UI.sparkle, title: T.settings.service.tariff, note: esc(T.settings.service.plans[service?.plan?.id] ?? ''), attrs: 'data-set="plans"', end: GO })
+      + srow({ icon: UI.wallet, title: T.settings.service.balance, note: service ? money(service.balance, true) : '', attrs: 'data-set="balance"', end: GO }));
 }
+
+const serviceDate = (value) => value ? new Date(value.length === 10 ? `${value}T12:00:00Z` : value)
+  .toLocaleDateString(document.documentElement.lang === 'en' ? 'en-GB' : 'ru-RU') : '';
+let serviceView = null;
+const servicePaymentReturn = new URLSearchParams(location.search).get('service_payment');
+let servicePolls = 0;
+let servicePollTimer = null;
+
+function serviceAccessNote(d) {
+  const S = T.settings.service;
+  return d.demo ? S.demo : d.budget.is_owner ? S.shared : f(S.owner, { name: d.budget.owner });
+}
+
+const serviceTestNotice = (d) => d.test_mode && d.payment_ready
+  ? `<p class="service-test" role="status">${esc(T.settings.service.testMode)}</p>` : '';
+
+async function screenSetPlans() {
+  const d = serviceView = await api('/api/service');
+  const S = T.settings.service;
+  const sub = d.subscription;
+  const active = sub && !d.plan.expired;
+  const stateNote = sub?.renew && d.plan.expired ? f(S.insufficient, { price: money(d.catalog.find((p) => p.id === (sub.next_plan ?? sub.plan))?.price) })
+    : d.plan.label === 'beta' ? S.beta
+    : active ? f(sub.renew ? S.renewal : S.noRenewal, { date: serviceDate(sub.period_end), price: money(d.catalog.find((p) => p.id === (sub.next_plan ?? sub.plan))?.price) })
+    : d.plan.until ? f(S.until, { date: serviceDate(d.plan.until) }) : d.plan.id === 'free' ? S.freeNote : S.forever;
+  const pending = sub?.next_plan ? `<p class="sec-foot">${esc(f(S.next, { plan: S.plans[sub.next_plan], date: serviceDate(sub.period_end) }))}</p>` : '';
+  return serviceTestNotice(d) + section(S.current, stateNote,
+    srow({ icon: UI.sparkle, title: S.plans[d.plan.id], note: S.labels[d.plan.label] ?? '', end: '' }))
+    + pending + `<p class="sec-foot">${esc(serviceAccessNote(d))}</p>`
+    + (!d.payment_ready && !d.demo ? `<p class="sec-foot">${esc(S.unavailable)}</p>` : '')
+    + d.catalog.map((p) => {
+      const included = (n) => n === null ? S.unlimited : int.format(n);
+      const selected = d.plan.id === p.id;
+      const canChoose = d.payment_ready && d.budget.is_owner && (!selected || sub?.next_plan || sub?.renew === false || (p.id === 'free' && sub?.renew) || (d.test_mode && !sub));
+      const rows = srow({ title: S.scans, wrap: true, end: `<span class="service-value">${int.format(p.scans)}</span>` })
+        + srow({ title: S.names, wrap: true, end: `<span class="service-value">${int.format(p.names)}</span>` })
+        + srow({ title: S.members, wrap: true, end: `<span class="service-value">${included(p.members)}</span>` })
+        + srow({ title: S.links, wrap: true, end: `<span class="service-value">${included(p.links)}</span>` });
+      return `<div class="service-plan${selected ? ' service-selected' : ''}">${section(`${S.plans[p.id]}${p.id === 'free' ? '' : `<span class="service-plan-price">${esc(f(S.perPeriod, { price: money(p.price) }))}</span>`}`, p.id === 'free' ? S.freeNote : '', rows)}
+        ${p.id === 'premium' ? `<p class="sec-foot">${esc(S.fair)}</p>` : ''}
+        ${p.id !== 'free' ? `<p class="sec-foot">${esc(S.protection)}</p>` : ''}
+        <button class="btn big${canChoose ? ' primary' : ''}" type="button" data-service-plan="${p.id}"${canChoose ? '' : ' disabled'}>${esc(selected && !canChoose ? S.current : S.choose)}</button></div>`;
+    }).join('');
+}
+
+async function screenSetBalance() {
+  const d = serviceView = await api(`/api/service${servicePaymentReturn ? `?payment=${encodeURIComponent(servicePaymentReturn)}` : ''}`);
+  const S = T.settings.service;
+  const U = d.usage;
+  const usageRow = (title, entry, remaining = false) => srow({ title, wrap: true,
+    note: remaining && entry.left !== null ? f(S.left, { count: int.format(entry.left) }) : '',
+    end: `<span class="service-value">${entry.limit === null ? `${int.format(entry.used ?? 0)} · ${esc(S.unlimited)}` : esc(f(S.usedOf, { used: int.format(entry.used), limit: int.format(entry.limit) }))}</span>` });
+  return serviceTestNotice(d) + section(d.test_mode && d.payment_ready ? S.testBalance : S.balance, serviceAccessNote(d), srow({ icon: UI.wallet, title: `<span class="service-money">${money(d.balance, true)}</span>` }))
+    + (servicePaymentReturn ? `<p class="sec-foot" role="status">${esc(d.payment?.status === 'CONFIRMED' ? S.paymentSuccess
+      : ['REFUNDED','REVERSED','PARTIAL_REFUNDED'].includes(d.payment?.status) ? S.paymentRefunded
+      : ['CANCELED','REJECTED','DEADLINE_EXPIRED'].includes(d.payment?.status) ? S.paymentFailed : S.paymentReturn)}</p>` : '')
+    + section(S.topup, d.demo ? S.demo : d.payment_ready ? S.range : S.unavailable,
+      `<form class="mail-box" id="service-topup-form" novalidate>
+        <label class="service-amount-label" for="service-amount">${esc(S.amount)}</label>
+        <input id="service-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="500"${d.payment_ready ? '' : ' disabled'} />
+        <button class="btn primary" type="submit"${d.payment_ready ? '' : ' disabled'}>${esc(S.pay)}</button>
+        <p class="note error" id="service-topup-error" hidden></p>
+      </form>`)
+    + section(S.limits, S.reset,
+      usageRow(S.scans, U.scans, true)
+      + srow({ title: S.calls, note: f(S.callsNote, { date: serviceDate(U.fns_tracking_from) }), wrap: true,
+        end: `<span class="service-value">${int.format(U.fns_calls)}</span>` })
+      + srow({ title: S.namesLeft, wrap: true, end: `<span class="service-value">${U.names.left === null ? esc(S.unlimited) : int.format(U.names.left)}</span>` })
+      + usageRow(S.members, U.members) + usageRow(S.links, U.links))
+    + `<div class="settings-actions"><button class="btn big" type="button" data-service-refresh>${esc(S.refresh)}</button></div>`;
+}
+
+function serviceBalanceAfter() {
+  clearTimeout(servicePollTimer);
+  if (servicePaymentReturn && !['CONFIRMED','REFUNDED','REVERSED','PARTIAL_REFUNDED','CANCELED','REJECTED','DEADLINE_EXPIRED'].includes(serviceView?.payment?.status)
+      && servicePolls++ < 20) servicePollTimer = setTimeout(() => {
+    if (state.screen === 'set_balance') render();
+  }, 4000);
+}
+
+$('stage').addEventListener('click', async (e) => {
+  if (e.target.closest('[data-service-refresh]')) return render();
+  const button = e.target.closest('[data-service-plan]');
+  if (!button || button.disabled || !serviceView) return;
+  const d = serviceView;
+  const S = T.settings.service;
+  const id = button.dataset.servicePlan;
+  const plan = d.catalog.find((p) => p.id === id);
+  const message = id === 'free' ? S.confirmFree : d.subscription && !d.plan.expired ? S.confirmSchedule : S.confirm;
+  if (!(await ask(f(message, { plan: S.plans[id], price: money(plan.price) }), { ok: S.choose }))) return;
+  button.disabled = true;
+  try {
+    const result = await api('/api/service/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan: id }) });
+    toast(result.scheduled ? f(S.scheduled, { date: serviceDate(result.effective_at) }) : S.changed);
+    kept.delete('/api/budget');
+    await render();
+  } catch (err) { toast(err.message); button.disabled = false; }
+});
+
+$('stage').addEventListener('submit', async (e) => {
+  if (e.target.id !== 'service-topup-form') return;
+  e.preventDefault();
+  const S = T.settings.service;
+  const error = document.getElementById('service-topup-error');
+  const value = document.getElementById('service-amount').value.trim().replace(',', '.');
+  const amount = Math.round(Number(value) * 100);
+  const showError = (text) => { error.textContent = text; error.hidden = false; };
+  if (!/^\d+(?:\.\d{1,2})?$/.test(value) || !Number.isSafeInteger(amount) || amount < 10000 || amount > 1000000) return showError(S.range);
+  const button = e.target.querySelector('button');
+  button.disabled = true;
+  error.hidden = true;
+  try {
+    const result = await api('/api/service/topup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ amount }) });
+    location.href = result.payment_url;
+  } catch (err) { showError(err.message); button.disabled = false; }
+});
 
 // ── почта в профиле: добавить или сменить ────────────────
 // Тем же кодом из письма, что и вход (api/src/emailauth.mjs): код пришёл на почту — значит,

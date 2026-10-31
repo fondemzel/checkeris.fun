@@ -72,8 +72,10 @@ const envelope = (body) =>
   '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">' +
   `<soapenv:Header/><soapenv:Body>${body}</soapenv:Body></soapenv:Envelope>`;
 
-async function call(db, url, action, body, token = null) {
+async function call(db, url, action, body, token = null, budgetId = null) {
   spend(db);
+  if (budgetId) db.prepare(`INSERT INTO fns_budget_usage(budget_id,day,calls) VALUES (?,?,1)
+    ON CONFLICT(budget_id,day) DO UPDATE SET calls=calls+1`).run(budgetId, today());
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -148,7 +150,7 @@ export function parseQr(text) {
 }
 
 /** Отправка запроса на чек. Возвращает MessageId, по которому потом забирается ответ. */
-export async function requestTicket(db, qr) {
+export async function requestTicket(db, qr, budgetId = null) {
   const token = await fnsSession(db);
   const { kktUrl } = fnsConfig();
 
@@ -169,6 +171,7 @@ export async function requestTicket(db, qr) {
       '<tns:RawData>false</tns:RawData>' +
       '</tns:GetTicketInfo></tns:GetTicketRequest></ns:Message></ns:SendMessageRequest>',
     token,
+    budgetId,
   );
 
   const id = tag(xml, 'MessageId');
@@ -180,7 +183,7 @@ export async function requestTicket(db, qr) {
  * Забор ответа. PROCESSING значит «ещё считается», COMPLETED — готово:
  * внутри либо чек в Ticket (JSON строкой), либо описание ошибки.
  */
-export async function fetchTicket(db, messageId) {
+export async function fetchTicket(db, messageId, budgetId = null) {
   const token = await fnsSession(db);
   const { kktUrl } = fnsConfig();
 
@@ -190,6 +193,7 @@ export async function fetchTicket(db, messageId) {
     'urn:GetMessageRequest',
     `<ns:GetMessageRequest xmlns:ns="${NS.async}"><ns:MessageId>${esc(messageId)}</ns:MessageId></ns:GetMessageRequest>`,
     token,
+    budgetId,
   );
 
   const status = tag(xml, 'ProcessingStatus');
