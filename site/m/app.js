@@ -10126,7 +10126,7 @@ const mailPost = async (path, body) => {
 
 /** Шаг: почта или код. */
 function mailStep(step) {
-  $('mail-form').hidden = step === 'code';
+  $('mail-form').hidden = step !== 'email';
   $('mail-register').hidden = step !== 'register';
   $('mail-code-form').hidden = step !== 'code';
   if (step === 'code') {
@@ -10134,8 +10134,11 @@ function mailStep(step) {
     $('mail-code').value = '';
     $('mail-code').focus();
     resendIn(60);
+  } else if (step === 'register') {
+    $('mail-register-email').textContent = registerEmail;
+    $('mail-register-confirm').focus();
   } else {
-    (step === 'register' ? $('mail-register-confirm') : $('mail-email')).focus();
+    $('mail-email').focus();
   }
 }
 

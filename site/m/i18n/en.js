@@ -1060,7 +1060,7 @@ export const en = {
       continue: 'Continue',
       registerTitle: 'Register a new account',
       registerNote: 'If you already have an account, sign in as usual and link your email in profile settings.',
-      registerButton: 'Register',
+      registerButton: 'Get code',
       code: 'Code from the email',
       sent: 'We sent a code to {email}. Can’t see it? Check your Spam folder.',
       resend: 'Send again',
