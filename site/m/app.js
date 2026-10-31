@@ -10126,7 +10126,7 @@ const mailPost = async (path, body) => {
 
 /** Шаг: почта или код. */
 function mailStep(step) {
-  $('mail-form').hidden = step !== 'email';
+  $('mail-form').hidden = step === 'code';
   $('mail-register').hidden = step !== 'register';
   $('mail-code-form').hidden = step !== 'code';
   if (step === 'code') {
@@ -10206,6 +10206,14 @@ $('mail-form').addEventListener('submit', (e) => {
   const email = $('mail-email').value.trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return mailError({ code: 'bad_email' });
   return sendMailCode(email);
+});
+
+$('mail-email').addEventListener('input', () => {
+  if (registerEmail && $('mail-email').value.trim().toLowerCase() !== registerEmail) {
+    registerEmail = '';
+    mailError(null);
+    mailStep('email');
+  }
 });
 
 $('mail-register-confirm').addEventListener('click', confirmMailRegistration);
