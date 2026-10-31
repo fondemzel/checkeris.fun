@@ -102,6 +102,8 @@ export function linkFunnelRegistration(db, userId, visitor) {
 }
 
 const dayMs = 86400000;
+// 0.67.8 (28.10.2026) исключила фоновые запросы телефона; следующий день целиком надёжен.
+const reliableActivityFrom = '2026-10-29';
 const day = (d) => d.toISOString().slice(0, 10);
 const week = (iso) => {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
@@ -132,7 +134,8 @@ export function funnelOverview(db, at = new Date()) {
     return ms >= 0 ? [ms / 3600000] : [];
   }).sort((a, b) => a - b);
   const today = day(at);
-  const coveredFrom = db.prepare("SELECT MIN(day) AS day FROM usage_daily WHERE kind = 'active'").get().day;
+  const firstActivity = db.prepare("SELECT MIN(day) AS day FROM usage_daily WHERE kind = 'active'").get().day;
+  const coveredFrom = firstActivity ? (firstActivity > reliableActivityFrom ? firstActivity : reliableActivityFrom) : null;
   const active = new Set(db.prepare("SELECT user_id, day FROM usage_daily WHERE kind = 'active'").all().map((r) => `${r.user_id}:${r.day}`));
   const cohorts = new Map();
   const channels = new Map();

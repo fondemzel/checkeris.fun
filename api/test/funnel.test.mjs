@@ -126,12 +126,15 @@ test('D7/D30 exclude unfinished days and compute against eligible cohort members
   person(db, 'c', '2026-10-24T00:00:00Z');
   const old = person(db, 'old', '2026-09-30T00:00:00Z');
   person(db, 'future30', '2026-10-01T00:00:00Z');
+  const unreliable = person(db, 'unreliable', '2026-10-20T00:00:00Z');
   const active = db.prepare("INSERT INTO usage_daily VALUES (?, ?, 'active', 1)");
   active.run(b.id, '2026-10-01');
   active.run(a.id, '2026-10-30');
   active.run(old.id, '2026-10-30');
+  active.run(unreliable.id, '2026-10-27');
   const result = funnelOverview(db, new Date('2026-10-31T23:59:00Z'));
   const c = result.cohorts.find((x) => x.week === '2026-10-19');
+  assert.equal(result.retention_covered_from, '2026-10-29');
   assert.deepEqual(c.d7, { eligible: 2, returned: 1 });
   assert.deepEqual(c.d30, { eligible: 0, returned: 0 });
   assert.deepEqual(result.cohorts.find((x) => x.week === '2026-09-28').d30, { eligible: 1, returned: 1 });
